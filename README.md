@@ -13,7 +13,9 @@ python main.py
 
 Controls: press any key at the menu to start. Click a tower button in the
 bottom bar, then click a grass tile to place it -- the sidebar on the
-right shows that tower type's stats while it's selected. Hover any placed
+right shows that tower type's stats while it's selected; right-click at
+any time to clear the current selection without placing anything. Hover
+any placed
 tower to see its live stats and range in the sidebar; it also shows a
 small "+cost" badge in its tile's top-right corner -- click *that*
 specifically to upgrade it (caps at level 3 -- see "Tower levels" below

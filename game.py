@@ -82,6 +82,8 @@ class Game:
                 self._handle_keydown(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_click(event.pos)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                self._handle_right_click()
 
     def _handle_keydown(self, key):
         if key == pygame.K_ESCAPE:
@@ -102,6 +104,11 @@ class Game:
             if key == pygame.K_r:
                 self.reset()
                 self.state = GameState.PLAYING
+
+    def _handle_right_click(self):
+        if self.state != GameState.PLAYING:
+            return
+        self.selected_tower_name = None
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
