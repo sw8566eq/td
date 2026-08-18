@@ -63,6 +63,16 @@ class Game:
         self.load_level(self.current_level_id)
         self.state = GameState.MENU
 
+    def has_next_level(self):
+        return (self.current_level_id + 1) in LEVELS
+
+    def advance_or_replay_level(self):
+        """Called on winning: move to the next level if the registry has
+        one, else replay the current (final) level from scratch."""
+        if self.has_next_level():
+            self.current_level_id += 1
+        self.load_level(self.current_level_id)
+
     def run(self):
         while self.running:
             dt = self.clock.tick(settings.FPS) / 1000.0
@@ -100,9 +110,13 @@ class Game:
         elif self.state == GameState.PAUSED:
             if key == pygame.K_p:
                 self.state = GameState.PLAYING
-        elif self.state in (GameState.GAME_OVER, GameState.VICTORY):
+        elif self.state == GameState.GAME_OVER:
             if key == pygame.K_r:
                 self.reset()
+                self.state = GameState.PLAYING
+        elif self.state == GameState.VICTORY:
+            if key == pygame.K_r:
+                self.advance_or_replay_level()
                 self.state = GameState.PLAYING
 
     def _handle_right_click(self):
@@ -229,7 +243,7 @@ class Game:
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font)
         elif self.state == GameState.VICTORY:
-            ui.draw_victory_screen(self.screen, self.font, self.small_font)
+            ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level())
 
         pygame.display.flip()
 

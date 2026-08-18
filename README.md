@@ -22,8 +22,10 @@ specifically to upgrade it (caps at level 3 -- see "Tower levels" below
 -- hovering shows what the upgrade would change). The badge disappears
 once a tower is maxed. The HUD shows a countdown to the next wave and a
 "Skip" button (bottom-right) to force it to start early -- same effect as
-pressing `Space`. `P` pauses. `R` restarts from the game-over/victory
-screen. `Esc` quits.
+pressing `Space`. `P` pauses. `R` restarts the current level from the
+game-over screen, or -- from the victory screen -- advances to the next
+level if there is one, otherwise replays the level you just won. `Esc`
+quits.
 
 Run the test suite with `pytest` (from the venv).
 
@@ -63,13 +65,26 @@ to render the panel, so it needs no changes for new tower types.
 
 ## Enemies
 
-Three species: `GruntEnemy` (baseline), `ScoutEnemy` (fast, low HP --
-also the one that gets shoved back furthest by the knockback tower, since
-its knockback distance scales with the target's own speed), and
-`TankEnemy` (slow, high HP -- an easy target to keep in range, and frost's
-slow hits especially hard on something already slow). Level 1's
-`LEVEL_1_WAVE_SPECS` (in `levels.py`) introduces them gradually: grunts
-only through wave 2, scouts join at wave 3, tanks at wave 5.
+Four species: `GruntEnemy` (baseline), `ScoutEnemy` (fast, low HP -- also
+the one that gets shoved back furthest by the knockback tower, since its
+knockback distance scales with the target's own speed), `TankEnemy` (slow,
+high HP -- an easy target to keep in range, and frost's slow hits
+especially hard on something already slow), and `BossEnemy` (a level's
+one-off final-wave heavyweight: dramatically more HP and gold reward,
+moving at a deliberate crawl). Each level's `wave_specs` introduces the
+regular species gradually and puts exactly one boss in the final wave --
+see `test_every_levels_final_wave_includes_a_boss` in
+`tests/test_levels.py` for that as an enforced invariant, not just a
+convention.
+
+## Levels
+
+Two so far, both 5 waves: `LEVELS[1]` ("Winding Road") and `LEVELS[2]`
+("Serpentine Pass", a tighter, more switchback-heavy path). Beating a
+level's boss wave shows a "Level Complete!" screen; `R` advances to the
+next level (`Game.advance_or_replay_level()`), starting that level's
+economy fresh. Winning the last registered level shows "Victory!"
+instead, and `R` there just replays it.
 
 ## Adding content
 
@@ -93,5 +108,9 @@ entry, not a change to the systems that already work.
   of `{enemy_type_name: count}` dicts -- one per wave, hand-authored or via
   `generate_default_waves()`), and starting gold/lives. `Grid`,
   `WaveManager`, and `Game` all consume whichever level is active
-  generically, so this needs no other changes. (All levels currently share
-  the same map size, set in `settings.py` -- only the path/waves differ.)
+  generically, so this needs no other changes -- registering it is also
+  what makes it reachable: winning the level before it in numeric order
+  will offer to advance into it. (All levels currently share the same map
+  size, set in `settings.py` -- only the path/waves differ.) Give its
+  final wave a `"boss": 1` entry to match every other level -- enforced by
+  `tests/test_levels.py::test_every_levels_final_wave_includes_a_boss`.

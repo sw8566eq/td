@@ -46,3 +46,25 @@ def test_level_1_introduces_every_enemy_species_across_its_waves():
     level = LEVELS[1]
     species_seen = {name for wave in level.wave_specs for name in wave}
     assert species_seen == set(ENEMY_TYPES)
+
+
+def test_at_least_two_levels_are_registered():
+    assert 1 in LEVELS
+    assert 2 in LEVELS
+
+
+def test_level_2_has_a_distinct_path_from_level_1():
+    assert LEVELS[2].waypoints_tiles != LEVELS[1].waypoints_tiles
+
+
+def test_every_levels_final_wave_includes_a_boss():
+    for level_id, level in LEVELS.items():
+        final_wave = level.wave_specs[-1]
+        assert "boss" in final_wave, level_id
+        assert final_wave["boss"] >= 1, level_id
+
+
+def test_boss_does_not_appear_before_the_final_wave():
+    for level_id, level in LEVELS.items():
+        for wave in level.wave_specs[:-1]:
+            assert "boss" not in wave, level_id

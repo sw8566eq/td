@@ -247,6 +247,10 @@ def draw_game_over_screen(surface, font, small_font):
                             settings.COLOR_LIVES, width=settings.PLAY_WIDTH)
 
 
-def draw_victory_screen(surface, font, small_font):
-    _draw_centered_overlay(surface, font, small_font, "Victory!", "Press R to play again",
+def draw_victory_screen(surface, font, small_font, has_next_level=False):
+    if has_next_level:
+        title, subtitle = "Level Complete!", "Press R for the next level"
+    else:
+        title, subtitle = "Victory!", "Press R to play again"
+    _draw_centered_overlay(surface, font, small_font, title, subtitle,
                             settings.COLOR_GOLD, width=settings.PLAY_WIDTH)

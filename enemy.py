@@ -1,9 +1,10 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. Ships with three species -- GruntEnemy
-(baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP) -- and a new
-one (a flier, a shielded unit, ...) is written the same way towers are:
+as overridable class attributes. Ships with four species -- GruntEnemy
+(baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP), BossEnemy
+(a level's one-off final-wave heavyweight) -- and a new one (a flier, a
+shielded unit, ...) is written the same way towers are:
 subclass Enemy, override stats (and update()/take_damage() too, if it needs
 genuinely different behavior like a shield), then add one line to
 ENEMY_TYPES. Levels reference enemies by their registry name string in
@@ -215,8 +216,28 @@ class TankEnemy(Enemy):
     radius = 22
 
 
+class BossEnemy(Enemy):
+    """A one-off heavyweight meant for a level's final wave: dramatically
+    more HP and gold reward than any regular species, moving at a
+    deliberate, menacing crawl -- towers get plenty of time to line up
+    shots, but need to have actually dealt real damage over the level to
+    bring it down in time. No special immunities/behavior beyond the raw
+    numbers; giving a future boss partial slow/knockback resistance would
+    be a natural next step, just not needed yet."""
+    base_hp = 500
+    hp_per_wave = 50
+    base_speed = 25.0
+    speed_per_wave = 1.0
+    max_speed = 50.0
+    base_reward = 150
+    reward_per_wave = 20
+    sprite_name = "enemy_boss"
+    radius = 30
+
+
 ENEMY_TYPES = {
     "grunt": GruntEnemy,
     "scout": ScoutEnemy,
     "tank": TankEnemy,
+    "boss": BossEnemy,
 }

@@ -1,7 +1,7 @@
 import pygame
 import pytest
 
-from enemy import ENEMY_TYPES, Enemy, GruntEnemy, ScoutEnemy, TankEnemy
+from enemy import ENEMY_TYPES, BossEnemy, Enemy, GruntEnemy, ScoutEnemy, TankEnemy
 
 WAYPOINTS = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
 
@@ -26,6 +26,25 @@ def test_scout_is_registered_as_fast_and_low_hp():
 
 def test_tank_is_registered_as_slow_and_high_hp():
     assert ENEMY_TYPES["tank"] is TankEnemy
+
+
+def test_boss_is_registered():
+    assert ENEMY_TYPES["boss"] is BossEnemy
+
+
+def test_boss_dwarfs_every_regular_species_in_hp_and_reward():
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    for enemy_cls in (GruntEnemy, ScoutEnemy, TankEnemy):
+        regular = enemy_cls(WAYPOINTS, wave_number=1)
+        assert boss.max_hp > regular.max_hp * 2, enemy_cls
+        assert boss.gold_reward > regular.gold_reward * 2, enemy_cls
+
+
+def test_boss_is_slower_than_every_regular_species():
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    for enemy_cls in (GruntEnemy, ScoutEnemy, TankEnemy):
+        regular = enemy_cls(WAYPOINTS, wave_number=1)
+        assert boss.speed < regular.speed, enemy_cls
 
 
 def test_scout_is_faster_and_squishier_than_grunt():

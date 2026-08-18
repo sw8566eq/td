@@ -49,19 +49,27 @@ def generate_default_waves(total_waves, enemy_type="grunt", base_count=5, count_
 LEVEL_1_WAYPOINTS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
 
 # Hand-authored rather than generate_default_waves(), so it can introduce
-# the other species partway through: grunts alone to start, scouts joining
-# at wave 3, tanks at wave 5, all three mixed and ramping after that.
+# the other species partway through and cap off with a boss: grunts alone
+# to start, scouts joining wave 2, tanks wave 3, and a single BossEnemy
+# alongside a smaller support wave on the final wave.
 LEVEL_1_WAVE_SPECS = [
-    {"grunt": 5},
-    {"grunt": 7},
-    {"grunt": 6, "scout": 4},
+    {"grunt": 6},
     {"grunt": 8, "scout": 5},
-    {"grunt": 6, "scout": 4, "tank": 2},
-    {"grunt": 8, "scout": 6, "tank": 2},
     {"grunt": 8, "scout": 6, "tank": 3},
-    {"grunt": 10, "scout": 8, "tank": 3},
     {"grunt": 10, "scout": 8, "tank": 4},
-    {"grunt": 12, "scout": 10, "tank": 5},
+    {"grunt": 8, "scout": 6, "tank": 4, "boss": 1},
+]
+
+LEVEL_2_WAYPOINTS = [(0, 1), (6, 1), (6, 6), (10, 6), (10, 2), (14, 2)]
+
+# A tighter, more switchback-heavy path than level 1 -- slightly larger
+# waves throughout to read as "the next level up."
+LEVEL_2_WAVE_SPECS = [
+    {"grunt": 7},
+    {"grunt": 8, "scout": 6},
+    {"grunt": 9, "scout": 7, "tank": 4},
+    {"grunt": 11, "scout": 9, "tank": 5},
+    {"grunt": 9, "scout": 7, "tank": 5, "boss": 1},
 ]
 
 LEVELS = {
@@ -70,6 +78,14 @@ LEVELS = {
         name="Winding Road",
         waypoints_tiles=LEVEL_1_WAYPOINTS,
         wave_specs=LEVEL_1_WAVE_SPECS,
+        starting_gold=150,
+        starting_lives=20,
+    ),
+    2: Level(
+        id=2,
+        name="Serpentine Pass",
+        waypoints_tiles=LEVEL_2_WAYPOINTS,
+        wave_specs=LEVEL_2_WAVE_SPECS,
         starting_gold=150,
         starting_lives=20,
     ),
