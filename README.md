@@ -22,12 +22,14 @@ specifically to upgrade it (caps at level 3 -- see "Tower levels" below
 -- hovering shows what the upgrade would change). The badge disappears
 once a tower is maxed. The HUD shows a countdown to the next wave and a
 "Skip" button (bottom-right) to force it to start early -- same effect as
-pressing `Space`. `P` pauses. `R` restarts the current level from the
-game-over screen, or -- from the victory screen -- advances to the next
-level if there is one, otherwise replays the level you just won. `Esc`
-quits.
+pressing `Space`. `P` or `Esc` opens the pause menu; the same two keys
+close it again, `R` restarts the current level, `Q` quits. `R` also
+restarts the level from the game-over screen, or -- from the victory
+screen -- advances to the next level if there is one, otherwise replays
+the level you just won. `Esc` quits from the main menu, game-over, or
+victory screens (there's no pause menu to open there).
 
-Run the test suite with `pytest` (from the venv) -- ~195 tests covering
+Run the test suite with `pytest` (from the venv) -- ~200 tests covering
 every module, including `Game`'s full state machine, click/key handling,
 and update loop (`tests/test_game.py`) and `AssetManager`'s placeholder
 fallback and caching (`tests/test_assets.py`). Both of those open a real

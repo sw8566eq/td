@@ -96,26 +96,34 @@ class Game:
                 self._handle_right_click()
 
     def _handle_keydown(self, key):
-        if key == pygame.K_ESCAPE:
-            self.running = False
-            return
-
         if self.state == GameState.MENU:
-            self.state = GameState.PLAYING
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            else:
+                self.state = GameState.PLAYING
         elif self.state == GameState.PLAYING:
-            if key == pygame.K_p:
+            if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
             elif key == pygame.K_SPACE:
                 self.wave_manager.skip_delay()
         elif self.state == GameState.PAUSED:
-            if key == pygame.K_p:
+            if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PLAYING
+            elif key == pygame.K_r:
+                self.reset()
+                self.state = GameState.PLAYING
+            elif key == pygame.K_q:
+                self.running = False
         elif self.state == GameState.GAME_OVER:
-            if key == pygame.K_r:
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            elif key == pygame.K_r:
                 self.reset()
                 self.state = GameState.PLAYING
         elif self.state == GameState.VICTORY:
-            if key == pygame.K_r:
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            elif key == pygame.K_r:
                 self.advance_or_replay_level()
                 self.state = GameState.PLAYING
 
@@ -239,7 +247,7 @@ class Game:
         )
 
         if self.state == GameState.PAUSED:
-            ui.draw_pause_overlay(self.screen, self.font, self.small_font)
+            ui.draw_pause_menu(self.screen, self.font, self.small_font)
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font)
         elif self.state == GameState.VICTORY:

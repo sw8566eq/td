@@ -102,9 +102,10 @@ def test_playing_p_pauses(playing_game):
     assert playing_game.state == GameState.PAUSED
 
 
-def test_playing_escape_quits(playing_game):
+def test_playing_escape_opens_the_pause_menu(playing_game):
     playing_game._handle_keydown(pygame.K_ESCAPE)
-    assert playing_game.running is False
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.running is True
 
 
 def test_playing_space_skips_the_wave_delay(playing_game):
@@ -125,10 +126,40 @@ def test_paused_p_resumes(playing_game):
     assert playing_game.state == GameState.PLAYING
 
 
-def test_paused_escape_quits(playing_game):
+def test_paused_escape_also_resumes(playing_game):
+    # Esc opens the pause menu from PLAYING and closes it again from
+    # PAUSED -- symmetric with P, not a second way to quit.
     playing_game.state = GameState.PAUSED
     playing_game._handle_keydown(pygame.K_ESCAPE)
+    assert playing_game.state == GameState.PLAYING
+    assert playing_game.running is True
+
+
+def test_paused_r_restarts_the_level_and_resumes_playing(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.economy.gold = 0
+    playing_game.economy.lives = 1
+    playing_game.towers = ["fake"]
+
+    playing_game._handle_keydown(pygame.K_r)
+
+    assert playing_game.state == GameState.PLAYING
+    assert playing_game.economy.gold == playing_game.level.starting_gold
+    assert playing_game.economy.lives == playing_game.level.starting_lives
+    assert playing_game.towers == []
+
+
+def test_paused_q_quits(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_q)
     assert playing_game.running is False
+
+
+def test_paused_unbound_key_is_a_no_op(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_z)
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.running is True
 
 
 def test_game_over_r_resets_the_same_level_and_resumes_playing(game):

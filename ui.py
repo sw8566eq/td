@@ -214,6 +214,9 @@ def draw_tower_stats_panel(surface, font, small_font, subject):
 
 
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
+    """`subtitle` is a single string, or a list of strings each rendered
+    on its own line below the title (used by the pause menu's option
+    list) -- an empty string/list draws no subtitle at all."""
     if width is None:
         width = settings.SCREEN_WIDTH
     overlay = pygame.Surface((width, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -224,10 +227,15 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     title_rect = title_text.get_rect(center=(width // 2, settings.SCREEN_HEIGHT // 2 - 20))
     surface.blit(title_text, title_rect)
 
-    if subtitle:
-        subtitle_text = small_font.render(subtitle, True, settings.COLOR_TEXT_DIM)
-        subtitle_rect = subtitle_text.get_rect(center=(width // 2, settings.SCREEN_HEIGHT // 2 + 20))
-        surface.blit(subtitle_text, subtitle_rect)
+    lines = [subtitle] if isinstance(subtitle, str) else subtitle
+    y = title_rect.bottom + 20
+    for line in lines:
+        if not line:
+            continue
+        line_text = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+        line_rect = line_text.get_rect(center=(width // 2, y))
+        surface.blit(line_text, line_rect)
+        y += line_text.get_height() + 6
 
 
 def draw_menu_screen(surface, font, small_font):
@@ -235,10 +243,11 @@ def draw_menu_screen(surface, font, small_font):
     _draw_centered_overlay(surface, font, small_font, "Tower Defense", "Press any key to start", settings.COLOR_TEXT)
 
 
-def draw_pause_overlay(surface, font, small_font):
+def draw_pause_menu(surface, font, small_font):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
     # panel stays visible and undimmed to its right.
-    _draw_centered_overlay(surface, font, small_font, "Paused", "Press P to resume",
+    options = ["Esc / P -- Resume", "R -- Restart Level", "Q -- Quit"]
+    _draw_centered_overlay(surface, font, small_font, "Paused", options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 
