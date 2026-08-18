@@ -1,5 +1,7 @@
 # Tower Defense
 
+[![Tests](https://github.com/sw8566eq/td/actions/workflows/tests.yml/badge.svg)](https://github.com/sw8566eq/td/actions/workflows/tests.yml)
+
 A minimal, extensible tower defense game built with Python + Pygame.
 
 ## Run it
