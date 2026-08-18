@@ -78,6 +78,37 @@ def test_every_registered_tower_can_reach_max_level():
         assert tower.upgrade() is False, name
 
 
+def test_range_after_next_upgrade_matches_what_upgrading_would_actually_do():
+    tower = make_tower()
+    previewed = tower.range_after_next_upgrade()
+
+    tower.upgrade()
+
+    assert tower.range == previewed
+
+
+def test_range_after_next_upgrade_does_not_itself_change_anything():
+    tower = make_tower()
+    base_range = tower.range
+    tower.range_after_next_upgrade()
+    tower.range_after_next_upgrade()
+    assert tower.range == base_range
+    assert tower.level == 1
+
+
+def test_range_after_next_upgrade_is_bigger_than_current_range():
+    tower = make_tower()
+    assert tower.range_after_next_upgrade() > tower.range
+
+
+def test_range_after_next_upgrade_equals_current_range_once_maxed():
+    tower = make_tower()
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    assert tower.is_max_level
+    assert tower.range_after_next_upgrade() == tower.range
+
+
 def test_upgrade_badge_sits_in_the_tiles_top_right_corner():
     tower = make_tower(col=2, row=3)
     cx, cy = tower.upgrade_badge_center()

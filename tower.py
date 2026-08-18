@@ -68,6 +68,17 @@ class Tower:
             setattr(self, name, base_value * multiplier)
         return True
 
+    def range_after_next_upgrade(self):
+        """What `range` would become after one more upgrade, without
+        actually upgrading -- used to preview the range increase while
+        hovering a tower's '+' badge. Equal to the current range if
+        already at MAX_LEVEL, or if this tower type doesn't scale range
+        with level at all."""
+        if self.is_max_level or "range" not in self._base_stats:
+            return self.range
+        next_level = self.level + 1
+        return self._base_stats["range"] * self.LEVEL_STAT_MULTIPLIERS[next_level]
+
     def update(self, dt, enemies, projectiles):
         self.cooldown -= dt
         if self.cooldown > 0:

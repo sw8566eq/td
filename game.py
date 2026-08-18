@@ -199,6 +199,7 @@ class Game:
             projectile.draw(self.screen, self.assets)
 
         self._render_placement_preview()
+        self._render_upgrade_hover_preview()
 
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
@@ -224,3 +225,10 @@ class Game:
         col, row = self.grid.pixel_to_tile(*mouse_pos)
         preview_pos = self.grid.tile_to_pixel_center(col, row)
         ui.draw_range_preview(self.screen, tower_cls, preview_pos)
+
+    def _render_upgrade_hover_preview(self):
+        mouse_pos = pygame.mouse.get_pos()
+        for tower in self.towers:
+            if tower.contains_upgrade_badge(mouse_pos):
+                ui.draw_upgrade_range_preview(self.screen, tower)
+                return

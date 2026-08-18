@@ -82,6 +82,16 @@ def draw_range_preview(surface, tower_cls, pixel_pos):
     )
 
 
+def draw_upgrade_range_preview(surface, tower):
+    """Two range rings around a placed `tower`, shown while hovering its
+    '+' badge: its current range (thin white, same style as the placement
+    preview) and what its range would grow to after one more upgrade
+    (thicker gold) -- so the size increase is visible before you commit."""
+    center = (int(tower.pos.x), int(tower.pos.y))
+    pygame.draw.circle(surface, settings.COLOR_RANGE_PREVIEW, center, int(tower.range), width=1)
+    pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
+
+
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color):
     overlay = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 170))
