@@ -1,12 +1,13 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. v1 ships one species (GruntEnemy), but a
-new species -- a fast scout, an armored tank, a flier -- is written the same
-way towers are: subclass Enemy, override stats (and update()/take_damage()
-too, if it needs genuinely different behavior like a shield), then add one
-line to ENEMY_TYPES. Levels reference enemies by their registry name string
-in wave_specs (see levels.py), so WaveManager never needs to know about
+as overridable class attributes. Ships with three species -- GruntEnemy
+(baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP) -- and a new
+one (a flier, a shielded unit, ...) is written the same way towers are:
+subclass Enemy, override stats (and update()/take_damage() too, if it needs
+genuinely different behavior like a shield), then add one line to
+ENEMY_TYPES. Levels reference enemies by their registry name string in
+wave_specs (see levels.py), so WaveManager never needs to know about
 concrete Enemy subclasses directly.
 """
 
@@ -176,10 +177,46 @@ class Enemy:
 
 
 class GruntEnemy(Enemy):
-    """The one enemy species shipped in v1 -- uses the base stats as-is."""
+    """The baseline species -- uses Enemy's base stats as-is."""
     pass
+
+
+class ScoutEnemy(Enemy):
+    """Fast and fragile: dies to a couple of hits from almost anything, but
+    covers ground quickly and can slip past towers with too little range or
+    too slow a fire rate to catch it. Smaller sprite to read as "small and
+    quick" at a glance. Also the most rewarding target for the knockback
+    tower -- apply_knockback's distance scales with the enemy's own speed,
+    so scouts get shoved back proportionally further than slower species."""
+    base_hp = 18
+    hp_per_wave = 4
+    base_speed = 130.0
+    speed_per_wave = 5.0
+    max_speed = 220.0
+    base_reward = 6
+    reward_per_wave = 1
+    sprite_name = "enemy_scout"
+    radius = 12
+
+
+class TankEnemy(Enemy):
+    """Slow and heavily armored: high HP that takes sustained fire to bring
+    down, but gives towers plenty of time to line up shots -- and frost's
+    slow effect turns an already-slow tank into a near-standstill. Larger
+    sprite and a bigger gold reward to match the threat and effort."""
+    base_hp = 140
+    hp_per_wave = 30
+    base_speed = 30.0
+    speed_per_wave = 1.5
+    max_speed = 70.0
+    base_reward = 20
+    reward_per_wave = 4
+    sprite_name = "enemy_tank"
+    radius = 22
 
 
 ENEMY_TYPES = {
     "grunt": GruntEnemy,
+    "scout": ScoutEnemy,
+    "tank": TankEnemy,
 }

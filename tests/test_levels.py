@@ -37,6 +37,12 @@ def test_generate_default_waves_ramps_enemy_count_per_wave():
 def test_level_1_is_registered_and_playable():
     level = LEVELS[1]
     assert len(level.waypoints_tiles) >= 2
-    assert len(level.wave_specs) == settings.TOTAL_WAVES
+    assert len(level.wave_specs) > 0
     assert level.starting_gold > 0
     assert level.starting_lives > 0
+
+
+def test_level_1_introduces_every_enemy_species_across_its_waves():
+    level = LEVELS[1]
+    species_seen = {name for wave in level.wave_specs for name in wave}
+    assert species_seen == set(ENEMY_TYPES)

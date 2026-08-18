@@ -28,7 +28,6 @@ FPS = 60
 WINDOW_TITLE = "Tower Defense"
 
 # --- Waves ---
-TOTAL_WAVES = 10
 SPAWN_INTERVAL = 0.8  # seconds between individual enemy spawns within a wave
 BETWEEN_WAVE_DELAY = 5.0  # seconds of downtime before the next wave starts
 

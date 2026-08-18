@@ -61,6 +61,16 @@ grid. `ui.draw_tower_stats_panel()` reads a tower class's plain stats
 (`cost`/`damage`/`range`/`fire_rate`) plus its `EXTRA_STATS` (see below)
 to render the panel, so it needs no changes for new tower types.
 
+## Enemies
+
+Three species: `GruntEnemy` (baseline), `ScoutEnemy` (fast, low HP --
+also the one that gets shoved back furthest by the knockback tower, since
+its knockback distance scales with the target's own speed), and
+`TankEnemy` (slow, high HP -- an easy target to keep in range, and frost's
+slow hits especially hard on something already slow). Level 1's
+`LEVEL_1_WAVE_SPECS` (in `levels.py`) introduces them gradually: grunts
+only through wave 2, scouts join at wave 3, tanks at wave 5.
+
 ## Adding content
 
 The game is built so new content is additive -- a new subclass or registry

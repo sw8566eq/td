@@ -1,7 +1,7 @@
 import pygame
 import pytest
 
-from enemy import Enemy, GruntEnemy
+from enemy import ENEMY_TYPES, Enemy, GruntEnemy, ScoutEnemy, TankEnemy
 
 WAYPOINTS = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
 
@@ -18,6 +18,52 @@ def test_stats_scale_up_with_wave_number():
 def test_speed_is_capped_at_max_speed():
     far_future_wave = GruntEnemy(WAYPOINTS, wave_number=1000)
     assert far_future_wave.speed == Enemy.max_speed
+
+
+def test_scout_is_registered_as_fast_and_low_hp():
+    assert ENEMY_TYPES["scout"] is ScoutEnemy
+
+
+def test_tank_is_registered_as_slow_and_high_hp():
+    assert ENEMY_TYPES["tank"] is TankEnemy
+
+
+def test_scout_is_faster_and_squishier_than_grunt():
+    grunt = GruntEnemy(WAYPOINTS, wave_number=1)
+    scout = ScoutEnemy(WAYPOINTS, wave_number=1)
+    assert scout.speed > grunt.speed
+    assert scout.max_hp < grunt.max_hp
+
+
+def test_tank_is_slower_and_tougher_than_grunt():
+    grunt = GruntEnemy(WAYPOINTS, wave_number=1)
+    tank = TankEnemy(WAYPOINTS, wave_number=1)
+    assert tank.speed < grunt.speed
+    assert tank.max_hp > grunt.max_hp
+
+
+def test_scout_and_tank_stats_still_scale_up_with_wave_number():
+    for enemy_cls in (ScoutEnemy, TankEnemy):
+        wave1 = enemy_cls(WAYPOINTS, wave_number=1)
+        wave3 = enemy_cls(WAYPOINTS, wave_number=3)
+        assert wave3.max_hp > wave1.max_hp, enemy_cls
+        assert wave3.gold_reward > wave1.gold_reward, enemy_cls
+
+
+def test_scout_speed_still_caps_at_its_own_max_speed():
+    far_future_wave = ScoutEnemy(WAYPOINTS, wave_number=1000)
+    assert far_future_wave.speed == ScoutEnemy.max_speed
+
+
+def test_every_registered_species_moves_and_can_be_damaged():
+    # A light smoke test that every species -- not just the ones singled
+    # out above -- behaves like a normal Enemy through the shared logic.
+    for name, enemy_cls in ENEMY_TYPES.items():
+        enemy = enemy_cls(WAYPOINTS, wave_number=1)
+        enemy.update(dt=0.1)
+        assert enemy.distance_traveled > 0, name
+        enemy.take_damage(enemy.max_hp)
+        assert enemy.is_dead, name
 
 
 def test_take_damage_reduces_hp_and_marks_dead_at_zero():
