@@ -27,7 +27,14 @@ game-over screen, or -- from the victory screen -- advances to the next
 level if there is one, otherwise replays the level you just won. `Esc`
 quits.
 
-Run the test suite with `pytest` (from the venv).
+Run the test suite with `pytest` (from the venv) -- ~195 tests covering
+every module, including `Game`'s full state machine, click/key handling,
+and update loop (`tests/test_game.py`) and `AssetManager`'s placeholder
+fallback and caching (`tests/test_assets.py`). Both of those open a real
+pygame window, so they force the SDL dummy video driver themselves
+(`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")` at the top of the
+file) -- `pytest` runs headless with no extra setup, in CI or anywhere
+else.
 
 ## Art
 
