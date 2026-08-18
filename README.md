@@ -12,7 +12,9 @@ python main.py
 ```
 
 Controls: press any key at the menu to start. Click a tower button in the
-bottom bar, then click a grass tile to place it. `Space` skips the
+bottom bar, then click a grass tile to place it. Click an already-placed
+tower to upgrade it (costs gold, caps at level 3 -- see "Tower levels"
+below); clicking it again once maxed is a no-op. `Space` skips the
 between-waves countdown. `P` pauses. `R` restarts from the game-over/victory
 screen. `Esc` quits.
 
@@ -26,6 +28,19 @@ placeholder shape (see `assets.py`). Drop a CC0 pixel-art pack's PNGs into
 using the filenames listed in `SPRITE_MANIFEST` (in `assets.py`) and the
 real art will appear automatically -- no code changes needed. If the pack
 uses different filenames, just edit the path strings in that manifest.
+
+## Tower levels
+
+Every tower can be upgraded twice (level 1 -> 3) by clicking it in-game.
+Each level multiplies `damage` and `range` by a fixed amount (see
+`Tower.LEVEL_STAT_MULTIPLIERS` in `tower.py`); the upgrade's gold cost is a
+multiplier of that tower's base `cost` (`Tower.UPGRADE_COST_MULTIPLIERS`).
+This is generic on the `Tower` base class, so new tower types get levels
+for free. A tower can opt its own special stat into scaling too by
+extending `LEVEL_SCALED_STATS`, e.g. `LEVEL_SCALED_STATS = Tower.LEVEL_SCALED_STATS
++ ("slow_duration",)` -- just make sure "bigger is better" actually holds
+for that stat (it wouldn't for `FrostTower.slow_factor`, where lower is
+stronger).
 
 ## Adding content
 

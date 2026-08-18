@@ -113,8 +113,16 @@ class Game:
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return  # click landed in the HUD area but not on a button
 
+        col, row = self.grid.pixel_to_tile(*pos)
+
+        existing_tower = self.grid.get_tower(col, row)
+        if existing_tower is not None:
+            # Clicking a placed tower always tries to upgrade it, whether
+            # or not a tower type is selected for building.
+            self.try_upgrade_tower(existing_tower)
+            return
+
         if self.selected_tower_name is not None:
-            col, row = self.grid.pixel_to_tile(*pos)
             self.try_place_tower(col, row)
 
     def try_place_tower(self, col, row):
@@ -130,6 +138,15 @@ class Game:
         tower = tower_cls(col, row, pixel_pos)
         self.towers.append(tower)
         self.grid.occupy(col, row, tower)
+        return True
+
+    def try_upgrade_tower(self, tower):
+        cost = tower.upgrade_cost()
+        if cost is None or not self.economy.can_afford(cost):
+            return False
+
+        self.economy.spend(cost)
+        tower.upgrade()
         return True
 
     # --- Update ---

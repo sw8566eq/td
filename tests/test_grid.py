@@ -56,6 +56,13 @@ def test_occupied_cell_is_not_buildable():
     assert not grid.is_buildable(0, 0)
 
 
+def test_get_tower_returns_the_occupying_tower_or_none():
+    grid = make_grid()
+    assert grid.get_tower(0, 0) is None
+    grid.occupy(0, 0, tower="fake-tower")
+    assert grid.get_tower(0, 0) == "fake-tower"
+
+
 def test_pixel_to_tile_and_back_round_trip():
     grid = make_grid()
     for col, row in [(0, 0), (3, 5), (14, 8)]:

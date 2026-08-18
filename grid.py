@@ -53,6 +53,9 @@ class Grid:
     def is_occupied(self, col, row):
         return (col, row) in self.towers_by_cell
 
+    def get_tower(self, col, row):
+        return self.towers_by_cell.get((col, row))
+
     def is_buildable(self, col, row):
         return (
             self.in_bounds(col, row)

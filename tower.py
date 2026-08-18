@@ -23,11 +23,50 @@ class Tower:
     sprite_name = ""
     display_name = "Tower"
 
+    MAX_LEVEL = 3
+    # Multiplier applied to each stat in LEVEL_SCALED_STATS at a given
+    # level -- level 1 is always 1.0x (no bonus, the placed/base stats).
+    LEVEL_STAT_MULTIPLIERS = {1: 1.0, 2: 1.35, 3: 1.8}
+    # Which of a tower's own attributes get that multiplier on level-up.
+    # A subclass can extend this tuple (e.g. + ("slow_duration",)) to have
+    # more of its own stats scale too -- everything else about levelling
+    # stays generic.
+    LEVEL_SCALED_STATS = ("damage", "range")
+    # Gold cost to reach level 2 / level 3, as a multiplier of this
+    # tower's base `cost`.
+    UPGRADE_COST_MULTIPLIERS = {2: 0.6, 3: 1.0}
+
     def __init__(self, col, row, pixel_pos):
         self.col = col
         self.row = row
         self.pos = pygame.Vector2(pixel_pos)
         self.cooldown = 0.0
+        self.level = 1
+        # Snapshot each scaled stat's level-1 value once, up front, so
+        # every upgrade recomputes from the true base rather than
+        # compounding on an already-scaled number.
+        self._base_stats = {name: getattr(self, name) for name in self.LEVEL_SCALED_STATS}
+
+    @property
+    def is_max_level(self):
+        return self.level >= self.MAX_LEVEL
+
+    def upgrade_cost(self):
+        """Gold cost to reach the next level, or None if already maxed."""
+        if self.is_max_level:
+            return None
+        return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1])
+
+    def upgrade(self):
+        """Level up by one, rescaling every LEVEL_SCALED_STATS entry from
+        its level-1 base. No-op (returns False) once at MAX_LEVEL."""
+        if self.is_max_level:
+            return False
+        self.level += 1
+        multiplier = self.LEVEL_STAT_MULTIPLIERS[self.level]
+        for name, base_value in self._base_stats.items():
+            setattr(self, name, base_value * multiplier)
+        return True
 
     def update(self, dt, enemies, projectiles):
         self.cooldown -= dt
@@ -61,6 +100,21 @@ class Tower:
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
+        self._draw_level_pips(surface, rect)
+
+    def _draw_level_pips(self, surface, sprite_rect):
+        # One pip per level above 1 -- a level-1 (just-placed) tower shows
+        # none, so upgraded towers are the ones that visibly stand out.
+        pip_count = self.level - 1
+        if pip_count <= 0:
+            return
+        pip_radius, spacing = 3, 9
+        start_x = sprite_rect.centerx - spacing * (pip_count - 1) / 2
+        y = sprite_rect.bottom - 2
+        for i in range(pip_count):
+            x = int(start_x + i * spacing)
+            pygame.draw.circle(surface, settings.COLOR_GOLD, (x, y), pip_radius)
+            pygame.draw.circle(surface, (0, 0, 0), (x, y), pip_radius, width=1)
 
 
 class BasicTower(Tower):
