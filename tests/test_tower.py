@@ -1,7 +1,7 @@
 import pygame
 
 from projectile import Projectile
-from tower import TOWER_TYPES, KnockbackTower
+from tower import TOWER_TYPES, KnockbackTower, LightningTower
 
 
 class FakeEnemy:
@@ -48,3 +48,25 @@ def test_other_towers_have_no_knockback():
         tower = tower_cls(col=0, row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.knockback_duration == 0.0, name
+
+
+def test_lightning_tower_is_registered():
+    assert TOWER_TYPES["lightning"] is LightningTower
+
+
+def test_lightning_tower_projectile_carries_chain_settings():
+    tower = LightningTower(col=0, row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.chain_range == LightningTower.chain_range
+    assert projectile.chain_range > 0
+    assert projectile.max_chain_targets == LightningTower.max_chain_targets
+    assert projectile.max_chain_targets > 1
+
+
+def test_other_towers_do_not_chain():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name == "lightning":
+            continue
+        tower = tower_cls(col=0, row=0, pixel_pos=(0, 0))
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.chain_range == 0.0, name

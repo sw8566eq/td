@@ -31,6 +31,7 @@ SPRITE_MANIFEST = {
     "tower_cannon": ("towers/cannon.png", (139, 69, 19), "rect"),
     "tower_frost": ("towers/frost.png", (120, 210, 255), "rect"),
     "tower_knockback": ("towers/knockback.png", (210, 140, 40), "rect"),
+    "tower_lightning": ("towers/lightning.png", (250, 235, 90), "rect"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),
     "enemy_scout": ("enemies/scout.png", (255, 205, 60), "circle"),
     "enemy_tank": ("enemies/tank.png", (90, 45, 45), "circle"),
@@ -39,6 +40,7 @@ SPRITE_MANIFEST = {
     "projectile_cannon": ("projectiles/ball.png", (90, 90, 90), "circle"),
     "projectile_frost": ("projectiles/shard.png", (150, 220, 255), "circle"),
     "projectile_knockback": ("projectiles/knock.png", (255, 180, 80), "circle"),
+    "projectile_lightning": ("projectiles/bolt.png", (255, 255, 170), "circle"),
 }
 
 

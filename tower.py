@@ -26,6 +26,10 @@ def _format_slow_percent(value):
     return f"{round((1 - value) * 100)}% slower"
 
 
+def _format_count(value):
+    return f"{int(value)}"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -292,9 +296,36 @@ class KnockbackTower(Tower):
         )
 
 
+class LightningTower(Tower):
+    cost = 110
+    range = 100
+    damage = 8
+    fire_rate = 1.0
+    projectile_speed = 400.0
+    # Max distance from one hit enemy to the next it can arc to, and the
+    # total number of enemies one bolt can hit (including the first).
+    chain_range = 90
+    max_chain_targets = 4
+    sprite_name = "tower_lightning"
+    display_name = "Lightning"
+    EXTRA_STATS = (
+        ("Chain range", "chain_range", _format_px),
+        ("Max targets", "max_chain_targets", _format_count),
+    )
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.damage, chain_range=self.chain_range,
+            max_chain_targets=self.max_chain_targets,
+            sprite_name="projectile_lightning",
+        )
+
+
 TOWER_TYPES = {
     "basic": BasicTower,
     "cannon": CannonTower,
     "frost": FrostTower,
     "knockback": KnockbackTower,
+    "lightning": LightningTower,
 }

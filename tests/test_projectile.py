@@ -111,3 +111,110 @@ def test_splash_knockback_applies_to_every_enemy_hit():
 
     assert target.knockback_applied == 50.0 * 2.0
     assert in_radius.knockback_applied == 100.0 * 2.0
+
+
+def test_chain_hits_the_nearest_unvisited_enemy_first():
+    target = FakeEnemy((0, 0))
+    near = FakeEnemy((10, 0))
+    far = FakeEnemy((40, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=7,
+        chain_range=50, max_chain_targets=2,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, near, far])
+
+    assert target.damage_taken == 7
+    assert near.damage_taken == 7  # closer than far, so it's the one 2nd hit uses
+    assert far.damage_taken == 0  # max_chain_targets used up before reaching it
+
+
+def test_chain_jumps_from_the_newly_hit_enemy_not_the_original_target():
+    target = FakeEnemy((0, 0))
+    mid = FakeEnemy((40, 0))    # 40 from target -- in range of target
+    far = FakeEnemy((90, 0))    # 90 from target (out of range), 50 from mid (in range)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=5,
+        chain_range=50, max_chain_targets=3,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, mid, far])
+
+    assert target.damage_taken == 5
+    assert mid.damage_taken == 5
+    assert far.damage_taken == 5  # only reachable because the anchor moved to mid
+
+
+def test_chain_stops_at_max_chain_targets_even_with_more_in_range():
+    target = FakeEnemy((0, 0))
+    a = FakeEnemy((10, 0))
+    b = FakeEnemy((20, 0))
+    c = FakeEnemy((30, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=3,
+        chain_range=100, max_chain_targets=2,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, a, b, c])
+
+    assert target.damage_taken == 3
+    assert a.damage_taken == 3
+    assert b.damage_taken == 0
+    assert c.damage_taken == 0
+
+
+def test_chain_stops_when_no_unvisited_enemy_is_in_range():
+    target = FakeEnemy((0, 0))
+    near = FakeEnemy((10, 0))
+    far_away = FakeEnemy((10_000, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=4,
+        chain_range=15, max_chain_targets=10,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, near, far_away])
+
+    assert target.damage_taken == 4
+    assert near.damage_taken == 4
+    assert far_away.damage_taken == 0
+
+
+def test_chain_never_hits_the_same_enemy_twice():
+    target = FakeEnemy((0, 0))
+    only_neighbor = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=6,
+        chain_range=100, max_chain_targets=10,  # far more than there are enemies to hit
+    )
+
+    projectile.update(dt=1.0, enemies=[target, only_neighbor])
+
+    assert target.damage_taken == 6  # hit exactly once, not repeatedly
+    assert only_neighbor.damage_taken == 6
+
+
+def test_chain_skips_already_dead_enemies():
+    target = FakeEnemy((0, 0))
+    already_dead = FakeEnemy((10, 0), is_dead=True)
+    alive = FakeEnemy((15, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=9,
+        chain_range=100, max_chain_targets=3,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, already_dead, alive])
+
+    assert target.damage_taken == 9
+    assert already_dead.damage_taken == 0
+    assert alive.damage_taken == 9
+
+
+def test_no_chain_when_chain_range_is_zero():
+    target = FakeEnemy((0, 0))
+    neighbor = FakeEnemy((5, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target, neighbor])
+
+    assert target.damage_taken == 10
+    assert neighbor.damage_taken == 0
