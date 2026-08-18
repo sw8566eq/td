@@ -116,8 +116,33 @@ class FrostTower(Tower):
         )
 
 
+class KnockbackTower(Tower):
+    cost = 90
+    range = 90
+    damage = 6
+    fire_rate = 0.8
+    projectile_speed = 300.0
+    splash_radius = 70  # hits every enemy in this radius of the impact, not just the target
+    # Seconds of each hit enemy's own forward progress to undo -- not a
+    # fixed pixel distance, so faster enemies get shoved back further.
+    # Kept small now that it's AoE: a big per-enemy shove across a whole
+    # cluster would be far too strong.
+    knockback_duration = 0.35
+    sprite_name = "tower_knockback"
+    display_name = "Knockback"
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.damage, splash_radius=self.splash_radius,
+            knockback_duration=self.knockback_duration,
+            sprite_name="projectile_knockback",
+        )
+
+
 TOWER_TYPES = {
     "basic": BasicTower,
     "cannon": CannonTower,
     "frost": FrostTower,
+    "knockback": KnockbackTower,
 }

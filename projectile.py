@@ -1,22 +1,27 @@
 """A single, data-parametrized Projectile class.
 
-Splash-vs-single-target and slow-vs-no-slow are differences in the data
-passed at construction (fed by each Tower subclass's create_projectile()),
-not separate Projectile subclasses -- the resolution algorithm is identical
-either way, just applied to one enemy or many.
+Splash-vs-single-target, slow-vs-no-slow, and knockback-vs-no-knockback are
+all differences in the data passed at construction (fed by each Tower
+subclass's create_projectile()), not separate Projectile subclasses -- the
+resolution algorithm is identical either way, just applied to one enemy or
+many.
 """
 
 import pygame
 
 
 class Projectile:
-    def __init__(self, pos, target, speed, damage, splash_radius=0, slow_effect=None, sprite_name=""):
+    def __init__(self, pos, target, speed, damage, splash_radius=0, slow_effect=None,
+                 knockback_duration=0.0, sprite_name=""):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
         self.damage = damage
         self.splash_radius = splash_radius
         self.slow_effect = slow_effect  # (factor, duration) or None
+        # Seconds of forward path progress to undo on hit, at the enemy's
+        # speed at the moment of impact -- 0 means no knockback.
+        self.knockback_duration = knockback_duration
         self.sprite_name = sprite_name
         self.dead = False
 
@@ -46,13 +51,16 @@ class Projectile:
                 if enemy.is_dead:
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
-                    enemy.take_damage(self.damage)
-                    if self.slow_effect is not None:
-                        enemy.apply_slow(*self.slow_effect)
+                    self._apply_hit_effects(enemy)
         else:
-            self.target.take_damage(self.damage)
-            if self.slow_effect is not None:
-                self.target.apply_slow(*self.slow_effect)
+            self._apply_hit_effects(self.target)
+
+    def _apply_hit_effects(self, enemy):
+        enemy.take_damage(self.damage)
+        if self.slow_effect is not None:
+            enemy.apply_slow(*self.slow_effect)
+        if self.knockback_duration:
+            enemy.apply_knockback(enemy.speed * self.knockback_duration)
 
     def draw(self, surface, assets):
         size = (12, 12)

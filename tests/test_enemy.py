@@ -1,4 +1,5 @@
 import pygame
+import pytest
 
 from enemy import Enemy, GruntEnemy
 
@@ -82,3 +83,58 @@ def test_enemy_reaches_goal_after_last_waypoint():
     enemy.update(dt=1.0)
     assert enemy.reached_goal
     assert enemy.pos.x == 100.0
+
+
+def test_apply_knockback_rewinds_distance_and_repositions_within_a_segment():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.speed = 40.0
+    enemy.update(dt=1.0)  # pos (40, 0), distance_traveled 40, still on segment 1
+
+    enemy.apply_knockback(15)
+
+    assert enemy.distance_traveled == 25
+    assert enemy.pos.x == pytest.approx(25.0)
+    assert enemy.pos.y == pytest.approx(0.0)
+    assert enemy.wp_index == 1
+
+
+def test_apply_knockback_can_cross_back_over_a_waypoint_boundary():
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0), pygame.Vector2(200, 0)]
+    enemy = GruntEnemy(waypoints, wave_number=1)
+    enemy.speed = 40.0
+    enemy.update(dt=1.0)  # (40, 0)
+    enemy.update(dt=1.0)  # (80, 0)
+    enemy.update(dt=0.5)  # snaps to waypoint 1: (100, 0), distance 100, wp_index 2
+    enemy.update(dt=1.0)  # (140, 0), distance 140, into segment 2
+
+    enemy.apply_knockback(60)  # rewinds to distance 80 -- back on segment 1
+
+    assert enemy.distance_traveled == 80
+    assert enemy.pos.x == pytest.approx(80.0)
+    assert enemy.wp_index == 1
+
+
+def test_apply_knockback_clamps_at_the_start_of_the_path():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.speed = 40.0
+    enemy.update(dt=1.0)  # distance_traveled 40
+
+    enemy.apply_knockback(1000)
+
+    assert enemy.distance_traveled == 0
+    assert enemy.pos.x == pytest.approx(0.0)
+    assert enemy.wp_index == 1
+
+
+def test_apply_knockback_is_a_no_op_for_dead_or_finished_enemies():
+    dead = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    dead.apply_knockback(50)
+    assert dead.distance_traveled == 0  # never moved, knockback ignored
+
+    finished = GruntEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    finished.apply_knockback(50)
+    assert finished.pos.x == 100.0  # unchanged, still at the goal

@@ -91,6 +91,39 @@ class Enemy:
         self.slow_multiplier = min(self.slow_multiplier, factor)
         self.slow_timer = max(self.slow_timer, duration)
 
+    def apply_knockback(self, distance):
+        """Push this enemy backward along its path by `distance` pixels.
+
+        No angle/physics involved -- knockback just rewinds path progress
+        (distance_traveled) and re-derives position/waypoint-index from
+        that, which works the same regardless of which way the enemy is
+        currently facing or how many turns the path has.
+        """
+        if self.is_dead or self.reached_goal or distance <= 0:
+            return
+        self._seek_to_distance(max(0.0, self.distance_traveled - distance))
+
+    def _seek_to_distance(self, distance):
+        """Recompute pos/wp_index to match a given cumulative path
+        distance (0 = start of path). Only used by apply_knockback --
+        ordinary forward movement advances incrementally in update()
+        instead."""
+        self.distance_traveled = distance
+        remaining = distance
+        last_index = len(self.waypoints) - 1
+        for i in range(1, len(self.waypoints)):
+            segment = self.waypoints[i] - self.waypoints[i - 1]
+            segment_len = segment.length()
+            if remaining <= segment_len or i == last_index:
+                t = 0.0 if segment_len == 0 else min(remaining / segment_len, 1.0)
+                self.pos = self.waypoints[i - 1] + segment * t
+                self.wp_index = i
+                return
+            remaining -= segment_len
+        # Degenerate single-waypoint path -- nowhere to go.
+        self.pos = pygame.Vector2(self.waypoints[0])
+        self.wp_index = 1
+
     def draw(self, surface, assets):
         size = (self.radius * 2, self.radius * 2)
         sprite = assets.get(self.sprite_name, size)
