@@ -17,7 +17,12 @@ GRID_ROWS = 9
 
 # --- Window ---
 HUD_HEIGHT = 96
-SCREEN_WIDTH = GRID_COLS * TILE_SIZE
+# PLAY_WIDTH is the grid + the HUD bar beneath it; PANEL_WIDTH is the tower
+# stats sidebar to its right. The window is simply grown to fit both --
+# nothing about the grid/HUD's own size or position changes.
+PLAY_WIDTH = GRID_COLS * TILE_SIZE
+PANEL_WIDTH = 240
+SCREEN_WIDTH = PLAY_WIDTH + PANEL_WIDTH
 SCREEN_HEIGHT = GRID_ROWS * TILE_SIZE + HUD_HEIGHT
 FPS = 60
 WINDOW_TITLE = "Tower Defense"

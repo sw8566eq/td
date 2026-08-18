@@ -14,6 +14,18 @@ import settings
 from projectile import Projectile
 
 
+def _format_px(value):
+    return f"{value:.0f}px"
+
+
+def _format_seconds(value):
+    return f"{value:.2f}s"
+
+
+def _format_slow_percent(value):
+    return f"{round((1 - value) * 100)}% slower"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -35,6 +47,11 @@ class Tower:
     # Gold cost to reach level 2 / level 3, as a multiplier of this
     # tower's base `cost`.
     UPGRADE_COST_MULTIPLIERS = {2: 0.6, 3: 1.0}
+    # Extra, tower-specific stats shown in the stats panel (ui.py), as
+    # (label, attribute_name, format_function) tuples. Empty by default;
+    # a subclass with a special mechanic (splash, slow, knockback, ...)
+    # lists it here and the panel picks it up automatically.
+    EXTRA_STATS = ()
 
     def __init__(self, col, row, pixel_pos):
         self.col = col
@@ -68,16 +85,26 @@ class Tower:
             setattr(self, name, base_value * multiplier)
         return True
 
-    def range_after_next_upgrade(self):
-        """What `range` would become after one more upgrade, without
-        actually upgrading -- used to preview the range increase while
-        hovering a tower's '+' badge. Equal to the current range if
-        already at MAX_LEVEL, or if this tower type doesn't scale range
-        with level at all."""
-        if self.is_max_level or "range" not in self._base_stats:
-            return self.range
+    def _stat_after_next_upgrade(self, name):
+        """What LEVEL_SCALED_STATS entry `name` would become after one
+        more upgrade, without actually upgrading. Equal to its current
+        value if already at MAX_LEVEL, or if this tower doesn't scale
+        that stat with level at all."""
+        if self.is_max_level or name not in self._base_stats:
+            return getattr(self, name)
         next_level = self.level + 1
-        return self._base_stats["range"] * self.LEVEL_STAT_MULTIPLIERS[next_level]
+        return self._base_stats[name] * self.LEVEL_STAT_MULTIPLIERS[next_level]
+
+    def range_after_next_upgrade(self):
+        """Preview of `range` one level up -- used while hovering a
+        tower's '+' badge, both for the range-ring preview and the stats
+        panel (ui.py)."""
+        return self._stat_after_next_upgrade("range")
+
+    def damage_after_next_upgrade(self):
+        """Preview of `damage` one level up -- see range_after_next_upgrade
+        for the same idea applied to damage."""
+        return self._stat_after_next_upgrade("damage")
 
     def update(self, dt, enemies, projectiles):
         self.cooldown -= dt
@@ -105,6 +132,18 @@ class Tower:
 
     def create_projectile(self, target):
         raise NotImplementedError
+
+    def tile_rect(self):
+        """pygame.Rect for the grid tile this tower occupies."""
+        return pygame.Rect(self.col * settings.TILE_SIZE, self.row * settings.TILE_SIZE,
+                            settings.TILE_SIZE, settings.TILE_SIZE)
+
+    def contains_point(self, pos):
+        """True if pixel position `pos` is anywhere on this tower's tile --
+        used to show its stats/range on hover. Broader than
+        contains_upgrade_badge() below, which is just the small clickable
+        '+' circle that actually triggers an upgrade."""
+        return self.tile_rect().collidepoint(pos)
 
     # --- Upgrade badge: the clickable "+cost" shown at a placed tower's
     # top-right corner. Geometry lives here (not in game.py/ui.py) so hit-
@@ -192,6 +231,7 @@ class CannonTower(Tower):
     splash_radius = 55
     sprite_name = "tower_cannon"
     display_name = "Cannon"
+    EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
 
     def create_projectile(self, target):
         return Projectile(
@@ -211,6 +251,10 @@ class FrostTower(Tower):
     slow_duration = 2.0
     sprite_name = "tower_frost"
     display_name = "Frost"
+    EXTRA_STATS = (
+        ("Slow", "slow_factor", _format_slow_percent),
+        ("Slow duration", "slow_duration", _format_seconds),
+    )
 
     def create_projectile(self, target):
         return Projectile(
@@ -234,6 +278,10 @@ class KnockbackTower(Tower):
     knockback_duration = 0.35
     sprite_name = "tower_knockback"
     display_name = "Knockback"
+    EXTRA_STATS = (
+        ("Splash radius", "splash_radius", _format_px),
+        ("Knockback", "knockback_duration", _format_seconds),
+    )
 
     def create_projectile(self, target):
         return Projectile(

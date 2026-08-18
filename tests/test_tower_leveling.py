@@ -109,6 +109,38 @@ def test_range_after_next_upgrade_equals_current_range_once_maxed():
     assert tower.range_after_next_upgrade() == tower.range
 
 
+def test_damage_after_next_upgrade_matches_what_upgrading_would_actually_do():
+    tower = make_tower()
+    previewed = tower.damage_after_next_upgrade()
+
+    tower.upgrade()
+
+    assert tower.damage == previewed
+
+
+def test_damage_after_next_upgrade_equals_current_damage_once_maxed():
+    tower = make_tower()
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    assert tower.is_max_level
+    assert tower.damage_after_next_upgrade() == tower.damage
+
+
+def test_every_registered_towers_extra_stats_reference_real_attributes():
+    for name, tower_cls in TOWER_TYPES.items():
+        tower = make_tower(tower_cls)
+        for label, attr_name, format_fn in tower_cls.EXTRA_STATS:
+            assert hasattr(tower, attr_name), f"{name}: {attr_name}"
+            # The formatter should produce a non-empty string for the
+            # tower's actual value without raising.
+            formatted = format_fn(getattr(tower, attr_name))
+            assert isinstance(formatted, str) and formatted, f"{name}: {label}"
+
+
+def test_basic_tower_has_no_extra_stats():
+    assert BasicTower.EXTRA_STATS == ()
+
+
 def test_upgrade_badge_sits_in_the_tiles_top_right_corner():
     tower = make_tower(col=2, row=3)
     cx, cy = tower.upgrade_badge_center()
@@ -140,3 +172,30 @@ def test_maxed_out_tower_has_no_clickable_badge():
 
     center = tower.upgrade_badge_center()
     assert not tower.contains_upgrade_badge(center)
+
+
+def test_contains_point_is_true_anywhere_on_the_tile_not_just_the_badge():
+    tower = make_tower(col=2, row=3)
+    tile_left, tile_top = 2 * settings.TILE_SIZE, 3 * settings.TILE_SIZE
+
+    # The tile's center is nowhere near the badge (top-right corner), but
+    # hovering it should still count for showing stats/range.
+    center_of_tile = (tile_left + settings.TILE_SIZE / 2, tile_top + settings.TILE_SIZE / 2)
+    assert not tower.contains_upgrade_badge(center_of_tile)
+    assert tower.contains_point(center_of_tile)
+
+
+def test_contains_point_is_false_outside_the_tile():
+    tower = make_tower(col=2, row=3)
+    assert not tower.contains_point((10_000, 10_000))
+
+
+def test_contains_point_still_true_when_maxed_even_though_badge_is_gone():
+    tower = make_tower()
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    assert tower.is_max_level
+
+    center_of_tile = (settings.TILE_SIZE / 2, settings.TILE_SIZE / 2)
+    assert not tower.contains_upgrade_badge(center_of_tile)
+    assert tower.contains_point(center_of_tile)

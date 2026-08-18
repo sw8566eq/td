@@ -204,12 +204,17 @@ class Game:
             projectile.draw(self.screen, self.assets)
 
         self._render_placement_preview()
-        self._render_upgrade_hover_preview()
+        hovered_tower = self._hovered_tower()
+        if hovered_tower is not None:
+            ui.draw_tower_range_preview(self.screen, hovered_tower)
 
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
             self.economy, self.wave_manager, self.button_rects,
             self.skip_button_rect, self.selected_tower_name,
+        )
+        ui.draw_tower_stats_panel(
+            self.screen, self.font, self.small_font, self._stats_panel_subject(hovered_tower),
         )
 
         if self.state == GameState.PAUSED:
@@ -227,14 +232,31 @@ class Game:
         mouse_pos = pygame.mouse.get_pos()
         if mouse_pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return
+        if mouse_pos[0] >= settings.PLAY_WIDTH:
+            return  # hovering the stats panel, not the grid
         tower_cls = TOWER_TYPES[self.selected_tower_name]
         col, row = self.grid.pixel_to_tile(*mouse_pos)
         preview_pos = self.grid.tile_to_pixel_center(col, row)
         ui.draw_range_preview(self.screen, tower_cls, preview_pos)
 
-    def _render_upgrade_hover_preview(self):
+    def _hovered_tower(self):
+        """The placed tower currently under the mouse (anywhere on its
+        tile, not just its '+' badge), or None. Shared by the range-ring
+        hover preview and the stats panel so both always agree on which
+        tower is "hot". Clicking to actually upgrade still requires the
+        (smaller) badge specifically -- see contains_upgrade_badge()."""
         mouse_pos = pygame.mouse.get_pos()
         for tower in self.towers:
-            if tower.contains_upgrade_badge(mouse_pos):
-                ui.draw_upgrade_range_preview(self.screen, tower)
-                return
+            if tower.contains_point(mouse_pos):
+                return tower
+        return None
+
+    def _stats_panel_subject(self, hovered_tower):
+        """What the stats panel should show: a hovered placed tower takes
+        priority; otherwise the tower type currently selected to build;
+        otherwise None (panel shows a hint)."""
+        if hovered_tower is not None:
+            return hovered_tower
+        if self.selected_tower_name is not None:
+            return TOWER_TYPES[self.selected_tower_name]
+        return None

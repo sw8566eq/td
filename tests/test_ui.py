@@ -22,13 +22,15 @@ def test_get_clicked_tower_button_returns_none_outside_all_buttons():
     assert get_clicked_tower_button((1000, 1000), rects) is None
 
 
-def test_skip_button_sits_within_the_hud_and_the_screen():
+def test_skip_button_sits_within_the_hud_and_the_play_area():
     rect = build_skip_button_rect()
     hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
     assert rect.top >= hud_top
     assert rect.bottom <= settings.SCREEN_HEIGHT
     assert rect.left >= 0
-    assert rect.right <= settings.SCREEN_WIDTH
+    # Anchored to PLAY_WIDTH, not the wider (panel-including) SCREEN_WIDTH,
+    # so it stays under the grid rather than drifting under the stats panel.
+    assert rect.right <= settings.PLAY_WIDTH
 
 
 def test_skip_button_does_not_overlap_the_tower_build_buttons():
