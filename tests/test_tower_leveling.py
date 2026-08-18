@@ -1,8 +1,10 @@
+import settings
 from tower import TOWER_TYPES, BasicTower
 
 
-def make_tower(tower_cls=BasicTower):
-    return tower_cls(col=0, row=0, pixel_pos=(0, 0))
+def make_tower(tower_cls=BasicTower, col=0, row=0):
+    pixel_pos = (col * settings.TILE_SIZE + settings.TILE_SIZE / 2, row * settings.TILE_SIZE + settings.TILE_SIZE / 2)
+    return tower_cls(col=col, row=row, pixel_pos=pixel_pos)
 
 
 def test_new_tower_starts_at_level_one_with_base_stats():
@@ -69,8 +71,41 @@ def test_only_stats_in_level_scaled_stats_change_on_upgrade():
 
 def test_every_registered_tower_can_reach_max_level():
     for name, tower_cls in TOWER_TYPES.items():
-        tower = tower_cls(col=0, row=0, pixel_pos=(0, 0))
+        tower = make_tower(tower_cls)
         for _ in range(tower_cls.MAX_LEVEL - 1):
             assert tower.upgrade() is True, name
         assert tower.is_max_level, name
         assert tower.upgrade() is False, name
+
+
+def test_upgrade_badge_sits_in_the_tiles_top_right_corner():
+    tower = make_tower(col=2, row=3)
+    cx, cy = tower.upgrade_badge_center()
+
+    tile_left, tile_top = 2 * settings.TILE_SIZE, 3 * settings.TILE_SIZE
+    assert tile_left < cx < tile_left + settings.TILE_SIZE
+    assert tile_top < cy < tile_top + settings.TILE_SIZE
+    # top-right, not centered or bottom-left
+    assert cx > tile_left + settings.TILE_SIZE / 2
+    assert cy < tile_top + settings.TILE_SIZE / 2
+
+
+def test_clicking_the_badge_center_hits_it():
+    tower = make_tower()
+    center = tower.upgrade_badge_center()
+    assert tower.contains_upgrade_badge(center)
+
+
+def test_clicking_far_from_the_badge_misses_it():
+    tower = make_tower()
+    assert not tower.contains_upgrade_badge((10_000, 10_000))
+
+
+def test_maxed_out_tower_has_no_clickable_badge():
+    tower = make_tower()
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    assert tower.is_max_level
+
+    center = tower.upgrade_badge_center()
+    assert not tower.contains_upgrade_badge(center)

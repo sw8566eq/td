@@ -32,6 +32,7 @@ class Game:
 
         self.font = pygame.font.SysFont(None, 32)
         self.small_font = pygame.font.SysFont(None, 22)
+        self.tiny_font = pygame.font.SysFont(None, 16)  # tower upgrade badges
 
         self.assets = AssetManager()
         self.button_rects = ui.build_button_rects()
@@ -113,16 +114,13 @@ class Game:
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return  # click landed in the HUD area but not on a button
 
-        col, row = self.grid.pixel_to_tile(*pos)
-
-        existing_tower = self.grid.get_tower(col, row)
-        if existing_tower is not None:
-            # Clicking a placed tower always tries to upgrade it, whether
-            # or not a tower type is selected for building.
-            self.try_upgrade_tower(existing_tower)
-            return
+        for tower in self.towers:
+            if tower.contains_upgrade_badge(pos):
+                self.try_upgrade_tower(tower)
+                return
 
         if self.selected_tower_name is not None:
+            col, row = self.grid.pixel_to_tile(*pos)
             self.try_place_tower(col, row)
 
     def try_place_tower(self, col, row):
@@ -194,7 +192,7 @@ class Game:
 
         self.grid.draw(self.screen, self.assets)
         for tower in self.towers:
-            tower.draw(self.screen, self.assets)
+            tower.draw(self.screen, self.assets, self.tiny_font)
         for enemy in self.enemies:
             enemy.draw(self.screen, self.assets)
         for projectile in self.projectiles:

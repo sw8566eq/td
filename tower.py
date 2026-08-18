@@ -95,12 +95,51 @@ class Tower:
     def create_projectile(self, target):
         raise NotImplementedError
 
-    def draw(self, surface, assets):
+    # --- Upgrade badge: the clickable "+cost" shown at a placed tower's
+    # top-right corner. Geometry lives here (not in game.py/ui.py) so hit-
+    # testing and drawing always agree on where it is. ---
+
+    BADGE_RADIUS = 9
+
+    def upgrade_badge_center(self):
+        tile_left = self.col * settings.TILE_SIZE
+        tile_top = self.row * settings.TILE_SIZE
+        inset = self.BADGE_RADIUS + 2
+        return (tile_left + settings.TILE_SIZE - inset, tile_top + inset)
+
+    def contains_upgrade_badge(self, pos):
+        """True if pixel position `pos` is within this tower's upgrade
+        badge -- there is no badge (and this is always False) once the
+        tower is at MAX_LEVEL, since there's nothing left to upgrade to."""
+        if self.is_max_level:
+            return False
+        cx, cy = self.upgrade_badge_center()
+        dx, dy = pos[0] - cx, pos[1] - cy
+        return dx * dx + dy * dy <= self.BADGE_RADIUS ** 2
+
+    def draw(self, surface, assets, font=None):
         size = (settings.TILE_SIZE - 8, settings.TILE_SIZE - 8)
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
         self._draw_level_pips(surface, rect)
+        if font is not None:
+            self._draw_upgrade_badge(surface, font)
+
+    def _draw_upgrade_badge(self, surface, font):
+        cost = self.upgrade_cost()
+        if cost is None:
+            return  # already at max level -- nothing to upgrade to
+
+        center = self.upgrade_badge_center()
+        pygame.draw.circle(surface, settings.COLOR_BUTTON_SELECTED, center, self.BADGE_RADIUS)
+        pygame.draw.circle(surface, (0, 0, 0), center, self.BADGE_RADIUS, width=1)
+
+        plus_text = font.render("+", True, settings.COLOR_TEXT)
+        surface.blit(plus_text, plus_text.get_rect(center=center))
+
+        cost_text = font.render(str(cost), True, settings.COLOR_GOLD)
+        surface.blit(cost_text, cost_text.get_rect(midtop=(center[0], center[1] + self.BADGE_RADIUS + 2)))
 
     def _draw_level_pips(self, surface, sprite_rect):
         # One pip per level above 1 -- a level-1 (just-placed) tower shows

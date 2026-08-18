@@ -12,11 +12,12 @@ python main.py
 ```
 
 Controls: press any key at the menu to start. Click a tower button in the
-bottom bar, then click a grass tile to place it. Click an already-placed
-tower to upgrade it (costs gold, caps at level 3 -- see "Tower levels"
-below); clicking it again once maxed is a no-op. `Space` skips the
-between-waves countdown. `P` pauses. `R` restarts from the game-over/victory
-screen. `Esc` quits.
+bottom bar, then click a grass tile to place it. A placed tower shows a
+small "+cost" badge in its tile's top-right corner -- click that badge to
+upgrade it (caps at level 3 -- see "Tower levels" below); the badge
+disappears once a tower is maxed. `Space` skips the between-waves
+countdown. `P` pauses. `R` restarts from the game-over/victory screen.
+`Esc` quits.
 
 Run the test suite with `pytest` (from the venv).
 
@@ -31,7 +32,10 @@ uses different filenames, just edit the path strings in that manifest.
 
 ## Tower levels
 
-Every tower can be upgraded twice (level 1 -> 3) by clicking it in-game.
+Every tower can be upgraded twice (level 1 -> 3) by clicking its "+cost"
+badge in-game (`Tower.upgrade_badge_center`/`contains_upgrade_badge` in
+`tower.py` own the badge's position and hit-testing, so drawing and
+clicking can never disagree about where it is).
 Each level multiplies `damage` and `range` by a fixed amount (see
 `Tower.LEVEL_STAT_MULTIPLIERS` in `tower.py`); the upgrade's gold cost is a
 multiplier of that tower's base `cost` (`Tower.UPGRADE_COST_MULTIPLIERS`).
