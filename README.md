@@ -15,9 +15,10 @@ Controls: press any key at the menu to start. Click a tower button in the
 bottom bar, then click a grass tile to place it. A placed tower shows a
 small "+cost" badge in its tile's top-right corner -- click that badge to
 upgrade it (caps at level 3 -- see "Tower levels" below); the badge
-disappears once a tower is maxed. `Space` skips the between-waves
-countdown. `P` pauses. `R` restarts from the game-over/victory screen.
-`Esc` quits.
+disappears once a tower is maxed. The HUD shows a countdown to the next
+wave and a "Skip" button (bottom-right) to force it to start early --
+same effect as pressing `Space`. `P` pauses. `R` restarts from the
+game-over/victory screen. `Esc` quits.
 
 Run the test suite with `pytest` (from the venv).
 

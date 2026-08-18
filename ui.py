@@ -6,16 +6,23 @@ menu iterates TOWER_TYPES, so a new tower registered there appears in the
 UI automatically.
 """
 
+import math
+
 import pygame
 
 import settings
 from tower import TOWER_TYPES
+from waves import WaveState
 
 BUTTON_SIZE = 72
 BUTTON_MARGIN = 12
 BUTTON_Y = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT + (settings.HUD_HEIGHT - BUTTON_SIZE) // 2
 
 TOWER_ORDER = list(TOWER_TYPES.keys())  # stable UI order = registry insertion order
+
+SKIP_BUTTON_WIDTH = 100
+SKIP_BUTTON_HEIGHT = 36
+SKIP_BUTTON_MARGIN = 16
 
 
 def build_button_rects():
@@ -36,7 +43,18 @@ def get_clicked_tower_button(pos, button_rects):
     return None
 
 
-def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects, selected_tower_name):
+def build_skip_button_rect():
+    """Rect for the 'Skip' button that forces the next wave to start,
+    anchored to the HUD's bottom-right corner (independent of how many
+    tower buttons are registered on the left)."""
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    x = settings.SCREEN_WIDTH - SKIP_BUTTON_WIDTH - SKIP_BUTTON_MARGIN
+    y = hud_top + settings.HUD_HEIGHT - SKIP_BUTTON_HEIGHT - 10
+    return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
+
+
+def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
+             skip_button_rect, selected_tower_name):
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
                             settings.SCREEN_WIDTH, settings.HUD_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
@@ -73,6 +91,27 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     surface.blit(gold_text, (info_x, hud_rect.y + 8))
     surface.blit(lives_text, (info_x, hud_rect.y + 36))
     surface.blit(wave_text, (info_x, hud_rect.y + 64))
+
+    _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
+
+
+def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
+    if wave_manager.all_waves_complete:
+        return  # nothing left to skip to
+
+    can_skip = wave_manager.state == WaveState.BETWEEN_WAVES
+    if can_skip:
+        seconds_left = max(0, math.ceil(wave_manager.between_wave_timer))
+        countdown_text = font.render(f"Next wave in {seconds_left}s", True, settings.COLOR_TEXT)
+    else:
+        countdown_text = font.render("Wave in progress", True, settings.COLOR_TEXT_DIM)
+    countdown_rect = countdown_text.get_rect(midbottom=(skip_button_rect.centerx, skip_button_rect.top - 6))
+    surface.blit(countdown_text, countdown_rect)
+
+    button_color = settings.COLOR_BUTTON if can_skip else settings.COLOR_BUTTON_DISABLED
+    pygame.draw.rect(surface, button_color, skip_button_rect, border_radius=6)
+    label = font.render("Skip", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=skip_button_rect.center))
 
 
 def draw_range_preview(surface, tower_cls, pixel_pos):

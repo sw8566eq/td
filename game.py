@@ -36,6 +36,7 @@ class Game:
 
         self.assets = AssetManager()
         self.button_rects = ui.build_button_rects()
+        self.skip_button_rect = ui.build_skip_button_rect()
 
         self.state = GameState.MENU
         self.running = True
@@ -109,6 +110,10 @@ class Game:
         clicked_button = ui.get_clicked_tower_button(pos, self.button_rects)
         if clicked_button is not None:
             self.selected_tower_name = None if clicked_button == self.selected_tower_name else clicked_button
+            return
+
+        if self.skip_button_rect.collidepoint(pos):
+            self.wave_manager.skip_delay()
             return
 
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
@@ -203,7 +208,8 @@ class Game:
 
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
-            self.economy, self.wave_manager, self.button_rects, self.selected_tower_name,
+            self.economy, self.wave_manager, self.button_rects,
+            self.skip_button_rect, self.selected_tower_name,
         )
 
         if self.state == GameState.PAUSED:
