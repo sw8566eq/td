@@ -70,6 +70,14 @@ extending `LEVEL_SCALED_STATS`, e.g. `LEVEL_SCALED_STATS = Tower.LEVEL_SCALED_ST
 for that stat (it wouldn't for `FrostTower.slow_factor`, where lower is
 stronger).
 
+A stat can also scale on its *own* curve instead of the shared one via
+`LEVEL_STAT_MULTIPLIER_OVERRIDES`, e.g. `BasicTower` uses
+`{"damage": {1: 1.0, 2: 1.7, 3: 2.6}}` so it hits much harder at level 2/3
+than the generic curve would give it (10 -> 17 -> 26, vs. the ~10 -> 13.5
+-> 18 the shared curve produces) while its `range` still scales normally
+-- balance doesn't have to mean every tower's numbers grow at the same
+rate to feel worth using.
+
 ## Layout
 
 The window is `PLAY_WIDTH` (the grid + the HUD bar beneath it) plus a

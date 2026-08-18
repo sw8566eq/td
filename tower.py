@@ -40,13 +40,19 @@ class Tower:
     display_name = "Tower"
 
     MAX_LEVEL = 3
-    # Multiplier applied to each stat in LEVEL_SCALED_STATS at a given
+    # Default multiplier applied to a LEVEL_SCALED_STATS entry at a given
     # level -- level 1 is always 1.0x (no bonus, the placed/base stats).
     LEVEL_STAT_MULTIPLIERS = {1: 1.0, 2: 1.35, 3: 1.8}
-    # Which of a tower's own attributes get that multiplier on level-up.
-    # A subclass can extend this tuple (e.g. + ("slow_duration",)) to have
-    # more of its own stats scale too -- everything else about levelling
-    # stays generic.
+    # Per-stat overrides of the above, e.g. {"damage": {1: 1.0, 2: 1.7,
+    # 3: 2.6}} -- a stat not listed here just uses LEVEL_STAT_MULTIPLIERS
+    # like normal. Lets one stat scale on its own curve (a tower that
+    # should hit dramatically harder at max level without also reaching
+    # dramatically further, say) without a whole separate mechanism.
+    LEVEL_STAT_MULTIPLIER_OVERRIDES = {}
+    # Which of a tower's own attributes get a level multiplier at all on
+    # level-up. A subclass can extend this tuple (e.g. + ("slow_duration",))
+    # to have more of its own stats scale too -- everything else about
+    # levelling stays generic.
     LEVEL_SCALED_STATS = ("damage", "range")
     # Gold cost to reach level 2 / level 3, as a multiplier of this
     # tower's base `cost`.
@@ -78,14 +84,20 @@ class Tower:
             return None
         return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1])
 
+    def _multiplier_table_for(self, name):
+        """The level->multiplier table that applies to stat `name` -- its
+        own override table if LEVEL_STAT_MULTIPLIER_OVERRIDES has one,
+        otherwise the shared default LEVEL_STAT_MULTIPLIERS."""
+        return self.LEVEL_STAT_MULTIPLIER_OVERRIDES.get(name, self.LEVEL_STAT_MULTIPLIERS)
+
     def upgrade(self):
         """Level up by one, rescaling every LEVEL_SCALED_STATS entry from
         its level-1 base. No-op (returns False) once at MAX_LEVEL."""
         if self.is_max_level:
             return False
         self.level += 1
-        multiplier = self.LEVEL_STAT_MULTIPLIERS[self.level]
         for name, base_value in self._base_stats.items():
+            multiplier = self._multiplier_table_for(name)[self.level]
             setattr(self, name, base_value * multiplier)
         return True
 
@@ -97,7 +109,7 @@ class Tower:
         if self.is_max_level or name not in self._base_stats:
             return getattr(self, name)
         next_level = self.level + 1
-        return self._base_stats[name] * self.LEVEL_STAT_MULTIPLIERS[next_level]
+        return self._base_stats[name] * self._multiplier_table_for(name)[next_level]
 
     def range_after_next_upgrade(self):
         """Preview of `range` one level up -- used while hovering a
@@ -218,6 +230,12 @@ class BasicTower(Tower):
     projectile_speed = 360.0
     sprite_name = "tower_basic"
     display_name = "Basic"
+    # Cheap and unremarkable at level 1, but scales on damage much more
+    # steeply than the generic curve so it stays a satisfying investment
+    # late-game instead of being outclassed by pricier towers -- fair
+    # numbers don't always make for a fun upgrade path. Range still uses
+    # the generic LEVEL_STAT_MULTIPLIERS.
+    LEVEL_STAT_MULTIPLIER_OVERRIDES = {"damage": {1: 1.0, 2: 1.7, 3: 2.6}}
 
     def create_projectile(self, target):
         return Projectile(

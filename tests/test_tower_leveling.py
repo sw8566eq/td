@@ -1,5 +1,5 @@
 import settings
-from tower import TOWER_TYPES, BasicTower
+from tower import TOWER_TYPES, BasicTower, CannonTower
 
 
 def make_tower(tower_cls=BasicTower, col=0, row=0):
@@ -27,14 +27,18 @@ def test_upgrade_increases_damage_and_range():
 
 
 def test_upgrades_recompute_from_base_rather_than_compounding():
-    tower = make_tower()
+    # Uses CannonTower (no LEVEL_STAT_MULTIPLIER_OVERRIDES) so this test
+    # exercises the generic mechanism, not any one tower's special-cased
+    # curve -- see test_basic_tower_damage_overrides_the_generic_curve
+    # below for that.
+    tower = make_tower(CannonTower)
     tower.upgrade()  # level 2
     level_2_damage = tower.damage
     tower.upgrade()  # level 3
     level_3_damage = tower.damage
 
-    assert level_3_damage == BasicTower.damage * BasicTower.LEVEL_STAT_MULTIPLIERS[3]
-    assert level_2_damage == BasicTower.damage * BasicTower.LEVEL_STAT_MULTIPLIERS[2]
+    assert level_3_damage == CannonTower.damage * CannonTower.LEVEL_STAT_MULTIPLIERS[3]
+    assert level_2_damage == CannonTower.damage * CannonTower.LEVEL_STAT_MULTIPLIERS[2]
 
 
 def test_cannot_upgrade_past_max_level():
@@ -124,6 +128,37 @@ def test_damage_after_next_upgrade_equals_current_damage_once_maxed():
         tower.upgrade()
     assert tower.is_max_level
     assert tower.damage_after_next_upgrade() == tower.damage
+
+
+def test_basic_tower_damage_overrides_the_generic_curve():
+    tower = make_tower(BasicTower)
+    override = BasicTower.LEVEL_STAT_MULTIPLIER_OVERRIDES["damage"]
+
+    tower.upgrade()  # level 2
+    assert tower.damage == BasicTower.damage * override[2]
+    tower.upgrade()  # level 3
+    assert tower.damage == BasicTower.damage * override[3]
+
+
+def test_basic_tower_damage_scales_more_steeply_than_the_generic_curve():
+    override = BasicTower.LEVEL_STAT_MULTIPLIER_OVERRIDES["damage"]
+    assert override[2] > BasicTower.LEVEL_STAT_MULTIPLIERS[2]
+    assert override[3] > BasicTower.LEVEL_STAT_MULTIPLIERS[3]
+
+
+def test_basic_tower_range_still_uses_the_generic_curve():
+    # Only damage is special-cased -- range should scale exactly like any
+    # other tower's, unaffected by the damage override.
+    tower = make_tower(BasicTower)
+    tower.upgrade()  # level 2
+    assert tower.range == BasicTower.range * BasicTower.LEVEL_STAT_MULTIPLIERS[2]
+
+
+def test_other_towers_have_no_multiplier_overrides():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name == "basic":
+            continue
+        assert tower_cls.LEVEL_STAT_MULTIPLIER_OVERRIDES == {}, name
 
 
 def test_every_registered_towers_extra_stats_reference_real_attributes():
