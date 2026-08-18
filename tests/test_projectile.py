@@ -163,6 +163,20 @@ def test_chain_stops_at_max_chain_targets_even_with_more_in_range():
     assert c.damage_taken == 0
 
 
+def test_chain_with_no_cap_hits_every_reachable_enemy_in_a_line():
+    target = FakeEnemy((0, 0))
+    chain = [FakeEnemy((10 * i, 0)) for i in range(1, 21)]  # 20 enemies, 10 apart
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=2,
+        chain_range=15, max_chain_targets=float("inf"),
+    )
+
+    projectile.update(dt=1.0, enemies=[target] + chain)
+
+    assert target.damage_taken == 2
+    assert all(e.damage_taken == 2 for e in chain)
+
+
 def test_chain_stops_when_no_unvisited_enemy_is_in_range():
     target = FakeEnemy((0, 0))
     near = FakeEnemy((10, 0))

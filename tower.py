@@ -27,7 +27,7 @@ def _format_slow_percent(value):
 
 
 def _format_count(value):
-    return f"{int(value)}"
+    return "Unlimited" if value == float("inf") else f"{int(value)}"
 
 
 class Tower:
@@ -302,10 +302,11 @@ class LightningTower(Tower):
     damage = 8
     fire_rate = 1.0
     projectile_speed = 400.0
-    # Max distance from one hit enemy to the next it can arc to, and the
-    # total number of enemies one bolt can hit (including the first).
-    chain_range = 90
-    max_chain_targets = 4
+    # Max distance from one hit enemy to the next it can arc to -- kept
+    # short since, unlike max_chain_targets, nothing else bounds how many
+    # enemies a bolt can reach through a tightly packed cluster.
+    chain_range = 50
+    max_chain_targets = float("inf")  # arcs to every unvisited enemy it can reach, no cap
     sprite_name = "tower_lightning"
     display_name = "Lightning"
     EXTRA_STATS = (

@@ -60,7 +60,10 @@ def test_lightning_tower_projectile_carries_chain_settings():
     assert projectile.chain_range == LightningTower.chain_range
     assert projectile.chain_range > 0
     assert projectile.max_chain_targets == LightningTower.max_chain_targets
-    assert projectile.max_chain_targets > 1
+
+
+def test_lightning_tower_chain_has_no_target_cap():
+    assert LightningTower.max_chain_targets == float("inf")
 
 
 def test_other_towers_do_not_chain():

@@ -44,14 +44,15 @@ Five so far: `BasicTower` (cheap single-target), `CannonTower` (splash
 damage), `FrostTower` (slows), `KnockbackTower` (AoE + a light shove back
 along the path), and `LightningTower` -- hits its target, then arcs to
 the *nearest enemy it hasn't already hit this shot* within `chain_range`
-of wherever the bolt currently is (not the tower), repeating until either
-no such enemy is left in range or `max_chain_targets` is reached (4 by
-default, i.e. up to 3 jumps after the first hit). That's genuinely
-different from Cannon's splash: splash hits everyone within a radius of
-one impact point simultaneously, chain hits a *sequence* of individual
-enemies, each becoming the next jump's origin, so it can reach targets
-strung out along the path rather than just clustered together. See
-`Projectile._resolve_chain()` in `projectile.py`.
+(50px -- short, since nothing else bounds the chain) of wherever the bolt
+currently is (not the tower), repeating for as long as there's an
+unvisited enemy left in range -- `max_chain_targets` is `float("inf")`,
+so a dense enough cluster gets fully chained through, not capped at some
+fixed count. That's genuinely different from Cannon's splash: splash hits
+everyone within a radius of one impact point simultaneously, chain hits a
+*sequence* of individual enemies, each becoming the next jump's origin,
+so it can reach targets strung out along the path rather than just
+clustered together. See `Projectile._resolve_chain()` in `projectile.py`.
 
 ## Tower levels
 
