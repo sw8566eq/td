@@ -186,7 +186,13 @@ class Tower:
         return dx * dx + dy * dy <= self.BADGE_RADIUS ** 2
 
     def draw(self, surface, assets, font=None):
-        size = (settings.TILE_SIZE - 8, settings.TILE_SIZE - 8)
+        # Sized almost edge-to-edge with the footprint (settings.TILE_SIZE
+        # square) rather than with a big margin, so the sprite's own edges
+        # make it obvious which subtiles the tower's anchor actually
+        # covers -- the margin is just the same subtile gap the map's own
+        # mosaic uses, not an arbitrary inset.
+        margin = 2 * settings.SUBTILE_GAP
+        size = (settings.TILE_SIZE - margin, settings.TILE_SIZE - margin)
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
