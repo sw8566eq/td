@@ -97,6 +97,81 @@ def test_sell_value_is_less_than_total_invested():
     assert tower.sell_value() < tower.total_invested
 
 
+# --- Specialization ---
+
+def _max_out(tower):
+    while not tower.is_max_level:
+        tower.upgrade()
+    return tower
+
+
+def test_cannot_specialize_before_max_level():
+    tower = make_tower()
+    assert not tower.can_specialize
+    assert tower.specialization_cost() is None
+    assert tower.specialize("power") is False
+
+
+def test_can_specialize_once_maxed():
+    tower = _max_out(make_tower())
+    assert tower.can_specialize
+    assert tower.specialization_cost() == round(BasicTower.cost * BasicTower.SPECIALIZATION_COST_MULTIPLIER)
+
+
+def test_specialize_applies_its_stat_multipliers():
+    tower = _max_out(make_tower())
+    base_damage = tower.damage
+    spec = BasicTower.SPECIALIZATIONS["power"]
+
+    assert tower.specialize("power") is True
+
+    assert tower.damage == base_damage * spec["stat_multipliers"]["damage"]
+    assert tower.specialization == "power"
+
+
+def test_specialize_updates_total_invested():
+    tower = _max_out(make_tower())
+    invested_before = tower.total_invested
+    cost = tower.specialization_cost()
+
+    tower.specialize("power")
+
+    assert tower.total_invested == invested_before + cost
+
+
+def test_specialize_is_a_one_time_choice():
+    tower = _max_out(make_tower())
+    tower.specialize("power")
+    assert not tower.can_specialize
+
+    # A second call -- even with a different key -- is a no-op.
+    damage_after_first = tower.damage
+    assert tower.specialize("precision") is False
+    assert tower.damage == damage_after_first
+    assert tower.specialization == "power"
+
+
+def test_specialize_rejects_an_unknown_key():
+    tower = _max_out(make_tower())
+    assert tower.specialize("not-a-real-specialization") is False
+    assert tower.specialization is None
+    assert tower.can_specialize
+
+
+def test_every_registered_tower_has_exactly_two_specializations():
+    # The UI offers exactly two choices -- see ui.build_specialize_button_rects.
+    for name, tower_cls in TOWER_TYPES.items():
+        assert len(tower_cls.SPECIALIZATIONS) == 2, name
+
+
+def test_specialization_stat_multipliers_reference_real_attributes():
+    for name, tower_cls in TOWER_TYPES.items():
+        tower = make_tower(tower_cls)
+        for key, spec in tower_cls.SPECIALIZATIONS.items():
+            for stat_name in spec["stat_multipliers"]:
+                assert hasattr(tower, stat_name), f"{name}: {key}: {stat_name}"
+
+
 def test_only_stats_in_level_scaled_stats_change_on_upgrade():
     tower = make_tower()
     base_fire_rate = tower.fire_rate

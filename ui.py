@@ -28,17 +28,21 @@ SKIP_BUTTON_WIDTH = 100
 SKIP_BUTTON_HEIGHT = 36
 SKIP_BUTTON_MARGIN = 16
 
-# Upgrade and Sell sit stacked in a fixed spot in the stats panel,
-# comfortably below the tallest stats block any tower type currently
-# renders (title + level row + 3 base stats + up to 2 EXTRA_STATS rows),
-# so neither has to be laid out relative to content that varies by
-# tower/selection -- and Sell's position doesn't shift depending on
-# whether Upgrade is showing (a maxed-out tower has no Upgrade button).
+# Upgrade/Specialize and Sell sit stacked in a fixed spot in the stats
+# panel, comfortably below the tallest stats block any tower type
+# currently renders (title + level row + 3 base stats + up to 2
+# EXTRA_STATS rows), so none of them have to be laid out relative to
+# content that varies by tower/selection. A tower is either upgradeable
+# (below MAX_LEVEL -- one Upgrade button) or specializable (at MAX_LEVEL,
+# unspecialized -- two stacked Specialize choices) or neither of those,
+# never more than one of the two, so they share the same top slot.
+# Sell's position is fixed at the bottom of that slot regardless of which
+# (if either) of those is currently showing above it.
 ACTION_BUTTON_WIDTH = 200
 ACTION_BUTTON_HEIGHT = 36
 ACTION_BUTTON_GAP = 10
-UPGRADE_BUTTON_TOP = 260
-SELL_BUTTON_TOP = UPGRADE_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+ACTION_AREA_TOP = 260
+SELL_BUTTON_TOP = ACTION_AREA_TOP + 2 * (ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP)
 
 
 def build_button_rects():
@@ -78,12 +82,25 @@ def _action_button_rect(top):
 
 def build_upgrade_button_rect():
     """Rect for the stats panel's 'Upgrade' button -- fixed position
-    within the panel (see UPGRADE_BUTTON_TOP), horizontally centered, so
+    within the panel (see ACTION_AREA_TOP), horizontally centered, so
     it stays put regardless of which tower's stats are shown above it.
     Only meaningful (and only drawn/clickable) while the panel's subject
     is a placed, not-yet-maxed tower -- see draw_tower_stats_panel and
     Game._handle_click."""
-    return _action_button_rect(UPGRADE_BUTTON_TOP)
+    return _action_button_rect(ACTION_AREA_TOP)
+
+
+def build_specialize_button_rects():
+    """Two rects for the two specialization choices offered once a placed
+    tower hits MAX_LEVEL, stacked in the same action-button slot Upgrade
+    normally occupies -- mutually exclusive with it, since a tower is
+    never both upgradeable and specializable at once. Only meaningful
+    (and only drawn/clickable) while the panel's subject is a placed
+    tower eligible to specialize -- see draw_tower_stats_panel and
+    Game._handle_click."""
+    top_a = ACTION_AREA_TOP
+    top_b = ACTION_AREA_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+    return _action_button_rect(top_a), _action_button_rect(top_b)
 
 
 def build_sell_button_rect():
@@ -124,7 +141,8 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         surface.blit(cost_text, cost_rect)
 
     info_x = BUTTON_MARGIN + len(TOWER_ORDER) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
-    gold_text = font.render(f"Gold: {economy.gold}", True, settings.COLOR_GOLD)
+    gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
+    gold_text = font.render(f"Gold: {gold_display}", True, settings.COLOR_GOLD)
     lives_text = font.render(f"Lives: {economy.lives}", True, settings.COLOR_LIVES)
     if wave_manager.all_waves_complete:
         wave_label = "All waves cleared!"
@@ -198,14 +216,16 @@ def draw_tower_range_preview(surface, tower):
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
 
 
-def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_button_rect, sell_button_rect):
+def draw_tower_stats_panel(surface, font, small_font, subject, economy,
+                            upgrade_button_rect, specialize_button_rects, sell_button_rect):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
       - a Tower *instance* (a placed tower, either hovered or clicked to
         stay pinned open -- shows its live stats, with a '-> value'
-        preview of what upgrading would change, an Upgrade button (while
-        not maxed) and a Sell button), or
+        preview of what upgrading would change; an Upgrade button below
+        MAX_LEVEL, or two Specialize choices once at MAX_LEVEL and not
+        yet specialized; and a Sell button), or
       - None (nothing selected/hovered -- shows a hint instead).
     Reads EXTRA_STATS off the tower class so a new tower type's special
     stats (splash, slow, knockback, ...) show up here with no changes to
@@ -232,9 +252,17 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_
     y += 34
 
     if is_placed:
-        level_text = small_font.render(f"Level {subject.level}/{tower_cls.MAX_LEVEL}", True, settings.COLOR_TEXT_DIM)
+        level_line = f"Level {subject.level}/{tower_cls.MAX_LEVEL}"
+        if subject.specialization is not None:
+            spec_name = tower_cls.SPECIALIZATIONS[subject.specialization]["display_name"]
+            level_line += f" -- {spec_name}"
+        level_text = small_font.render(level_line, True, settings.COLOR_TEXT_DIM)
         surface.blit(level_text, (x, y))
         y += PANEL_ROW_HEIGHT
+        if subject.can_specialize:
+            hint = small_font.render("Choose a specialization:", True, settings.COLOR_TEXT_DIM)
+            surface.blit(hint, (x, y))
+            y += PANEL_ROW_HEIGHT
     else:
         cost_text = small_font.render(f"Cost: {tower_cls.cost}", True, settings.COLOR_GOLD)
         surface.blit(cost_text, (x, y))
@@ -268,16 +296,21 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_
     if not is_placed:
         return
 
+    def action_button(rect, text, affordable):
+        color = settings.COLOR_BUTTON if affordable else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(text, True, settings.COLOR_GOLD)
+        surface.blit(label, label.get_rect(center=rect.center))
+
     if not subject.is_max_level:
         cost = subject.upgrade_cost()
-        color = settings.COLOR_BUTTON if economy.can_afford(cost) else settings.COLOR_BUTTON_DISABLED
-        pygame.draw.rect(surface, color, upgrade_button_rect, border_radius=6)
-        label = small_font.render(f"Upgrade ({cost}g)", True, settings.COLOR_GOLD)
-        surface.blit(label, label.get_rect(center=upgrade_button_rect.center))
+        action_button(upgrade_button_rect, f"Upgrade ({cost}g)", economy.can_afford(cost))
+    elif subject.can_specialize:
+        cost = subject.specialization_cost()
+        for rect, (key, spec) in zip(specialize_button_rects, subject.SPECIALIZATIONS.items()):
+            action_button(rect, f"{spec['display_name']} ({cost}g)", economy.can_afford(cost))
 
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, sell_button_rect, border_radius=6)
-    label = small_font.render(f"Sell (+{subject.sell_value()}g)", True, settings.COLOR_GOLD)
-    surface.blit(label, label.get_rect(center=sell_button_rect.center))
+    action_button(sell_button_rect, f"Sell (+{subject.sell_value()}g)", True)
 
 
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
