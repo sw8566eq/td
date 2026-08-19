@@ -63,6 +63,31 @@ class Tower:
     # lists it here and the panel picks it up automatically.
     EXTRA_STATS = ()
 
+    # Once a tower reaches MAX_LEVEL, it can choose one of two named
+    # specializations instead of continuing to level up -- a one-time
+    # branching choice, not another step of the generic LEVEL_SCALED_STATS
+    # curve. Keyed by an arbitrary string id; "stat_multipliers" is
+    # applied the same way a level-up's multiplier is (current value *=
+    # multiplier). Every tower shares these two generic placeholders for
+    # now -- effects/costs/names are meant to be tuned (or made
+    # tower-specific, by overriding this in a subclass) once the choose-
+    # and-apply mechanism itself is confirmed working.
+    SPECIALIZATIONS = {
+        "power": {
+            "display_name": "Power",
+            "description": "Bigger numbers.",
+            "stat_multipliers": {"damage": 1.3},
+        },
+        "precision": {
+            "display_name": "Precision",
+            "description": "Reaches further and fires faster.",
+            "stat_multipliers": {"range": 1.2, "fire_rate": 1.2},
+        },
+    }
+    # Gold cost to specialize, as a multiplier of this tower's base `cost`
+    # -- same idea as UPGRADE_COST_MULTIPLIERS.
+    SPECIALIZATION_COST_MULTIPLIER = 1.5
+
     def __init__(self, anchor_col, anchor_row, pixel_pos):
         self.anchor_col = anchor_col
         self.anchor_row = anchor_row
@@ -77,6 +102,8 @@ class Tower:
         # refunds a fraction of, so upgrading then selling isn't a loss on
         # top of the upgrade itself. See sell_value().
         self.total_invested = self.cost
+        # SPECIALIZATIONS key once chosen (see specialize()), else None.
+        self.specialization = None
 
     @property
     def is_max_level(self):
@@ -111,6 +138,31 @@ class Tower:
         (settings.SELL_REFUND_FRACTION) of everything spent on it, base
         cost plus any upgrades, not just the base cost."""
         return round(self.total_invested * settings.SELL_REFUND_FRACTION)
+
+    @property
+    def can_specialize(self):
+        return self.is_max_level and self.specialization is None
+
+    def specialization_cost(self):
+        """Gold cost to choose a specialization, or None if not eligible
+        right now (not maxed yet, or already specialized)."""
+        if not self.can_specialize:
+            return None
+        return round(self.cost * self.SPECIALIZATION_COST_MULTIPLIER)
+
+    def specialize(self, key):
+        """Choose specialization `key` -- the one-time branching upgrade
+        available once a tower hits MAX_LEVEL, applying that option's
+        stat_multipliers on top of the tower's current stats. No-op
+        (returns False) if not currently eligible or `key` isn't one of
+        this tower's SPECIALIZATIONS."""
+        if not self.can_specialize or key not in self.SPECIALIZATIONS:
+            return False
+        self.total_invested += self.specialization_cost()
+        for stat_name, multiplier in self.SPECIALIZATIONS[key]["stat_multipliers"].items():
+            setattr(self, stat_name, getattr(self, stat_name) * multiplier)
+        self.specialization = key
+        return True
 
     def _stat_after_next_upgrade(self, name):
         """What LEVEL_SCALED_STATS entry `name` would become after one

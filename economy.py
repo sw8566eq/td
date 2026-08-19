@@ -3,17 +3,23 @@ trivially unit-testable."""
 
 
 class Economy:
-    def __init__(self, starting_gold, starting_lives):
+    def __init__(self, starting_gold, starting_lives, unlimited_gold=False):
         self.gold = starting_gold
         self.lives = starting_lives
+        # Debug flag (see main.py --unlimited-gold): every purchase always
+        # succeeds and gold is never actually deducted, rather than
+        # inflating the displayed total -- ui.py shows "Gold: unlimited"
+        # instead of a number while this is set.
+        self.unlimited_gold = unlimited_gold
 
     def can_afford(self, cost):
-        return self.gold >= cost
+        return self.unlimited_gold or self.gold >= cost
 
     def spend(self, amount):
         if not self.can_afford(amount):
             return False
-        self.gold -= amount
+        if not self.unlimited_gold:
+            self.gold -= amount
         return True
 
     def add_gold(self, amount):

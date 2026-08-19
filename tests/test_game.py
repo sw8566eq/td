@@ -85,6 +85,27 @@ def test_economy_matches_the_loaded_levels_starting_values(game):
     assert game.economy.lives == game.level.starting_lives
 
 
+def test_unlimited_gold_defaults_to_off(game):
+    assert game.economy.unlimited_gold is False
+
+
+def test_unlimited_gold_flag_flows_through_to_the_economy():
+    g = Game(unlimited_gold=True)
+    try:
+        assert g.economy.unlimited_gold is True
+    finally:
+        pygame.quit()
+
+
+def test_unlimited_gold_flag_survives_a_level_reload():
+    g = Game(unlimited_gold=True)
+    try:
+        g.load_level(g.current_level_id)
+        assert g.economy.unlimited_gold is True
+    finally:
+        pygame.quit()
+
+
 def test_starts_with_no_entities_or_selection(game):
     assert game.enemies == []
     assert game.towers == []
@@ -482,7 +503,110 @@ def test_clicking_the_upgrade_button_when_unaffordable_does_nothing(playing_game
     assert tower.level == 1
 
 
-def test_clicking_the_upgrade_button_at_max_level_does_nothing(playing_game):
+def test_clicking_the_upgrade_buttons_rect_at_max_level_specializes_instead(playing_game):
+    # Regression test for a real bug: the Upgrade button and the first
+    # Specialize button intentionally share a rect (see
+    # ui.build_specialize_button_rects -- the two are mutually exclusive
+    # states), but Game._handle_click checked the Upgrade rect first and
+    # always returned there, so a maxed tower's click on that rect used
+    # to silently call try_upgrade_tower (a no-op once maxed) and never
+    # reach the specialize handling below it -- "Power" looked dead.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.selected_tower = tower
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    try:
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    expected_key = list(tower.SPECIALIZATIONS.keys())[0]
+    assert tower.specialization == expected_key
+
+
+def test_clicking_that_shared_rect_does_nothing_once_already_specialized(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.try_specialize_tower(tower, "power")
+    playing_game.selected_tower = tower
+    gold_before = playing_game.economy.gold
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    try:
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.specialization == "power"  # unchanged
+    assert playing_game.economy.gold == gold_before
+
+
+def test_try_specialize_tower_succeeds_and_deducts_gold(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    gold_before = playing_game.economy.gold
+    cost = tower.specialization_cost()
+
+    assert playing_game.try_specialize_tower(tower, "power") is True
+
+    assert tower.specialization == "power"
+    assert playing_game.economy.gold == gold_before - cost
+
+
+def test_try_specialize_tower_fails_before_max_level(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+
+    assert playing_game.try_specialize_tower(tower, "power") is False
+    assert tower.specialization is None
+
+
+def test_try_specialize_tower_fails_when_unaffordable(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.economy.gold = 0
+
+    assert playing_game.try_specialize_tower(tower, "power") is False
+    assert tower.specialization is None
+
+
+def test_try_specialize_tower_fails_for_an_unknown_key(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+
+    assert playing_game.try_specialize_tower(tower, "not-a-real-key") is False
+    assert tower.specialization is None
+
+
+def test_clicking_a_specialize_button_specializes_the_pinned_tower(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
     playing_game.try_place_tower(anchor_col, anchor_row)
@@ -493,13 +617,42 @@ def test_clicking_the_upgrade_button_at_max_level_does_nothing(playing_game):
     playing_game.selected_tower = tower
     gold_before = playing_game.economy.gold
 
-    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    second_button = playing_game.specialize_button_rects[1]
+    mock_mouse_pos(second_button.center)  # nowhere near the tower on the grid
     try:
-        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+        playing_game._handle_click(second_button.center)
     finally:
         clear_mouse_mock()
 
-    assert tower.is_max_level
+    expected_key = list(tower.SPECIALIZATIONS.keys())[1]
+    assert tower.specialization == expected_key
+    assert playing_game.economy.gold < gold_before
+
+
+def test_clicking_a_specialize_button_before_max_level_does_nothing(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+
+    # Rect 0 intentionally shares the Upgrade button's position (the two
+    # are mutually exclusive states); rect 1 is unambiguous.
+    second_button = playing_game.specialize_button_rects[1]
+    mock_mouse_pos(second_button.center)
+    try:
+        playing_game._handle_click(second_button.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.level == 1
+    assert tower.specialization is None
+
+
+def test_clicking_a_specialize_button_with_nothing_selected_does_nothing(playing_game):
+    gold_before = playing_game.economy.gold
+    second_button = playing_game.specialize_button_rects[1]
+    playing_game._handle_click(second_button.center)
     assert playing_game.economy.gold == gold_before
 
 
@@ -583,6 +736,18 @@ def test_try_place_tower_fails_when_unaffordable(playing_game):
     playing_game.selected_tower_name = "basic"
     assert playing_game.try_place_tower(anchor_col, anchor_row) is False
     assert not playing_game.grid.is_occupied(anchor_col, anchor_row)
+
+
+def test_try_place_tower_succeeds_with_zero_gold_under_unlimited_gold(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.economy.unlimited_gold = True
+    playing_game.economy.gold = 0
+    playing_game.selected_tower_name = "basic"
+
+    assert playing_game.try_place_tower(anchor_col, anchor_row) is True
+
+    assert playing_game.grid.is_occupied(anchor_col, anchor_row)
+    assert playing_game.economy.gold == 0  # not actually deducted
 
 
 def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):

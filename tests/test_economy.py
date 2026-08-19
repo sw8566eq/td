@@ -44,3 +44,23 @@ def test_lose_life_floors_at_zero():
 def test_is_out_of_lives_false_while_lives_remain():
     economy = Economy(starting_gold=0, starting_lives=1)
     assert not economy.is_out_of_lives
+
+
+# --- Debug flag: unlimited gold ---
+
+def test_unlimited_gold_can_afford_anything():
+    economy = Economy(starting_gold=0, starting_lives=20, unlimited_gold=True)
+    assert economy.can_afford(1)
+    assert economy.can_afford(1_000_000)
+
+
+def test_unlimited_gold_spend_always_succeeds_and_leaves_gold_unchanged():
+    economy = Economy(starting_gold=0, starting_lives=20, unlimited_gold=True)
+    assert economy.spend(500) is True
+    assert economy.gold == 0  # not actually deducted, not inflated either
+
+
+def test_unlimited_gold_defaults_to_off():
+    economy = Economy(starting_gold=0, starting_lives=20)
+    assert economy.unlimited_gold is False
+    assert not economy.can_afford(1)

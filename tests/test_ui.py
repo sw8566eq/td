@@ -5,6 +5,7 @@ from ui import (
     build_button_rects,
     build_sell_button_rect,
     build_skip_button_rect,
+    build_specialize_button_rects,
     build_upgrade_button_rect,
     get_clicked_tower_button,
 )
@@ -58,3 +59,36 @@ def test_upgrade_button_sits_above_the_sell_button_without_overlapping():
     sell_rect = build_sell_button_rect()
     assert not upgrade_rect.colliderect(sell_rect)
     assert upgrade_rect.bottom <= sell_rect.top
+
+
+def test_specialize_buttons_sit_within_the_stats_panel():
+    for rect in build_specialize_button_rects():
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+        assert rect.top >= 0
+        assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_specialize_buttons_are_stacked_above_the_sell_button_without_overlapping():
+    first, second = build_specialize_button_rects()
+    sell_rect = build_sell_button_rect()
+
+    assert not first.colliderect(second)
+    assert first.bottom <= second.top
+
+    for rect in (first, second):
+        assert not rect.colliderect(sell_rect)
+        assert rect.bottom <= sell_rect.top
+
+
+def test_first_specialize_button_shares_the_upgrade_buttons_slot():
+    # Intentional, not a layout bug: Upgrade (below MAX_LEVEL) and
+    # Specialize (at MAX_LEVEL) are mutually exclusive states, so they
+    # share the same top slot in the panel. Game._handle_click resolves a
+    # click on this shared rect by the subject's actual state (upgradeable
+    # vs. specializable) rather than by which check runs first -- see the
+    # click-handling tests in test_game.py, including a regression test
+    # for the bug that shape used to cause ("Power" looked dead), and the
+    # ones that use the *second* specialize rect where that ambiguity
+    # doesn't apply.
+    assert build_specialize_button_rects()[0] == build_upgrade_button_rect()
