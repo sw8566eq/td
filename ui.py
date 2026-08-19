@@ -105,20 +105,27 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
 
 def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
     if wave_manager.all_waves_complete:
-        return  # nothing left to skip to
+        return  # nothing left to skip to/start
 
-    can_skip = wave_manager.state == WaveState.BETWEEN_WAVES
-    if can_skip:
+    # The same button doubles as "Start" before wave 1 (which waits for
+    # the player rather than auto-starting on a timer -- see WaveManager)
+    # and "Skip" for every between-waves countdown after that.
+    if wave_manager.state == WaveState.AWAITING_START:
+        countdown_text = font.render("Ready to start", True, settings.COLOR_TEXT)
+        button_label, clickable = "Start", True
+    elif wave_manager.state == WaveState.BETWEEN_WAVES:
         seconds_left = max(0, math.ceil(wave_manager.between_wave_timer))
         countdown_text = font.render(f"Next wave in {seconds_left}s", True, settings.COLOR_TEXT)
+        button_label, clickable = "Skip", True
     else:
         countdown_text = font.render("Wave in progress", True, settings.COLOR_TEXT_DIM)
+        button_label, clickable = "Skip", False
     countdown_rect = countdown_text.get_rect(midbottom=(skip_button_rect.centerx, skip_button_rect.top - 6))
     surface.blit(countdown_text, countdown_rect)
 
-    button_color = settings.COLOR_BUTTON if can_skip else settings.COLOR_BUTTON_DISABLED
+    button_color = settings.COLOR_BUTTON if clickable else settings.COLOR_BUTTON_DISABLED
     pygame.draw.rect(surface, button_color, skip_button_rect, border_radius=6)
-    label = font.render("Skip", True, settings.COLOR_TEXT)
+    label = font.render(button_label, True, settings.COLOR_TEXT)
     surface.blit(label, label.get_rect(center=skip_button_rect.center))
 
 

@@ -12,17 +12,42 @@ def make_level(wave_specs, waypoints_tiles=None):
     )
 
 
-def test_starts_between_waves_on_wave_one():
+def test_starts_awaiting_start_on_wave_one():
     level = make_level([{"grunt": 3}])
     manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)])
-    assert manager.state == WaveState.BETWEEN_WAVES
+    assert manager.state == WaveState.AWAITING_START
     assert manager.current_wave_number == 1
     assert manager.total_waves == 1
 
 
-def test_between_wave_delay_gates_the_first_spawn():
+def test_wave_one_never_auto_starts_no_matter_how_much_time_passes():
     level = make_level([{"grunt": 1}])
-    manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], between_wave_delay=1.0)
+    manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], between_wave_delay=0.1)
+    for _ in range(50):
+        spawned = manager.update(dt=1.0, active_enemies=[])
+        assert spawned == []
+    assert manager.state == WaveState.AWAITING_START
+
+
+def test_skip_delay_starts_the_first_wave_immediately():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], between_wave_delay=100.0)
+    assert manager.state == WaveState.AWAITING_START
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])
+    assert manager.state == WaveState.SPAWNING
+
+
+def test_between_wave_delay_gates_the_second_waves_spawn():
+    level = make_level([{"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], spawn_interval=0.01, between_wave_delay=1.0)
+
+    manager.skip_delay()  # player clicks "Start" for wave 1
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1
+    manager.update(dt=0.01, active_enemies=[])  # spawns wave 1's one grunt
+    manager.update(dt=0.01, active_enemies=[])  # sees it "cleared" -> advances to wave 2
+    assert manager.state == WaveState.BETWEEN_WAVES
+    assert manager.current_wave_number == 2
 
     spawned = manager.update(dt=0.5, active_enemies=[])
     assert spawned == []
@@ -32,17 +57,10 @@ def test_between_wave_delay_gates_the_first_spawn():
     assert manager.state == WaveState.SPAWNING
 
 
-def test_skip_delay_starts_the_wave_immediately():
-    level = make_level([{"grunt": 1}])
-    manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], between_wave_delay=100.0)
-    manager.skip_delay()
-    manager.update(dt=0.01, active_enemies=[])
-    assert manager.state == WaveState.SPAWNING
-
-
 def test_spawns_the_exact_enemy_count_for_the_wave():
     level = make_level([{"grunt": 3}])
     manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], spawn_interval=0.1, between_wave_delay=0.0)
+    manager.skip_delay()  # player clicks "Start"
 
     all_spawned = []
     for _ in range(50):
@@ -59,6 +77,7 @@ def test_spawns_the_exact_enemy_count_for_the_wave():
 def test_wave_does_not_advance_while_spawned_enemies_are_still_active():
     level = make_level([{"grunt": 1}, {"grunt": 1}])
     manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], spawn_interval=0.01, between_wave_delay=0.0)
+    manager.skip_delay()  # player clicks "Start"
 
     # Drive until the one enemy from wave 1 spawns, then simulate it as
     # still alive on the field.
@@ -81,6 +100,7 @@ def test_wave_does_not_advance_while_spawned_enemies_are_still_active():
 def test_progresses_through_multiple_waves_and_flags_completion_only_after_the_last():
     level = make_level([{"grunt": 1}, {"grunt": 1}])
     manager = WaveManager(level, waypoints_px=[(0, 0), (64, 0)], spawn_interval=0.01, between_wave_delay=0.0)
+    manager.skip_delay()  # player clicks "Start"
 
     spawned_total = 0
     saw_wave_two_start = False

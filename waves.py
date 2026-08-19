@@ -15,6 +15,7 @@ from enemy import ENEMY_TYPES
 
 
 class WaveState:
+    AWAITING_START = "awaiting_start"
     BETWEEN_WAVES = "between_waves"
     SPAWNING = "spawning"
     DONE = "done"
@@ -29,7 +30,11 @@ class WaveManager:
         self.between_wave_delay = between_wave_delay
 
         self.wave_index = 0  # 0-based index into level.wave_specs
-        self.state = WaveState.BETWEEN_WAVES
+        # Wave 1 doesn't auto-start on a timer like every wave after it
+        # does -- it waits for the player to explicitly start it (the
+        # same "Skip" button doubles as "Start" for this one case; see
+        # skip_delay()), so the player gets a beat to place towers first.
+        self.state = WaveState.AWAITING_START
         self.between_wave_timer = between_wave_delay
         self.spawn_timer = 0.0
         self._spawn_queue = []  # one Enemy subclass per remaining spawn this wave
@@ -46,8 +51,14 @@ class WaveManager:
         return len(self.level.wave_specs)
 
     def skip_delay(self):
-        """Let the player skip the between-waves countdown early."""
-        if self.state == WaveState.BETWEEN_WAVES:
+        """Let the player start the first wave early (from
+        AWAITING_START) or skip the between-waves countdown early (from
+        BETWEEN_WAVES) -- both just zero out the countdown and let the
+        normal update() flow begin the wave on the next tick."""
+        if self.state == WaveState.AWAITING_START:
+            self.state = WaveState.BETWEEN_WAVES
+            self.between_wave_timer = 0.0
+        elif self.state == WaveState.BETWEEN_WAVES:
             self.between_wave_timer = 0.0
 
     def update(self, dt, active_enemies):
