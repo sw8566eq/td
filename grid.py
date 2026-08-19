@@ -175,44 +175,51 @@ class Grid:
 
     def _build_background(self, assets):
         """Render the whole grid once into an offscreen surface and cache
-        it. Off the path, each tile is drawn as its own
-        subtiles_per_tile x subtiles_per_tile mosaic of individually
-        rendered small tiles -- not one big sprite with lines drawn over
-        it -- with a small gap between them. A soft translucent base
-        (subtile_gap_alpha) is laid down under that mosaic first, so the
-        gap reveals a gentle tint rather than a hard cut straight through
-        to the background color. The path is left as one unbroken
-        full-size sprite -- no seams at all. Built once and blitted as a
-        single surface thereafter -- redrawing thousands of small tiles
-        every frame would be far more blits than the game needs."""
+        it -- built once and blitted as a single surface thereafter,
+        since redrawing thousands of small tiles every frame would be far
+        more blits than the game needs. The path is one unbroken
+        full-size sprite (see _blit_solid_tile); every other tile is a
+        mosaic of individually rendered small tiles (see
+        _blit_subtile_mosaic)."""
         background = pygame.Surface(
             (self.cols * self.tile_size, self.rows * self.tile_size), pygame.SRCALPHA,
         )
-        full_size = (self.tile_size, self.tile_size)
-        drawn_size = self.subtile_size - self.subtile_gap
-        small_size = (drawn_size, drawn_size)
-
-        base = pygame.Surface(full_size, pygame.SRCALPHA)
-        base.fill((0, 0, 0, self.subtile_gap_alpha))
+        # A soft translucent tile-sized tint, laid down under a mosaic
+        # before its small tiles are blitted on top, so the gap between
+        # them reveals a gentle tint rather than a hard cut straight
+        # through to the background color.
+        gap_tint = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
+        gap_tint.fill((0, 0, 0, self.subtile_gap_alpha))
 
         for row in range(self.rows):
             for col in range(self.cols):
-                x0, y0 = col * self.tile_size, row * self.tile_size
+                pos = (col * self.tile_size, row * self.tile_size)
                 name = self._tile_name(col, row)
-
                 if self.is_path(col, row):
-                    background.blit(assets.get(name, full_size), (x0, y0))
-                    continue
-
-                background.blit(base, (x0, y0))
-                sprite = assets.get(name, small_size)
-                for dr in range(self.subtiles_per_tile):
-                    for dc in range(self.subtiles_per_tile):
-                        x = x0 + dc * self.subtile_size
-                        y = y0 + dr * self.subtile_size
-                        background.blit(sprite, (x, y))
+                    self._blit_solid_tile(background, assets, name, pos)
+                else:
+                    self._blit_subtile_mosaic(background, assets, name, pos, gap_tint)
 
         return background
+
+    def _blit_solid_tile(self, background, assets, name, pos):
+        sprite = assets.get(name, (self.tile_size, self.tile_size))
+        background.blit(sprite, pos)
+
+    def _blit_subtile_mosaic(self, background, assets, name, pos, gap_tint):
+        """One buildable tile's subtiles_per_tile x subtiles_per_tile
+        mosaic of individually rendered small tiles -- not one big sprite
+        with lines drawn over it -- with a small gap between them."""
+        x0, y0 = pos
+        background.blit(gap_tint, pos)
+
+        drawn_size = self.subtile_size - self.subtile_gap
+        sprite = assets.get(name, (drawn_size, drawn_size))
+        for dr in range(self.subtiles_per_tile):
+            for dc in range(self.subtiles_per_tile):
+                x = x0 + dc * self.subtile_size
+                y = y0 + dr * self.subtile_size
+                background.blit(sprite, (x, y))
 
     def draw(self, surface, assets):
         if self._background is None:

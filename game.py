@@ -156,32 +156,7 @@ class Game:
             self.wave_manager.skip_delay()
             return
 
-        if self.upgrade_button_rect.collidepoint(pos):
-            subject = self._stats_panel_subject(self._hovered_tower())
-            if subject in self.towers and not subject.is_max_level:
-                self.try_upgrade_tower(subject)
-                return
-            # Falls through rather than returning when there's no
-            # upgrade to make: this rect is intentionally shared with the
-            # first Specialize button (see ui.build_specialize_button_rects
-            # -- Upgrade and Specialize are mutually exclusive states), so
-            # a maxed, specializable tower's click here needs to reach the
-            # specialize handling below instead of silently doing nothing.
-
-        for index, rect in enumerate(self.specialize_button_rects):
-            if not rect.collidepoint(pos):
-                continue
-            subject = self._stats_panel_subject(self._hovered_tower())
-            if subject in self.towers and subject.can_specialize:
-                keys = list(subject.SPECIALIZATIONS.keys())
-                if index < len(keys):
-                    self.try_specialize_tower(subject, keys[index])
-            return
-
-        if self.sell_button_rect.collidepoint(pos):
-            subject = self._stats_panel_subject(self._hovered_tower())
-            if subject in self.towers:  # a placed tower, not a build-menu class or None
-                self.try_sell_tower(subject)
+        if self._handle_panel_action_click(pos):
             return
 
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
@@ -202,6 +177,42 @@ class Game:
             self.try_place_tower(anchor_col, anchor_row)
         else:
             self.selected_tower = None  # clicked empty ground -> deselect
+
+    def _handle_panel_action_click(self, pos):
+        """Handles a click on the stats panel's Upgrade/Specialize/Sell
+        buttons. Returns True if `pos` was on one of them -- whether or
+        not it actually did anything, e.g. an unaffordable upgrade still
+        "belongs" to that button rather than falling through to the grid
+        underneath it -- so the caller knows to stop processing this click."""
+        subject = self._stats_panel_subject(self._hovered_tower())
+        is_tower = subject in self.towers  # not a build-menu class or None
+
+        if self.upgrade_button_rect.collidepoint(pos):
+            if is_tower and not subject.is_max_level:
+                self.try_upgrade_tower(subject)
+                return True
+            # Falls through rather than returning when there's no upgrade
+            # to make: this rect is intentionally shared with the first
+            # Specialize button (see ui.build_specialize_button_rects --
+            # Upgrade and Specialize are mutually exclusive states), so a
+            # maxed, specializable tower's click here needs to reach the
+            # specialize handling below instead of silently doing nothing.
+
+        for index, rect in enumerate(self.specialize_button_rects):
+            if not rect.collidepoint(pos):
+                continue
+            if is_tower and subject.can_specialize:
+                keys = list(subject.SPECIALIZATIONS.keys())
+                if index < len(keys):
+                    self.try_specialize_tower(subject, keys[index])
+            return True
+
+        if self.sell_button_rect.collidepoint(pos):
+            if is_tower:
+                self.try_sell_tower(subject)
+            return True
+
+        return False
 
     def try_place_tower(self, anchor_col, anchor_row):
         if not self.grid.is_buildable(anchor_col, anchor_row):

@@ -234,49 +234,73 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_
     panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
     pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
-
     x = panel_rect.x + PANEL_PADDING
-    y = PANEL_PADDING
 
     if subject is None:
-        for line in ("Select a tower to build,", "or click a placed tower to", "see its stats, upgrade, or sell it."):
-            hint = small_font.render(line, True, settings.COLOR_TEXT_DIM)
-            surface.blit(hint, (x, y))
-            y += PANEL_ROW_HEIGHT
+        _draw_panel_hint(surface, small_font, x)
         return
 
     is_placed = not inspect.isclass(subject)
     tower_cls = type(subject) if is_placed else subject
 
+    y = _draw_panel_header(surface, font, small_font, x, subject, is_placed, tower_cls, hovered_specialize_key)
+    _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
+
+    if is_placed:
+        _draw_panel_action_buttons(surface, small_font, subject, economy,
+                                    upgrade_button_rect, specialize_button_rects, sell_button_rect)
+
+
+def _draw_panel_hint(surface, small_font, x):
+    y = PANEL_PADDING
+    for line in ("Select a tower to build,", "or click a placed tower to", "see its stats, upgrade, or sell it."):
+        hint = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, (x, y))
+        y += PANEL_ROW_HEIGHT
+
+
+def _draw_panel_header(surface, font, small_font, x, subject, is_placed, tower_cls, hovered_specialize_key):
+    """Title, then either a placed tower's level/specialization line (plus
+    a "choose a specialization" hint and the hovered option's description
+    while eligible to) or a build-menu class's base cost. Returns the y
+    position the stat rows should start at."""
+    y = PANEL_PADDING
     title = font.render(tower_cls.display_name, True, settings.COLOR_TEXT)
     surface.blit(title, (x, y))
     y += 34
 
-    if is_placed:
-        level_line = f"Level {subject.level}/{tower_cls.MAX_LEVEL}"
-        if subject.specialization is not None:
-            spec_name = tower_cls.SPECIALIZATIONS[subject.specialization]["display_name"]
-            level_line += f" -- {spec_name}"
-        level_text = small_font.render(level_line, True, settings.COLOR_TEXT_DIM)
-        surface.blit(level_text, (x, y))
-        y += PANEL_ROW_HEIGHT
-        if subject.can_specialize:
-            hint = small_font.render("Choose a specialization:", True, settings.COLOR_TEXT_DIM)
-            surface.blit(hint, (x, y))
-            y += PANEL_ROW_HEIGHT
-            # Reserved whether or not anything's hovered, so the stat
-            # rows below don't jump up and down as the mouse moves.
-            if hovered_specialize_key is not None:
-                desc = tower_cls.SPECIALIZATIONS[hovered_specialize_key]["description"]
-                desc_text = small_font.render(desc, True, settings.COLOR_TEXT)
-                surface.blit(desc_text, (x, y))
-            y += PANEL_ROW_HEIGHT
-    else:
+    if not is_placed:
         cost_text = small_font.render(f"Cost: {tower_cls.cost}", True, settings.COLOR_GOLD)
         surface.blit(cost_text, (x, y))
-        y += PANEL_ROW_HEIGHT
-    y += 6  # small gap before the stat rows
+        return y + PANEL_ROW_HEIGHT + 6  # small gap before the stat rows
 
+    level_line = f"Level {subject.level}/{tower_cls.MAX_LEVEL}"
+    if subject.specialization is not None:
+        spec_name = tower_cls.SPECIALIZATIONS[subject.specialization]["display_name"]
+        level_line += f" -- {spec_name}"
+    level_text = small_font.render(level_line, True, settings.COLOR_TEXT_DIM)
+    surface.blit(level_text, (x, y))
+    y += PANEL_ROW_HEIGHT
+
+    if subject.can_specialize:
+        hint = small_font.render("Choose a specialization:", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, (x, y))
+        y += PANEL_ROW_HEIGHT
+        # Reserved whether or not anything's hovered, so the stat rows
+        # below don't jump up and down as the mouse moves.
+        if hovered_specialize_key is not None:
+            desc = tower_cls.SPECIALIZATIONS[hovered_specialize_key]["description"]
+            desc_text = small_font.render(desc, True, settings.COLOR_TEXT)
+            surface.blit(desc_text, (x, y))
+        y += PANEL_ROW_HEIGHT
+
+    return y + 6  # small gap before the stat rows
+
+
+def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
+    """Damage/Range/Fire rate (with a '-> value' preview of what the next
+    upgrade would change while not yet maxed) plus the tower's own
+    EXTRA_STATS."""
     show_upgrade_preview = is_placed and not subject.is_max_level
 
     def stat_row(label, current, previewed=None, suffix=""):
@@ -301,9 +325,12 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
-    if not is_placed:
-        return
 
+def _draw_panel_action_buttons(surface, small_font, subject, economy,
+                                upgrade_button_rect, specialize_button_rects, sell_button_rect):
+    """Upgrade (below MAX_LEVEL) or two Specialize choices (at MAX_LEVEL,
+    unspecialized) -- never both, see ACTION_AREA_TOP -- plus Sell,
+    always. `subject` is assumed to be a placed Tower instance."""
     def action_button(rect, text, affordable):
         color = settings.COLOR_BUTTON if affordable else settings.COLOR_BUTTON_DISABLED
         pygame.draw.rect(surface, color, rect, border_radius=6)
