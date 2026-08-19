@@ -102,6 +102,15 @@ class Enemy:
             self.is_dead = True
 
     def apply_slow(self, factor, duration):
+        # Guards like take_damage/apply_knockback do -- a hit that kills
+        # its target still runs the rest of _apply_hit_effects
+        # (Projectile), so without this an already-dead enemy's
+        # slow_timer/slow_multiplier still get mutated (harmless in
+        # practice today, since a dead enemy's update() returns before
+        # ever reading them, but not otherwise guaranteed and needlessly
+        # inconsistent with its two siblings).
+        if self.is_dead or self.reached_goal:
+            return
         # Keep the stronger of current vs. new slow so repeated hits refresh
         # rather than weaken the effect.
         self.slow_multiplier = min(self.slow_multiplier, factor)

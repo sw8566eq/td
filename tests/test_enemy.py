@@ -123,6 +123,25 @@ def test_apply_slow_keeps_stronger_of_current_and_new():
     assert enemy.slow_timer == 3.0
 
 
+def test_apply_slow_is_a_no_op_for_dead_or_finished_enemies():
+    # Matches apply_knockback's guard: a hit that kills its target still
+    # runs the rest of Projectile._apply_hit_effects, so without this an
+    # already-dead enemy's slow state would still get mutated.
+    dead = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    dead.apply_slow(factor=0.1, duration=5.0)
+    assert dead.slow_multiplier == 1.0
+    assert dead.slow_timer == 0.0
+
+    finished = GruntEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    finished.apply_slow(factor=0.1, duration=5.0)
+    assert finished.slow_multiplier == 1.0
+    assert finished.slow_timer == 0.0
+
+
 def test_slow_expires_after_its_duration():
     enemy = GruntEnemy(WAYPOINTS, wave_number=1)
     enemy.apply_slow(factor=0.5, duration=1.0)

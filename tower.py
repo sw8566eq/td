@@ -198,10 +198,18 @@ class Tower:
         self.cooldown = 1.0 / self.fire_rate
 
     def acquire_target(self, enemies):
-        """In-range, non-dead enemy furthest along the path -- more robust
-        than raw proximity on a path with switchbacks, and works unchanged
-        regardless of which enemy species are involved."""
-        candidates = [e for e in enemies if not e.is_dead and self.in_range(e)]
+        """In-range, still-on-the-path enemy furthest along it -- more
+        robust than raw proximity on a path with switchbacks, and works
+        unchanged regardless of which enemy species are involved. Must
+        exclude enemies that already reached the goal, not just dead
+        ones: Game.update() runs every tower's update() before it filters
+        reached-goal enemies out of the live list for this frame, so
+        without this check a tower could fire a brand-new shot at an
+        enemy that's already effectively gone -- and since "furthest
+        along the path" is the whole ranking, a just-arrived enemy would
+        usually *win* that ranking over every real threat still on the
+        path."""
+        candidates = [e for e in enemies if not e.is_dead and not e.reached_goal and self.in_range(e)]
         if not candidates:
             return None
         return max(candidates, key=lambda e: e.distance_traveled)

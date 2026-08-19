@@ -215,6 +215,8 @@ class Game:
         return False
 
     def try_place_tower(self, anchor_col, anchor_row):
+        if self.selected_tower_name is None:
+            return False
         if not self.grid.is_buildable(anchor_col, anchor_row):
             return False
 
@@ -230,6 +232,8 @@ class Game:
         return True
 
     def try_upgrade_tower(self, tower):
+        if tower not in self.towers:
+            return False
         cost = tower.upgrade_cost()
         if cost is None or not self.economy.can_afford(cost):
             return False
@@ -239,6 +243,8 @@ class Game:
         return True
 
     def try_specialize_tower(self, tower, key):
+        if tower not in self.towers:
+            return False
         if not tower.can_specialize or key not in tower.SPECIALIZATIONS:
             return False
         cost = tower.specialization_cost()

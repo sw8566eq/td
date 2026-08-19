@@ -34,9 +34,16 @@ class Projectile:
         if self.dead:
             return
 
-        if self.target.is_dead:
-            # Target died before impact -- discard as a dud rather than
-            # retargeting (a deliberate MVP simplification).
+        if self.target.is_dead or self.target.reached_goal:
+            # Target died, or reached the goal, before impact -- discard
+            # as a dud rather than retargeting (a deliberate MVP
+            # simplification). Without the reached_goal check, a shot
+            # already in flight when its target reaches the goal would
+            # still connect: reached_goal enemies stop moving (see
+            # Enemy.update) but stay in memory as long as something still
+            # references them, so the projectile would keep homing in on
+            # wherever they stopped and "hit" an enemy that's already
+            # left the level.
             self.dead = True
             return
 
@@ -53,7 +60,7 @@ class Projectile:
     def _resolve_hit(self, impact_pos, enemies):
         if self.splash_radius > 0:
             for enemy in enemies:
-                if enemy.is_dead:
+                if enemy.is_dead or enemy.reached_goal:
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
                     self._apply_hit_effects(enemy)
@@ -76,7 +83,7 @@ class Projectile:
             next_target = None
             next_distance = None
             for enemy in enemies:
-                if enemy.is_dead or enemy in hit:
+                if enemy.is_dead or enemy.reached_goal or enemy in hit:
                     continue
                 distance = current.pos.distance_to(enemy.pos)
                 if distance <= self.chain_range and (next_target is None or distance < next_distance):

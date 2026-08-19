@@ -667,6 +667,19 @@ def test_try_specialize_tower_fails_for_an_unknown_key(playing_game):
     assert tower.specialization is None
 
 
+def test_try_specialize_tower_fails_for_a_tower_not_on_the_field(playing_game):
+    stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    playing_game.economy.gold = 10_000
+    while not stray_tower.is_max_level:
+        stray_tower.upgrade()
+    gold_before = playing_game.economy.gold
+
+    assert playing_game.try_specialize_tower(stray_tower, "power") is False
+
+    assert stray_tower.specialization is None
+    assert playing_game.economy.gold == gold_before
+
+
 def test_clicking_a_specialize_button_specializes_the_pinned_tower(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -811,6 +824,16 @@ def test_try_place_tower_succeeds_with_zero_gold_under_unlimited_gold(playing_ga
     assert playing_game.economy.gold == 0  # not actually deducted
 
 
+def test_try_place_tower_fails_when_nothing_selected(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    assert playing_game.selected_tower_name is None
+
+    assert playing_game.try_place_tower(anchor_col, anchor_row) is False
+
+    assert not playing_game.grid.is_occupied(anchor_col, anchor_row)
+    assert playing_game.economy.gold == playing_game.level.starting_gold
+
+
 def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -833,6 +856,17 @@ def test_try_upgrade_tower_fails_when_unaffordable(playing_game):
 
     assert playing_game.try_upgrade_tower(tower) is False
     assert tower.level == 1
+
+
+def test_try_upgrade_tower_fails_for_a_tower_not_on_the_field(playing_game):
+    stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    playing_game.economy.gold = 10_000
+    gold_before = playing_game.economy.gold
+
+    assert playing_game.try_upgrade_tower(stray_tower) is False
+
+    assert stray_tower.level == 1
+    assert playing_game.economy.gold == gold_before
 
 
 def test_try_upgrade_tower_fails_at_max_level(playing_game):
