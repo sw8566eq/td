@@ -2,9 +2,12 @@ import settings
 from tower import TOWER_TYPES, BasicTower, CannonTower
 
 
-def make_tower(tower_cls=BasicTower, col=0, row=0):
-    pixel_pos = (col * settings.TILE_SIZE + settings.TILE_SIZE / 2, row * settings.TILE_SIZE + settings.TILE_SIZE / 2)
-    return tower_cls(col=col, row=row, pixel_pos=pixel_pos)
+def make_tower(tower_cls=BasicTower, anchor_col=0, anchor_row=0):
+    pixel_pos = (
+        anchor_col * settings.SUBTILE_SIZE + settings.TILE_SIZE / 2,
+        anchor_row * settings.SUBTILE_SIZE + settings.TILE_SIZE / 2,
+    )
+    return tower_cls(anchor_col=anchor_col, anchor_row=anchor_row, pixel_pos=pixel_pos)
 
 
 def test_new_tower_starts_at_level_one_with_base_stats():
@@ -177,10 +180,10 @@ def test_basic_tower_has_no_extra_stats():
 
 
 def test_upgrade_badge_sits_in_the_tiles_top_right_corner():
-    tower = make_tower(col=2, row=3)
+    tower = make_tower(anchor_col=2, anchor_row=3)
     cx, cy = tower.upgrade_badge_center()
 
-    tile_left, tile_top = 2 * settings.TILE_SIZE, 3 * settings.TILE_SIZE
+    tile_left, tile_top = 2 * settings.SUBTILE_SIZE, 3 * settings.SUBTILE_SIZE
     assert tile_left < cx < tile_left + settings.TILE_SIZE
     assert tile_top < cy < tile_top + settings.TILE_SIZE
     # top-right, not centered or bottom-left
@@ -210,8 +213,8 @@ def test_maxed_out_tower_has_no_clickable_badge():
 
 
 def test_contains_point_is_true_anywhere_on_the_tile_not_just_the_badge():
-    tower = make_tower(col=2, row=3)
-    tile_left, tile_top = 2 * settings.TILE_SIZE, 3 * settings.TILE_SIZE
+    tower = make_tower(anchor_col=2, anchor_row=3)
+    tile_left, tile_top = 2 * settings.SUBTILE_SIZE, 3 * settings.SUBTILE_SIZE
 
     # The tile's center is nowhere near the badge (top-right corner), but
     # hovering it should still count for showing stats/range.
@@ -221,7 +224,7 @@ def test_contains_point_is_true_anywhere_on_the_tile_not_just_the_badge():
 
 
 def test_contains_point_is_false_outside_the_tile():
-    tower = make_tower(col=2, row=3)
+    tower = make_tower(anchor_col=2, anchor_row=3)
     assert not tower.contains_point((10_000, 10_000))
 
 

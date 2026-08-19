@@ -63,9 +63,9 @@ class Tower:
     # lists it here and the panel picks it up automatically.
     EXTRA_STATS = ()
 
-    def __init__(self, col, row, pixel_pos):
-        self.col = col
-        self.row = row
+    def __init__(self, anchor_col, anchor_row, pixel_pos):
+        self.anchor_col = anchor_col
+        self.anchor_row = anchor_row
         self.pos = pygame.Vector2(pixel_pos)
         self.cooldown = 0.0
         self.level = 1
@@ -150,8 +150,10 @@ class Tower:
         raise NotImplementedError
 
     def tile_rect(self):
-        """pygame.Rect for the grid tile this tower occupies."""
-        return pygame.Rect(self.col * settings.TILE_SIZE, self.row * settings.TILE_SIZE,
+        """pygame.Rect for this tower's footprint -- always one tile's
+        worth of area (settings.TILE_SIZE square), positioned at its
+        subtile anchor rather than a tile boundary."""
+        return pygame.Rect(self.anchor_col * settings.SUBTILE_SIZE, self.anchor_row * settings.SUBTILE_SIZE,
                             settings.TILE_SIZE, settings.TILE_SIZE)
 
     def contains_point(self, pos):
@@ -168,8 +170,8 @@ class Tower:
     BADGE_RADIUS = 9
 
     def upgrade_badge_center(self):
-        tile_left = self.col * settings.TILE_SIZE
-        tile_top = self.row * settings.TILE_SIZE
+        tile_left = self.anchor_col * settings.SUBTILE_SIZE
+        tile_top = self.anchor_row * settings.SUBTILE_SIZE
         inset = self.BADGE_RADIUS + 2
         return (tile_left + settings.TILE_SIZE - inset, tile_top + inset)
 

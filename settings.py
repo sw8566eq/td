@@ -15,6 +15,22 @@ TILE_SIZE = 64
 GRID_COLS = 15
 GRID_ROWS = 9
 
+# Tower placement works at finer-than-tile granularity: each tile is cut
+# into an 8x8 grid of small tiles, and a tower's required footprint is
+# exactly one tile's worth of area (8x8 subtiles) but can be anchored at
+# any subtile, not just a tile boundary -- see Grid.placement_anchor. 8
+# divides TILE_SIZE evenly, so every pixel<->subtile conversion is exact
+# integer math with no rounding edge cases.
+SUBTILES_PER_TILE = 8
+SUBTILE_SIZE = TILE_SIZE // SUBTILES_PER_TILE
+# How each buildable tile's subtile mosaic is drawn (see Grid.draw): each
+# small tile is inset by SUBTILE_GAP pixels, and SUBTILE_GAP_ALPHA (0-255)
+# controls how visible the soft tint showing through that gap is -- kept
+# low so the seam reads as gentle rather than a hard, high-contrast cut.
+# Never shown on the path (see Grid), which stays one unbroken tile.
+SUBTILE_GAP = 1
+SUBTILE_GAP_ALPHA = 60
+
 # --- Window ---
 HUD_HEIGHT = 96
 # PLAY_WIDTH is the grid + the HUD bar beneath it; PANEL_WIDTH is the tower
@@ -43,3 +59,5 @@ COLOR_BUTTON_HOVER = (85, 85, 115)
 COLOR_BUTTON_DISABLED = (45, 45, 50)
 COLOR_BUTTON_SELECTED = (110, 150, 90)
 COLOR_RANGE_PREVIEW = (255, 255, 255)
+COLOR_FOOTPRINT_VALID = (255, 255, 255)
+COLOR_FOOTPRINT_INVALID = (220, 60, 60)

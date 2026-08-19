@@ -122,6 +122,19 @@ def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect)
     surface.blit(label, label.get_rect(center=skip_button_rect.center))
 
 
+def draw_footprint_preview(surface, grid, anchor_col, anchor_row, buildable):
+    """Outline of the tile-sized footprint a tower would occupy if placed
+    at subtile anchor (anchor_col, anchor_row) -- lets the player see the
+    footprint move in fine (sub-tile) increments while hovering the grid,
+    colored by whether it's currently buildable."""
+    rect = pygame.Rect(
+        anchor_col * grid.subtile_size, anchor_row * grid.subtile_size,
+        grid.tile_size, grid.tile_size,
+    )
+    color = settings.COLOR_FOOTPRINT_VALID if buildable else settings.COLOR_FOOTPRINT_INVALID
+    pygame.draw.rect(surface, color, rect, width=2)
+
+
 def draw_range_preview(surface, tower_cls, pixel_pos):
     pygame.draw.circle(
         surface, settings.COLOR_RANGE_PREVIEW,

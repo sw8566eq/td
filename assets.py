@@ -86,14 +86,29 @@ class AssetManager:
         surface = pygame.Surface((w, h), pygame.SRCALPHA)
         outline = (min(color[0] + 60, 255), min(color[1] + 60, 255), min(color[2] + 60, 255))
 
+        # Corner rounding and the outline stroke are tuned for normal
+        # sprite sizes (tens of pixels); at very small sizes (e.g. the
+        # mosaic of small map tiles Grid draws) there aren't enough
+        # pixels left for either without the shape collapsing into a dot,
+        # so fall back to a plain filled shape below that size instead.
+        short_side = min(w, h)
+        plain = short_side < 12
+        outline_width = 2 if short_side >= 16 else 1
+
         if shape == "circle":
-            radius = min(w, h) // 2 - 1
+            radius = short_side // 2 - 1
             center = (w // 2, h // 2)
             pygame.draw.circle(surface, color, center, radius)
-            pygame.draw.circle(surface, outline, center, radius, width=2)
-        else:  # "rect"
+            if not plain:
+                pygame.draw.circle(surface, outline, center, radius, width=outline_width)
+        elif plain:  # "rect", plain: fill edge-to-edge -- a 1px inset here
+            # would stack with any gap the caller already inset the
+            # requested size by (e.g. Grid's subtile mosaic), doubling it
+            surface.fill(color)
+        else:  # "rect", normal size: inset with a rounded border
             rect = pygame.Rect(1, 1, w - 2, h - 2)
-            pygame.draw.rect(surface, color, rect, border_radius=4)
-            pygame.draw.rect(surface, outline, rect, width=2, border_radius=4)
+            corner_radius = min(4, short_side // 3)
+            pygame.draw.rect(surface, color, rect, border_radius=corner_radius)
+            pygame.draw.rect(surface, outline, rect, width=outline_width, border_radius=corner_radius)
 
         return surface

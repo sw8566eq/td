@@ -32,18 +32,20 @@ def playing_game(game):
     return game
 
 
-def find_buildable_cell(game, *, adjacent_to_path=False):
-    """A buildable (col, row); optionally one touching the path, for
-    tests that care about tower coverage rather than just placement."""
+def find_buildable_anchor(game, *, adjacent_to_path=False):
+    """A buildable placement anchor (tile-aligned, i.e. (col, row) *
+    SUBTILES_PER_TILE); optionally one touching the path, for tests that
+    care about tower coverage rather than just placement."""
+    n = settings.SUBTILES_PER_TILE
     for row in range(settings.GRID_ROWS):
         for col in range(settings.GRID_COLS):
-            if not game.grid.is_buildable(col, row):
+            if not game.grid.is_buildable(col * n, row * n):
                 continue
             if not adjacent_to_path:
-                return col, row
+                return col * n, row * n
             for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
                 if game.grid.is_path(col + dc, row + dr):
-                    return col, row
+                    return col * n, row * n
     raise AssertionError("no matching buildable cell found")
 
 
@@ -250,20 +252,20 @@ def test_clicks_are_ignored_entirely_outside_playing(game):
 # --- Click handling: placing towers ---
 
 def test_clicking_a_buildable_cell_with_a_tower_selected_places_it(playing_game):
-    col, row = find_buildable_cell(playing_game)
-    center = playing_game.grid.tile_to_pixel_center(col, row)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
     playing_game.selected_tower_name = "basic"
 
     playing_game._handle_click((int(center.x), int(center.y)))
 
     assert len(playing_game.towers) == 1
-    assert playing_game.grid.is_occupied(col, row)
+    assert playing_game.grid.is_occupied(anchor_col, anchor_row)
     assert playing_game.economy.gold == playing_game.level.starting_gold - BasicTower.cost
 
 
 def test_clicking_a_buildable_cell_with_nothing_selected_does_nothing(playing_game):
-    col, row = find_buildable_cell(playing_game)
-    center = playing_game.grid.tile_to_pixel_center(col, row)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
 
     playing_game._handle_click((int(center.x), int(center.y)))
 
@@ -281,8 +283,8 @@ def test_clicking_a_path_cell_never_places_a_tower(playing_game):
 
 
 def test_clicking_to_place_an_unaffordable_tower_does_nothing(playing_game):
-    col, row = find_buildable_cell(playing_game)
-    center = playing_game.grid.tile_to_pixel_center(col, row)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
     playing_game.economy.gold = 0
     playing_game.selected_tower_name = "basic"
 
@@ -294,11 +296,11 @@ def test_clicking_to_place_an_unaffordable_tower_does_nothing(playing_game):
 # --- Click handling: upgrading towers ---
 
 def test_clicking_a_towers_badge_upgrades_it(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    center = playing_game.grid.tile_to_pixel_center(col, row)
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
     playing_game._handle_click((int(center.x), int(center.y)))
-    tower = playing_game.grid.get_tower(col, row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     gold_before = playing_game.economy.gold
     upgrade_cost = tower.upgrade_cost()
 
@@ -310,11 +312,11 @@ def test_clicking_a_towers_badge_upgrades_it(playing_game):
 
 
 def test_clicking_elsewhere_on_a_placed_tower_does_not_upgrade_it(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    center = playing_game.grid.tile_to_pixel_center(col, row)
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
     playing_game._handle_click((int(center.x), int(center.y)))
-    tower = playing_game.grid.get_tower(col, row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
 
     playing_game._handle_click((int(center.x), int(center.y)))  # tile center, not the badge
 
@@ -344,32 +346,33 @@ def test_right_click_is_ignored_outside_playing(game):
 # --- try_place_tower / try_upgrade_tower directly ---
 
 def test_try_place_tower_succeeds_and_deducts_gold(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    assert playing_game.try_place_tower(col, row) is True
+    assert playing_game.try_place_tower(anchor_col, anchor_row) is True
     assert playing_game.economy.gold == playing_game.level.starting_gold - BasicTower.cost
 
 
 def test_try_place_tower_fails_on_non_buildable_cell(playing_game):
     path_col, path_row = next(iter(playing_game.grid.path_cells))
+    n = settings.SUBTILES_PER_TILE
     playing_game.selected_tower_name = "basic"
-    assert playing_game.try_place_tower(path_col, path_row) is False
+    assert playing_game.try_place_tower(path_col * n, path_row * n) is False
     assert playing_game.economy.gold == playing_game.level.starting_gold
 
 
 def test_try_place_tower_fails_when_unaffordable(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.economy.gold = 0
     playing_game.selected_tower_name = "basic"
-    assert playing_game.try_place_tower(col, row) is False
-    assert not playing_game.grid.is_occupied(col, row)
+    assert playing_game.try_place_tower(anchor_col, anchor_row) is False
+    assert not playing_game.grid.is_occupied(anchor_col, anchor_row)
 
 
 def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     gold_before = playing_game.economy.gold
     cost = tower.upgrade_cost()
 
@@ -379,10 +382,10 @@ def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
 
 
 def test_try_upgrade_tower_fails_when_unaffordable(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     playing_game.economy.gold = 0
 
     assert playing_game.try_upgrade_tower(tower) is False
@@ -390,10 +393,10 @@ def test_try_upgrade_tower_fails_when_unaffordable(playing_game):
 
 
 def test_try_upgrade_tower_fails_at_max_level(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     playing_game.economy.gold = 10_000
     while not tower.is_max_level:
         playing_game.try_upgrade_tower(tower)
@@ -484,9 +487,9 @@ def test_all_waves_complete_but_enemies_still_alive_does_not_trigger_victory(pla
 
 
 def test_dead_projectiles_never_linger_in_the_list(playing_game):
-    col, row = find_buildable_cell(playing_game, adjacent_to_path=True)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game, adjacent_to_path=True)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
     playing_game.wave_manager.skip_delay()
 
     for _ in range(300):
@@ -566,10 +569,10 @@ def test_render_with_a_tower_selected_does_not_crash(playing_game):
 
 
 def test_render_while_hovering_a_placed_tower_does_not_crash(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     mock_mouse_pos((int(tower.pos.x), int(tower.pos.y)))
     try:
         playing_game.render()
@@ -588,10 +591,10 @@ def test_hovered_tower_is_none_when_mouse_is_far_from_every_tower(playing_game):
 
 
 def test_hovered_tower_matches_the_tower_under_the_mouse(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
 
     mock_mouse_pos((int(tower.pos.x), int(tower.pos.y)))
     try:
@@ -601,10 +604,10 @@ def test_hovered_tower_matches_the_tower_under_the_mouse(playing_game):
 
 
 def test_stats_panel_subject_prefers_hovered_tower_over_selection(playing_game):
-    col, row = find_buildable_cell(playing_game)
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
-    playing_game.try_place_tower(col, row)
-    tower = playing_game.grid.get_tower(col, row)
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
     playing_game.selected_tower_name = "cannon"  # still "selected" for building
 
     assert playing_game._stats_panel_subject(hovered_tower=tower) is tower
