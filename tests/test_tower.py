@@ -66,6 +66,29 @@ def test_lightning_tower_chain_has_no_target_cap():
     assert LightningTower.max_chain_targets == float("inf")
 
 
+def test_lightning_tower_specialization_boosts_carry_through_to_the_projectile():
+    # Confirms the boost isn't just sitting inert on the Tower -- since
+    # create_projectile() reads chain_range/damage straight off self,
+    # every shot fired after specializing should reflect it.
+    arc_reach_tower = LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(LightningTower.MAX_LEVEL - 1):
+        arc_reach_tower.upgrade()
+    base_chain_range = arc_reach_tower.chain_range
+    arc_reach_tower.specialize("arc_reach")
+    projectile = arc_reach_tower.create_projectile(FakeEnemy())
+    assert projectile.chain_range == arc_reach_tower.chain_range
+    assert projectile.chain_range > base_chain_range
+
+    overcharge_tower = LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(LightningTower.MAX_LEVEL - 1):
+        overcharge_tower.upgrade()
+    base_damage = overcharge_tower.damage
+    overcharge_tower.specialize("overcharge")
+    projectile = overcharge_tower.create_projectile(FakeEnemy())
+    assert projectile.damage == overcharge_tower.damage
+    assert projectile.damage > base_damage
+
+
 def test_other_towers_do_not_chain():
     for name, tower_cls in TOWER_TYPES.items():
         if name == "lightning":

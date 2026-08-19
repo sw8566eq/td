@@ -314,6 +314,7 @@ class Game:
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
             self.upgrade_button_rect, self.specialize_button_rects, self.sell_button_rect,
+            self._hovered_specialize_key(panel_subject),
         )
 
         if self.state == GameState.PAUSED:
@@ -350,6 +351,21 @@ class Game:
         for tower in self.towers:
             if tower.contains_point(mouse_pos):
                 return tower
+        return None
+
+    def _hovered_specialize_key(self, panel_subject):
+        """Which of panel_subject's SPECIALIZATIONS the mouse is
+        currently over (its Specialize button in the stats panel), or
+        None -- lets the panel show that option's description text while
+        it's hovered. Only meaningful while the panel is actually showing
+        a specializable tower's choice buttons."""
+        if panel_subject not in self.towers or not panel_subject.can_specialize:
+            return None
+        mouse_pos = pygame.mouse.get_pos()
+        keys = list(panel_subject.SPECIALIZATIONS.keys())
+        for index, rect in enumerate(self.specialize_button_rects):
+            if index < len(keys) and rect.collidepoint(mouse_pos):
+                return keys[index]
         return None
 
     def _stats_panel_subject(self, hovered_tower):

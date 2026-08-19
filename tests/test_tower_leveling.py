@@ -1,5 +1,5 @@
 import settings
-from tower import TOWER_TYPES, BasicTower, CannonTower
+from tower import TOWER_TYPES, BasicTower, CannonTower, LightningTower
 
 
 def make_tower(tower_cls=BasicTower, anchor_col=0, anchor_row=0):
@@ -170,6 +170,36 @@ def test_specialization_stat_multipliers_reference_real_attributes():
         for key, spec in tower_cls.SPECIALIZATIONS.items():
             for stat_name in spec["stat_multipliers"]:
                 assert hasattr(tower, stat_name), f"{name}: {key}: {stat_name}"
+
+
+def test_lightning_tower_overrides_the_generic_specializations():
+    # Its own mechanic-specific options, not the generic Power/Precision
+    # every other tower currently falls back to.
+    assert set(LightningTower.SPECIALIZATIONS.keys()) == {"arc_reach", "overcharge"}
+
+
+def test_lightning_tower_arc_reach_boosts_chain_range_only():
+    tower = _max_out(make_tower(LightningTower))
+    base_chain_range = tower.chain_range
+    base_damage = tower.damage
+    multiplier = LightningTower.SPECIALIZATIONS["arc_reach"]["stat_multipliers"]["chain_range"]
+
+    assert tower.specialize("arc_reach") is True
+
+    assert tower.chain_range == base_chain_range * multiplier
+    assert tower.damage == base_damage  # unaffected
+
+
+def test_lightning_tower_overcharge_boosts_damage_only():
+    tower = _max_out(make_tower(LightningTower))
+    base_chain_range = tower.chain_range
+    base_damage = tower.damage
+    multiplier = LightningTower.SPECIALIZATIONS["overcharge"]["stat_multipliers"]["damage"]
+
+    assert tower.specialize("overcharge") is True
+
+    assert tower.damage == base_damage * multiplier
+    assert tower.chain_range == base_chain_range  # unaffected
 
 
 def test_only_stats_in_level_scaled_stats_change_on_upgrade():

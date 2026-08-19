@@ -552,6 +552,67 @@ def test_clicking_that_shared_rect_does_nothing_once_already_specialized(playing
     assert playing_game.economy.gold == gold_before
 
 
+def test_hovered_specialize_key_is_none_when_not_hovering_either_button(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+
+    mock_mouse_pos((0, 0))  # nowhere near either specialize button
+    try:
+        assert playing_game._hovered_specialize_key(tower) is None
+    finally:
+        clear_mouse_mock()
+
+
+def test_hovered_specialize_key_matches_the_hovered_button(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+
+    second_button = playing_game.specialize_button_rects[1]
+    mock_mouse_pos(second_button.center)
+    try:
+        expected_key = list(tower.SPECIALIZATIONS.keys())[1]
+        assert playing_game._hovered_specialize_key(tower) == expected_key
+    finally:
+        clear_mouse_mock()
+
+
+def test_hovered_specialize_key_is_none_once_already_specialized(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.try_specialize_tower(tower, "power")
+
+    second_button = playing_game.specialize_button_rects[1]
+    mock_mouse_pos(second_button.center)
+    try:
+        assert playing_game._hovered_specialize_key(tower) is None
+    finally:
+        clear_mouse_mock()
+
+
+def test_hovered_specialize_key_is_none_for_a_non_tower_subject(playing_game):
+    mock_mouse_pos(playing_game.specialize_button_rects[1].center)
+    try:
+        assert playing_game._hovered_specialize_key(None) is None
+        assert playing_game._hovered_specialize_key(BasicTower) is None
+    finally:
+        clear_mouse_mock()
+
+
 def test_try_specialize_tower_succeeds_and_deducts_gold(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"

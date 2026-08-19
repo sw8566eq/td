@@ -216,8 +216,8 @@ def draw_tower_range_preview(surface, tower):
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
 
 
-def draw_tower_stats_panel(surface, font, small_font, subject, economy,
-                            upgrade_button_rect, specialize_button_rects, sell_button_rect):
+def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_button_rect,
+                            specialize_button_rects, sell_button_rect, hovered_specialize_key=None):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -225,7 +225,8 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy,
         stay pinned open -- shows its live stats, with a '-> value'
         preview of what upgrading would change; an Upgrade button below
         MAX_LEVEL, or two Specialize choices once at MAX_LEVEL and not
-        yet specialized; and a Sell button), or
+        yet specialized (hovering one shows its description via
+        `hovered_specialize_key`); and a Sell button), or
       - None (nothing selected/hovered -- shows a hint instead).
     Reads EXTRA_STATS off the tower class so a new tower type's special
     stats (splash, slow, knockback, ...) show up here with no changes to
@@ -262,6 +263,13 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy,
         if subject.can_specialize:
             hint = small_font.render("Choose a specialization:", True, settings.COLOR_TEXT_DIM)
             surface.blit(hint, (x, y))
+            y += PANEL_ROW_HEIGHT
+            # Reserved whether or not anything's hovered, so the stat
+            # rows below don't jump up and down as the mouse moves.
+            if hovered_specialize_key is not None:
+                desc = tower_cls.SPECIALIZATIONS[hovered_specialize_key]["description"]
+                desc_text = small_font.render(desc, True, settings.COLOR_TEXT)
+                surface.blit(desc_text, (x, y))
             y += PANEL_ROW_HEIGHT
     else:
         cost_text = small_font.render(f"Cost: {tower_cls.cost}", True, settings.COLOR_GOLD)

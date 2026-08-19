@@ -80,7 +80,7 @@ class Tower:
         },
         "precision": {
             "display_name": "Precision",
-            "description": "Reaches further and fires faster.",
+            "description": "+Range and fire rate.",
             "stat_multipliers": {"range": 1.2, "fire_rate": 1.2},
         },
     }
@@ -402,6 +402,23 @@ class LightningTower(Tower):
         ("Chain range", "chain_range", _format_px),
         ("Max targets", "max_chain_targets", _format_count),
     )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Lightning's own mechanic instead: a longer reach between
+    # chain links, or more damage on every link a bolt hits (not just the
+    # first target) -- create_projectile() below reads both straight off
+    # self, so a chosen specialization applies to every shot fired after.
+    SPECIALIZATIONS = {
+        "arc_reach": {
+            "display_name": "Arc Reach",
+            "description": "Chains reach further.",
+            "stat_multipliers": {"chain_range": 1.6},
+        },
+        "overcharge": {
+            "display_name": "Overcharge",
+            "description": "Harder-hitting chains.",
+            "stat_multipliers": {"damage": 1.5},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(

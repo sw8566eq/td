@@ -1,7 +1,9 @@
 import pygame
 
 import settings
+from tower import TOWER_TYPES
 from ui import (
+    PANEL_PADDING,
     build_button_rects,
     build_sell_button_rect,
     build_skip_button_rect,
@@ -92,3 +94,19 @@ def test_first_specialize_button_shares_the_upgrade_buttons_slot():
     # ones that use the *second* specialize rect where that ambiguity
     # doesn't apply.
     assert build_specialize_button_rects()[0] == build_upgrade_button_rect()
+
+
+def test_specialization_descriptions_fit_the_panel_width():
+    # draw_tower_stats_panel shows a hovered specialize option's
+    # description on one line at this same font/width -- catches a
+    # description that's been edited long enough to overflow, silently
+    # spilling into (or past) the panel's edge rather than erroring.
+    pygame.font.init()
+    small_font = pygame.font.SysFont(None, 22)  # matches Game.small_font
+    usable_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+    for name, tower_cls in TOWER_TYPES.items():
+        for key, spec in tower_cls.SPECIALIZATIONS.items():
+            width = small_font.size(spec["description"])[0]
+            assert width <= usable_width, (
+                f"{name}/{key}: {spec['description']!r} is {width}px, panel fits {usable_width}px"
+            )
