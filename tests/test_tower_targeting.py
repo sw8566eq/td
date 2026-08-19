@@ -14,7 +14,7 @@ class FakeEnemy:
 
 
 def make_tower(range_=100):
-    tower = BasicTower(col=0, row=0, pixel_pos=(0, 0))
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
     tower.range = range_
     return tower
 

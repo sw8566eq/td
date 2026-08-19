@@ -63,9 +63,9 @@ class Tower:
     # lists it here and the panel picks it up automatically.
     EXTRA_STATS = ()
 
-    def __init__(self, col, row, pixel_pos):
-        self.col = col
-        self.row = row
+    def __init__(self, anchor_col, anchor_row, pixel_pos):
+        self.anchor_col = anchor_col
+        self.anchor_row = anchor_row
         self.pos = pygame.Vector2(pixel_pos)
         self.cooldown = 0.0
         self.level = 1
@@ -73,6 +73,10 @@ class Tower:
         # every upgrade recomputes from the true base rather than
         # compounding on an already-scaled number.
         self._base_stats = {name: getattr(self, name) for name in self.LEVEL_SCALED_STATS}
+        # Total gold spent placing and upgrading this tower -- what a sale
+        # refunds a fraction of, so upgrading then selling isn't a loss on
+        # top of the upgrade itself. See sell_value().
+        self.total_invested = self.cost
 
     @property
     def is_max_level(self):
@@ -95,11 +99,18 @@ class Tower:
         its level-1 base. No-op (returns False) once at MAX_LEVEL."""
         if self.is_max_level:
             return False
+        self.total_invested += self.upgrade_cost()
         self.level += 1
         for name, base_value in self._base_stats.items():
             multiplier = self._multiplier_table_for(name)[self.level]
             setattr(self, name, base_value * multiplier)
         return True
+
+    def sell_value(self):
+        """Gold refunded if this tower is sold right now -- a fraction
+        (settings.SELL_REFUND_FRACTION) of everything spent on it, base
+        cost plus any upgrades, not just the base cost."""
+        return round(self.total_invested * settings.SELL_REFUND_FRACTION)
 
     def _stat_after_next_upgrade(self, name):
         """What LEVEL_SCALED_STATS entry `name` would become after one
@@ -150,8 +161,10 @@ class Tower:
         raise NotImplementedError
 
     def tile_rect(self):
-        """pygame.Rect for the grid tile this tower occupies."""
-        return pygame.Rect(self.col * settings.TILE_SIZE, self.row * settings.TILE_SIZE,
+        """pygame.Rect for this tower's footprint -- always one tile's
+        worth of area (settings.TILE_SIZE square), positioned at its
+        subtile anchor rather than a tile boundary."""
+        return pygame.Rect(self.anchor_col * settings.SUBTILE_SIZE, self.anchor_row * settings.SUBTILE_SIZE,
                             settings.TILE_SIZE, settings.TILE_SIZE)
 
     def contains_point(self, pos):
@@ -168,8 +181,8 @@ class Tower:
     BADGE_RADIUS = 9
 
     def upgrade_badge_center(self):
-        tile_left = self.col * settings.TILE_SIZE
-        tile_top = self.row * settings.TILE_SIZE
+        tile_left = self.anchor_col * settings.SUBTILE_SIZE
+        tile_top = self.anchor_row * settings.SUBTILE_SIZE
         inset = self.BADGE_RADIUS + 2
         return (tile_left + settings.TILE_SIZE - inset, tile_top + inset)
 
@@ -184,7 +197,13 @@ class Tower:
         return dx * dx + dy * dy <= self.BADGE_RADIUS ** 2
 
     def draw(self, surface, assets, font=None):
-        size = (settings.TILE_SIZE - 8, settings.TILE_SIZE - 8)
+        # Sized almost edge-to-edge with the footprint (settings.TILE_SIZE
+        # square) rather than with a big margin, so the sprite's own edges
+        # make it obvious which subtiles the tower's anchor actually
+        # covers -- the margin is just the same subtile gap the map's own
+        # mosaic uses, not an arbitrary inset.
+        margin = 2 * settings.SUBTILE_GAP
+        size = (settings.TILE_SIZE - margin, settings.TILE_SIZE - margin)
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
