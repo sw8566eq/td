@@ -13,41 +13,66 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Controls: press any key at the menu to start. Click a tower button in the
-bottom bar, then click a grass tile to place it -- the sidebar on the
-right shows that tower type's stats while it's selected; right-click at
-any time to clear the current selection without placing anything. Hover
-any placed
-tower to see its live stats and range in the sidebar; it also shows a
-small "+cost" badge in its tile's top-right corner -- click *that*
-specifically to upgrade it (caps at level 3 -- see "Tower levels" below
--- hovering shows what the upgrade would change). The badge disappears
-once a tower is maxed. The HUD shows a countdown to the next wave and a
-"Skip" button (bottom-right) to force it to start early -- same effect as
-pressing `Space`. `P` or `Esc` opens the pause menu; the same two keys
-close it again, `R` restarts the current level, `Q` quits. `R` also
-restarts the level from the game-over screen, or -- from the victory
-screen -- advances to the next level if there is one, otherwise replays
-the level you just won. `Esc` quits from the main menu, game-over, or
-victory screens (there's no pause menu to open there).
+Pass `--unlimited-gold` to run with a debug flag that makes every purchase (placing, upgrading, or
+specializing a tower) always succeed without actually spending gold -- the HUD shows
+"Gold: unlimited" while it's on.
 
-Run the test suite with `pytest` (from the venv) -- ~200 tests covering
-every module, including `Game`'s full state machine, click/key handling,
-and update loop (`tests/test_game.py`) and `AssetManager`'s placeholder
-fallback and caching (`tests/test_assets.py`). Both of those open a real
-pygame window, so they force the SDL dummy video driver themselves
-(`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")` at the top of the
-file) -- `pytest` runs headless with no extra setup, in CI or anywhere
-else.
+Controls: press any key at the menu to start. Click a tower button in the bottom bar, then click
+a grass tile to place it -- the sidebar on the right shows that tower type's stats while it's
+selected; right-click at any time to clear the current selection without placing anything. A
+tower's required footprint is one tile's worth of space, but it isn't locked to the tile grid --
+see "Tower placement" below for how that works and what the footprint outline that follows your
+cursor is showing you.
+
+Hover any placed tower to see its live stats and range in the sidebar; **click** it instead and
+that stays pinned open even once the mouse moves away, until you click a different tower, pick a
+build-menu type, or click empty ground with nothing selected. The pinned/hovered panel shows
+**Upgrade** and **Sell** buttons (in addition to the small "+cost" badge in the tower's tile
+corner, which still works too), and at max level, Upgrade is replaced by two **Specialize**
+buttons -- see "Tower levels & specialization" below. Selling refunds a fraction of everything
+spent on that tower (`settings.SELL_REFUND_FRACTION`) and frees its space immediately.
+
+The HUD shows a countdown to the next wave and a button (bottom-right) that reads "Start" before
+the first wave -- it waits for you rather than auto-starting, so you get a beat to place towers
+first -- and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space`
+does the same thing as clicking it. `P` or `Esc` opens the pause menu; the same two keys close it
+again, `R` restarts the current level, `Q` quits. `R` also restarts the level from the game-over
+screen, or -- from the victory screen -- advances to the next level if there is one, otherwise
+replays the level you just won. `Esc` quits from the main menu, game-over, or victory screens
+(there's no pause menu to open there).
+
+Run the test suite with `pytest` (from the venv) -- 250+ tests covering every module, including
+`Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
+`AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
+real pygame window, so they force the SDL dummy video driver themselves
+(`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")` at the top of the file) -- `pytest` runs
+headless with no extra setup, in CI or anywhere else.
 
 ## Art
 
-No art pack is bundled yet -- every sprite renders as a simple colored
-placeholder shape (see `assets.py`). Drop a CC0 pixel-art pack's PNGs into
-`assets/towers/`, `assets/enemies/`, `assets/tiles/`, `assets/projectiles/`
-using the filenames listed in `SPRITE_MANIFEST` (in `assets.py`) and the
-real art will appear automatically -- no code changes needed. If the pack
-uses different filenames, just edit the path strings in that manifest.
+No art pack is bundled yet -- every sprite renders as a simple colored placeholder shape (see
+`assets.py`). Drop a CC0 pixel-art pack's PNGs into `assets/towers/`, `assets/enemies/`,
+`assets/tiles/`, `assets/projectiles/` using the filenames listed in `SPRITE_MANIFEST` (in
+`assets.py`) and the real art will appear automatically -- no code changes needed. If the pack uses
+different filenames, just edit the path strings in that manifest.
+
+## Tower placement
+
+Each tile is cut into an 8x8 grid of small tiles (`settings.SUBTILES_PER_TILE`), and a tower's
+required footprint is exactly one tile's worth of area -- 8x8 small tiles -- but it can be
+*anchored* at any small tile, not just where a tile boundary falls. Moving the build cursor shifts
+the footprint preview (a colored outline: white/valid, red/blocked) in small-tile increments
+rather than snapping a whole tile at a time, so a tower can straddle what used to be a tile
+boundary, tuck up against a path bend more precisely, or line up a row of towers' ranges exactly.
+Two footprints can never overlap even partially, regardless of whether their anchors happen to
+line up on any particular grid (`Grid.is_buildable`/`occupy`/`remove` in `grid.py`), so this is
+purely about placement *precision* -- it doesn't let you fit more towers into the same space.
+
+The map itself renders each buildable tile as that same 8x8 mosaic of individually-drawn small
+tiles with a thin, soft-edged gap between them (`Grid._build_background`, cached once per level
+rather than redrawn every frame), so the placement grid is visible at a glance without being
+visually harsh. The path renders as one unbroken tile -- no seams -- since it's never buildable
+anyway.
 
 ## Towers
 
@@ -65,21 +90,18 @@ everyone within a radius of one impact point simultaneously, chain hits a
 so it can reach targets strung out along the path rather than just
 clustered together. See `Projectile._resolve_chain()` in `projectile.py`.
 
-## Tower levels
+## Tower levels & specialization
 
-Every tower can be upgraded twice (level 1 -> 3) by clicking its "+cost"
-badge in-game (`Tower.upgrade_badge_center`/`contains_upgrade_badge` in
-`tower.py` own the badge's position and hit-testing, so drawing and
-clicking can never disagree about where it is).
-Each level multiplies `damage` and `range` by a fixed amount (see
-`Tower.LEVEL_STAT_MULTIPLIERS` in `tower.py`); the upgrade's gold cost is a
-multiplier of that tower's base `cost` (`Tower.UPGRADE_COST_MULTIPLIERS`).
-This is generic on the `Tower` base class, so new tower types get levels
-for free. A tower can opt its own special stat into scaling too by
-extending `LEVEL_SCALED_STATS`, e.g. `LEVEL_SCALED_STATS = Tower.LEVEL_SCALED_STATS
-+ ("slow_duration",)` -- just make sure "bigger is better" actually holds
-for that stat (it wouldn't for `FrostTower.slow_factor`, where lower is
-stronger).
+Every tower can be upgraded twice (level 1 -> 3) by clicking its "+cost" badge in-game, or the
+sidebar's Upgrade button while it's pinned/hovered (`Tower.upgrade_badge_center`/
+`contains_upgrade_badge` in `tower.py` own the badge's position and hit-testing, so drawing and
+clicking can never disagree about where it is). Each level multiplies `damage` and `range` by a
+fixed amount (see `Tower.LEVEL_STAT_MULTIPLIERS` in `tower.py`); the upgrade's gold cost is a
+multiplier of that tower's base `cost` (`Tower.UPGRADE_COST_MULTIPLIERS`). This is generic on the
+`Tower` base class, so new tower types get levels for free. A tower can opt its own special stat
+into scaling too by extending `LEVEL_SCALED_STATS`, e.g. `LEVEL_SCALED_STATS =
+Tower.LEVEL_SCALED_STATS + ("slow_duration",)` -- just make sure "bigger is better" actually holds
+for that stat (it wouldn't for `FrostTower.slow_factor`, where lower is stronger).
 
 A stat can also scale on its *own* curve instead of the shared one via
 `LEVEL_STAT_MULTIPLIER_OVERRIDES`, e.g. `BasicTower` uses
@@ -89,6 +111,17 @@ than the generic curve would give it (10 -> 17 -> 26, vs. the ~10 -> 13.5
 -- balance doesn't have to mean every tower's numbers grow at the same
 rate to feel worth using.
 
+Once a tower hits level 3, it can choose one of two named **specializations**
+(`Tower.SPECIALIZATIONS`) instead of leveling further -- a one-time branching choice, separate
+from `level` (`Tower.can_specialize`/`specialize()`). Every tower currently shares the same two
+generic placeholder options ("Power": +30% damage, "Precision": +20% range and fire rate) defined
+on the base class; a specific tower can override `SPECIALIZATIONS` to offer its own paths instead.
+The numbers here are intentionally rough starting points, not tuned balance.
+
+Selling a tower (the sidebar's Sell button) refunds `settings.SELL_REFUND_FRACTION` of
+`Tower.total_invested` -- everything spent placing, upgrading, *and* specializing it, not just the
+base cost -- and immediately frees its footprint.
+
 ## Layout
 
 The window is `PLAY_WIDTH` (the grid + the HUD bar beneath it) plus a
@@ -96,7 +129,9 @@ fixed `PANEL_WIDTH` stats sidebar on the right (both in `settings.py`) --
 the window was simply grown to fit the sidebar rather than shrinking the
 grid. `ui.draw_tower_stats_panel()` reads a tower class's plain stats
 (`cost`/`damage`/`range`/`fire_rate`) plus its `EXTRA_STATS` (see below)
-to render the panel, so it needs no changes for new tower types.
+to render the panel, so it needs no changes for new tower types. Its Upgrade/Specialize/Sell
+buttons sit at fixed positions in the panel (`ui.py`'s `ACTION_AREA_TOP`/`SELL_BUTTON_TOP`)
+regardless of which tower's stats are shown above them.
 
 ## Enemies
 
@@ -132,7 +167,8 @@ entry, not a change to the systems that already work.
   build menu automatically. If it has its own special mechanic (splash,
   slow, knockback, ...), list it in `EXTRA_STATS` as
   `(label, attribute_name, format_function)` and it shows up in the stats
-  panel automatically too.
+  panel automatically too. Override `SPECIALIZATIONS` if it should offer its own two level-3
+  choices instead of the generic Power/Precision placeholders.
 - **New enemy**: subclass `Enemy` in `enemy.py`, override its stats
   (`base_hp`, `base_speed`, `base_reward`, etc. -- or `update()`/
   `take_damage()` too, for something like a shielded unit), then add it to
