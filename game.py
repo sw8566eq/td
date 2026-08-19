@@ -37,6 +37,7 @@ class Game:
         self.assets = AssetManager()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
+        self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.sell_button_rect = ui.build_sell_button_rect()
 
         self.state = GameState.MENU
@@ -150,6 +151,12 @@ class Game:
 
         if self.skip_button_rect.collidepoint(pos):
             self.wave_manager.skip_delay()
+            return
+
+        if self.upgrade_button_rect.collidepoint(pos):
+            subject = self._stats_panel_subject(self._hovered_tower())
+            if subject in self.towers:  # a placed tower, not a build-menu class or None
+                self.try_upgrade_tower(subject)
             return
 
         if self.sell_button_rect.collidepoint(pos):
@@ -275,7 +282,8 @@ class Game:
             self.skip_button_rect, self.selected_tower_name,
         )
         ui.draw_tower_stats_panel(
-            self.screen, self.font, self.small_font, panel_subject, self.sell_button_rect,
+            self.screen, self.font, self.small_font, panel_subject,
+            self.economy, self.upgrade_button_rect, self.sell_button_rect,
         )
 
         if self.state == GameState.PAUSED:

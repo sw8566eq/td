@@ -440,6 +440,69 @@ def test_try_sell_tower_fails_for_a_tower_not_on_the_field(playing_game):
     assert playing_game.try_sell_tower(stray_tower) is False
 
 
+def test_clicking_the_upgrade_button_upgrades_the_pinned_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    gold_before = playing_game.economy.gold
+    upgrade_cost = tower.upgrade_cost()
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)  # nowhere near the tower on the grid
+    try:
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.level == 2
+    assert playing_game.economy.gold == gold_before - upgrade_cost
+
+
+def test_clicking_the_upgrade_button_with_nothing_selected_does_nothing(playing_game):
+    gold_before = playing_game.economy.gold
+    playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    assert playing_game.economy.gold == gold_before
+
+
+def test_clicking_the_upgrade_button_when_unaffordable_does_nothing(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    playing_game.economy.gold = 0
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    try:
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.level == 1
+
+
+def test_clicking_the_upgrade_button_at_max_level_does_nothing(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.selected_tower = tower
+    gold_before = playing_game.economy.gold
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    try:
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.is_max_level
+    assert playing_game.economy.gold == gold_before
+
+
 def test_clicking_the_sell_button_sells_the_pinned_tower(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"

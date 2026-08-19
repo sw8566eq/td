@@ -1,7 +1,13 @@
 import pygame
 
 import settings
-from ui import build_button_rects, build_skip_button_rect, get_clicked_tower_button
+from ui import (
+    build_button_rects,
+    build_sell_button_rect,
+    build_skip_button_rect,
+    build_upgrade_button_rect,
+    get_clicked_tower_button,
+)
 
 
 def test_build_button_rects_has_one_entry_per_registered_tower():
@@ -37,3 +43,18 @@ def test_skip_button_does_not_overlap_the_tower_build_buttons():
     skip_rect = build_skip_button_rect()
     for name, tower_rect in build_button_rects().items():
         assert not skip_rect.colliderect(tower_rect), name
+
+
+def test_upgrade_and_sell_buttons_sit_within_the_stats_panel():
+    for rect in (build_upgrade_button_rect(), build_sell_button_rect()):
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+        assert rect.top >= 0
+        assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_upgrade_button_sits_above_the_sell_button_without_overlapping():
+    upgrade_rect = build_upgrade_button_rect()
+    sell_rect = build_sell_button_rect()
+    assert not upgrade_rect.colliderect(sell_rect)
+    assert upgrade_rect.bottom <= sell_rect.top

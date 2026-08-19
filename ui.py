@@ -28,13 +28,17 @@ SKIP_BUTTON_WIDTH = 100
 SKIP_BUTTON_HEIGHT = 36
 SKIP_BUTTON_MARGIN = 16
 
-SELL_BUTTON_WIDTH = 200
-SELL_BUTTON_HEIGHT = 36
-# Fixed offset from the panel's top, comfortably below the tallest stats
-# block any tower type currently renders (title + 2 header rows + 3 base
-# stats + up to 2 EXTRA_STATS rows), so it never has to be laid out
-# relative to content that varies by tower/selection.
-SELL_BUTTON_TOP = 260
+# Upgrade and Sell sit stacked in a fixed spot in the stats panel,
+# comfortably below the tallest stats block any tower type currently
+# renders (title + level row + 3 base stats + up to 2 EXTRA_STATS rows),
+# so neither has to be laid out relative to content that varies by
+# tower/selection -- and Sell's position doesn't shift depending on
+# whether Upgrade is showing (a maxed-out tower has no Upgrade button).
+ACTION_BUTTON_WIDTH = 200
+ACTION_BUTTON_HEIGHT = 36
+ACTION_BUTTON_GAP = 10
+UPGRADE_BUTTON_TOP = 260
+SELL_BUTTON_TOP = UPGRADE_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
 
 
 def build_button_rects():
@@ -67,14 +71,28 @@ def build_skip_button_rect():
     return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
 
 
+def _action_button_rect(top):
+    x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - ACTION_BUTTON_WIDTH) // 2
+    return pygame.Rect(x, top, ACTION_BUTTON_WIDTH, ACTION_BUTTON_HEIGHT)
+
+
+def build_upgrade_button_rect():
+    """Rect for the stats panel's 'Upgrade' button -- fixed position
+    within the panel (see UPGRADE_BUTTON_TOP), horizontally centered, so
+    it stays put regardless of which tower's stats are shown above it.
+    Only meaningful (and only drawn/clickable) while the panel's subject
+    is a placed, not-yet-maxed tower -- see draw_tower_stats_panel and
+    Game._handle_click."""
+    return _action_button_rect(UPGRADE_BUTTON_TOP)
+
+
 def build_sell_button_rect():
     """Rect for the stats panel's 'Sell' button -- fixed position within
     the panel (see SELL_BUTTON_TOP), horizontally centered, so it stays
     put regardless of which tower's stats are currently shown above it.
     Only meaningful (and only drawn/clickable) while the panel's subject
     is a placed tower -- see draw_tower_stats_panel and Game._handle_click."""
-    x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - SELL_BUTTON_WIDTH) // 2
-    return pygame.Rect(x, SELL_BUTTON_TOP, SELL_BUTTON_WIDTH, SELL_BUTTON_HEIGHT)
+    return _action_button_rect(SELL_BUTTON_TOP)
 
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
@@ -180,13 +198,14 @@ def draw_tower_range_preview(surface, tower):
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
 
 
-def draw_tower_stats_panel(surface, font, small_font, subject, sell_button_rect):
+def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_button_rect, sell_button_rect):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
       - a Tower *instance* (a placed tower, either hovered or clicked to
         stay pinned open -- shows its live stats, with a '-> value'
-        preview of what upgrading would change, and a Sell button), or
+        preview of what upgrading would change, an Upgrade button (while
+        not maxed) and a Sell button), or
       - None (nothing selected/hovered -- shows a hint instead).
     Reads EXTRA_STATS off the tower class so a new tower type's special
     stats (splash, slow, knockback, ...) show up here with no changes to
@@ -199,7 +218,7 @@ def draw_tower_stats_panel(surface, font, small_font, subject, sell_button_rect)
     y = PANEL_PADDING
 
     if subject is None:
-        for line in ("Select a tower to build,", "or click a placed tower", "to see its stats and sell it."):
+        for line in ("Select a tower to build,", "or click a placed tower to", "see its stats, upgrade, or sell it."):
             hint = small_font.render(line, True, settings.COLOR_TEXT_DIM)
             surface.blit(hint, (x, y))
             y += PANEL_ROW_HEIGHT
@@ -216,10 +235,6 @@ def draw_tower_stats_panel(surface, font, small_font, subject, sell_button_rect)
         level_text = small_font.render(f"Level {subject.level}/{tower_cls.MAX_LEVEL}", True, settings.COLOR_TEXT_DIM)
         surface.blit(level_text, (x, y))
         y += PANEL_ROW_HEIGHT
-        if not subject.is_max_level:
-            cost_text = small_font.render(f"Upgrade cost: {subject.upgrade_cost()}", True, settings.COLOR_GOLD)
-            surface.blit(cost_text, (x, y))
-            y += PANEL_ROW_HEIGHT
     else:
         cost_text = small_font.render(f"Cost: {tower_cls.cost}", True, settings.COLOR_GOLD)
         surface.blit(cost_text, (x, y))
@@ -250,10 +265,19 @@ def draw_tower_stats_panel(surface, font, small_font, subject, sell_button_rect)
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
-    if is_placed:
-        pygame.draw.rect(surface, settings.COLOR_BUTTON, sell_button_rect, border_radius=6)
-        label = small_font.render(f"Sell (+{subject.sell_value()}g)", True, settings.COLOR_GOLD)
-        surface.blit(label, label.get_rect(center=sell_button_rect.center))
+    if not is_placed:
+        return
+
+    if not subject.is_max_level:
+        cost = subject.upgrade_cost()
+        color = settings.COLOR_BUTTON if economy.can_afford(cost) else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, color, upgrade_button_rect, border_radius=6)
+        label = small_font.render(f"Upgrade ({cost}g)", True, settings.COLOR_GOLD)
+        surface.blit(label, label.get_rect(center=upgrade_button_rect.center))
+
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, sell_button_rect, border_radius=6)
+    label = small_font.render(f"Sell (+{subject.sell_value()}g)", True, settings.COLOR_GOLD)
+    surface.blit(label, label.get_rect(center=sell_button_rect.center))
 
 
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
