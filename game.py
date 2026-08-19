@@ -37,6 +37,7 @@ class Game:
         self.assets = AssetManager()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
+        self.sell_button_rect = ui.build_sell_button_rect()
 
         self.state = GameState.MENU
         self.running = True
@@ -61,6 +62,7 @@ class Game:
         self.towers = []
         self.projectiles = []
         self.selected_tower_name = None
+        self.selected_tower = None  # placed Tower instance pinned open in the stats panel
 
     def reset(self):
         self.load_level(self.current_level_id)
@@ -134,6 +136,7 @@ class Game:
         if self.state != GameState.PLAYING:
             return
         self.selected_tower_name = None
+        self.selected_tower = None
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -142,10 +145,17 @@ class Game:
         clicked_button = ui.get_clicked_tower_button(pos, self.button_rects)
         if clicked_button is not None:
             self.selected_tower_name = None if clicked_button == self.selected_tower_name else clicked_button
+            self.selected_tower = None  # switching to build mode drops any pinned placed-tower panel
             return
 
         if self.skip_button_rect.collidepoint(pos):
             self.wave_manager.skip_delay()
+            return
+
+        if self.sell_button_rect.collidepoint(pos):
+            subject = self._stats_panel_subject(self._hovered_tower())
+            if subject in self.towers:  # a placed tower, not a build-menu class or None
+                self.try_sell_tower(subject)
             return
 
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
@@ -156,9 +166,16 @@ class Game:
                 self.try_upgrade_tower(tower)
                 return
 
+        for tower in self.towers:
+            if tower.contains_point(pos):
+                self.selected_tower = tower  # pin it open in the stats panel
+                return
+
         if self.selected_tower_name is not None:
             anchor_col, anchor_row = self.grid.placement_anchor(*pos)
             self.try_place_tower(anchor_col, anchor_row)
+        else:
+            self.selected_tower = None  # clicked empty ground -> deselect
 
     def try_place_tower(self, anchor_col, anchor_row):
         if not self.grid.is_buildable(anchor_col, anchor_row):
@@ -182,6 +199,17 @@ class Game:
 
         self.economy.spend(cost)
         tower.upgrade()
+        return True
+
+    def try_sell_tower(self, tower):
+        if tower not in self.towers:
+            return False
+
+        self.economy.add_gold(tower.sell_value())
+        self.towers.remove(tower)
+        self.grid.remove(tower.anchor_col, tower.anchor_row)
+        if self.selected_tower is tower:
+            self.selected_tower = None
         return True
 
     # --- Update ---
@@ -237,8 +265,9 @@ class Game:
 
         self._render_placement_preview()
         hovered_tower = self._hovered_tower()
-        if hovered_tower is not None:
-            ui.draw_tower_range_preview(self.screen, hovered_tower)
+        panel_subject = self._stats_panel_subject(hovered_tower)
+        if panel_subject in self.towers:  # a placed tower (hovered, or pinned via selected_tower)
+            ui.draw_tower_range_preview(self.screen, panel_subject)
 
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
@@ -246,7 +275,7 @@ class Game:
             self.skip_button_rect, self.selected_tower_name,
         )
         ui.draw_tower_stats_panel(
-            self.screen, self.font, self.small_font, self._stats_panel_subject(hovered_tower),
+            self.screen, self.font, self.small_font, panel_subject, self.sell_button_rect,
         )
 
         if self.state == GameState.PAUSED:
@@ -286,11 +315,17 @@ class Game:
         return None
 
     def _stats_panel_subject(self, hovered_tower):
-        """What the stats panel should show: a hovered placed tower takes
-        priority; otherwise the tower type currently selected to build;
-        otherwise None (panel shows a hint)."""
+        """What the stats panel should show, in priority order: a hovered
+        placed tower (a quick peek at whatever's under the mouse right
+        now); otherwise a placed tower the player clicked to pin open
+        (self.selected_tower -- stays shown even once the mouse moves
+        away, until something else replaces or clears it); otherwise the
+        tower type currently selected to build; otherwise None (panel
+        shows a hint)."""
         if hovered_tower is not None:
             return hovered_tower
+        if self.selected_tower is not None:
+            return self.selected_tower
         if self.selected_tower_name is not None:
             return TOWER_TYPES[self.selected_tower_name]
         return None

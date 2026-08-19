@@ -47,6 +47,12 @@ WINDOW_TITLE = "Tower Defense"
 SPAWN_INTERVAL = 0.8  # seconds between individual enemy spawns within a wave
 BETWEEN_WAVE_DELAY = 5.0  # seconds of downtime before the next wave starts
 
+# --- Economy ---
+# Fraction of a tower's total investment (its base cost plus any upgrades
+# paid for) refunded when it's sold -- less than 1.0 so build/sell isn't a
+# free way to reposition a tower.
+SELL_REFUND_FRACTION = 0.7
+
 # --- Colors (used by UI and placeholder-shape fallbacks) ---
 COLOR_BG = (24, 28, 22)
 COLOR_HUD_BG = (32, 32, 40)

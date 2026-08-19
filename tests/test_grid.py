@@ -65,6 +65,36 @@ def test_get_tower_returns_the_occupying_tower_or_none():
     assert grid.get_tower(0, 0) == "fake-tower"
 
 
+def test_remove_frees_a_sold_towers_footprint():
+    grid = make_grid()
+    grid.occupy(0, 0, tower="fake-tower")
+    assert not grid.is_buildable(0, 0)
+
+    grid.remove(0, 0)
+
+    assert grid.is_buildable(0, 0)
+    assert grid.get_tower(0, 0) is None
+    assert not grid.is_occupied(0, 0)
+
+
+def test_remove_on_an_unoccupied_anchor_is_a_no_op():
+    grid = make_grid()
+    grid.remove(0, 0)  # must not raise
+    assert grid.is_buildable(0, 0)
+
+
+def test_remove_does_not_free_a_different_towers_footprint():
+    grid = make_grid()
+    grid.occupy(0, 0, tower="fake-tower-a")
+    grid.occupy(N, 0, tower="fake-tower-b")
+
+    grid.remove(0, 0)
+
+    assert grid.is_buildable(0, 0)
+    assert not grid.is_buildable(N, 0)
+    assert grid.get_tower(N, 0) == "fake-tower-b"
+
+
 def test_pixel_to_tile_and_back_round_trip():
     grid = make_grid()
     for col, row in [(0, 0), (3, 5), (14, 8)]:

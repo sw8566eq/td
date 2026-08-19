@@ -73,6 +73,10 @@ class Tower:
         # every upgrade recomputes from the true base rather than
         # compounding on an already-scaled number.
         self._base_stats = {name: getattr(self, name) for name in self.LEVEL_SCALED_STATS}
+        # Total gold spent placing and upgrading this tower -- what a sale
+        # refunds a fraction of, so upgrading then selling isn't a loss on
+        # top of the upgrade itself. See sell_value().
+        self.total_invested = self.cost
 
     @property
     def is_max_level(self):
@@ -95,11 +99,18 @@ class Tower:
         its level-1 base. No-op (returns False) once at MAX_LEVEL."""
         if self.is_max_level:
             return False
+        self.total_invested += self.upgrade_cost()
         self.level += 1
         for name, base_value in self._base_stats.items():
             multiplier = self._multiplier_table_for(name)[self.level]
             setattr(self, name, base_value * multiplier)
         return True
+
+    def sell_value(self):
+        """Gold refunded if this tower is sold right now -- a fraction
+        (settings.SELL_REFUND_FRACTION) of everything spent on it, base
+        cost plus any upgrades, not just the base cost."""
+        return round(self.total_invested * settings.SELL_REFUND_FRACTION)
 
     def _stat_after_next_upgrade(self, name):
         """What LEVEL_SCALED_STATS entry `name` would become after one

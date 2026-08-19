@@ -69,6 +69,34 @@ def test_upgrade_cost_scales_with_base_cost():
     assert tower.upgrade_cost() == expected_level_2_cost
 
 
+def test_sell_value_starts_as_a_fraction_of_base_cost():
+    tower = make_tower()
+    assert tower.total_invested == BasicTower.cost
+    assert tower.sell_value() == round(BasicTower.cost * settings.SELL_REFUND_FRACTION)
+
+
+def test_sell_value_grows_with_each_upgrade_paid_for():
+    tower = make_tower()
+    level_2_cost = tower.upgrade_cost()
+    tower.upgrade()
+
+    assert tower.total_invested == BasicTower.cost + level_2_cost
+    assert tower.sell_value() == round(tower.total_invested * settings.SELL_REFUND_FRACTION)
+
+    level_3_cost = tower.upgrade_cost()
+    tower.upgrade()
+
+    assert tower.total_invested == BasicTower.cost + level_2_cost + level_3_cost
+    assert tower.sell_value() == round(tower.total_invested * settings.SELL_REFUND_FRACTION)
+
+
+def test_sell_value_is_less_than_total_invested():
+    # Otherwise build/sell would be a free way to reposition a tower.
+    tower = make_tower()
+    tower.upgrade()
+    assert tower.sell_value() < tower.total_invested
+
+
 def test_only_stats_in_level_scaled_stats_change_on_upgrade():
     tower = make_tower()
     base_fire_rate = tower.fire_rate

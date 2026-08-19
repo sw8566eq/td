@@ -49,6 +49,9 @@ def find_buildable_anchor(game, *, adjacent_to_path=False):
     raise AssertionError("no matching buildable cell found")
 
 
+_REAL_MOUSE_GET_POS = pygame.mouse.get_pos  # saved once, before anything monkeypatches it
+
+
 def mock_mouse_pos(pos):
     """Context-manager-free mouse mock: pygame.mouse.set_pos() is inert
     under the headless dummy driver, so tests that need a specific hover
@@ -57,8 +60,11 @@ def mock_mouse_pos(pos):
 
 
 def clear_mouse_mock():
-    if "get_pos" in pygame.mouse.__dict__:
-        del pygame.mouse.get_pos
+    # Restore the real get_pos rather than del'ing the attribute -- del
+    # would just remove it outright (mock_mouse_pos *replaces* the dict
+    # entry, it doesn't shadow it), leaving pygame.mouse with no get_pos
+    # at all for every test that runs after this one in the same session.
+    pygame.mouse.get_pos = _REAL_MOUSE_GET_POS
 
 
 # --- Initialization ---
@@ -323,12 +329,160 @@ def test_clicking_elsewhere_on_a_placed_tower_does_not_upgrade_it(playing_game):
     assert tower.level == 1
 
 
+# --- Click handling: selecting and selling placed towers ---
+
+def test_clicking_a_placed_tower_pins_it_as_selected(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+
+    playing_game._handle_click((int(center.x), int(center.y)))  # tile center, not the badge
+
+    assert playing_game.selected_tower is tower
+
+
+def test_selection_stays_pinned_in_the_panel_after_the_mouse_moves_away(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+
+    mock_mouse_pos((0, 0))  # nowhere near the tower
+    try:
+        subject = playing_game._stats_panel_subject(playing_game._hovered_tower())
+    finally:
+        clear_mouse_mock()
+
+    assert subject is tower
+
+
+def test_clicking_a_different_placed_tower_switches_the_selection(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    first_tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    assert playing_game.selected_tower is first_tower
+
+    other_anchor_col, other_anchor_row = find_buildable_anchor(playing_game)
+    other_center = playing_game.grid.anchor_to_pixel_center(other_anchor_col, other_anchor_row)
+    playing_game.selected_tower_name = "cannon"
+    playing_game._handle_click((int(other_center.x), int(other_center.y)))
+    second_tower = playing_game.grid.get_tower(other_anchor_col, other_anchor_row)
+    playing_game._handle_click((int(other_center.x), int(other_center.y)))
+
+    assert playing_game.selected_tower is second_tower
+
+
+def test_selecting_a_build_menu_tower_clears_the_pinned_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    playing_game._handle_click((int(center.x), int(center.y)))
+    assert playing_game.selected_tower is not None
+
+    playing_game._handle_click(playing_game.button_rects["cannon"].center)
+
+    assert playing_game.selected_tower is None
+
+
+def test_clicking_empty_ground_with_nothing_selected_clears_the_pinned_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    playing_game._handle_click((int(center.x), int(center.y)))
+    playing_game.selected_tower_name = None
+    assert playing_game.selected_tower is not None
+
+    empty_col, empty_row = find_buildable_anchor(playing_game)  # skips the now-occupied tile
+    empty_center = playing_game.grid.anchor_to_pixel_center(empty_col, empty_row)
+    playing_game._handle_click((int(empty_center.x), int(empty_center.y)))
+
+    assert playing_game.selected_tower is None
+
+
+def test_try_sell_tower_removes_it_and_refunds_gold(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    gold_before = playing_game.economy.gold
+    refund = tower.sell_value()
+
+    assert playing_game.try_sell_tower(tower) is True
+
+    assert tower not in playing_game.towers
+    assert playing_game.economy.gold == gold_before + refund
+    assert playing_game.grid.is_buildable(anchor_col, anchor_row)
+
+
+def test_try_sell_tower_clears_a_matching_pinned_selection(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+
+    playing_game.try_sell_tower(tower)
+
+    assert playing_game.selected_tower is None
+
+
+def test_try_sell_tower_fails_for_a_tower_not_on_the_field(playing_game):
+    stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    assert playing_game.try_sell_tower(stray_tower) is False
+
+
+def test_clicking_the_sell_button_sells_the_pinned_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    gold_before = playing_game.economy.gold
+    refund = tower.sell_value()
+
+    mock_mouse_pos(playing_game.sell_button_rect.center)  # nowhere near the tower on the grid
+    try:
+        playing_game._handle_click(playing_game.sell_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower not in playing_game.towers
+    assert playing_game.economy.gold == gold_before + refund
+
+
+def test_clicking_the_sell_button_with_nothing_selected_does_nothing(playing_game):
+    gold_before = playing_game.economy.gold
+    playing_game._handle_click(playing_game.sell_button_rect.center)
+    assert playing_game.economy.gold == gold_before
+    assert playing_game.towers == []
+
+
 # --- Right-click handling ---
 
-def test_right_click_clears_the_selected_tower(playing_game):
+def test_right_click_clears_the_selected_tower_name(playing_game):
     playing_game.selected_tower_name = "basic"
     playing_game._handle_right_click()
     assert playing_game.selected_tower_name is None
+
+
+def test_right_click_clears_the_pinned_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+
+    playing_game._handle_right_click()
+
+    assert playing_game.selected_tower is None
 
 
 def test_right_click_with_nothing_selected_is_a_no_op(playing_game):

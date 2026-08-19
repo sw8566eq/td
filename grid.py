@@ -150,6 +150,16 @@ class Grid:
             self.occupied_subtiles.add(cell)
         self.towers_by_anchor[(anchor_col, anchor_row)] = tower
 
+    def remove(self, anchor_col, anchor_row):
+        """Free the footprint anchored at (anchor_col, anchor_row) -- the
+        inverse of occupy(), used when a tower is sold. No-op if nothing
+        is anchored there."""
+        if (anchor_col, anchor_row) not in self.towers_by_anchor:
+            return
+        for cell in self._footprint_subtiles(anchor_col, anchor_row):
+            self.occupied_subtiles.discard(cell)
+        del self.towers_by_anchor[(anchor_col, anchor_row)]
+
     def is_occupied(self, anchor_col, anchor_row):
         return (anchor_col, anchor_row) in self.towers_by_anchor
 

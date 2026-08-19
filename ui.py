@@ -28,6 +28,14 @@ SKIP_BUTTON_WIDTH = 100
 SKIP_BUTTON_HEIGHT = 36
 SKIP_BUTTON_MARGIN = 16
 
+SELL_BUTTON_WIDTH = 200
+SELL_BUTTON_HEIGHT = 36
+# Fixed offset from the panel's top, comfortably below the tallest stats
+# block any tower type currently renders (title + 2 header rows + 3 base
+# stats + up to 2 EXTRA_STATS rows), so it never has to be laid out
+# relative to content that varies by tower/selection.
+SELL_BUTTON_TOP = 260
+
 
 def build_button_rects():
     """Rects for each tower's build-menu button, keyed by registry name."""
@@ -57,6 +65,16 @@ def build_skip_button_rect():
     x = settings.PLAY_WIDTH - SKIP_BUTTON_WIDTH - SKIP_BUTTON_MARGIN
     y = hud_top + settings.HUD_HEIGHT - SKIP_BUTTON_HEIGHT - 10
     return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
+
+
+def build_sell_button_rect():
+    """Rect for the stats panel's 'Sell' button -- fixed position within
+    the panel (see SELL_BUTTON_TOP), horizontally centered, so it stays
+    put regardless of which tower's stats are currently shown above it.
+    Only meaningful (and only drawn/clickable) while the panel's subject
+    is a placed tower -- see draw_tower_stats_panel and Game._handle_click."""
+    x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - SELL_BUTTON_WIDTH) // 2
+    return pygame.Rect(x, SELL_BUTTON_TOP, SELL_BUTTON_WIDTH, SELL_BUTTON_HEIGHT)
 
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
@@ -162,13 +180,13 @@ def draw_tower_range_preview(surface, tower):
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
 
 
-def draw_tower_stats_panel(surface, font, small_font, subject):
+def draw_tower_stats_panel(surface, font, small_font, subject, sell_button_rect):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
-      - a Tower *instance* (a placed tower currently hovered for upgrade --
-        shows its live stats, with a '-> value' preview of what upgrading
-        would change), or
+      - a Tower *instance* (a placed tower, either hovered or clicked to
+        stay pinned open -- shows its live stats, with a '-> value'
+        preview of what upgrading would change, and a Sell button), or
       - None (nothing selected/hovered -- shows a hint instead).
     Reads EXTRA_STATS off the tower class so a new tower type's special
     stats (splash, slow, knockback, ...) show up here with no changes to
@@ -181,7 +199,7 @@ def draw_tower_stats_panel(surface, font, small_font, subject):
     y = PANEL_PADDING
 
     if subject is None:
-        for line in ("Select a tower to build,", "or hover a placed tower's", "'+' badge, to see its stats."):
+        for line in ("Select a tower to build,", "or click a placed tower", "to see its stats and sell it."):
             hint = small_font.render(line, True, settings.COLOR_TEXT_DIM)
             surface.blit(hint, (x, y))
             y += PANEL_ROW_HEIGHT
@@ -231,6 +249,11 @@ def draw_tower_stats_panel(surface, font, small_font, subject):
         row = small_font.render(f"{label}: {format_fn(value)}", True, settings.COLOR_TEXT)
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
+
+    if is_placed:
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, sell_button_rect, border_radius=6)
+        label = small_font.render(f"Sell (+{subject.sell_value()}g)", True, settings.COLOR_GOLD)
+        surface.blit(label, label.get_rect(center=sell_button_rect.center))
 
 
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
