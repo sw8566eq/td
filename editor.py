@@ -8,11 +8,14 @@ geometry alone (see pathing.junctions_of): whenever a cell ends up with 3+
 path-neighbors, it's automatically a junction.
 
 Once the path is valid, the player moves on to designing wave_specs: add or
-remove waves, and click +/- per enemy type within whichever wave is
-currently selected. Every wave in a given level currently spawns its
-species together, one type fully before the next (see WaveManager) --
-interleaving spawn order within a wave is a possible future refinement,
-not something the wave editor's data shape needs to anticipate.
+remove waves (level-wide -- every spawn shares the same wave count/timeline),
+and click +/- per enemy type within whichever wave *and spawn* are currently
+selected -- clicking a different spawn marker in the preview switches to
+that spawn's own independent unit counts for the same wave, so a multi-spawn
+level can send a completely different mix out of each spawn. Every wave
+still spawns its species together, one type fully before the next (see
+WaveManager) -- interleaving spawn order within a wave is a possible future
+refinement, not something the wave editor's data shape needs to anticipate.
 
 Editor holds no pygame surface/display state of its own and needs no live
 Grid -- it just tracks raw cell sets and asks pathing.py to validate them,
@@ -49,12 +52,22 @@ class Editor:
         self.active_tool = EditorTool.PAINT
 
         # wave_specs is the exact same shape Level.wave_specs expects --
-        # a list of {enemy_type_name: count} dicts, one per wave -- edited
-        # directly rather than built up separately and converted later.
-        # Starts with one empty wave so there's always a wave selected and
-        # ready to add units to.
+        # [{spawn_cell: {enemy_type_name: count}}, ...], one dict per wave
+        # -- edited directly rather than built up separately and converted
+        # later. Starts with one empty wave so there's always a wave
+        # selected and ready to add units to. A spawn only appears as a key
+        # within a given wave once it's actually been given a unit there
+        # (see adjust_unit_count) -- wave dicts stay sparse, same as an
+        # individual spawn's enemy-count dict only ever holds positive
+        # counts.
         self.wave_specs = [{}]
         self.active_wave_index = 0
+        # Which spawn's counts adjust_unit_count() currently targets --
+        # kept valid (or None, if there's no spawn yet) by validate(),
+        # since a spawn can be painted, erased, or overwritten by the Goal
+        # tool at any time. See set_active_spawn() / clicking a spawn
+        # marker in the wave editor (Game._handle_wave_editor_click).
+        self.active_spawn_cell = None
 
         # Recomputed by validate() after every edit -- see render() and
         # to_level()/can_play() for how these get used. path_problems
@@ -97,6 +110,7 @@ class Editor:
             self.path_cells.discard(cell)
             self.spawn_cells.discard(cell)
             self.goal_cells.discard(cell)
+            self._forget_spawn(cell)
         elif self.active_tool == EditorTool.SPAWN:
             self.path_cells.add(cell)  # a spawn must be on the path
             self.goal_cells.discard(cell)  # can't be both -- see validate_topology
@@ -105,7 +119,16 @@ class Editor:
             self.path_cells.add(cell)
             self.spawn_cells.discard(cell)
             self.goal_cells.add(cell)
+            self._forget_spawn(cell)
         self.validate()
+
+    def _forget_spawn(self, cell):
+        """Drop `cell`'s per-wave unit counts wherever they appear --
+        called whenever `cell` stops being a spawn (erased outright, or
+        overwritten by the Goal tool), so a removed spawn's waves don't
+        linger as orphaned data nothing can see or edit any more."""
+        for wave in self.wave_specs:
+            wave.pop(cell, None)
 
     def clear(self):
         """Reset everything -- path *and* waves -- back to a blank slate."""
@@ -114,6 +137,7 @@ class Editor:
         self.goal_cells.clear()
         self.wave_specs = [{}]
         self.active_wave_index = 0
+        self.active_spawn_cell = None
         self.validate()
 
     # --- Wave editing ---
@@ -140,19 +164,32 @@ class Editor:
         if 0 <= index < len(self.wave_specs):
             self.active_wave_index = index
 
+    def set_active_spawn(self, cell):
+        """Switch which spawn's counts adjust_unit_count() targets --
+        e.g. in response to clicking that spawn's marker. Ignored if
+        `cell` isn't currently a spawn."""
+        if cell in self.spawn_cells:
+            self.active_spawn_cell = cell
+
     def adjust_unit_count(self, enemy_name, delta):
-        """+/- `delta` of `enemy_name` in the currently active wave. A
-        count reaching zero (or below) drops the key entirely rather than
-        storing an explicit 0 -- wave_specs dicts only ever hold positive
-        counts, the same shape a hand-authored level's do."""
-        if enemy_name not in ENEMY_TYPES:
+        """+/- `delta` of `enemy_name`, in the currently active wave, for
+        the currently active spawn. A no-op if there's no active spawn
+        (nothing painted yet). A count reaching zero (or below) drops the
+        key entirely rather than storing an explicit 0 -- and an emptied-
+        out spawn is dropped from the wave too -- so wave_specs stays
+        exactly as sparse as a hand-authored level's would be, at every
+        level of nesting."""
+        if enemy_name not in ENEMY_TYPES or self.active_spawn_cell is None:
             return
         wave = self.wave_specs[self.active_wave_index]
-        new_count = wave.get(enemy_name, 0) + delta
+        composition = wave.setdefault(self.active_spawn_cell, {})
+        new_count = composition.get(enemy_name, 0) + delta
         if new_count <= 0:
-            wave.pop(enemy_name, None)
+            composition.pop(enemy_name, None)
         else:
-            wave[enemy_name] = new_count
+            composition[enemy_name] = new_count
+        if not composition:
+            wave.pop(self.active_spawn_cell, None)
         self.validate()
 
     # --- Validation ---
@@ -161,20 +198,31 @@ class Editor:
         """Recompute path_problems/wave_problems/junctions from the
         current buffers -- called after every edit so all three are
         always current for rendering. path_is_valid() (path_problems
-        alone) gates "Edit Waves"; can_play() (both) gates Playtest/Save."""
+        alone) gates "Edit Waves"; can_play() (both) gates Playtest/Save.
+
+        Also keeps active_spawn_cell valid: painting/erasing spawns can
+        invalidate whichever one was selected, same reasoning as
+        active_wave_index getting clamped in remove_wave()."""
         self.path_problems = pathing.validate_topology(
             self.path_cells, self.spawn_cells, self.goal_cells, self.cols, self.rows,
         )
         self.wave_problems = self._compute_wave_problems()
         self.validation_problems = self.path_problems + self.wave_problems
         self.junctions = pathing.junctions_of(self.path_cells)
+
+        if self.active_spawn_cell not in self.spawn_cells:
+            self.active_spawn_cell = min(self.spawn_cells) if self.spawn_cells else None
+
         return self.validation_problems
 
     def _compute_wave_problems(self):
-        empty = [i + 1 for i, wave in enumerate(self.wave_specs) if sum(wave.values()) <= 0]
+        empty = [
+            i + 1 for i, wave in enumerate(self.wave_specs)
+            if sum(count for composition in wave.values() for count in composition.values()) <= 0
+        ]
         if not empty:
             return []
-        return [f"wave {n} has no units -- use +/- to add some" for n in empty]
+        return [f"wave {n} has no units (from any spawn) -- use +/- to add some" for n in empty]
 
     def path_is_valid(self):
         return not self.path_problems
@@ -196,7 +244,13 @@ class Editor:
             path_cells=frozenset(self.path_cells),
             spawn_cells=tuple(sorted(self.spawn_cells)),
             goal_cells=tuple(sorted(self.goal_cells)),
-            wave_specs=[dict(wave) for wave in self.wave_specs],  # a copy per wave, not a live reference
+            # A copy at every level of nesting, not a live reference --
+            # edits made after to_level() must never leak into the
+            # Level it already handed back.
+            wave_specs=[
+                {spawn: dict(composition) for spawn, composition in wave.items()}
+                for wave in self.wave_specs
+            ],
             starting_gold=starting_gold,
             starting_lives=starting_lives,
         )

@@ -1110,7 +1110,7 @@ def make_custom_level(level_id="custom-slug", name="Custom Level"):
         path_cells=frozenset({(0, 0), (1, 0), (2, 0)}),
         spawn_cells=((0, 0),),
         goal_cells=((2, 0),),
-        wave_specs=[{"grunt": 2}],
+        wave_specs=[{(0, 0): {"grunt": 2}}],
     )
 
 
@@ -1232,16 +1232,81 @@ def test_clicking_a_wave_number_tab_selects_it(game):
 
 
 def test_clicking_plus_increments_the_active_waves_unit_count(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
     game.state = GameState.WAVE_EDITOR
+    spawn = game.editor.active_spawn_cell
+
     game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
     game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    assert game.editor.wave_specs[0]["grunt"] == 2
+
+    assert game.editor.wave_specs[0][spawn]["grunt"] == 2
 
 
 def test_clicking_minus_decrements_and_floors_at_zero(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
     game.state = GameState.WAVE_EDITOR
+    spawn = game.editor.active_spawn_cell
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+
     game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
-    assert game.editor.wave_specs[0] == {}
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
+
+    assert game.editor.wave_specs[0].get(spawn, {}) == {}
+
+
+def test_clicking_plus_with_no_spawn_selected_is_a_no_op(game):
+    # Fresh editor -- no path painted yet, so there's no active spawn for
+    # +/- to target.
+    game.state = GameState.WAVE_EDITOR
+    assert game.editor.active_spawn_cell is None
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.wave_specs == [{}]
+
+
+def _paint_two_spawn_path(game):
+    game.editor.set_tool(EditorTool.PAINT)
+    for cell in [(0, 0), (0, 1), (0, 2), (1, 1)]:
+        game.editor.paint_at(*cell_center_px(cell))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((0, 0)))
+    game.editor.paint_at(*cell_center_px((0, 2)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((1, 1)))
+
+
+def test_clicking_a_spawn_marker_switches_the_active_spawn(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    assert game.editor.active_spawn_cell == (0, 0)  # min() of the two, auto-selected
+
+    game._handle_wave_editor_click(cell_center_px((0, 2)))
+
+    assert game.editor.active_spawn_cell == (0, 2)
+
+
+def test_clicking_a_non_spawn_grid_cell_in_the_wave_editor_is_a_no_op(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    active_before = game.editor.active_spawn_cell
+
+    game._handle_wave_editor_click(cell_center_px((0, 1)))  # a plain path cell, not a spawn
+
+    assert game.editor.active_spawn_cell == active_before
+
+
+def test_plus_after_switching_spawns_targets_the_newly_active_one(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+
+    game._handle_wave_editor_click(cell_center_px((0, 2)))
+    game._handle_wave_editor_click(game.wave_unit_rects[("tank", "plus")].center)
+
+    assert game.editor.wave_specs[0] == {(0, 2): {"tank": 1}}
 
 
 def test_wave_editor_playtest_is_a_no_op_until_every_wave_has_units(game):
@@ -1267,7 +1332,7 @@ def test_wave_editor_playtest_loads_the_level_and_switches_to_playing(game):
     assert game.state == GameState.PLAYING
     assert game.current_level_id is None
     assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
-    assert game.level.wave_specs == [{"grunt": 1}]
+    assert game.level.wave_specs == [{(0, 2): {"grunt": 1}}]
 
 
 def test_wave_editor_back_action_returns_to_the_path_editor(game):
@@ -1289,7 +1354,7 @@ def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch
     game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
 
     assert len(saved) == 1
-    assert saved[0].wave_specs == [{"grunt": 1}]
+    assert saved[0].wave_specs == [{(0, 2): {"grunt": 1}}]
     assert game.state == GameState.WAVE_EDITOR  # saving doesn't navigate away
 
 
@@ -1410,6 +1475,19 @@ def test_render_wave_editor_with_units_added_does_not_crash(game):
     game.state = GameState.WAVE_EDITOR
     game.editor.adjust_unit_count("grunt", +2)
     game.editor.add_wave()
+
+    game.render()
+
+
+def test_render_wave_editor_with_multiple_spawns_does_not_crash(game):
+    # A single-spawn editor never draws the active-spawn highlight ring or
+    # more than one numbered marker -- paint a second spawn so render()
+    # actually exercises that code, not just the single-spawn case every
+    # other wave editor render test leaves it in.
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(cell_center_px((0, 2)))  # a non-default active spawn
 
     game.render()
 

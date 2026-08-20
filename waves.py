@@ -1,20 +1,24 @@
 """WaveManager: spawn timing and wave progression for the active level.
 
-Reads the active level's wave_specs (a list of {enemy_type_name: count}
-dicts, one per wave) and looks each name up in ENEMY_TYPES -- this logic is
-identical whether a wave has one species or five, so mixed-species,
-hand-authored levels need zero changes here.
+Reads the active level's wave_specs (a list of {spawn_cell: {enemy_type_name:
+count}} dicts, one per wave -- see levels.py) and looks each name up in
+ENEMY_TYPES -- this logic is identical whether a wave has one species or
+five, or one spawn or several, so mixed-species, multi-spawn, hand-authored
+levels need zero changes here.
 
 Takes the live enemy list as a parameter on update() rather than owning it,
 so Game stays the single source of truth for "what enemies exist" and
 WaveManager stays trivially testable with fake enemy stand-ins.
 
-A level's path can branch/merge across multiple spawns (see pathing.py), so
-there's no single fixed route to hand every enemy -- each spawned enemy
-gets its own concrete route, sampled fresh from the level's path topology
-(pathing.sample_route), starting from a randomly chosen spawn cell. Enemy
-itself is unaware any of this happened -- it just walks whatever flat pixel
-waypoint list it's constructed with, same as always.
+Waves are a level-wide timeline (one wave_index, one BETWEEN_WAVES
+countdown, shared by every spawn), but each wave's composition is per-spawn
+-- which spawn a given enemy comes from is decided once, when the spawn
+queue is built in _begin_wave(), not randomly at spawn time. A level's path
+can still branch/merge past that starting spawn (see pathing.py), so each
+enemy's own route is sampled fresh from the level's path topology
+(pathing.sample_route) once it's actually spawned. Enemy itself is unaware
+any of this happened -- it just walks whatever flat pixel waypoint list
+it's constructed with, same as always.
 """
 
 import random
@@ -52,7 +56,7 @@ class WaveManager:
         self.state = WaveState.AWAITING_START
         self.between_wave_timer = between_wave_delay
         self.spawn_timer = 0.0
-        self._spawn_queue = []  # one Enemy subclass per remaining spawn this wave
+        self._spawn_queue = []  # (spawn_cell, Enemy subclass) per remaining spawn this wave
 
         self.all_waves_complete = False
 
@@ -90,8 +94,8 @@ class WaveManager:
             self.spawn_timer -= dt
             just_spawned = False
             if self.spawn_timer <= 0 and self._spawn_queue:
-                enemy_cls = self._spawn_queue.pop(0)
-                spawned.append(self._spawn_enemy(enemy_cls))
+                spawn_cell, enemy_cls = self._spawn_queue.pop(0)
+                spawned.append(self._spawn_enemy(spawn_cell, enemy_cls))
                 self.spawn_timer = self.spawn_interval
                 just_spawned = True
 
@@ -106,23 +110,22 @@ class WaveManager:
 
         return spawned
 
-    def _spawn_enemy(self, enemy_cls):
-        """Build one enemy of `enemy_cls`, routed along a fresh sample
-        through the level's path topology -- a random spawn cell (evenly
-        chosen when the level has more than one), then a weighted-random
-        route to a goal through any branches along the way (see
-        pathing.sample_route). Enemy itself just gets the resulting flat
-        pixel waypoint list, same as it always has."""
-        spawn_cell = self.rng.choice(self.level.spawn_cells)
+    def _spawn_enemy(self, spawn_cell, enemy_cls):
+        """Build one enemy of `enemy_cls` starting at `spawn_cell`, routed
+        along a fresh sample through the level's path topology -- a
+        weighted-random route to a goal through any branches along the way
+        (see pathing.sample_route). Enemy itself just gets the resulting
+        flat pixel waypoint list, same as it always has."""
         route_cells = pathing.sample_route(self.topology, spawn_cell, self.level.branch_weights, self.rng)
         waypoints_px = [self.cell_to_pixel(col, row) for col, row in route_cells]
         return enemy_cls(waypoints_px, self.current_wave_number)
 
     def _begin_wave(self):
-        wave_spec = self.level.wave_specs[self.wave_index]
+        wave_spec = self.level.wave_specs[self.wave_index]  # {spawn_cell: {enemy_name: count}}
         self._spawn_queue = [
-            ENEMY_TYPES[enemy_name]
-            for enemy_name, count in wave_spec.items()
+            (spawn_cell, ENEMY_TYPES[enemy_name])
+            for spawn_cell, composition in wave_spec.items()
+            for enemy_name, count in composition.items()
             for _ in range(count)
         ]
         self.spawn_timer = 0.0

@@ -19,7 +19,11 @@ import re
 
 from levels import Level
 
-SCHEMA_VERSION = 1
+# Bumped from 1 -> 2 when wave_specs' per-wave dicts gained a spawn-cell
+# level of nesting (see levels.py) -- no migration path for old files, since
+# custom_levels/ is local, gitignored player data with no released version
+# to stay compatible with yet.
+SCHEMA_VERSION = 2
 LEVELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_levels")
 
 
@@ -36,7 +40,15 @@ def level_to_dict(level):
             [list(from_cell), list(to_cell), weight]
             for (from_cell, to_cell), weight in level.branch_weights.items()
         ],
-        "wave_specs": level.wave_specs,
+        # Each wave is [[spawn_cell, {enemy_name: count}], ...] rather than
+        # a JSON object keyed by spawn_cell -- JSON object keys must be
+        # strings, and a spawn_cell is a (col, row) pair -- same list-of-
+        # pairs approach branch_weights above already uses for its own
+        # tuple-keyed dict.
+        "wave_specs": [
+            [[list(spawn_cell), composition] for spawn_cell, composition in wave.items()]
+            for wave in level.wave_specs
+        ],
         "starting_gold": level.starting_gold,
         "starting_lives": level.starting_lives,
     }
@@ -54,7 +66,10 @@ def level_from_dict(data):
             (tuple(from_cell), tuple(to_cell)): weight
             for from_cell, to_cell, weight in data.get("branch_weights", [])
         },
-        wave_specs=data["wave_specs"],
+        wave_specs=[
+            {tuple(spawn_cell): composition for spawn_cell, composition in wave}
+            for wave in data["wave_specs"]
+        ],
         starting_gold=data.get("starting_gold", 150),
         starting_lives=data.get("starting_lives", 20),
     )

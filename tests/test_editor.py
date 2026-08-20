@@ -14,6 +14,16 @@ def _paint_corridor(editor, cells):
         editor.paint_at(*cell_center_px(cell))
 
 
+def _add_spawn(editor, cell=(0, 0)):
+    """Paint just a spawn marker -- enough to give validate() an active
+    spawn to auto-select, without needing a whole valid corridor. Restores
+    the PAINT tool afterward so callers aren't surprised by a leftover
+    active_tool."""
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px(cell))
+    editor.set_tool(EditorTool.PAINT)
+
+
 def _paint_valid_corridor(editor):
     """A minimal straight corridor with a spawn, a goal, and one unit in
     its one wave -- fully ready to play."""
@@ -32,6 +42,7 @@ def test_a_fresh_editor_has_no_cells_no_waves_and_is_not_playable():
     assert editor.goal_cells == set()
     assert editor.wave_specs == [{}]
     assert editor.active_wave_index == 0
+    assert editor.active_spawn_cell is None
     assert not editor.can_play()
     assert editor.active_tool == EditorTool.PAINT
 
@@ -117,6 +128,7 @@ def test_clear_resets_every_buffer_including_waves():
     assert editor.goal_cells == set()
     assert editor.wave_specs == [{}]
     assert editor.active_wave_index == 0
+    assert editor.active_spawn_cell is None
     assert not editor.can_play()
 
 
@@ -170,6 +182,76 @@ def test_junctions_are_detected_live_as_the_player_paints():
     assert editor.junctions == frozenset({(1, 1)})
 
 
+# --- Active spawn selection ---
+
+def test_painting_the_first_spawn_auto_selects_it():
+    editor = Editor()
+    assert editor.active_spawn_cell is None
+    _add_spawn(editor, (2, 3))
+    assert editor.active_spawn_cell == (2, 3)
+
+
+def test_set_active_spawn_switches_to_a_different_existing_spawn():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((5, 5)))  # second spawn, doesn't move selection
+    assert editor.active_spawn_cell == (0, 0)  # first spawn painted, unchanged so far
+
+    editor.set_active_spawn((5, 5))
+    assert editor.active_spawn_cell == (5, 5)
+
+
+def test_set_active_spawn_ignores_a_cell_that_is_not_a_spawn():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_active_spawn((9, 9))
+    assert editor.active_spawn_cell == (0, 0)
+
+
+def test_erasing_the_active_spawn_reselects_a_remaining_spawn():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((5, 5)))
+    editor.set_active_spawn((0, 0))
+
+    editor.set_tool(EditorTool.ERASE)
+    editor.paint_at(*cell_center_px((0, 0)))
+
+    assert editor.active_spawn_cell == (5, 5)
+
+
+def test_erasing_the_only_spawn_clears_the_active_spawn():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_tool(EditorTool.ERASE)
+    editor.paint_at(*cell_center_px((0, 0)))
+    assert editor.active_spawn_cell is None
+
+
+def test_overwriting_the_active_spawn_with_the_goal_tool_reselects():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_tool(EditorTool.GOAL)
+    editor.paint_at(*cell_center_px((0, 0)))  # replaces the spawn marker
+    assert editor.active_spawn_cell is None
+
+
+def test_erasing_a_spawn_drops_its_units_from_every_wave():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.adjust_unit_count("grunt", +3)
+    editor.add_wave()
+    editor.adjust_unit_count("tank", +1)
+    assert editor.wave_specs == [{(0, 0): {"grunt": 3}}, {(0, 0): {"tank": 1}}]
+
+    editor.set_tool(EditorTool.ERASE)
+    editor.paint_at(*cell_center_px((0, 0)))
+
+    assert editor.wave_specs == [{}, {}]
+
+
 # --- Wave editing ---
 
 def test_add_wave_appends_an_empty_wave_and_selects_it():
@@ -181,6 +263,7 @@ def test_add_wave_appends_an_empty_wave_and_selects_it():
 
 def test_remove_wave_removes_the_active_wave_by_default():
     editor = Editor()
+    _add_spawn(editor)
     editor.add_wave()
     editor.adjust_unit_count("grunt", +1)  # wave 2 (active) gets a grunt
     editor.remove_wave()
@@ -204,10 +287,11 @@ def test_remove_wave_with_an_explicit_out_of_range_index_is_a_no_op():
 
 def test_remove_wave_with_an_explicit_in_range_index_removes_that_wave_not_the_active_one():
     editor = Editor()
+    _add_spawn(editor)
     editor.add_wave()  # wave 2, now active
     editor.adjust_unit_count("tank", +1)  # goes on wave 2
     editor.remove_wave(index=0)  # remove wave 1 specifically
-    assert editor.wave_specs == [{"tank": 1}]
+    assert editor.wave_specs == [{(0, 0): {"tank": 1}}]
 
 
 def test_remove_wave_clamps_active_index_after_removing_the_last_wave():
@@ -222,10 +306,11 @@ def test_remove_wave_clamps_active_index_after_removing_the_last_wave():
 
 def test_set_active_wave_switches_which_wave_unit_edits_apply_to():
     editor = Editor()
+    _add_spawn(editor)
     editor.add_wave()
     editor.set_active_wave(0)
     editor.adjust_unit_count("grunt", +3)
-    assert editor.wave_specs[0] == {"grunt": 3}
+    assert editor.wave_specs[0] == {(0, 0): {"grunt": 3}}
     assert editor.wave_specs[1] == {}
 
 
@@ -239,40 +324,84 @@ def test_set_active_wave_ignores_an_out_of_range_index():
 
 def test_adjust_unit_count_increments_and_decrements():
     editor = Editor()
+    _add_spawn(editor)
     editor.adjust_unit_count("grunt", +1)
     editor.adjust_unit_count("grunt", +1)
-    assert editor.wave_specs[0] == {"grunt": 2}
+    assert editor.wave_specs[0] == {(0, 0): {"grunt": 2}}
     editor.adjust_unit_count("grunt", -1)
-    assert editor.wave_specs[0] == {"grunt": 1}
+    assert editor.wave_specs[0] == {(0, 0): {"grunt": 1}}
 
 
 def test_adjust_unit_count_drops_the_key_at_zero_rather_than_storing_zero():
     editor = Editor()
+    _add_spawn(editor)
     editor.adjust_unit_count("grunt", +1)
     editor.adjust_unit_count("grunt", -1)
-    assert editor.wave_specs[0] == {}
+    assert editor.wave_specs[0] == {}  # the emptied-out spawn is dropped too
 
 
 def test_adjust_unit_count_does_not_go_negative():
     editor = Editor()
+    _add_spawn(editor)
     editor.adjust_unit_count("grunt", -5)
     assert editor.wave_specs[0] == {}
 
 
 def test_adjust_unit_count_ignores_an_unknown_enemy_name():
     editor = Editor()
+    _add_spawn(editor)
     editor.adjust_unit_count("not-a-real-enemy", +1)
     assert editor.wave_specs[0] == {}
 
 
+def test_adjust_unit_count_is_a_no_op_with_no_active_spawn():
+    editor = Editor()  # nothing painted -- no active spawn to target
+    editor.adjust_unit_count("grunt", +1)
+    assert editor.wave_specs == [{}]
+
+
+def test_adjust_unit_count_targets_only_the_active_spawn():
+    editor = Editor()
+    _add_spawn(editor, (0, 0))
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((5, 5)))
+    editor.set_active_spawn((0, 0))
+    editor.adjust_unit_count("grunt", +2)
+
+    editor.set_active_spawn((5, 5))
+    editor.adjust_unit_count("tank", +1)
+
+    assert editor.wave_specs[0] == {(0, 0): {"grunt": 2}, (5, 5): {"tank": 1}}
+
+
 def test_an_empty_wave_is_reported_by_number_in_wave_problems():
     editor = Editor()
+    _add_spawn(editor)
     editor.add_wave()
     editor.set_active_wave(0)
     editor.adjust_unit_count("grunt", +1)
     # Wave 1 has a unit, wave 2 (added, never touched) doesn't.
     assert any("wave 2" in problem for problem in editor.wave_problems)
     assert not any("wave 1" in problem for problem in editor.wave_problems)
+
+
+def test_a_wave_with_units_on_one_spawn_but_not_another_is_still_playable():
+    # A spawn sitting out a given wave entirely is a valid design choice,
+    # not something that should be flagged -- only a wave with *nothing*
+    # from *any* spawn is a problem.
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (0, 1), (0, 2), (1, 1)])
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.paint_at(*cell_center_px((0, 2)))
+    editor.set_tool(EditorTool.GOAL)
+    editor.paint_at(*cell_center_px((1, 1)))
+    editor.set_active_spawn((0, 0))
+    editor.adjust_unit_count("grunt", +1)
+
+    assert editor.path_is_valid()
+    assert editor.can_play()
+    assert editor.wave_problems == []
 
 
 # --- to_level() ---
@@ -286,7 +415,7 @@ def test_to_level_builds_a_playable_level_from_a_valid_buffer():
     assert level.path_cells == frozenset({(0, 0), (1, 0), (2, 0)})
     assert level.spawn_cells == ((0, 0),)
     assert level.goal_cells == ((2, 0),)
-    assert level.wave_specs == [{"grunt": 1}]
+    assert level.wave_specs == [{(0, 0): {"grunt": 1}}]
 
 
 def test_to_level_carries_over_every_wave_including_multi_species_ones():
@@ -297,7 +426,34 @@ def test_to_level_carries_over_every_wave_including_multi_species_ones():
     editor.adjust_unit_count("tank", +1)
 
     level = editor.to_level()
-    assert level.wave_specs == [{"grunt": 1, "scout": 2}, {"tank": 1}]
+    assert level.wave_specs == [{(0, 0): {"grunt": 1, "scout": 2}}, {(0, 0): {"tank": 1}}]
+
+
+def test_to_level_carries_over_independent_per_spawn_compositions():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (0, 1), (0, 2), (1, 1)])
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.paint_at(*cell_center_px((0, 2)))
+    editor.set_tool(EditorTool.GOAL)
+    editor.paint_at(*cell_center_px((1, 1)))
+    editor.set_active_spawn((0, 0))
+    editor.adjust_unit_count("grunt", +3)
+    editor.set_active_spawn((0, 2))
+    editor.adjust_unit_count("tank", +2)
+
+    level = editor.to_level()
+    assert level.wave_specs == [{(0, 0): {"grunt": 3}, (0, 2): {"tank": 2}}]
+
+
+def test_to_level_returns_independent_copies_not_live_references():
+    editor = Editor()
+    _paint_valid_corridor(editor)
+    level = editor.to_level()
+
+    editor.adjust_unit_count("grunt", +10)
+
+    assert level.wave_specs == [{(0, 0): {"grunt": 1}}]  # unaffected by the later edit
 
 
 def test_to_level_raises_for_an_invalid_path():

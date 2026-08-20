@@ -43,7 +43,7 @@ screen, or -- from the victory screen -- advances to the next level if there is 
 replays the level you just won. `Esc` quits from the main menu, game-over, or victory screens
 (there's no pause menu to open there).
 
-Run the test suite with `pytest` (from the venv) -- 350+ tests covering every module, including
+Run the test suite with `pytest` (from the venv) -- 400+ tests covering every module, including
 `Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
 `AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
 real pygame window, so they force the SDL dummy video driver themselves
@@ -180,14 +180,20 @@ which point **Edit Waves** becomes clickable.
 
 That opens the wave editor: numbered tabs across the bottom select which
 wave you're editing, with **+**/**-** tabs to add or remove one (there's
-always at least one). Within a wave, **+**/**-** next to each species in
-the sidebar sets how many of that type spawn in it -- every wave needs at
-least one unit before you can move on. **Playtest** loads the level you're
-editing immediately, without saving; **Save** writes it to `custom_levels/`
-(as JSON, via `persistence.py`) under a name slugged from the level's name,
-where `L`'s level-select screen will find it from then on. Every wave
-currently spawns its species together, one type fully before the next --
-interleaving spawn order within a wave is a possible future refinement.
+always at least one, shared by every spawn -- the whole level counts
+"Wave X of Y" together). Within a wave, **+**/**-** next to each species in
+the sidebar sets how many of that type spawn -- but only *from whichever
+spawn is currently selected*. If your path has more than one spawn point,
+**click a spawn's numbered marker** in the map preview to switch to it --
+each spawn keeps its own independent unit counts per wave, so one spawn can
+send a wave of grunts while another sends tanks, or sits that wave out
+entirely. A wave still needs at least one unit from *some* spawn before you
+can move on. **Playtest** loads the level you're editing immediately,
+without saving; **Save** writes it to `custom_levels/` (as JSON, via
+`persistence.py`) under a name slugged from the level's name, where `L`'s
+level-select screen will find it from then on. Every spawn's units still go
+out together, one type fully before the next -- interleaving spawn order
+within a wave is a possible future refinement.
 
 ## Adding content
 

@@ -1,6 +1,6 @@
 import random
 
-from enemy import GruntEnemy
+from enemy import GruntEnemy, TankEnemy
 from levels import Level
 from waves import WaveManager, WaveState
 
@@ -10,13 +10,19 @@ def cell_to_pixel(col, row):
 
 
 def make_level(wave_specs, path_cells=None, spawn_cells=None, goal_cells=None, branch_weights=None):
+    """wave_specs is given in the flat, single-wave-dict-per-wave shape
+    ({enemy_name: count}, ...) and wrapped here under the level's first
+    spawn cell -- convenient shorthand for the common single-spawn case.
+    A test that actually wants different composition per spawn builds a
+    Level directly instead -- see the "Multi-spawn" tests below."""
+    spawn_cells = tuple(spawn_cells or ((0, 0),))
     return Level(
         id=1,
         name="Test Level",
         path_cells=frozenset(path_cells or {(0, 0), (1, 0)}),
-        spawn_cells=tuple(spawn_cells or ((0, 0),)),
+        spawn_cells=spawn_cells,
         goal_cells=tuple(goal_cells or ((1, 0),)),
-        wave_specs=wave_specs,
+        wave_specs=[{spawn_cells[0]: dict(wave)} for wave in wave_specs],
         branch_weights=branch_weights or {},
     )
 
@@ -63,6 +69,26 @@ def test_between_wave_delay_gates_the_second_waves_spawn():
     assert manager.state == WaveState.BETWEEN_WAVES
 
     manager.update(dt=0.6, active_enemies=[])
+    assert manager.state == WaveState.SPAWNING
+
+
+def test_skip_delay_during_an_actual_between_wave_countdown_starts_it_immediately():
+    # Distinct from skip_delay()'s AWAITING_START branch (every other test
+    # above only ever calls it once, for wave 1's initial "Start") -- this
+    # is the player clicking "Skip" mid-countdown for a *later* wave.
+    level = make_level([{"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.01, between_wave_delay=100.0)
+
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1
+    manager.update(dt=0.01, active_enemies=[])  # spawns wave 1's one grunt
+    manager.update(dt=0.01, active_enemies=[])  # sees it "cleared" -> advances to wave 2
+    assert manager.state == WaveState.BETWEEN_WAVES
+    assert manager.between_wave_timer == 100.0
+
+    manager.skip_delay()
+    assert manager.between_wave_timer == 0.0
+    manager.update(dt=0.01, active_enemies=[])
     assert manager.state == WaveState.SPAWNING
 
 
@@ -127,30 +153,7 @@ def test_progresses_through_multiple_waves_and_flags_completion_only_after_the_l
     assert manager.state == WaveState.DONE
 
 
-# --- Multi-spawn / branching routes ---
-
-def test_enemies_spawn_from_every_spawn_cell_over_enough_waves():
-    # Two independent spawns, (0, 0) and (0, 2), merging at (0, 1) before a
-    # shared run to the goal.
-    level = make_level(
-        [{"grunt": 40}],
-        path_cells={(0, 0), (0, 1), (0, 2), (1, 1)},
-        spawn_cells=((0, 0), (0, 2)),
-        goal_cells=((1, 1),),
-    )
-    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, rng=random.Random(0))
-    manager.skip_delay()
-
-    starts_seen = set()
-    for _ in range(200):
-        spawned = manager.update(dt=0.01, active_enemies=[])
-        for enemy in spawned:
-            starts_seen.add(enemy.waypoints[0])
-        if manager.all_waves_complete:
-            break
-
-    assert starts_seen == {cell_to_pixel(0, 0), cell_to_pixel(0, 2)}
-
+# --- Branching routes (still random -- see pathing.sample_route) ---
 
 def test_branch_weights_bias_which_fork_spawned_enemies_take():
     # A branch at (1, 0) toward two goals -- weight the route so every
@@ -175,3 +178,61 @@ def test_branch_weights_bias_which_fork_spawned_enemies_take():
     assert len(all_spawned) == 20
     for enemy in all_spawned:
         assert enemy.waypoints[-1] == cell_to_pixel(2, 0)
+
+
+# --- Multi-spawn: per-spawn wave composition (not random -- see levels.py) ---
+
+def _drive_to_completion(manager):
+    manager.skip_delay()
+    all_spawned = []
+    for _ in range(500):
+        all_spawned.extend(manager.update(dt=0.01, active_enemies=[]))
+        if manager.all_waves_complete:
+            break
+    return all_spawned
+
+
+def test_each_spawns_wave_composition_is_honored_independently():
+    # Two independent spawns, (0, 0) and (0, 2), merging at (0, 1) before a
+    # shared run to the goal -- spawn (0, 0) sends 3 grunts, spawn (0, 2)
+    # sends 2 tanks, in the same wave. Which spawn an enemy comes from is
+    # decided by wave_specs itself now, not chosen randomly.
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"tank": 2}}],
+    )
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+
+    all_spawned = _drive_to_completion(manager)
+
+    starts = [enemy.waypoints[0] for enemy in all_spawned]
+    assert starts.count(cell_to_pixel(0, 0)) == 3
+    assert starts.count(cell_to_pixel(0, 2)) == 2
+    assert sum(isinstance(e, GruntEnemy) for e in all_spawned) == 3
+    assert sum(isinstance(e, TankEnemy) for e in all_spawned) == 2
+
+
+def test_a_wave_can_draw_from_only_one_spawn_while_another_sits_it_out():
+    # Wave 1 is (0, 0)-only, wave 2 is (0, 2)-only -- a spawn contributing
+    # nothing to a given wave is a valid, deliberate level-design choice,
+    # not something Level/WaveManager need to treat specially.
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 2}}, {(0, 2): {"grunt": 2}}],
+    )
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+
+    all_spawned = _drive_to_completion(manager)
+
+    wave_1_starts = [e.waypoints[0] for e in all_spawned if e.wave_number == 1]
+    wave_2_starts = [e.waypoints[0] for e in all_spawned if e.wave_number == 2]
+    assert wave_1_starts == [cell_to_pixel(0, 0)] * 2
+    assert wave_2_starts == [cell_to_pixel(0, 2)] * 2

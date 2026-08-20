@@ -466,12 +466,26 @@ def get_clicked_editor_action(pos, action_rects):
 
 def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects):
     surface.fill(settings.COLOR_BG)
-    _draw_editor_grid(surface, assets, editor)
+    _draw_editor_grid(surface, assets, small_font, editor)
     _draw_editor_toolbar(surface, small_font, editor, tool_rects)
     _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects)
 
 
-def _draw_editor_grid(surface, assets, editor):
+def _cell_center(editor, cell):
+    col, row = cell
+    return (
+        col * editor.tile_size + editor.tile_size // 2,
+        row * editor.tile_size + editor.tile_size // 2,
+    )
+
+
+def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None):
+    """The path/spawn/goal/junction preview shared by both editor screens.
+    Spawns are numbered (stable sort order by cell) so a multi-spawn
+    level's spawns have a consistent, referenceable identity across both
+    screens; `active_spawn`, when given (only the wave editor has one),
+    gets a highlight ring -- see Game._handle_wave_editor_click, which is
+    what clicking a spawn marker there actually changes."""
     for row in range(editor.rows):
         for col in range(editor.cols):
             cell = (col, row)
@@ -481,19 +495,25 @@ def _draw_editor_grid(surface, assets, editor):
 
     for cell in editor.junctions:
         _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_JUNCTION, radius_fraction=0.18)
-    for cell in editor.spawn_cells:
+
+    for number, cell in enumerate(sorted(editor.spawn_cells), start=1):
         _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_SPAWN, radius_fraction=0.32)
+        if cell == active_spawn:
+            _draw_active_spawn_ring(surface, editor, cell)
+        label = small_font.render(str(number), True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=_cell_center(editor, cell)))
+
     for cell in editor.goal_cells:
         _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_GOAL, radius_fraction=0.32)
 
 
 def _draw_editor_marker(surface, editor, cell, color, radius_fraction):
-    col, row = cell
-    center = (
-        col * editor.tile_size + editor.tile_size // 2,
-        row * editor.tile_size + editor.tile_size // 2,
-    )
-    pygame.draw.circle(surface, color, center, int(editor.tile_size * radius_fraction))
+    pygame.draw.circle(surface, color, _cell_center(editor, cell), int(editor.tile_size * radius_fraction))
+
+
+def _draw_active_spawn_ring(surface, editor, cell):
+    radius = int(editor.tile_size * 0.42)
+    pygame.draw.circle(surface, settings.COLOR_TEXT, _cell_center(editor, cell), radius, width=3)
 
 
 def _draw_editor_toolbar(surface, small_font, editor, tool_rects):
@@ -633,7 +653,10 @@ def get_clicked_wave_editor_action(pos, action_rects):
 
 def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects, action_rects):
     surface.fill(settings.COLOR_BG)
-    _draw_editor_grid(surface, assets, editor)  # read-only path preview, for context
+    # Read-only path preview, for context -- clicking a spawn marker in it
+    # is exactly what changes which spawn's counts the sidebar below
+    # shows/edits (see Game._handle_wave_editor_click).
+    _draw_editor_grid(surface, assets, small_font, editor, active_spawn=editor.active_spawn_cell)
     _draw_wave_tabs(surface, small_font, editor, tab_rects)
     _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects)
 
@@ -671,10 +694,23 @@ def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, act
     )
     surface.blit(wave_label, (x, PANEL_PADDING + 36))
 
-    wave = editor.wave_specs[editor.active_wave_index]
+    # Short by design -- guaranteed to fit the sidebar on one line without
+    # needing _wrap_text -- since the map preview's highlight ring (see
+    # _draw_active_spawn_ring) plus the numbered markers are what actually
+    # tell a multi-spawn level's spawns apart; this is just confirmation.
+    spawn_order = sorted(editor.spawn_cells)
+    if editor.active_spawn_cell in spawn_order:
+        spawn_number = spawn_order.index(editor.active_spawn_cell) + 1
+        spawn_text = f"Spawn {spawn_number} of {len(spawn_order)}"
+    else:
+        spawn_text = "No spawn"
+    spawn_label = small_font.render(spawn_text, True, settings.COLOR_TEXT_DIM)
+    surface.blit(spawn_label, (x, PANEL_PADDING + 58))
+
+    composition = editor.wave_specs[editor.active_wave_index].get(editor.active_spawn_cell, {})
     y = WAVE_UNIT_ROWS_TOP
     for name in ENEMY_ORDER:
-        count = wave.get(name, 0)
+        count = composition.get(name, 0)
         label = small_font.render(f"{name.capitalize()}: {count}", True, settings.COLOR_TEXT)
         surface.blit(label, (x, y + 4))
         for suffix, symbol in (("minus", "-"), ("plus", "+")):

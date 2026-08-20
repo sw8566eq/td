@@ -109,16 +109,29 @@ becomes `None` for a custom level, which is what `has_next_level()`/`reset()`/
 `advance_or_replay_level()` check to know there's no `LEVELS` entry to look back up.
 
 Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
-edits `Editor.wave_specs` directly -- the exact same `[{enemy_type_name: count}, ...]` shape
-`Level.wave_specs` expects, not a separate representation converted later. Add/remove-wave tabs and
-per-species +/- buttons (`Editor.add_wave`/`remove_wave`/`set_active_wave`/`adjust_unit_count`) all
-call `validate()` afterward, same as path edits do. A wave editor's `Editor.wave_specs` always keeps
-at least one wave (`remove_wave` refuses to drop below that) and never stores an explicit zero count
-(`adjust_unit_count` pops the key at zero instead) -- `Level.__post_init__` independently rejects any
-wave whose counts sum to zero, so this invariant is enforced at the `Level` level too, not just by
-the editor's own UI. Every wave currently spawns its species together, one type fully before the
-next (`WaveManager._begin_wave`'s existing flattening) -- interleaving spawn order within a wave is
-a possible future refinement the data shape doesn't need to anticipate.
+edits `Editor.wave_specs` directly -- the exact same `[{spawn_cell: {enemy_type_name: count}}, ...]`
+shape `Level.wave_specs` expects, not a separate representation converted later. Waves are a
+**level-wide timeline** (add/remove-wave tabs affect every spawn's wave count at once, same
+`wave_index`/countdown for the whole level -- see `WaveManager`), but each wave's **composition is
+per-spawn**: clicking a spawn's marker in the read-only path preview (`Game._handle_wave_editor_click`
+-> `Editor.set_active_spawn`) switches which spawn's own `{enemy_name: count}` dict the +/- buttons
+target, so a multi-spawn level can send a completely different mix -- or nothing at all -- out of
+each spawn in the same wave. `Editor.active_spawn_cell` is kept valid the same way
+`active_wave_index` is: `validate()` re-clamps it (to `min(spawn_cells)`, or `None` if there are no
+spawns left) any time painting/erasing changes which spawns exist, and erasing a spawn
+(`Editor._forget_spawn`) drops its entries from every wave so removed spawns never leave orphaned
+wave data behind. Every wave-editing method (`add_wave`/`remove_wave`/`set_active_wave`/
+`adjust_unit_count`) calls `validate()` afterward, same as path edits do. `wave_specs` stays sparse
+at both levels of nesting -- no explicit zero counts (`adjust_unit_count` pops the key instead) and
+no empty per-spawn dicts (an emptied-out spawn is dropped from its wave entirely) -- and
+`Level.__post_init__` independently rejects any wave whose counts sum to zero across every spawn,
+so that invariant holds at the `Level` level too, not just via the editor's own UI. Every wave still
+spawns its species together, one type fully before the next (`WaveManager._begin_wave`'s existing
+flattening) -- interleaving spawn order within a wave is a possible future refinement the data shape
+doesn't need to anticipate. Which spawn a given enemy starts from is decided once, when
+`_begin_wave()` builds the flat `(spawn_cell, enemy_cls)` spawn queue from every spawn's composition
+-- no more randomness involved in *that* choice (branching further along the route, past the spawn,
+is still `pathing.sample_route`'s weighted-random job, unchanged).
 
 `persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
 `load_level_file`/`list_custom_levels` (de)serialize a `Level` to JSON under `custom_levels/`

@@ -15,8 +15,9 @@ def test_all_registered_levels_have_in_bounds_path_cells():
 def test_all_registered_levels_reference_known_enemy_types():
     for level in LEVELS.values():
         for wave in level.wave_specs:
-            for enemy_name in wave:
-                assert enemy_name in ENEMY_TYPES
+            for composition in wave.values():
+                for enemy_name in composition:
+                    assert enemy_name in ENEMY_TYPES
 
 
 def test_level_rejects_unknown_enemy_type_in_wave_specs():
@@ -27,7 +28,7 @@ def test_level_rejects_unknown_enemy_type_in_wave_specs():
             path_cells=frozenset({(0, 0), (1, 0)}),
             spawn_cells=((0, 0),),
             goal_cells=((1, 0),),
-            wave_specs=[{"not_a_real_enemy": 3}],
+            wave_specs=[{(0, 0): {"not_a_real_enemy": 3}}],
         )
 
 
@@ -39,7 +40,34 @@ def test_level_rejects_a_wave_with_no_enemies_in_it():
             path_cells=frozenset({(0, 0), (1, 0)}),
             spawn_cells=((0, 0),),
             goal_cells=((1, 0),),
-            wave_specs=[{"grunt": 3}, {}],
+            wave_specs=[{(0, 0): {"grunt": 3}}, {}],
+        )
+
+
+def test_level_rejects_a_wave_whose_spawn_has_no_enemies_in_it():
+    # A wave dict that has a spawn key but nothing under it -- same
+    # "nothing to spawn" problem as an empty wave dict entirely, just one
+    # level of nesting deeper.
+    with pytest.raises(ValueError):
+        Level(
+            id=999,
+            name="Empty Spawn Composition Level",
+            path_cells=frozenset({(0, 0), (1, 0)}),
+            spawn_cells=((0, 0),),
+            goal_cells=((1, 0),),
+            wave_specs=[{(0, 0): {}}],
+        )
+
+
+def test_level_rejects_a_wave_referencing_a_spawn_not_in_spawn_cells():
+    with pytest.raises(ValueError):
+        Level(
+            id=999,
+            name="Orphaned Spawn Level",
+            path_cells=frozenset({(0, 0), (1, 0)}),
+            spawn_cells=((0, 0),),
+            goal_cells=((1, 0),),
+            wave_specs=[{(0, 0): {"grunt": 1}, (5, 5): {"grunt": 1}}],
         )
 
 
@@ -67,7 +95,7 @@ def test_level_rejects_a_cyclic_path():
             path_cells=frozenset({(0, 0), (1, 0), (1, 1), (0, 1)}),
             spawn_cells=((0, 0),),
             goal_cells=((1, 1),),
-            wave_specs=[{"grunt": 1}],
+            wave_specs=[{(0, 0): {"grunt": 1}}],
         )
 
 
@@ -79,13 +107,28 @@ def test_level_rejects_a_spawn_disconnected_from_the_rest_of_the_path():
             path_cells=frozenset({(0, 0), (1, 0), (2, 0), (10, 5)}),
             spawn_cells=((0, 0),),
             goal_cells=((2, 0),),
-            wave_specs=[{"grunt": 1}],
+            wave_specs=[{(0, 0): {"grunt": 1}}],
         )
 
 
+def test_level_accepts_different_compositions_per_spawn_in_the_same_wave():
+    Level(
+        id=999,
+        name="Multi-spawn Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"tank": 1}}],
+    )  # must not raise
+
+
 def test_generate_default_waves_ramps_enemy_count_per_wave():
-    waves = generate_default_waves(total_waves=3, enemy_type="grunt", base_count=5, count_step=2)
-    assert waves == [{"grunt": 5}, {"grunt": 7}, {"grunt": 9}]
+    waves = generate_default_waves((0, 0), total_waves=3, enemy_type="grunt", base_count=5, count_step=2)
+    assert waves == [
+        {(0, 0): {"grunt": 5}},
+        {(0, 0): {"grunt": 7}},
+        {(0, 0): {"grunt": 9}},
+    ]
 
 
 def test_level_1_is_registered_and_playable():
@@ -100,7 +143,12 @@ def test_level_1_is_registered_and_playable():
 
 def test_level_1_introduces_every_enemy_species_across_its_waves():
     level = LEVELS[1]
-    species_seen = {name for wave in level.wave_specs for name in wave}
+    species_seen = {
+        name
+        for wave in level.wave_specs
+        for composition in wave.values()
+        for name in composition
+    }
     assert species_seen == set(ENEMY_TYPES)
 
 
@@ -113,14 +161,20 @@ def test_level_2_has_a_distinct_path_from_level_1():
     assert LEVELS[2].path_cells != LEVELS[1].path_cells
 
 
+def _wave_species(wave):
+    return {name for composition in wave.values() for name in composition}
+
+
 def test_every_levels_final_wave_includes_a_boss():
     for level_id, level in LEVELS.items():
         final_wave = level.wave_specs[-1]
-        assert "boss" in final_wave, level_id
-        assert final_wave["boss"] >= 1, level_id
+        species = _wave_species(final_wave)
+        assert "boss" in species, level_id
+        boss_count = sum(composition.get("boss", 0) for composition in final_wave.values())
+        assert boss_count >= 1, level_id
 
 
 def test_boss_does_not_appear_before_the_final_wave():
     for level_id, level in LEVELS.items():
         for wave in level.wave_specs[:-1]:
-            assert "boss" not in wave, level_id
+            assert "boss" not in _wave_species(wave), level_id

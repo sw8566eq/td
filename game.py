@@ -272,6 +272,14 @@ class Game:
         action = ui.get_clicked_wave_editor_action(pos, self.wave_editor_action_rects)
         if action is not None:
             self._handle_wave_editor_action(action)
+            return
+
+        # Not on any button -- maybe a spawn marker in the read-only path
+        # preview was clicked, switching which spawn's counts the +/-
+        # buttons above now target. set_active_spawn() itself already
+        # no-ops for a cell that isn't actually a spawn, so nothing here
+        # needs to fence the click to "did it land on a real marker" first.
+        self.editor.set_active_spawn(self.editor.pixel_to_tile(*pos))
 
     def _handle_wave_editor_action(self, action):
         if action == "back":

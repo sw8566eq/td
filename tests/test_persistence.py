@@ -11,7 +11,11 @@ def make_branching_level(name="Test Level", **overrides):
         path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
         spawn_cells=((0, 0), (0, 2)),
         goal_cells=((1, 1),),
-        wave_specs=[{"grunt": 3}, {"grunt": 5}],
+        # Deliberately a different composition per spawn, and one wave
+        # where (0, 2) sits out entirely -- exercises the per-spawn
+        # wave_specs shape's round-trip through JSON, not just a
+        # single-spawn level's.
+        wave_specs=[{(0, 0): {"grunt": 3}}, {(0, 0): {"grunt": 2}, (0, 2): {"tank": 3}}],
         starting_gold=200,
         starting_lives=15,
         blocked_cells=frozenset({(5, 5)}),
@@ -90,7 +94,9 @@ def test_list_custom_levels_skips_a_corrupt_file_instead_of_raising(tmp_path):
 
 def test_list_custom_levels_skips_a_file_whose_level_fails_its_own_validation(tmp_path):
     # A hand-edited file with a cyclic path -- syntactically fine JSON,
-    # but Level.__post_init__ rejects it via validate_topology.
+    # but Level.__post_init__ rejects it (via validate_topology, or
+    # possibly its own wave/spawn-consistency checks first -- either way,
+    # some ValueError, which is all this test actually cares about).
     bad_data = persistence.level_to_dict(make_branching_level(name="Good Level"))
     bad_data["path_cells"] = [[0, 0], [1, 0], [1, 1], [0, 1]]
     bad_data["spawn_cells"] = [[0, 0]]
