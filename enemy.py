@@ -94,7 +94,16 @@ class Enemy:
             self.distance_traveled += step
 
     def take_damage(self, amount):
-        if self.is_dead:
+        # Also guard reached_goal, not just is_dead: every current caller
+        # into this already excludes reached_goal enemies upstream (see
+        # Projectile), so this is dormant today, but take_damage is a
+        # normal public entry point (tests call it directly, and so could
+        # a future hazard tile or damage-over-time effect) -- without
+        # this, a direct call on an escaped enemy could flip is_dead to
+        # True, and Game.update()'s alive-filter checks is_dead before
+        # reached_goal, so it would award gold for an enemy that had
+        # already cost a life instead.
+        if self.is_dead or self.reached_goal:
             return
         self.hp -= amount
         if self.hp <= 0:

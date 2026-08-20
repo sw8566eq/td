@@ -5,6 +5,15 @@ chain-vs-no-chain are all differences in the data passed at construction
 (fed by each Tower subclass's create_projectile()), not separate
 Projectile subclasses -- the resolution algorithm is identical either way,
 just applied to one enemy or many.
+
+Splash and chain are the two exceptions to "freely combinable", though:
+_resolve_hit() only ever reaches chain resolution on its no-splash branch,
+so a shot with both splash_radius and chain_range set gets splash only --
+untested and unused by any current TOWER_TYPES entry, and not something
+to combine casually (a splash hit already hits every enemy in the blast
+radius by iterating `enemies` directly, so chaining "from" that impact
+raises its own questions about who counts as already-hit that a single-
+target chain doesn't have to answer).
 """
 
 import pygame
