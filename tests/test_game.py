@@ -14,8 +14,9 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import settings  # noqa: E402
+from editor import EditorTool  # noqa: E402
 from game import Game, GameState  # noqa: E402
-from levels import LEVELS  # noqa: E402
+from levels import LEVELS, Level  # noqa: E402
 from tower import TOWER_TYPES, BasicTower  # noqa: E402
 
 
@@ -189,6 +190,24 @@ def test_paused_unbound_key_is_a_no_op(playing_game):
     playing_game._handle_keydown(pygame.K_z)
     assert playing_game.state == GameState.PAUSED
     assert playing_game.running is True
+
+
+def test_paused_e_returns_to_the_map_editor_on_a_custom_level(game):
+    game.load_custom_level(make_custom_level())
+    game.state = GameState.PAUSED
+
+    game._handle_keydown(pygame.K_e)
+
+    assert game.state == GameState.EDITOR
+
+
+def test_paused_e_is_a_no_op_on_a_built_in_level(playing_game):
+    # "Return to Map Editor" is only offered (see ui.draw_pause_menu) for
+    # a custom level -- a built-in one has no corresponding paint buffer
+    # to go back to.
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_e)
+    assert playing_game.state == GameState.PAUSED
 
 
 def test_game_over_r_resets_the_same_level_and_resumes_playing(game):
@@ -1095,6 +1114,335 @@ def test_advance_or_replay_level_replays_when_no_next_level(game):
     assert game.towers == []  # freshly reloaded
 
 
+# --- Map editor / level select ---
+
+def cell_center_px(cell, tile_size=64):
+    col, row = cell
+    return col * tile_size + tile_size // 2, row * tile_size + tile_size // 2
+
+
+def make_custom_level(level_id="custom-slug", name="Custom Level"):
+    return Level(
+        id=level_id,
+        name=name,
+        path_cells=frozenset({(0, 0), (1, 0), (2, 0)}),
+        spawn_cells=((0, 0),),
+        goal_cells=((2, 0),),
+        wave_specs=[{(0, 0): {"grunt": 2}}],
+    )
+
+
+def test_game_starts_with_an_empty_unplayable_editor(game):
+    assert game.editor.path_cells == set()
+    assert not game.editor.can_play()
+
+
+def test_menu_e_key_enters_the_editor(game):
+    game._handle_keydown(pygame.K_e)
+    assert game.state == GameState.EDITOR
+
+
+def test_menu_l_key_enters_level_select(game):
+    game._handle_keydown(pygame.K_l)
+    assert game.state == GameState.LEVEL_SELECT
+
+
+def test_editor_escape_returns_to_menu(game):
+    game.state = GameState.EDITOR
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_level_select_escape_returns_to_menu(game):
+    game.state = GameState.LEVEL_SELECT
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_clicking_an_editor_tool_button_switches_the_active_tool(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_click(game.editor_tool_rects["spawn"].center)
+    assert game.editor.active_tool == EditorTool.SPAWN
+
+
+def test_clicking_the_grid_paints_a_path_cell(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_click(cell_center_px((3, 4)))
+    assert (3, 4) in game.editor.path_cells
+
+
+def test_dragging_with_the_left_button_held_paints_a_stroke_of_cells(game):
+    game.state = GameState.EDITOR
+    for col in range(3):
+        game._handle_editor_motion(cell_center_px((col, 2)), (True, False, False))
+    assert {(0, 2), (1, 2), (2, 2)} <= game.editor.path_cells
+
+
+def test_motion_without_the_left_button_held_does_not_paint(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_motion(cell_center_px((5, 5)), (False, False, False))
+    assert game.editor.path_cells == set()
+
+
+def test_waves_action_is_a_no_op_while_the_editors_path_is_invalid(game):
+    game.state = GameState.EDITOR
+    assert not game.editor.path_is_valid()
+    game._handle_editor_click(game.editor_action_rects["waves"].center)
+    assert game.state == GameState.EDITOR  # never left -- path isn't ready yet
+
+
+def _paint_valid_path(game, row=2):
+    game.editor.set_tool(EditorTool.PAINT)
+    for col in range(3):
+        game.editor.paint_at(*cell_center_px((col, row)))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((0, row)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((2, row)))
+
+
+def test_waves_action_switches_to_the_wave_editor_once_the_path_is_valid(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    assert game.editor.path_is_valid()
+
+    game._handle_editor_click(game.editor_action_rects["waves"].center)
+
+    assert game.state == GameState.WAVE_EDITOR
+
+
+def test_back_action_returns_to_menu_without_touching_the_paint_buffer(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((0, 0)))
+    game._handle_editor_click(game.editor_action_rects["back"].center)
+    assert game.state == GameState.MENU
+    assert (0, 0) in game.editor.path_cells  # still there next time the editor opens
+
+
+# --- Wave editor ---
+
+def test_wave_editor_escape_returns_to_the_path_editor(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.EDITOR
+
+
+def test_clicking_add_wave_tab_appends_a_wave(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game._wave_tab_rects()["add"].center)
+    assert len(game.editor.wave_specs) == 2
+    assert game.editor.active_wave_index == 1
+
+
+def test_clicking_remove_wave_tab_removes_the_active_wave(game):
+    game.state = GameState.WAVE_EDITOR
+    game.editor.add_wave()
+    game._handle_wave_editor_click(game._wave_tab_rects()["remove"].center)
+    assert len(game.editor.wave_specs) == 1
+
+
+def test_clicking_a_wave_number_tab_selects_it(game):
+    game.state = GameState.WAVE_EDITOR
+    game.editor.add_wave()
+    game.editor.add_wave()
+    game._handle_wave_editor_click(game._wave_tab_rects()[0].center)
+    assert game.editor.active_wave_index == 0
+
+
+def test_clicking_plus_increments_the_active_waves_unit_count(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    spawn = game.editor.active_spawn_cell
+
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+
+    assert game.editor.wave_specs[0][spawn]["grunt"] == 2
+
+
+def test_clicking_minus_decrements_and_floors_at_zero(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    spawn = game.editor.active_spawn_cell
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
+
+    assert game.editor.wave_specs[0].get(spawn, {}) == {}
+
+
+def test_clicking_plus_with_no_spawn_selected_is_a_no_op(game):
+    # Fresh editor -- no path painted yet, so there's no active spawn for
+    # +/- to target.
+    game.state = GameState.WAVE_EDITOR
+    assert game.editor.active_spawn_cell is None
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.wave_specs == [{}]
+
+
+def _paint_two_spawn_path(game):
+    game.editor.set_tool(EditorTool.PAINT)
+    for cell in [(0, 0), (0, 1), (0, 2), (1, 1)]:
+        game.editor.paint_at(*cell_center_px(cell))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((0, 0)))
+    game.editor.paint_at(*cell_center_px((0, 2)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((1, 1)))
+
+
+def test_clicking_a_spawn_marker_switches_the_active_spawn(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    assert game.editor.active_spawn_cell == (0, 0)  # min() of the two, auto-selected
+
+    game._handle_wave_editor_click(cell_center_px((0, 2)))
+
+    assert game.editor.active_spawn_cell == (0, 2)
+
+
+def test_clicking_a_non_spawn_grid_cell_in_the_wave_editor_is_a_no_op(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    active_before = game.editor.active_spawn_cell
+
+    game._handle_wave_editor_click(cell_center_px((0, 1)))  # a plain path cell, not a spawn
+
+    assert game.editor.active_spawn_cell == active_before
+
+
+def test_plus_after_switching_spawns_targets_the_newly_active_one(game):
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+
+    game._handle_wave_editor_click(cell_center_px((0, 2)))
+    game._handle_wave_editor_click(game.wave_unit_rects[("tank", "plus")].center)
+
+    assert game.editor.wave_specs[0] == {(0, 2): {"tank": 1}}
+
+
+def test_wave_editor_playtest_is_a_no_op_until_every_wave_has_units(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    assert not game.editor.can_play()  # path ready, but the one wave is empty
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
+
+    assert game.state == GameState.WAVE_EDITOR  # never left
+
+
+def test_wave_editor_playtest_loads_the_level_and_switches_to_playing(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.can_play()
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
+
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id is None
+    assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
+    assert game.level.wave_specs == [{(0, 2): {"grunt": 1}}]
+
+
+def test_wave_editor_back_action_returns_to_the_path_editor(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_editor_action_rects["back"].center)
+    assert game.state == GameState.EDITOR
+
+
+def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch):
+    saved = []
+    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.can_play()
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
+
+    assert len(saved) == 1
+    assert saved[0].wave_specs == [{(0, 2): {"grunt": 1}}]
+    assert game.state == GameState.WAVE_EDITOR  # saving doesn't navigate away
+
+
+def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
+    saved = []
+    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+
+    game.state = GameState.WAVE_EDITOR
+    assert not game.editor.can_play()
+    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
+
+    assert saved == []
+
+
+def test_level_select_click_on_empty_space_is_a_no_op(game):
+    game._enter_level_select()
+    game._handle_level_select_click((-1000, -1000))
+    assert game.state == GameState.LEVEL_SELECT  # never left
+
+
+def test_has_next_level_is_false_for_a_custom_level(game):
+    game.load_custom_level(make_custom_level())
+    assert game.current_level_id is None
+    assert game.has_next_level() is False
+
+
+def test_reset_on_a_custom_level_reloads_it_without_a_registry_lookup(game):
+    game.load_custom_level(make_custom_level())
+    game.towers = ["fake"]
+
+    game.reset()
+
+    assert game.state == GameState.MENU
+    assert game.current_level_id is None
+    assert game.towers == []
+    assert game.level.path_cells == frozenset({(0, 0), (1, 0), (2, 0)})
+
+
+def test_advance_or_replay_level_on_a_custom_level_replays_it(game):
+    game.load_custom_level(make_custom_level())
+    game.towers = ["fake"]
+
+    game.advance_or_replay_level()
+
+    assert game.current_level_id is None
+    assert game.towers == []
+
+
+def test_level_select_click_on_a_built_in_entry_loads_it(game):
+    game._enter_level_select()
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id == 1
+
+
+def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+
+    game._enter_level_select()
+    assert (custom.id, f"{custom.name} (custom)") in game.level_select_entries
+
+    game._handle_level_select_click(game.level_select_rects[custom.id].center)
+
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id is None
+    assert game.level.id == custom.id
+
+
 # --- render(): smoke tests across every state ---
 
 @pytest.mark.parametrize("state", list(GameState))
@@ -1118,6 +1466,64 @@ def test_render_while_hovering_a_placed_tower_does_not_crash(playing_game):
         playing_game.render()
     finally:
         clear_mouse_mock()
+
+
+def test_render_editor_with_a_branching_path_does_not_crash(game):
+    # An empty editor never draws a junction/spawn/goal marker at all --
+    # paint a branch (so there's a junction) plus spawn/goal markers so
+    # render() actually exercises that drawing code, not just the empty-
+    # grid case every other render smoke test leaves it in.
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.PAINT)
+    for cell in [(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)]:
+        game.editor.paint_at(*cell_center_px(cell))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((1, 0)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((2, 1)))
+    game.editor.paint_at(*cell_center_px((1, 2)))
+    assert game.editor.junctions  # sanity: the branch was actually detected
+
+    game.render()
+
+
+def test_render_wave_editor_with_units_added_does_not_crash(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game.editor.adjust_unit_count("grunt", +2)
+    game.editor.add_wave()
+
+    game.render()
+
+
+def test_render_wave_editor_with_multiple_spawns_does_not_crash(game):
+    # A single-spawn editor never draws the active-spawn highlight ring or
+    # more than one numbered marker -- paint a second spawn so render()
+    # actually exercises that code, not just the single-spawn case every
+    # other wave editor render test leaves it in.
+    game.state = GameState.EDITOR
+    _paint_two_spawn_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(cell_center_px((0, 2)))  # a non-default active spawn
+
+    game.render()
+
+
+def test_render_level_select_with_entries_does_not_crash(game):
+    # An empty level_select_entries list never exercises the per-row
+    # drawing loop -- populate it the same way _enter_level_select() does.
+    game._enter_level_select()
+    game.render()
+
+
+def test_render_paused_on_a_custom_level_does_not_crash(game):
+    # test_render_does_not_crash_in_any_state only ever pauses on a
+    # built-in level, so the pause menu's extra "Return to Map Editor"
+    # option (is_custom_level=True) never actually gets drawn there.
+    game.load_custom_level(make_custom_level())
+    game.state = GameState.PAUSED
+    game.render()
 
 
 # --- Hover helpers ---

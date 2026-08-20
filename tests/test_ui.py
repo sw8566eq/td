@@ -1,15 +1,32 @@
 import pygame
 
 import settings
+from editor import TOOL_ORDER
+from enemy import ENEMY_TYPES
 from tower import TOWER_TYPES
 from ui import (
+    EDITOR_ACTION_ORDER,
     PANEL_PADDING,
+    WAVE_EDITOR_ACTION_ORDER,
+    _wrap_text,
     build_button_rects,
+    build_editor_action_rects,
+    build_editor_tool_rects,
+    build_level_select_rects,
     build_sell_button_rect,
     build_skip_button_rect,
     build_specialize_button_rects,
     build_upgrade_button_rect,
+    build_wave_editor_action_rects,
+    build_wave_tab_rects,
+    build_wave_unit_rects,
+    get_clicked_editor_action,
+    get_clicked_editor_tool,
+    get_clicked_level_select_entry,
     get_clicked_tower_button,
+    get_clicked_wave_editor_action,
+    get_clicked_wave_tab,
+    get_clicked_wave_unit_button,
 )
 
 
@@ -94,6 +111,178 @@ def test_first_specialize_button_shares_the_upgrade_buttons_slot():
     # ones that use the *second* specialize rect where that ambiguity
     # doesn't apply.
     assert build_specialize_button_rects()[0] == build_upgrade_button_rect()
+
+
+# --- Map editor toolbar/actions ---
+
+def test_build_editor_tool_rects_has_one_entry_per_editor_tool():
+    rects = build_editor_tool_rects()
+    assert set(rects.keys()) == set(TOOL_ORDER)
+
+
+def test_get_clicked_editor_tool_returns_matching_name():
+    rects = build_editor_tool_rects()
+    for name, rect in rects.items():
+        assert get_clicked_editor_tool(rect.center, rects) == name
+    assert get_clicked_editor_tool((-1000, -1000), rects) is None
+
+
+def test_editor_tool_buttons_do_not_overlap():
+    rects = list(build_editor_tool_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_build_editor_action_rects_has_one_entry_per_action_and_sits_in_the_sidebar():
+    rects = build_editor_action_rects()
+    assert set(rects.keys()) == set(EDITOR_ACTION_ORDER)
+    for rect in rects.values():
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+        assert rect.top >= 0
+        assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_editor_action_buttons_are_stacked_without_overlapping():
+    rects = list(build_editor_action_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_editor_action_returns_matching_name():
+    rects = build_editor_action_rects()
+    for name, rect in rects.items():
+        assert get_clicked_editor_action(rect.center, rects) == name
+    assert get_clicked_editor_action((-1000, -1000), rects) is None
+
+
+# --- Level select ---
+
+def test_build_level_select_rects_has_one_entry_per_entry_and_they_dont_overlap():
+    entries = [(1, "Winding Road"), (2, "Serpentine Pass"), ("custom-slug", "My Level (custom)")]
+    rects = build_level_select_rects(entries)
+    assert set(rects.keys()) == {1, 2, "custom-slug"}
+
+    ordered = list(rects.values())
+    for i, a in enumerate(ordered):
+        for b in ordered[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_level_select_entry_returns_matching_key():
+    entries = [(1, "Winding Road"), ("custom-slug", "My Level (custom)")]
+    rects = build_level_select_rects(entries)
+    for key, rect in rects.items():
+        assert get_clicked_level_select_entry(rect.center, rects) == key
+    assert get_clicked_level_select_entry((-1000, -1000), rects) is None
+
+
+def test_build_level_select_rects_handles_an_empty_entry_list():
+    assert build_level_select_rects([]) == {}
+
+
+# --- Wave editor ---
+
+def test_build_wave_tab_rects_has_one_tab_per_wave_plus_add_and_remove():
+    rects = build_wave_tab_rects(3)
+    assert set(rects.keys()) == {0, 1, 2, "add", "remove"}
+
+
+def test_build_wave_tab_rects_handles_zero_waves():
+    rects = build_wave_tab_rects(0)
+    assert set(rects.keys()) == {"add", "remove"}
+
+
+def test_wave_tabs_do_not_overlap():
+    rects = list(build_wave_tab_rects(4).values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_wave_tab_returns_matching_key():
+    rects = build_wave_tab_rects(2)
+    for key, rect in rects.items():
+        assert get_clicked_wave_tab(rect.center, rects) == key
+    assert get_clicked_wave_tab((-1000, -1000), rects) is None
+
+
+def test_build_wave_unit_rects_has_a_minus_and_plus_per_enemy_type():
+    rects = build_wave_unit_rects()
+    expected_keys = {(name, suffix) for name in ENEMY_TYPES for suffix in ("minus", "plus")}
+    assert set(rects.keys()) == expected_keys
+
+
+def test_wave_unit_rects_sit_within_the_sidebar_and_do_not_overlap():
+    rects = list(build_wave_unit_rects().values())
+    for rect in rects:
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_wave_unit_button_returns_matching_key():
+    rects = build_wave_unit_rects()
+    for key, rect in rects.items():
+        assert get_clicked_wave_unit_button(rect.center, rects) == key
+    assert get_clicked_wave_unit_button((-1000, -1000), rects) is None
+
+
+def test_build_wave_editor_action_rects_has_one_entry_per_action_and_sits_in_the_sidebar():
+    rects = build_wave_editor_action_rects()
+    assert set(rects.keys()) == set(WAVE_EDITOR_ACTION_ORDER)
+    for rect in rects.values():
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+        assert rect.top >= 0
+        assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_wave_editor_action_buttons_are_stacked_without_overlapping():
+    rects = list(build_wave_editor_action_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_wave_editor_action_returns_matching_name():
+    rects = build_wave_editor_action_rects()
+    for name, rect in rects.items():
+        assert get_clicked_wave_editor_action(rect.center, rects) == name
+    assert get_clicked_wave_editor_action((-1000, -1000), rects) is None
+
+
+def test_wave_unit_rects_do_not_overlap_the_wave_editor_action_rects():
+    unit_rects = list(build_wave_unit_rects().values())
+    action_rects = list(build_wave_editor_action_rects().values())
+    for unit_rect in unit_rects:
+        for action_rect in action_rects:
+            assert not unit_rect.colliderect(action_rect)
+
+
+# --- _wrap_text (editor validation-message word wrap) ---
+
+def test_wrap_text_keeps_a_short_line_unwrapped():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 22)
+    assert _wrap_text("short message", font, max_width=1000) == ["short message"]
+
+
+def test_wrap_text_wraps_a_long_message_across_multiple_lines_within_the_width():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 22)
+    text = "a validation message with enough short words to overflow a narrow width"
+    max_width = 100
+    lines = _wrap_text(text, font, max_width)
+
+    assert len(lines) > 1
+    for line in lines:
+        assert font.size(line)[0] <= max_width
+    assert " ".join(lines) == text  # every word preserved, in order, none dropped or duplicated
 
 
 def test_specialization_descriptions_fit_the_panel_width():

@@ -2,7 +2,10 @@
 
 Grid holds no hardcoded path -- it's constructed from whatever Level is
 currently active (see levels.py and Game.load_level), so a new level with a
-different path/blocked cells needs no changes here.
+different path/blocked cells needs no changes here. path_cells/spawn_cells/
+goal_cells are taken as given, already validated by Level.__post_init__
+(see pathing.validate_topology) -- Grid doesn't re-derive or re-check them,
+just stores and queries them.
 
 Two coordinate systems coexist:
   - Coarse tile coords (col, row; unit = tile_size) -- the path, blocked
@@ -20,8 +23,8 @@ import pygame
 
 
 class Grid:
-    def __init__(self, cols, rows, tile_size, waypoints_tiles, blocked_cells=None,
-                 subtiles_per_tile=8, subtile_gap=1, subtile_gap_alpha=60):
+    def __init__(self, cols, rows, tile_size, path_cells, spawn_cells, goal_cells,
+                 blocked_cells=None, subtiles_per_tile=8, subtile_gap=1, subtile_gap_alpha=60):
         # (defaults match settings.SUBTILE_GAP / SUBTILE_GAP_ALPHA)
         if tile_size % subtiles_per_tile != 0:
             raise ValueError(
@@ -41,11 +44,11 @@ class Grid:
         self.cols = cols
         self.rows = rows
         self.tile_size = tile_size
-        self.waypoints_tiles = waypoints_tiles
 
-        self.path_cells = self._compute_path_cells(waypoints_tiles)
+        self.path_cells = frozenset(path_cells)
+        self.spawn_cells = tuple(spawn_cells)
+        self.goal_cells = tuple(goal_cells)
         self.blocked_cells = set(blocked_cells or ())
-        self.waypoints_px = [self.tile_to_pixel_center(c, r) for c, r in waypoints_tiles]
 
         self.subtiles_per_tile = subtiles_per_tile
         self.subtile_size = subtile_size
@@ -61,27 +64,6 @@ class Grid:
         self.towers_by_anchor = {}
         # Lazily built and cached by draw() -- see _build_background.
         self._background = None
-
-    @staticmethod
-    def _compute_path_cells(waypoints_tiles):
-        """Walk each axis-aligned segment between consecutive waypoints and
-        collect every tile it passes through."""
-        cells = set()
-        for (c1, r1), (c2, r2) in zip(waypoints_tiles, waypoints_tiles[1:]):
-            if c1 == c2:
-                step = 1 if r2 >= r1 else -1
-                for r in range(r1, r2 + step, step):
-                    cells.add((c1, r))
-            elif r1 == r2:
-                step = 1 if c2 >= c1 else -1
-                for c in range(c1, c2 + step, step):
-                    cells.add((c, r1))
-            else:
-                raise ValueError(
-                    f"Waypoints must form axis-aligned segments: "
-                    f"{(c1, r1)} -> {(c2, r2)} is diagonal"
-                )
-        return cells
 
     # --- Coarse tile queries (path/blocked/bounds, rendering) ---
 

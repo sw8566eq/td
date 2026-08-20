@@ -15,9 +15,11 @@ python main.py
 
 Pass `--unlimited-gold` to run with a debug flag that makes every purchase (placing, upgrading, or
 specializing a tower) always succeed without actually spending gold -- the HUD shows
-"Gold: unlimited" while it's on.
+"Gold: unlimited" while it's on. Pass `--editor` to launch straight into the map editor instead of
+the main menu (see "Map editor" below).
 
-Controls: press any key at the menu to start. Click a tower button in the bottom bar, then click
+Controls: press any key at the menu to start, `E` to open the map editor, or `L` to pick from the
+built-in levels plus any you've saved from the editor. Click a tower button in the bottom bar, then click
 a grass tile to place it -- the sidebar on the right shows that tower type's stats while it's
 selected; right-click at any time to clear the current selection without placing anything. A
 tower's required footprint is one tile's worth of space, but it isn't locked to the tile grid --
@@ -36,12 +38,14 @@ The HUD shows a countdown to the next wave and a button (bottom-right) that read
 the first wave -- it waits for you rather than auto-starting, so you get a beat to place towers
 first -- and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space`
 does the same thing as clicking it. `P` or `Esc` opens the pause menu; the same two keys close it
-again, `R` restarts the current level, `Q` quits. `R` also restarts the level from the game-over
-screen, or -- from the victory screen -- advances to the next level if there is one, otherwise
-replays the level you just won. `Esc` quits from the main menu, game-over, or victory screens
-(there's no pause menu to open there).
+again, `R` restarts the current level, `Q` quits. Playing a level you're playtesting from the map
+editor adds one more option there: `E` stops the run and takes you straight back to the editor,
+paint buffer untouched -- not offered on a built-in level, which has no editor session to return to.
+`R` also restarts the level from the game-over screen, or -- from the victory screen -- advances to
+the next level if there is one, otherwise replays the level you just won. `Esc` quits from the main
+menu, game-over, or victory screens (there's no pause menu to open there).
 
-Run the test suite with `pytest` (from the venv) -- 250+ tests covering every module, including
+Run the test suite with `pytest` (from the venv) -- 400+ tests covering every module, including
 `Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
 `AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
 real pygame window, so they force the SDL dummy video driver themselves
@@ -149,12 +153,56 @@ convention.
 
 ## Levels
 
-Two so far, both 5 waves: `LEVELS[1]` ("Winding Road") and `LEVELS[2]`
+Two built in so far, both 5 waves: `LEVELS[1]` ("Winding Road") and `LEVELS[2]`
 ("Serpentine Pass", a tighter, more switchback-heavy path). Beating a
 level's boss wave shows a "Level Complete!" screen; `R` advances to the
 next level (`Game.advance_or_replay_level()`), starting that level's
 economy fresh. Winning the last registered level shows "Victory!"
-instead, and `R` there just replays it.
+instead, and `R` there just replays it. `L` from the main menu opens a
+level-select screen listing both of these and any custom levels you've
+saved from the map editor.
+
+## Map editor
+
+`E` from the main menu (or `python main.py --editor`) opens a freeform
+tile-paint editor: drag to paint or erase path tiles like a pixel brush,
+and use the Spawn/Goal tools to mark where enemies start and where reaching
+one costs a life. A path can **branch** (one lane fanning out into several)
+and **merge** (several spawns converging on shared lanes toward a goal) --
+junctions are detected automatically from the painted shape (any tile with
+3+ path-neighbors), you never have to declare one yourself. Enemies pick a
+direction at each branch point at random (evenly, by default).
+
+The one rule the brush enforces is that the path can't loop back on itself
+-- a lane splitting and later reconnecting downstream is a closed loop,
+which is rejected the same as a literal roundabout would be. The sidebar
+shows live feedback (in red) on whatever's wrong -- disconnected cells, a
+missing spawn/goal, a loop -- and turns green once the path is valid, at
+which point **Edit Waves** becomes clickable.
+
+That opens the wave editor: numbered tabs across the bottom select which
+wave you're editing, with **+**/**-** tabs to add or remove one (there's
+always at least one, shared by every spawn -- the whole level counts
+"Wave X of Y" together). Within a wave, **+**/**-** next to each species in
+the sidebar sets how many of that type spawn -- but only *from whichever
+spawn is currently selected*. If your path has more than one spawn point,
+**click a spawn's numbered marker** in the map preview to switch to it --
+each spawn keeps its own independent unit counts per wave, so one spawn can
+send a wave of grunts while another sends tanks, or sits that wave out
+entirely. A wave still needs at least one unit from *some* spawn before you
+can move on. **Playtest** loads the level you're editing immediately,
+without saving; **Save** writes it to `custom_levels/` (as JSON, via
+`persistence.py`) under a name slugged from the level's name, where `L`'s
+level-select screen will find it from then on.
+
+Spawns stay synchronized during play: the 1st enemy out of every spawn point
+in a wave emerges at the same moment, then the 2nd from every spawn that
+still has one, and so on -- not one spawn's whole queue emptying before the
+next spawn's even starts. A spawn with fewer enemies queued for that wave
+just stops contributing once its own queue runs out, without holding the
+others back. Within one spawn, its own species still go out together, one
+type fully before the next -- interleaving species order within a single
+spawn's queue is a possible future refinement.
 
 ## Adding content
 
@@ -174,14 +222,15 @@ entry, not a change to the systems that already work.
   `take_damage()` too, for something like a shielded unit), then add it to
   `ENEMY_TYPES` under a short name. Reference that name from a level's
   `wave_specs` to use it.
-- **New level**: add a `Level(...)` entry to `LEVELS` in `levels.py` with
-  its own path (`waypoints_tiles`), wave composition (`wave_specs`, a list
-  of `{enemy_type_name: count}` dicts -- one per wave, hand-authored or via
-  `generate_default_waves()`), and starting gold/lives. `Grid`,
-  `WaveManager`, and `Game` all consume whichever level is active
-  generically, so this needs no other changes -- registering it is also
-  what makes it reachable: winning the level before it in numeric order
-  will offer to advance into it. (All levels currently share the same map
-  size, set in `settings.py` -- only the path/waves differ.) Give its
-  final wave a `"boss": 1` entry to match every other level -- enforced by
-  `tests/test_levels.py::test_every_levels_final_wave_includes_a_boss`.
+- **New built-in level**: add a `Level(...)` entry to `LEVELS` in `levels.py` with its own path
+  (`path_cells`/`spawn_cells`/`goal_cells` -- `pathing.path_cells_from_corners()` turns a terse
+  ordered corner list into `path_cells` for a simple hand-written route, same as the two existing
+  levels), wave composition (`wave_specs`, a list of `{enemy_type_name: count}` dicts -- one per
+  wave, hand-authored or via `generate_default_waves()`), and starting gold/lives. `Grid`,
+  `WaveManager`, and `Game` all consume whichever level is active generically, so this needs no
+  other changes -- registering it is also what makes it reachable: winning the level before it in
+  numeric order will offer to advance into it, and it's listed in `L`'s level-select screen. (All
+  levels currently share the same map size, set in `settings.py` -- only the path/waves differ.)
+  Give its final wave a `"boss": 1` entry to match every other level -- enforced by
+  `tests/test_levels.py::test_every_levels_final_wave_includes_a_boss`. A player-made level doesn't
+  need a registry entry at all -- see "Map editor" above.

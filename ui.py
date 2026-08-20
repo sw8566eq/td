@@ -12,8 +12,11 @@ import math
 import pygame
 
 import settings
+from enemy import ENEMY_TYPES
 from tower import TOWER_TYPES
 from waves import WaveState
+
+ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
 
 BUTTON_SIZE = 72
 BUTTON_MARGIN = 12
@@ -375,13 +378,20 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 
 def draw_menu_screen(surface, font, small_font):
     surface.fill(settings.COLOR_BG)
-    _draw_centered_overlay(surface, font, small_font, "Tower Defense", "Press any key to start", settings.COLOR_TEXT)
+    _draw_centered_overlay(surface, font, small_font, "Tower Defense",
+                            ["Press any key to start", "E -- Map Editor"], settings.COLOR_TEXT)
 
 
-def draw_pause_menu(surface, font, small_font):
+def draw_pause_menu(surface, font, small_font, is_custom_level=False):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
-    # panel stays visible and undimmed to its right.
-    options = ["Esc / P -- Resume", "R -- Restart Level", "Q -- Quit"]
+    # panel stays visible and undimmed to its right. "Return to Editor"
+    # only makes sense while playing a level that actually came from the
+    # editor -- a built-in level has no corresponding in-progress paint
+    # buffer to go back to.
+    options = ["Esc / P -- Resume", "R -- Restart Level"]
+    if is_custom_level:
+        options.append("E -- Return to Map Editor")
+    options.append("Q -- Quit")
     _draw_centered_overlay(surface, font, small_font, "Paused", options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
@@ -398,3 +408,390 @@ def draw_victory_screen(surface, font, small_font, has_next_level=False):
         title, subtitle = "Victory!", "Press R to play again"
     _draw_centered_overlay(surface, font, small_font, title, subtitle,
                             settings.COLOR_GOLD, width=settings.PLAY_WIDTH)
+
+
+# --- Map editor ---
+#
+# Reuses the exact same screen geometry as normal play (BUTTON_Y's toolbar
+# row under the grid, ACTION_AREA_TOP's stacked slot in the sidebar) so no
+# new layout constants are needed -- the editor and a playing Game just
+# put different buttons in the same two established places.
+
+EDITOR_TOOL_LABELS = {
+    "paint": "Paint",
+    "erase": "Erase",
+    "spawn": "Spawn",
+    "goal": "Goal",
+}
+EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
+
+EDITOR_ACTION_LABELS = {
+    "waves": "Edit Waves ->",
+    "back": "Back to Menu",
+}
+EDITOR_ACTION_ORDER = list(EDITOR_ACTION_LABELS.keys())
+
+
+def build_editor_tool_rects():
+    """Rects for each editor tool's button, in the same toolbar row the
+    build menu's tower buttons occupy during normal play."""
+    rects = {}
+    x = BUTTON_MARGIN
+    for name in EDITOR_TOOL_ORDER:
+        rects[name] = pygame.Rect(x, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE)
+        x += BUTTON_SIZE + BUTTON_MARGIN
+    return rects
+
+
+def get_clicked_editor_tool(pos, tool_rects):
+    """Return the editor tool name whose button contains pos, or None."""
+    for name, rect in tool_rects.items():
+        if rect.collidepoint(pos):
+            return name
+    return None
+
+
+def build_editor_action_rects():
+    """Rects for Playtest/Save/Back, stacked in the same fixed sidebar
+    slot the tower stats panel's action buttons use."""
+    rects = {}
+    top = ACTION_AREA_TOP
+    for name in EDITOR_ACTION_ORDER:
+        rects[name] = _action_button_rect(top)
+        top += ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+    return rects
+
+
+def get_clicked_editor_action(pos, action_rects):
+    """Return the editor action name whose button contains pos, or None."""
+    for name, rect in action_rects.items():
+        if rect.collidepoint(pos):
+            return name
+    return None
+
+
+def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects):
+    surface.fill(settings.COLOR_BG)
+    _draw_editor_grid(surface, assets, small_font, editor)
+    _draw_editor_toolbar(surface, small_font, editor, tool_rects)
+    _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects)
+
+
+def _cell_center(editor, cell):
+    col, row = cell
+    return (
+        col * editor.tile_size + editor.tile_size // 2,
+        row * editor.tile_size + editor.tile_size // 2,
+    )
+
+
+def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None):
+    """The path/spawn/goal/junction preview shared by both editor screens.
+    Spawns are numbered (stable sort order by cell) so a multi-spawn
+    level's spawns have a consistent, referenceable identity across both
+    screens; `active_spawn`, when given (only the wave editor has one),
+    gets a highlight ring -- see Game._handle_wave_editor_click, which is
+    what clicking a spawn marker there actually changes."""
+    for row in range(editor.rows):
+        for col in range(editor.cols):
+            cell = (col, row)
+            name = "tile_path" if cell in editor.path_cells else "tile_grass"
+            sprite = assets.get(name, (editor.tile_size, editor.tile_size))
+            surface.blit(sprite, (col * editor.tile_size, row * editor.tile_size))
+
+    for cell in editor.junctions:
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_JUNCTION, radius_fraction=0.18)
+
+    for number, cell in enumerate(sorted(editor.spawn_cells), start=1):
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_SPAWN, radius_fraction=0.32)
+        if cell == active_spawn:
+            _draw_active_spawn_ring(surface, editor, cell)
+        label = small_font.render(str(number), True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=_cell_center(editor, cell)))
+
+    for cell in editor.goal_cells:
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_GOAL, radius_fraction=0.32)
+
+
+def _draw_editor_marker(surface, editor, cell, color, radius_fraction):
+    pygame.draw.circle(surface, color, _cell_center(editor, cell), int(editor.tile_size * radius_fraction))
+
+
+def _draw_active_spawn_ring(surface, editor, cell):
+    radius = int(editor.tile_size * 0.42)
+    pygame.draw.circle(surface, settings.COLOR_TEXT, _cell_center(editor, cell), radius, width=3)
+
+
+def _draw_editor_toolbar(surface, small_font, editor, tool_rects):
+    hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
+                            settings.PLAY_WIDTH, settings.HUD_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
+
+    for name, rect in tool_rects.items():
+        color = settings.COLOR_BUTTON_SELECTED if name == editor.active_tool else settings.COLOR_BUTTON
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(EDITOR_TOOL_LABELS[name], True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
+    panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
+    pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
+    x = panel_rect.x + PANEL_PADDING
+
+    title = font.render("Map Editor", True, settings.COLOR_TEXT)
+    surface.blit(title, (x, PANEL_PADDING))
+
+    # Gates "Edit Waves" below, so the status shown here is path validity
+    # alone -- wave_problems are irrelevant until the player gets there
+    # (a fresh editor's one empty wave would otherwise show as an error
+    # here before the player has had any chance to touch it).
+    path_ok = editor.path_is_valid()
+    status_color = settings.COLOR_GOLD if path_ok else settings.COLOR_LIVES
+    status_lines = ["Path ready -- edit waves next!"] if path_ok else editor.path_problems
+    y = PANEL_PADDING + 40
+    for line in status_lines[:6]:  # panel has finite room; the rest are still in path_problems
+        for wrapped in _wrap_text(line, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING):
+            text = small_font.render(wrapped, True, status_color)
+            surface.blit(text, (x, y))
+            y += PANEL_ROW_HEIGHT
+
+    for name, rect in action_rects.items():
+        # "back" always works; moving on to wave editing needs a valid path first.
+        enabled = path_ok if name == "waves" else True
+        color = settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(EDITOR_ACTION_LABELS[name], True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+# --- Wave editor ---
+#
+# A second screen reached from the map editor once its path is valid (see
+# EDITOR_ACTION_LABELS["waves"]) -- same PLAY_WIDTH/PANEL_WIDTH geometry,
+# just with wave-selector tabs in the toolbar row instead of path tools,
+# and per-species +/- rows plus Playtest/Save/Back-to-Path in the sidebar
+# instead of the path tools' status text and Edit-Waves/Back-to-Menu.
+
+WAVE_TAB_SIZE = 48
+WAVE_TAB_MARGIN = 8
+WAVE_TAB_Y = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT + (settings.HUD_HEIGHT - WAVE_TAB_SIZE) // 2
+
+WAVE_UNIT_ROWS_TOP = 100
+WAVE_UNIT_ROW_HEIGHT = 32
+WAVE_UNIT_STEP_BUTTON_SIZE = 24
+
+WAVE_EDITOR_ACTION_LABELS = {
+    "playtest": "Playtest",
+    "save": "Save",
+    "back": "Back to Path",
+}
+WAVE_EDITOR_ACTION_ORDER = list(WAVE_EDITOR_ACTION_LABELS.keys())
+
+
+def build_wave_tab_rects(wave_count):
+    """One rect per wave (0-based index keys), left to right, plus two
+    more entries keyed "add"/"remove" following them in the same flowing
+    row -- same layout approach as build_button_rects()."""
+    rects = {}
+    x = BUTTON_MARGIN
+    for index in range(wave_count):
+        rects[index] = pygame.Rect(x, WAVE_TAB_Y, WAVE_TAB_SIZE, WAVE_TAB_SIZE)
+        x += WAVE_TAB_SIZE + WAVE_TAB_MARGIN
+    x += WAVE_TAB_MARGIN  # a little extra breathing room before add/remove
+    for key in ("add", "remove"):
+        rects[key] = pygame.Rect(x, WAVE_TAB_Y, WAVE_TAB_SIZE, WAVE_TAB_SIZE)
+        x += WAVE_TAB_SIZE + WAVE_TAB_MARGIN
+    return rects
+
+
+def get_clicked_wave_tab(pos, tab_rects):
+    """Return the clicked entry's key -- an int wave index, or "add"/
+    "remove" -- or None."""
+    for key, rect in tab_rects.items():
+        if rect.collidepoint(pos):
+            return key
+    return None
+
+
+def build_wave_unit_rects():
+    """Two small +/- rects per registered enemy type (ENEMY_ORDER),
+    stacked in the wave editor's sidebar, keyed (enemy_name, "minus"/"plus")."""
+    rects = {}
+    minus_x = settings.PLAY_WIDTH + settings.PANEL_WIDTH - 2 * PANEL_PADDING - 2 * WAVE_UNIT_STEP_BUTTON_SIZE - 6
+    plus_x = minus_x + WAVE_UNIT_STEP_BUTTON_SIZE + 6
+    y = WAVE_UNIT_ROWS_TOP
+    for name in ENEMY_ORDER:
+        rects[(name, "minus")] = pygame.Rect(minus_x, y, WAVE_UNIT_STEP_BUTTON_SIZE, WAVE_UNIT_STEP_BUTTON_SIZE)
+        rects[(name, "plus")] = pygame.Rect(plus_x, y, WAVE_UNIT_STEP_BUTTON_SIZE, WAVE_UNIT_STEP_BUTTON_SIZE)
+        y += WAVE_UNIT_ROW_HEIGHT
+    return rects
+
+
+def get_clicked_wave_unit_button(pos, unit_rects):
+    """Return the (enemy_name, "minus"|"plus") key whose button contains
+    pos, or None."""
+    for key, rect in unit_rects.items():
+        if rect.collidepoint(pos):
+            return key
+    return None
+
+
+def build_wave_editor_action_rects():
+    """Rects for Playtest/Save/Back to Path, stacked in the same fixed
+    sidebar slot the path editor's own action buttons use."""
+    rects = {}
+    top = ACTION_AREA_TOP
+    for name in WAVE_EDITOR_ACTION_ORDER:
+        rects[name] = _action_button_rect(top)
+        top += ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+    return rects
+
+
+def get_clicked_wave_editor_action(pos, action_rects):
+    """Return the wave editor action name whose button contains pos, or None."""
+    for name, rect in action_rects.items():
+        if rect.collidepoint(pos):
+            return name
+    return None
+
+
+def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects, action_rects):
+    surface.fill(settings.COLOR_BG)
+    # Read-only path preview, for context -- clicking a spawn marker in it
+    # is exactly what changes which spawn's counts the sidebar below
+    # shows/edits (see Game._handle_wave_editor_click).
+    _draw_editor_grid(surface, assets, small_font, editor, active_spawn=editor.active_spawn_cell)
+    _draw_wave_tabs(surface, small_font, editor, tab_rects)
+    _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects)
+
+
+def _draw_wave_tabs(surface, small_font, editor, tab_rects):
+    hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
+                            settings.PLAY_WIDTH, settings.HUD_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
+
+    for index, _wave in enumerate(editor.wave_specs):
+        rect = tab_rects[index]
+        color = settings.COLOR_BUTTON_SELECTED if index == editor.active_wave_index else settings.COLOR_BUTTON
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(str(index + 1), True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+    for key, symbol in (("add", "+"), ("remove", "-")):
+        rect = tab_rects[key]
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+        label = small_font.render(symbol, True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects):
+    panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
+    pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
+    x = panel_rect.x + PANEL_PADDING
+
+    title = font.render("Wave Editor", True, settings.COLOR_TEXT)
+    surface.blit(title, (x, PANEL_PADDING))
+
+    wave_label = small_font.render(
+        f"Wave {editor.active_wave_index + 1} of {len(editor.wave_specs)}", True, settings.COLOR_TEXT_DIM,
+    )
+    surface.blit(wave_label, (x, PANEL_PADDING + 36))
+
+    # Short by design -- guaranteed to fit the sidebar on one line without
+    # needing _wrap_text -- since the map preview's highlight ring (see
+    # _draw_active_spawn_ring) plus the numbered markers are what actually
+    # tell a multi-spawn level's spawns apart; this is just confirmation.
+    spawn_order = sorted(editor.spawn_cells)
+    if editor.active_spawn_cell in spawn_order:
+        spawn_number = spawn_order.index(editor.active_spawn_cell) + 1
+        spawn_text = f"Spawn {spawn_number} of {len(spawn_order)}"
+    else:
+        spawn_text = "No spawn"
+    spawn_label = small_font.render(spawn_text, True, settings.COLOR_TEXT_DIM)
+    surface.blit(spawn_label, (x, PANEL_PADDING + 58))
+
+    composition = editor.wave_specs[editor.active_wave_index].get(editor.active_spawn_cell, {})
+    y = WAVE_UNIT_ROWS_TOP
+    for name in ENEMY_ORDER:
+        count = composition.get(name, 0)
+        label = small_font.render(f"{name.capitalize()}: {count}", True, settings.COLOR_TEXT)
+        surface.blit(label, (x, y + 4))
+        for suffix, symbol in (("minus", "-"), ("plus", "+")):
+            rect = unit_rects[(name, suffix)]
+            pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=4)
+            sym_text = small_font.render(symbol, True, settings.COLOR_TEXT)
+            surface.blit(sym_text, sym_text.get_rect(center=rect.center))
+        y += WAVE_UNIT_ROW_HEIGHT
+
+    for name, rect in action_rects.items():
+        # "back" always works; Playtest/Save need every wave to have units.
+        enabled = editor.can_play() if name in ("playtest", "save") else True
+        color = settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(WAVE_EDITOR_ACTION_LABELS[name], True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+LEVEL_SELECT_ROW_HEIGHT = 48
+LEVEL_SELECT_ROW_GAP = 8
+LEVEL_SELECT_TOP = 100
+
+
+def build_level_select_rects(entries):
+    """One rect per (key, label) entry in `entries`, stacked top to
+    bottom, keyed by `key` -- an int for a built-in LEVELS id or a str
+    slug for a saved custom level's id (see persistence.py)."""
+    rects = {}
+    y = LEVEL_SELECT_TOP
+    for key, _label in entries:
+        rects[key] = pygame.Rect(60, y, settings.PLAY_WIDTH - 120, LEVEL_SELECT_ROW_HEIGHT)
+        y += LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP
+    return rects
+
+
+def get_clicked_level_select_entry(pos, rects):
+    """Return the entry key whose row contains pos, or None."""
+    for key, rect in rects.items():
+        if rect.collidepoint(pos):
+            return key
+    return None
+
+
+def draw_level_select_screen(surface, font, small_font, entries, rects):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Select a Level", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    if not entries:
+        hint = small_font.render("No levels available.", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(center=(settings.SCREEN_WIDTH // 2, LEVEL_SELECT_TOP + 20)))
+
+    for key, label in entries:
+        rect = rects[key]
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+        text = small_font.render(label, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(center=rect.center))
+
+    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def _wrap_text(text, font, max_width):
+    """Greedy word-wrap of `text` to fit within max_width pixels for
+    `font` -- validation messages are free-form and can run long."""
+    words = text.split(" ")
+    lines = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if font.size(candidate)[0] <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
