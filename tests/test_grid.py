@@ -1,20 +1,28 @@
+import pathing
 from grid import Grid
 
-WAYPOINTS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
+CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
+PATH_CELLS = pathing.path_cells_from_corners(CORNERS)
+SPAWN_CELLS = (CORNERS[0],)
+GOAL_CELLS = (CORNERS[-1],)
 N = 8  # default subtiles_per_tile
 
 
 def make_grid(**kwargs):
-    return Grid(cols=15, rows=9, tile_size=64, waypoints_tiles=WAYPOINTS, **kwargs)
+    return Grid(
+        cols=15, rows=9, tile_size=64,
+        path_cells=PATH_CELLS, spawn_cells=SPAWN_CELLS, goal_cells=GOAL_CELLS,
+        **kwargs,
+    )
 
 
-def test_path_cells_include_every_waypoint():
+def test_path_cells_include_every_corner():
     grid = make_grid()
-    for cell in WAYPOINTS:
+    for cell in CORNERS:
         assert grid.is_path(*cell)
 
 
-def test_path_cells_include_the_full_segment_between_waypoints():
+def test_path_cells_include_the_full_segment_between_corners():
     grid = make_grid()
     # Segment (0,4) -> (4,4) should cover every column in between at row 4.
     for col in range(0, 5):
@@ -102,18 +110,11 @@ def test_pixel_to_tile_and_back_round_trip():
         assert grid.pixel_to_tile(center.x, center.y) == (col, row)
 
 
-def test_diagonal_waypoints_are_rejected():
-    import pytest
-
-    with pytest.raises(ValueError):
-        Grid(cols=15, rows=9, tile_size=64, waypoints_tiles=[(0, 0), (1, 1)])
-
-
 def test_tile_size_not_divisible_by_subtiles_per_tile_is_rejected():
     import pytest
 
     with pytest.raises(ValueError):
-        Grid(cols=15, rows=9, tile_size=64, waypoints_tiles=WAYPOINTS, subtiles_per_tile=5)
+        make_grid(subtiles_per_tile=5)
 
 
 # --- Subtile placement ---

@@ -14,8 +14,9 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import settings  # noqa: E402
+from editor import EditorTool  # noqa: E402
 from game import Game, GameState  # noqa: E402
-from levels import LEVELS  # noqa: E402
+from levels import LEVELS, Level  # noqa: E402
 from tower import TOWER_TYPES, BasicTower  # noqa: E402
 
 
@@ -1093,6 +1094,159 @@ def test_advance_or_replay_level_replays_when_no_next_level(game):
 
     assert game.current_level_id == last_id
     assert game.towers == []  # freshly reloaded
+
+
+# --- Map editor / level select ---
+
+def cell_center_px(cell, tile_size=64):
+    col, row = cell
+    return col * tile_size + tile_size // 2, row * tile_size + tile_size // 2
+
+
+def make_custom_level(level_id="custom-slug", name="Custom Level"):
+    return Level(
+        id=level_id,
+        name=name,
+        path_cells=frozenset({(0, 0), (1, 0), (2, 0)}),
+        spawn_cells=((0, 0),),
+        goal_cells=((2, 0),),
+        wave_specs=[{"grunt": 2}],
+    )
+
+
+def test_game_starts_with_an_empty_unplayable_editor(game):
+    assert game.editor.path_cells == set()
+    assert not game.editor.can_play()
+
+
+def test_menu_e_key_enters_the_editor(game):
+    game._handle_keydown(pygame.K_e)
+    assert game.state == GameState.EDITOR
+
+
+def test_menu_l_key_enters_level_select(game):
+    game._handle_keydown(pygame.K_l)
+    assert game.state == GameState.LEVEL_SELECT
+
+
+def test_editor_escape_returns_to_menu(game):
+    game.state = GameState.EDITOR
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_level_select_escape_returns_to_menu(game):
+    game.state = GameState.LEVEL_SELECT
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_clicking_an_editor_tool_button_switches_the_active_tool(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_click(game.editor_tool_rects["spawn"].center)
+    assert game.editor.active_tool == EditorTool.SPAWN
+
+
+def test_clicking_the_grid_paints_a_path_cell(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_click(cell_center_px((3, 4)))
+    assert (3, 4) in game.editor.path_cells
+
+
+def test_dragging_with_the_left_button_held_paints_a_stroke_of_cells(game):
+    game.state = GameState.EDITOR
+    for col in range(3):
+        game._handle_editor_motion(cell_center_px((col, 2)), (True, False, False))
+    assert {(0, 2), (1, 2), (2, 2)} <= game.editor.path_cells
+
+
+def test_motion_without_the_left_button_held_does_not_paint(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_motion(cell_center_px((5, 5)), (False, False, False))
+    assert game.editor.path_cells == set()
+
+
+def test_playtest_action_is_a_no_op_while_the_editors_path_is_invalid(game):
+    game.state = GameState.EDITOR
+    assert not game.editor.can_play()
+    game._handle_editor_click(game.editor_action_rects["playtest"].center)
+    assert game.state == GameState.EDITOR  # never left -- nothing to play yet
+
+
+def test_playtest_action_loads_the_painted_level_and_switches_to_playing(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.PAINT)
+    for col in range(3):
+        game.editor.paint_at(*cell_center_px((col, 2)))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((0, 2)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((2, 2)))
+    assert game.editor.can_play()
+
+    game._handle_editor_click(game.editor_action_rects["playtest"].center)
+
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id is None
+    assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
+
+
+def test_back_action_returns_to_menu_without_touching_the_paint_buffer(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((0, 0)))
+    game._handle_editor_click(game.editor_action_rects["back"].center)
+    assert game.state == GameState.MENU
+    assert (0, 0) in game.editor.path_cells  # still there next time the editor opens
+
+
+def test_has_next_level_is_false_for_a_custom_level(game):
+    game.load_custom_level(make_custom_level())
+    assert game.current_level_id is None
+    assert game.has_next_level() is False
+
+
+def test_reset_on_a_custom_level_reloads_it_without_a_registry_lookup(game):
+    game.load_custom_level(make_custom_level())
+    game.towers = ["fake"]
+
+    game.reset()
+
+    assert game.state == GameState.MENU
+    assert game.current_level_id is None
+    assert game.towers == []
+    assert game.level.path_cells == frozenset({(0, 0), (1, 0), (2, 0)})
+
+
+def test_advance_or_replay_level_on_a_custom_level_replays_it(game):
+    game.load_custom_level(make_custom_level())
+    game.towers = ["fake"]
+
+    game.advance_or_replay_level()
+
+    assert game.current_level_id is None
+    assert game.towers == []
+
+
+def test_level_select_click_on_a_built_in_entry_loads_it(game):
+    game._enter_level_select()
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id == 1
+
+
+def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+
+    game._enter_level_select()
+    assert (custom.id, f"{custom.name} (custom)") in game.level_select_entries
+
+    game._handle_level_select_click(game.level_select_rects[custom.id].center)
+
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id is None
+    assert game.level.id == custom.id
 
 
 # --- render(): smoke tests across every state ---

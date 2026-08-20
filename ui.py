@@ -375,7 +375,8 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 
 def draw_menu_screen(surface, font, small_font):
     surface.fill(settings.COLOR_BG)
-    _draw_centered_overlay(surface, font, small_font, "Tower Defense", "Press any key to start", settings.COLOR_TEXT)
+    _draw_centered_overlay(surface, font, small_font, "Tower Defense",
+                            ["Press any key to start", "E -- Map Editor"], settings.COLOR_TEXT)
 
 
 def draw_pause_menu(surface, font, small_font):
@@ -398,3 +399,197 @@ def draw_victory_screen(surface, font, small_font, has_next_level=False):
         title, subtitle = "Victory!", "Press R to play again"
     _draw_centered_overlay(surface, font, small_font, title, subtitle,
                             settings.COLOR_GOLD, width=settings.PLAY_WIDTH)
+
+
+# --- Map editor ---
+#
+# Reuses the exact same screen geometry as normal play (BUTTON_Y's toolbar
+# row under the grid, ACTION_AREA_TOP's stacked slot in the sidebar) so no
+# new layout constants are needed -- the editor and a playing Game just
+# put different buttons in the same two established places.
+
+EDITOR_TOOL_LABELS = {
+    "paint": "Paint",
+    "erase": "Erase",
+    "spawn": "Spawn",
+    "goal": "Goal",
+}
+EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
+
+EDITOR_ACTION_LABELS = {
+    "playtest": "Playtest",
+    "save": "Save",
+    "back": "Back to Menu",
+}
+EDITOR_ACTION_ORDER = list(EDITOR_ACTION_LABELS.keys())
+
+
+def build_editor_tool_rects():
+    """Rects for each editor tool's button, in the same toolbar row the
+    build menu's tower buttons occupy during normal play."""
+    rects = {}
+    x = BUTTON_MARGIN
+    for name in EDITOR_TOOL_ORDER:
+        rects[name] = pygame.Rect(x, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE)
+        x += BUTTON_SIZE + BUTTON_MARGIN
+    return rects
+
+
+def get_clicked_editor_tool(pos, tool_rects):
+    """Return the editor tool name whose button contains pos, or None."""
+    for name, rect in tool_rects.items():
+        if rect.collidepoint(pos):
+            return name
+    return None
+
+
+def build_editor_action_rects():
+    """Rects for Playtest/Save/Back, stacked in the same fixed sidebar
+    slot the tower stats panel's action buttons use."""
+    rects = {}
+    top = ACTION_AREA_TOP
+    for name in EDITOR_ACTION_ORDER:
+        rects[name] = _action_button_rect(top)
+        top += ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+    return rects
+
+
+def get_clicked_editor_action(pos, action_rects):
+    """Return the editor action name whose button contains pos, or None."""
+    for name, rect in action_rects.items():
+        if rect.collidepoint(pos):
+            return name
+    return None
+
+
+def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects):
+    surface.fill(settings.COLOR_BG)
+    _draw_editor_grid(surface, assets, editor)
+    _draw_editor_toolbar(surface, small_font, editor, tool_rects)
+    _draw_editor_sidebar(surface, font, small_font, editor, action_rects)
+
+
+def _draw_editor_grid(surface, assets, editor):
+    for row in range(editor.rows):
+        for col in range(editor.cols):
+            cell = (col, row)
+            name = "tile_path" if cell in editor.path_cells else "tile_grass"
+            sprite = assets.get(name, (editor.tile_size, editor.tile_size))
+            surface.blit(sprite, (col * editor.tile_size, row * editor.tile_size))
+
+    for cell in editor.junctions:
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_JUNCTION, radius_fraction=0.18)
+    for cell in editor.spawn_cells:
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_SPAWN, radius_fraction=0.32)
+    for cell in editor.goal_cells:
+        _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_GOAL, radius_fraction=0.32)
+
+
+def _draw_editor_marker(surface, editor, cell, color, radius_fraction):
+    col, row = cell
+    center = (
+        col * editor.tile_size + editor.tile_size // 2,
+        row * editor.tile_size + editor.tile_size // 2,
+    )
+    pygame.draw.circle(surface, color, center, int(editor.tile_size * radius_fraction))
+
+
+def _draw_editor_toolbar(surface, small_font, editor, tool_rects):
+    hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
+                            settings.PLAY_WIDTH, settings.HUD_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
+
+    for name, rect in tool_rects.items():
+        color = settings.COLOR_BUTTON_SELECTED if name == editor.active_tool else settings.COLOR_BUTTON
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(EDITOR_TOOL_LABELS[name], True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+def _draw_editor_sidebar(surface, font, small_font, editor, action_rects):
+    panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
+    pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
+    x = panel_rect.x + PANEL_PADDING
+
+    title = font.render("Map Editor", True, settings.COLOR_TEXT)
+    surface.blit(title, (x, PANEL_PADDING))
+
+    status_color = settings.COLOR_GOLD if editor.can_play() else settings.COLOR_LIVES
+    status_lines = ["Ready to play!"] if editor.can_play() else editor.validation_problems
+    y = PANEL_PADDING + 40
+    for line in status_lines[:6]:  # panel has finite room; the rest are still in validation_problems
+        for wrapped in _wrap_text(line, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING):
+            text = small_font.render(wrapped, True, status_color)
+            surface.blit(text, (x, y))
+            y += PANEL_ROW_HEIGHT
+
+    for name, rect in action_rects.items():
+        # "back" always works; Playtest/Save need a valid path first.
+        enabled = editor.can_play() if name in ("playtest", "save") else True
+        color = settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, color, rect, border_radius=6)
+        label = small_font.render(EDITOR_ACTION_LABELS[name], True, settings.COLOR_TEXT)
+        surface.blit(label, label.get_rect(center=rect.center))
+
+
+LEVEL_SELECT_ROW_HEIGHT = 48
+LEVEL_SELECT_ROW_GAP = 8
+LEVEL_SELECT_TOP = 100
+
+
+def build_level_select_rects(entries):
+    """One rect per (key, label) entry in `entries`, stacked top to
+    bottom, keyed by `key` -- an int for a built-in LEVELS id or a str
+    slug for a saved custom level's id (see persistence.py)."""
+    rects = {}
+    y = LEVEL_SELECT_TOP
+    for key, _label in entries:
+        rects[key] = pygame.Rect(60, y, settings.PLAY_WIDTH - 120, LEVEL_SELECT_ROW_HEIGHT)
+        y += LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP
+    return rects
+
+
+def get_clicked_level_select_entry(pos, rects):
+    """Return the entry key whose row contains pos, or None."""
+    for key, rect in rects.items():
+        if rect.collidepoint(pos):
+            return key
+    return None
+
+
+def draw_level_select_screen(surface, font, small_font, entries, rects):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Select a Level", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    if not entries:
+        hint = small_font.render("No levels available.", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(center=(settings.SCREEN_WIDTH // 2, LEVEL_SELECT_TOP + 20)))
+
+    for key, label in entries:
+        rect = rects[key]
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+        text = small_font.render(label, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(center=rect.center))
+
+    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def _wrap_text(text, font, max_width):
+    """Greedy word-wrap of `text` to fit within max_width pixels for
+    `font` -- validation messages are free-form and can run long."""
+    words = text.split(" ")
+    lines = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if font.size(candidate)[0] <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines

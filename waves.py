@@ -8,9 +8,19 @@ hand-authored levels need zero changes here.
 Takes the live enemy list as a parameter on update() rather than owning it,
 so Game stays the single source of truth for "what enemies exist" and
 WaveManager stays trivially testable with fake enemy stand-ins.
+
+A level's path can branch/merge across multiple spawns (see pathing.py), so
+there's no single fixed route to hand every enemy -- each spawned enemy
+gets its own concrete route, sampled fresh from the level's path topology
+(pathing.sample_route), starting from a randomly chosen spawn cell. Enemy
+itself is unaware any of this happened -- it just walks whatever flat pixel
+waypoint list it's constructed with, same as always.
 """
 
+import random
+
 import settings
+import pathing
 from enemy import ENEMY_TYPES
 
 
@@ -22,10 +32,15 @@ class WaveState:
 
 
 class WaveManager:
-    def __init__(self, level, waypoints_px, spawn_interval=settings.SPAWN_INTERVAL,
-                 between_wave_delay=settings.BETWEEN_WAVE_DELAY):
+    def __init__(self, level, cell_to_pixel, spawn_interval=settings.SPAWN_INTERVAL,
+                 between_wave_delay=settings.BETWEEN_WAVE_DELAY, rng=None):
         self.level = level
-        self.waypoints_px = waypoints_px
+        # (col, row) -> pixel Vector2-like; Grid.tile_to_pixel_center in
+        # practice, injected rather than requiring a live Grid so tests can
+        # pass a plain lambda.
+        self.cell_to_pixel = cell_to_pixel
+        self.topology = pathing.PathTopology(level.path_cells, level.spawn_cells, level.goal_cells)
+        self.rng = rng or random.Random()
         self.spawn_interval = spawn_interval
         self.between_wave_delay = between_wave_delay
 
@@ -76,7 +91,7 @@ class WaveManager:
             just_spawned = False
             if self.spawn_timer <= 0 and self._spawn_queue:
                 enemy_cls = self._spawn_queue.pop(0)
-                spawned.append(enemy_cls(self.waypoints_px, self.current_wave_number))
+                spawned.append(self._spawn_enemy(enemy_cls))
                 self.spawn_timer = self.spawn_interval
                 just_spawned = True
 
@@ -90,6 +105,18 @@ class WaveManager:
                 self._advance_after_clear()
 
         return spawned
+
+    def _spawn_enemy(self, enemy_cls):
+        """Build one enemy of `enemy_cls`, routed along a fresh sample
+        through the level's path topology -- a random spawn cell (evenly
+        chosen when the level has more than one), then a weighted-random
+        route to a goal through any branches along the way (see
+        pathing.sample_route). Enemy itself just gets the resulting flat
+        pixel waypoint list, same as it always has."""
+        spawn_cell = self.rng.choice(self.level.spawn_cells)
+        route_cells = pathing.sample_route(self.topology, spawn_cell, self.level.branch_weights, self.rng)
+        waypoints_px = [self.cell_to_pixel(col, row) for col, row in route_cells]
+        return enemy_cls(waypoints_px, self.current_wave_number)
 
     def _begin_wave(self):
         wave_spec = self.level.wave_specs[self.wave_index]

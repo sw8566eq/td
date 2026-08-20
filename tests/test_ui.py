@@ -1,14 +1,22 @@
 import pygame
 
 import settings
+from editor import TOOL_ORDER
 from tower import TOWER_TYPES
 from ui import (
+    EDITOR_ACTION_ORDER,
     PANEL_PADDING,
     build_button_rects,
+    build_editor_action_rects,
+    build_editor_tool_rects,
+    build_level_select_rects,
     build_sell_button_rect,
     build_skip_button_rect,
     build_specialize_button_rects,
     build_upgrade_button_rect,
+    get_clicked_editor_action,
+    get_clicked_editor_tool,
+    get_clicked_level_select_entry,
     get_clicked_tower_button,
 )
 
@@ -94,6 +102,76 @@ def test_first_specialize_button_shares_the_upgrade_buttons_slot():
     # ones that use the *second* specialize rect where that ambiguity
     # doesn't apply.
     assert build_specialize_button_rects()[0] == build_upgrade_button_rect()
+
+
+# --- Map editor toolbar/actions ---
+
+def test_build_editor_tool_rects_has_one_entry_per_editor_tool():
+    rects = build_editor_tool_rects()
+    assert set(rects.keys()) == set(TOOL_ORDER)
+
+
+def test_get_clicked_editor_tool_returns_matching_name():
+    rects = build_editor_tool_rects()
+    for name, rect in rects.items():
+        assert get_clicked_editor_tool(rect.center, rects) == name
+    assert get_clicked_editor_tool((-1000, -1000), rects) is None
+
+
+def test_editor_tool_buttons_do_not_overlap():
+    rects = list(build_editor_tool_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_build_editor_action_rects_has_one_entry_per_action_and_sits_in_the_sidebar():
+    rects = build_editor_action_rects()
+    assert set(rects.keys()) == set(EDITOR_ACTION_ORDER)
+    for rect in rects.values():
+        assert rect.left >= settings.PLAY_WIDTH
+        assert rect.right <= settings.SCREEN_WIDTH
+        assert rect.top >= 0
+        assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_editor_action_buttons_are_stacked_without_overlapping():
+    rects = list(build_editor_action_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_editor_action_returns_matching_name():
+    rects = build_editor_action_rects()
+    for name, rect in rects.items():
+        assert get_clicked_editor_action(rect.center, rects) == name
+    assert get_clicked_editor_action((-1000, -1000), rects) is None
+
+
+# --- Level select ---
+
+def test_build_level_select_rects_has_one_entry_per_entry_and_they_dont_overlap():
+    entries = [(1, "Winding Road"), (2, "Serpentine Pass"), ("custom-slug", "My Level (custom)")]
+    rects = build_level_select_rects(entries)
+    assert set(rects.keys()) == {1, 2, "custom-slug"}
+
+    ordered = list(rects.values())
+    for i, a in enumerate(ordered):
+        for b in ordered[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_level_select_entry_returns_matching_key():
+    entries = [(1, "Winding Road"), ("custom-slug", "My Level (custom)")]
+    rects = build_level_select_rects(entries)
+    for key, rect in rects.items():
+        assert get_clicked_level_select_entry(rect.center, rects) == key
+    assert get_clicked_level_select_entry((-1000, -1000), rects) is None
+
+
+def test_build_level_select_rects_handles_an_empty_entry_list():
+    assert build_level_select_rects([]) == {}
 
 
 def test_specialization_descriptions_fit_the_panel_width():

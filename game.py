@@ -5,10 +5,12 @@ from enum import Enum, auto
 
 import pygame
 
+import persistence
 import settings
 import ui
 from assets import AssetManager
 from economy import Economy
+from editor import Editor
 from grid import Grid
 from levels import LEVELS
 from tower import TOWER_TYPES
@@ -21,6 +23,8 @@ class GameState(Enum):
     PAUSED = auto()
     GAME_OVER = auto()
     VICTORY = auto()
+    EDITOR = auto()
+    LEVEL_SELECT = auto()
 
 
 class Game:
@@ -43,6 +47,19 @@ class Game:
         self.specialize_button_rects = ui.build_specialize_button_rects()
         self.sell_button_rect = ui.build_sell_button_rect()
 
+        # The editor instance persists for the whole session (not just
+        # while GameState.EDITOR is active) so leaving it to playtest and
+        # coming back preserves whatever's been painted so far.
+        self.editor = Editor()
+        self.editor_tool_rects = ui.build_editor_tool_rects()
+        self.editor_action_rects = ui.build_editor_action_rects()
+
+        # Rebuilt each time _enter_level_select() runs -- see there for why
+        # (the custom-levels list on disk can change between visits).
+        self.level_select_entries = []
+        self.level_select_rects = {}
+        self._custom_levels_by_id = {}
+
         self.state = GameState.MENU
         self.running = True
 
@@ -50,17 +67,29 @@ class Game:
         self.load_level(self.current_level_id)
 
     def load_level(self, level_id):
-        level = LEVELS[level_id]
+        self._load_level_object(LEVELS[level_id])
+        self.current_level_id = level_id
+
+    def load_custom_level(self, level):
+        """Load a Level that isn't in the LEVELS registry -- an
+        editor-authored level, whether freshly painted or reloaded from
+        disk (see persistence.py). current_level_id becomes None so
+        has_next_level()/advance_or_replay_level() know there's no
+        registry entry to advance through."""
+        self._load_level_object(level)
+        self.current_level_id = None
+
+    def _load_level_object(self, level):
         self.level = level
         self.grid = Grid(
             settings.GRID_COLS, settings.GRID_ROWS, settings.TILE_SIZE,
-            level.waypoints_tiles, level.blocked_cells,
+            level.path_cells, level.spawn_cells, level.goal_cells, level.blocked_cells,
             subtiles_per_tile=settings.SUBTILES_PER_TILE,
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
         )
         self.economy = Economy(level.starting_gold, level.starting_lives, unlimited_gold=self.unlimited_gold)
-        self.wave_manager = WaveManager(level, self.grid.waypoints_px)
+        self.wave_manager = WaveManager(level, self.grid.tile_to_pixel_center)
 
         self.enemies = []
         self.towers = []
@@ -73,18 +102,29 @@ class Game:
         self._last_panel_subject = None
 
     def reset(self):
-        self.load_level(self.current_level_id)
+        if self.current_level_id is None:
+            self._load_level_object(self.level)  # custom level: nothing in LEVELS to re-look-up
+        else:
+            self.load_level(self.current_level_id)
         self.state = GameState.MENU
 
     def has_next_level(self):
+        if not isinstance(self.current_level_id, int):
+            return False  # a custom (non-registry) level has no "next" to advance to
         return (self.current_level_id + 1) in LEVELS
 
     def advance_or_replay_level(self):
         """Called on winning: move to the next level if the registry has
-        one, else replay the current (final) level from scratch."""
+        one, else replay the current (final) level from scratch. A custom
+        (non-registry) level never has a next level -- has_next_level()
+        guards that -- so this always just replays it."""
         if self.has_next_level():
             self.current_level_id += 1
-        self.load_level(self.current_level_id)
+            self.load_level(self.current_level_id)
+        elif self.current_level_id is None:
+            self._load_level_object(self.level)
+        else:
+            self.load_level(self.current_level_id)
 
     def run(self):
         while self.running:
@@ -104,16 +144,33 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 self._handle_keydown(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._handle_click(event.pos)
+                if self.state == GameState.EDITOR:
+                    self._handle_editor_click(event.pos)
+                elif self.state == GameState.LEVEL_SELECT:
+                    self._handle_level_select_click(event.pos)
+                else:
+                    self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 self._handle_right_click()
+            elif event.type == pygame.MOUSEMOTION and self.state == GameState.EDITOR:
+                self._handle_editor_motion(event.pos, event.buttons)
 
     def _handle_keydown(self, key):
         if self.state == GameState.MENU:
             if key == pygame.K_ESCAPE:
                 self.running = False
+            elif key == pygame.K_e:
+                self.state = GameState.EDITOR
+            elif key == pygame.K_l:
+                self._enter_level_select()
             else:
                 self.state = GameState.PLAYING
+        elif self.state == GameState.EDITOR:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.MENU
+        elif self.state == GameState.LEVEL_SELECT:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.MENU
         elif self.state == GameState.PLAYING:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
@@ -145,6 +202,63 @@ class Game:
             return
         self.selected_tower_name = None
         self.selected_tower = None
+
+    # --- Map editor ---
+
+    def _handle_editor_click(self, pos):
+        tool = ui.get_clicked_editor_tool(pos, self.editor_tool_rects)
+        if tool is not None:
+            self.editor.set_tool(tool)
+            return
+
+        action = ui.get_clicked_editor_action(pos, self.editor_action_rects)
+        if action is not None:
+            self._handle_editor_action(action)
+            return
+
+        # Editor.paint_at() silently ignores a pixel outside the grid
+        # (e.g. over the toolbar/sidebar, neither of which overlaps the
+        # grid's own pixel range), so no further fencing is needed here.
+        self.editor.paint_at(*pos)
+
+    def _handle_editor_motion(self, pos, buttons):
+        if buttons[0]:  # left button held -> drag-paint
+            self.editor.paint_at(*pos)
+
+    def _handle_editor_action(self, action):
+        if action == "back":
+            self.state = GameState.MENU
+        elif action == "playtest" and self.editor.can_play():
+            self.load_custom_level(self.editor.to_level())
+            self.state = GameState.PLAYING
+        elif action == "save" and self.editor.can_play():
+            persistence.save_level(self.editor.to_level())
+
+    # --- Level select ---
+
+    def _enter_level_select(self):
+        """Rebuilds the level list from scratch every time this is
+        entered (not just once in __init__) since the custom levels on
+        disk can change between visits -- most obviously, right after
+        saving one from the editor."""
+        entries = [(level_id, level.name) for level_id, level in sorted(LEVELS.items())]
+        custom_levels = persistence.list_custom_levels()
+        self._custom_levels_by_id = {level.id: level for level in custom_levels}
+        entries += [(level.id, f"{level.name} (custom)") for level in custom_levels]
+
+        self.level_select_entries = entries
+        self.level_select_rects = ui.build_level_select_rects(entries)
+        self.state = GameState.LEVEL_SELECT
+
+    def _handle_level_select_click(self, pos):
+        key = ui.get_clicked_level_select_entry(pos, self.level_select_rects)
+        if key is None:
+            return
+        if isinstance(key, int):
+            self.load_level(key)
+        else:
+            self.load_custom_level(self._custom_levels_by_id[key])
+        self.state = GameState.PLAYING
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -322,6 +436,22 @@ class Game:
 
         if self.state == GameState.MENU:
             ui.draw_menu_screen(self.screen, self.font, self.small_font)
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.EDITOR:
+            ui.draw_editor_screen(
+                self.screen, self.assets, self.font, self.small_font,
+                self.editor, self.editor_tool_rects, self.editor_action_rects,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.LEVEL_SELECT:
+            ui.draw_level_select_screen(
+                self.screen, self.font, self.small_font,
+                self.level_select_entries, self.level_select_rects,
+            )
             pygame.display.flip()
             return
 
