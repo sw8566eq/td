@@ -3,9 +3,16 @@ import pygame
 import settings
 from editor import TOOL_ORDER
 from enemy import ENEMY_TYPES
+from levels import Level
 from tower import TOWER_TYPES
 from ui import (
     EDITOR_ACTION_ORDER,
+    LEVEL_SELECT_BOTTOM,
+    LEVEL_SELECT_ROW_GAP,
+    LEVEL_SELECT_ROW_HEIGHT,
+    LEVEL_SELECT_TOP,
+    LEVEL_THUMBNAIL_HEIGHT,
+    LEVEL_THUMBNAIL_WIDTH,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
     _wrap_text,
@@ -13,6 +20,7 @@ from ui import (
     build_editor_action_rects,
     build_editor_tool_rects,
     build_level_select_rects,
+    build_level_thumbnail,
     build_sell_button_rect,
     build_skip_button_rect,
     build_specialize_button_rects,
@@ -27,6 +35,8 @@ from ui import (
     get_clicked_wave_editor_action,
     get_clicked_wave_tab,
     get_clicked_wave_unit_button,
+    level_select_content_height,
+    level_select_max_scroll,
 )
 
 
@@ -181,6 +191,87 @@ def test_get_clicked_level_select_entry_returns_matching_key():
 
 def test_build_level_select_rects_handles_an_empty_entry_list():
     assert build_level_select_rects([]) == {}
+
+
+# --- Level select scrolling ---
+
+def test_level_select_content_height_is_zero_for_no_entries():
+    assert level_select_content_height(0) == 0
+
+
+def test_level_select_content_height_has_no_trailing_gap():
+    one_row = level_select_content_height(1)
+    two_rows = level_select_content_height(2)
+    assert one_row == LEVEL_SELECT_ROW_HEIGHT
+    assert two_rows == 2 * LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP
+
+
+def test_level_select_max_scroll_is_zero_when_everything_fits():
+    assert level_select_max_scroll(0) == 0
+    assert level_select_max_scroll(1) == 0
+
+
+def test_level_select_max_scroll_is_positive_once_content_overflows_the_viewport():
+    # However many rows it takes to definitely overflow the visible area.
+    viewport_height = LEVEL_SELECT_BOTTOM - LEVEL_SELECT_TOP
+    row_span = LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP
+    overflowing_count = viewport_height // row_span + 5
+    max_scroll = level_select_max_scroll(overflowing_count)
+    assert max_scroll > 0
+    assert max_scroll == level_select_content_height(overflowing_count) - viewport_height
+
+
+def test_build_level_select_rects_shifts_rows_up_by_the_scroll_offset():
+    entries = [(1, "a"), (2, "b")]
+    unscrolled = build_level_select_rects(entries, scroll_offset=0)
+    scrolled = build_level_select_rects(entries, scroll_offset=50)
+    for key in (1, 2):
+        assert scrolled[key].y == unscrolled[key].y - 50
+        assert scrolled[key].x == unscrolled[key].x  # only y moves
+
+
+def _make_thumbnail_test_level():
+    return Level(
+        id=1, name="Test",
+        path_cells=frozenset({(0, 0), (1, 0)}),
+        spawn_cells=((0, 0),), goal_cells=((1, 0),),
+        wave_specs=[{(0, 0): {"grunt": 1}}],
+    )
+
+
+def test_build_level_thumbnail_has_the_requested_default_size():
+    thumbnail = build_level_thumbnail(_make_thumbnail_test_level())
+    assert thumbnail.get_size() == (LEVEL_THUMBNAIL_WIDTH, LEVEL_THUMBNAIL_HEIGHT)
+
+
+def test_build_level_thumbnail_respects_a_custom_size():
+    thumbnail = build_level_thumbnail(_make_thumbnail_test_level(), width=60, height=36)
+    assert thumbnail.get_size() == (60, 36)
+
+
+def test_build_level_thumbnail_colors_path_cells_and_leaves_the_rest_as_ground():
+    thumbnail = build_level_thumbnail(_make_thumbnail_test_level())
+    cell_h = LEVEL_THUMBNAIL_HEIGHT / settings.GRID_ROWS
+
+    # A pixel inside path cell (0, 0), away from its own center dot.
+    path_pixel = thumbnail.get_at((1, int(cell_h) - 1))
+    assert (path_pixel.r, path_pixel.g, path_pixel.b) == settings.COLOR_THUMBNAIL_PATH
+
+    # A pixel well outside any path cell.
+    ground_pixel = thumbnail.get_at((LEVEL_THUMBNAIL_WIDTH - 2, LEVEL_THUMBNAIL_HEIGHT - 2))
+    assert (ground_pixel.r, ground_pixel.g, ground_pixel.b) == settings.COLOR_THUMBNAIL_GROUND
+
+
+def test_build_level_thumbnail_marks_spawn_and_goal_with_distinct_colors():
+    thumbnail = build_level_thumbnail(_make_thumbnail_test_level())
+    cell_w = LEVEL_THUMBNAIL_WIDTH / settings.GRID_COLS
+    cell_h = LEVEL_THUMBNAIL_HEIGHT / settings.GRID_ROWS
+
+    spawn_center = thumbnail.get_at((int(cell_w * 0.5), int(cell_h * 0.5)))
+    assert (spawn_center.r, spawn_center.g, spawn_center.b) == settings.COLOR_EDITOR_SPAWN
+
+    goal_center = thumbnail.get_at((int(cell_w * 1.5), int(cell_h * 0.5)))
+    assert (goal_center.r, goal_center.g, goal_center.b) == settings.COLOR_EDITOR_GOAL
 
 
 # --- Wave editor ---

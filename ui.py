@@ -8,6 +8,7 @@ UI automatically.
 
 import inspect
 import math
+import os
 
 import pygame
 
@@ -426,6 +427,7 @@ EDITOR_TOOL_LABELS = {
 EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
 
 EDITOR_ACTION_LABELS = {
+    "load": "Load Map...",
     "waves": "Edit Waves ->",
     "back": "Back to Menu",
 }
@@ -558,7 +560,7 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
             y += PANEL_ROW_HEIGHT
 
     for name, rect in action_rects.items():
-        # "back" always works; moving on to wave editing needs a valid path first.
+        # "load"/"back" always work; moving on to wave editing needs a valid path first.
         enabled = path_ok if name == "waves" else True
         color = settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED
         pygame.draw.rect(surface, color, rect, border_radius=6)
@@ -657,14 +659,15 @@ def get_clicked_wave_editor_action(pos, action_rects):
     return None
 
 
-def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects, action_rects):
+def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects,
+                             action_rects, last_saved_path=None):
     surface.fill(settings.COLOR_BG)
     # Read-only path preview, for context -- clicking a spawn marker in it
     # is exactly what changes which spawn's counts the sidebar below
     # shows/edits (see Game._handle_wave_editor_click).
     _draw_editor_grid(surface, assets, small_font, editor, active_spawn=editor.active_spawn_cell)
     _draw_wave_tabs(surface, small_font, editor, tab_rects)
-    _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects)
+    _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects, last_saved_path)
 
 
 def _draw_wave_tabs(surface, small_font, editor, tab_rects):
@@ -686,7 +689,7 @@ def _draw_wave_tabs(surface, small_font, editor, tab_rects):
         surface.blit(label, label.get_rect(center=rect.center))
 
 
-def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects):
+def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects, last_saved_path=None):
     panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
     pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
@@ -734,19 +737,64 @@ def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, act
         label = small_font.render(WAVE_EDITOR_ACTION_LABELS[name], True, settings.COLOR_TEXT)
         surface.blit(label, label.get_rect(center=rect.center))
 
+    if last_saved_path is not None:
+        # Tells the player where to actually find the file -- e.g. to
+        # copy it somewhere and hand it to another player, since a saved
+        # level is just a self-contained JSON file (see persistence.py).
+        # Game never saves anywhere but persistence.LEVELS_DIR, so
+        # hardcoding that directory name for display is accurate for any
+        # path this ever actually gets -- last_saved_path only carries
+        # the filename's worth of new information.
+        saved_y = max(rect.bottom for rect in action_rects.values()) + 16
+        saved_label = small_font.render("Saved to:", True, settings.COLOR_TEXT_DIM)
+        surface.blit(saved_label, (x, saved_y))
+        display_path = f"custom_levels/{os.path.basename(last_saved_path)}"
+        for line_index, line in enumerate(_wrap_text(display_path, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING)):
+            text = small_font.render(line, True, settings.COLOR_GOLD)
+            surface.blit(text, (x, saved_y + PANEL_ROW_HEIGHT * (line_index + 1)))
 
-LEVEL_SELECT_ROW_HEIGHT = 48
-LEVEL_SELECT_ROW_GAP = 8
+
+LEVEL_SELECT_ROW_HEIGHT = 88
+LEVEL_SELECT_ROW_GAP = 12
 LEVEL_SELECT_TOP = 100
+# Leaves room below the last row for the "Esc -- Back to ..." hint --
+# the scrollable viewport is everything between this and LEVEL_SELECT_TOP.
+LEVEL_SELECT_BOTTOM = settings.SCREEN_HEIGHT - 60
+LEVEL_SELECT_ROW_PADDING = 10
+LEVEL_SELECT_SCROLL_STEP = LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP  # one row per wheel click
+
+# 15:9 -- exactly GRID_COLS:GRID_ROWS -- so the thumbnail's cells are
+# square, same as the real grid's, just tiny.
+LEVEL_THUMBNAIL_WIDTH = 120
+LEVEL_THUMBNAIL_HEIGHT = 72
 
 
-def build_level_select_rects(entries):
-    """One rect per (key, label) entry in `entries`, stacked top to
-    bottom, keyed by `key` -- an int for a built-in LEVELS id or a str
-    slug for a saved custom level's id (see persistence.py)."""
+def level_select_content_height(entry_count):
+    """Total stacked height of `entry_count` rows, gaps included (but not
+    a trailing gap after the last one)."""
+    if entry_count == 0:
+        return 0
+    return entry_count * (LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP) - LEVEL_SELECT_ROW_GAP
+
+
+def level_select_max_scroll(entry_count):
+    """How far the list can scroll before the last row reaches the bottom
+    of the viewport -- 0 once everything already fits without scrolling."""
+    overflow = level_select_content_height(entry_count) - (LEVEL_SELECT_BOTTOM - LEVEL_SELECT_TOP)
+    return max(0, overflow)
+
+
+def build_level_select_rects(entries, scroll_offset=0):
+    """One rect per (key, level) entry in `entries`, stacked top to
+    bottom and shifted up by `scroll_offset` pixels, keyed by `key` -- an
+    int for a built-in LEVELS id or a str slug for a saved custom level's
+    id (see persistence.py). A row scrolled above LEVEL_SELECT_TOP or
+    below LEVEL_SELECT_BOTTOM still gets a real (if useless) Rect here --
+    callers doing hit-testing against a scrolled list should fence `pos`
+    to that viewport themselves first; see Game._handle_level_select_click."""
     rects = {}
-    y = LEVEL_SELECT_TOP
-    for key, _label in entries:
+    y = LEVEL_SELECT_TOP - scroll_offset
+    for key, _level in entries:
         rects[key] = pygame.Rect(60, y, settings.PLAY_WIDTH - 120, LEVEL_SELECT_ROW_HEIGHT)
         y += LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP
     return rects
@@ -760,22 +808,102 @@ def get_clicked_level_select_entry(pos, rects):
     return None
 
 
-def draw_level_select_screen(surface, font, small_font, entries, rects):
+def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMBNAIL_HEIGHT):
+    """A small static rendering of `level`'s path -- a ground fill, path
+    cells highlighted, spawn (green)/goal (gold) dots -- scaled to fit a
+    (width, height) surface, so the level browser shows what a map
+    actually looks like rather than just its name. Plain Rect/circle
+    drawing rather than real sprites, same placeholder spirit as
+    AssetManager's own fallback shapes and appropriate at this scale
+    regardless of whether an art pack is installed."""
+    surface = pygame.Surface((width, height))
+    surface.fill(settings.COLOR_THUMBNAIL_GROUND)
+    cell_w = width / settings.GRID_COLS
+    cell_h = height / settings.GRID_ROWS
+
+    for col, row in level.path_cells:
+        cell_rect = pygame.Rect(round(col * cell_w), round(row * cell_h), math.ceil(cell_w), math.ceil(cell_h))
+        surface.fill(settings.COLOR_THUMBNAIL_PATH, cell_rect)
+
+    dot_radius = max(2, int(min(cell_w, cell_h) * 0.6))
+    for cells, color in (
+        (level.spawn_cells, settings.COLOR_EDITOR_SPAWN),
+        (level.goal_cells, settings.COLOR_EDITOR_GOAL),
+    ):
+        for col, row in cells:
+            center = (round((col + 0.5) * cell_w), round((row + 0.5) * cell_h))
+            pygame.draw.circle(surface, color, center, dot_radius)
+
+    return surface
+
+
+def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
+                              purpose="play", scroll_offset=0):
+    """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
+    both listed, picking one starts playing it) or "edit" (the map
+    editor's "Load Map..." -- only custom levels listed, since a built-in
+    one has no corresponding file to reopen for editing; picking one
+    loads it into the editor instead -- see Game._handle_level_select_click).
+
+    More rows than fit the viewport (LEVEL_SELECT_TOP..LEVEL_SELECT_BOTTOM)
+    scroll with the mouse wheel (see Game._scroll_level_select) rather
+    than running off-screen unreachably -- rects/scroll_offset are
+    expected to already agree (both built from the same scroll position;
+    see Game._level_select_rects), this just clips the drawing and shows
+    a hint when there's more list than fits either direction."""
     surface.fill(settings.COLOR_BG)
-    title = font.render("Select a Level", True, settings.COLOR_TEXT)
+    title_text = "Load a Map to Edit" if purpose == "edit" else "Select a Level"
+    title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
 
     if not entries:
-        hint = small_font.render("No levels available.", True, settings.COLOR_TEXT_DIM)
+        empty_text = "No custom levels saved yet." if purpose == "edit" else "No levels available."
+        hint = small_font.render(empty_text, True, settings.COLOR_TEXT_DIM)
         surface.blit(hint, hint.get_rect(center=(settings.SCREEN_WIDTH // 2, LEVEL_SELECT_TOP + 20)))
 
-    for key, label in entries:
-        rect = rects[key]
-        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
-        text = small_font.render(label, True, settings.COLOR_TEXT)
-        surface.blit(text, text.get_rect(center=rect.center))
+    viewport = pygame.Rect(0, LEVEL_SELECT_TOP, settings.SCREEN_WIDTH, LEVEL_SELECT_BOTTOM - LEVEL_SELECT_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    for key, level in entries:
+        rect = rects[key]
+        if not rect.colliderect(viewport):
+            continue  # scrolled fully out of view -- nothing to draw
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+
+        thumbnail = thumbnails.get(key)
+        text_x = rect.left + LEVEL_SELECT_ROW_PADDING
+        if thumbnail is not None:
+            thumb_rect = thumbnail.get_rect(midleft=(text_x, rect.centery))
+            surface.blit(thumbnail, thumb_rect)
+            pygame.draw.rect(surface, settings.COLOR_BG, thumb_rect, width=1)
+            text_x = thumb_rect.right + LEVEL_SELECT_ROW_PADDING
+
+        # A custom level's id is a str slug (see persistence.py); a
+        # built-in one's is the int key it's registered under in LEVELS.
+        # purpose == "edit" never lists a built-in at all (see
+        # Game._enter_level_select), so the "(custom)" tag would just be
+        # redundant noise there -- every row already is one.
+        if purpose == "edit" or isinstance(key, int):
+            label = level.name
+        else:
+            label = f"{level.name} (custom)"
+        text = small_font.render(label, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midleft=(text_x, rect.centery)))
+
+    surface.set_clip(previous_clip)
+
+    max_scroll = level_select_max_scroll(len(entries))
+    if max_scroll > 0:
+        if scroll_offset > 0:
+            more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, LEVEL_SELECT_TOP + 4)))
+        if scroll_offset < max_scroll:
+            more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, LEVEL_SELECT_BOTTOM - 4)))
+
+    back_text = "Esc -- Back to Editor" if purpose == "edit" else "Esc -- Back to Menu"
+    hint = small_font.render(back_text, True, settings.COLOR_TEXT_DIM)
     surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
 
 

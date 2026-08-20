@@ -140,6 +140,26 @@ class Editor:
         self.active_spawn_cell = None
         self.validate()
 
+    def load_level(self, level):
+        """Replace every buffer with `level`'s own path/waves, to reopen a
+        previously saved custom level for further editing (see
+        Game._handle_level_select_click's "edit" purpose). A full
+        replace, not a merge -- there's no undo here, same as Playtest/
+        Save never asking about unsaved changes anywhere else in this
+        editor. Copies at every level of nesting, not live references,
+        matching to_level()'s own rule that a Level and the Editor that
+        produced (or, here, consumes) it never share mutable state."""
+        self.path_cells = set(level.path_cells)
+        self.spawn_cells = set(level.spawn_cells)
+        self.goal_cells = set(level.goal_cells)
+        self.wave_specs = [
+            {spawn: dict(composition) for spawn, composition in wave.items()}
+            for wave in level.wave_specs
+        ]
+        self.active_wave_index = 0
+        self.active_tool = EditorTool.PAINT
+        self.validate()
+
     # --- Wave editing ---
 
     def add_wave(self):

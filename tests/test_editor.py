@@ -1,6 +1,7 @@
 import pytest
 
 from editor import Editor, EditorTool
+from levels import Level
 
 
 def cell_center_px(cell, tile_size=64):
@@ -130,6 +131,72 @@ def test_clear_resets_every_buffer_including_waves():
     assert editor.active_wave_index == 0
     assert editor.active_spawn_cell is None
     assert not editor.can_play()
+
+
+# --- load_level() (reopening a saved level for further editing) ---
+
+def _make_saved_level():
+    return Level(
+        id="saved-slug",
+        name="Saved Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}}, {(0, 2): {"tank": 1}}],
+    )
+
+
+def test_load_level_populates_path_and_spawn_and_goal_cells():
+    editor = Editor()
+    editor.load_level(_make_saved_level())
+    assert editor.path_cells == {(0, 0), (0, 1), (0, 2), (1, 1)}
+    assert editor.spawn_cells == {(0, 0), (0, 2)}
+    assert editor.goal_cells == {(1, 1)}
+
+
+def test_load_level_populates_waves_and_resets_the_active_wave():
+    editor = Editor()
+    editor.add_wave()
+    editor.set_active_wave(1)
+
+    editor.load_level(_make_saved_level())
+
+    assert editor.wave_specs == [{(0, 0): {"grunt": 3}}, {(0, 2): {"tank": 1}}]
+    assert editor.active_wave_index == 0
+
+
+def test_load_level_leaves_the_editor_playable_and_switches_to_the_paint_tool():
+    editor = Editor()
+    editor.set_tool(EditorTool.GOAL)
+
+    editor.load_level(_make_saved_level())
+
+    assert editor.path_is_valid()
+    assert editor.can_play()
+    assert editor.active_tool == EditorTool.PAINT
+
+
+def test_load_level_replaces_whatever_was_previously_painted():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((5, 5)))
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((5, 5)))
+
+    editor.load_level(_make_saved_level())
+
+    assert (5, 5) not in editor.path_cells
+    assert (5, 5) not in editor.spawn_cells
+
+
+def test_load_level_does_not_mutate_the_source_level_on_later_edits():
+    level = _make_saved_level()
+    editor = Editor()
+    editor.load_level(level)
+
+    editor.set_active_spawn((0, 0))
+    editor.adjust_unit_count("grunt", +5)
+
+    assert level.wave_specs == [{(0, 0): {"grunt": 3}}, {(0, 2): {"tank": 1}}]  # unchanged
 
 
 # --- Live path validation/junction feedback ---
