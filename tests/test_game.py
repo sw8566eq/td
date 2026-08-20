@@ -192,6 +192,24 @@ def test_paused_unbound_key_is_a_no_op(playing_game):
     assert playing_game.running is True
 
 
+def test_paused_e_returns_to_the_map_editor_on_a_custom_level(game):
+    game.load_custom_level(make_custom_level())
+    game.state = GameState.PAUSED
+
+    game._handle_keydown(pygame.K_e)
+
+    assert game.state == GameState.EDITOR
+
+
+def test_paused_e_is_a_no_op_on_a_built_in_level(playing_game):
+    # "Return to Map Editor" is only offered (see ui.draw_pause_menu) for
+    # a custom level -- a built-in one has no corresponding paint buffer
+    # to go back to.
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_e)
+    assert playing_game.state == GameState.PAUSED
+
+
 def test_game_over_r_resets_the_same_level_and_resumes_playing(game):
     game.state = GameState.GAME_OVER
     game.economy.gold = 0
@@ -1496,6 +1514,15 @@ def test_render_level_select_with_entries_does_not_crash(game):
     # An empty level_select_entries list never exercises the per-row
     # drawing loop -- populate it the same way _enter_level_select() does.
     game._enter_level_select()
+    game.render()
+
+
+def test_render_paused_on_a_custom_level_does_not_crash(game):
+    # test_render_does_not_crash_in_any_state only ever pauses on a
+    # built-in level, so the pause menu's extra "Return to Map Editor"
+    # option (is_custom_level=True) never actually gets drawn there.
+    game.load_custom_level(make_custom_level())
+    game.state = GameState.PAUSED
     game.render()
 
 

@@ -382,10 +382,16 @@ def draw_menu_screen(surface, font, small_font):
                             ["Press any key to start", "E -- Map Editor"], settings.COLOR_TEXT)
 
 
-def draw_pause_menu(surface, font, small_font):
+def draw_pause_menu(surface, font, small_font, is_custom_level=False):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
-    # panel stays visible and undimmed to its right.
-    options = ["Esc / P -- Resume", "R -- Restart Level", "Q -- Quit"]
+    # panel stays visible and undimmed to its right. "Return to Editor"
+    # only makes sense while playing a level that actually came from the
+    # editor -- a built-in level has no corresponding in-progress paint
+    # buffer to go back to.
+    options = ["Esc / P -- Resume", "R -- Restart Level"]
+    if is_custom_level:
+        options.append("E -- Return to Map Editor")
+    options.append("Q -- Quit")
     _draw_centered_overlay(surface, font, small_font, "Paused", options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 

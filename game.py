@@ -194,6 +194,12 @@ class Game:
             elif key == pygame.K_r:
                 self.reset()
                 self.state = GameState.PLAYING
+            elif key == pygame.K_e and self.current_level_id is None:
+                # Only offered (see ui.draw_pause_menu) while playing a
+                # custom level -- self.editor still has whatever was
+                # playtested, untouched, so this is just "stop playing,"
+                # not a reload.
+                self.state = GameState.EDITOR
             elif key == pygame.K_q:
                 self.running = False
         elif self.state == GameState.GAME_OVER:
@@ -546,7 +552,7 @@ class Game:
         )
 
         if self.state == GameState.PAUSED:
-            ui.draw_pause_menu(self.screen, self.font, self.small_font)
+            ui.draw_pause_menu(self.screen, self.font, self.small_font, self.current_level_id is None)
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font)
         elif self.state == GameState.VICTORY:

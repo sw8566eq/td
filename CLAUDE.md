@@ -106,7 +106,11 @@ edit, populating `path_problems` -- the only thing that gates moving on to wave 
 Playtest/Save. Playtesting hands `Editor.to_level()`'s `Level` straight to `Game.load_custom_level()`
 (the non-registry counterpart to `load_level(level_id)`) without saving first; `current_level_id`
 becomes `None` for a custom level, which is what `has_next_level()`/`reset()`/
-`advance_or_replay_level()` check to know there's no `LEVELS` entry to look back up.
+`advance_or_replay_level()` -- and the pause menu's "Return to Map Editor" option (`E`, only offered
+when `current_level_id is None`; see `ui.draw_pause_menu`'s `is_custom_level` and
+`Game._handle_keydown`'s `GameState.PAUSED` branch) -- check to know there's no `LEVELS` entry to
+look back up. That option just switches `state` back to `GameState.EDITOR` without touching
+`self.editor` at all, so whatever was playtested is still sitting there exactly as painted.
 
 Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
 edits `Editor.wave_specs` directly -- the exact same `[{spawn_cell: {enemy_type_name: count}}, ...]`

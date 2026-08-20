@@ -38,10 +38,12 @@ The HUD shows a countdown to the next wave and a button (bottom-right) that read
 the first wave -- it waits for you rather than auto-starting, so you get a beat to place towers
 first -- and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space`
 does the same thing as clicking it. `P` or `Esc` opens the pause menu; the same two keys close it
-again, `R` restarts the current level, `Q` quits. `R` also restarts the level from the game-over
-screen, or -- from the victory screen -- advances to the next level if there is one, otherwise
-replays the level you just won. `Esc` quits from the main menu, game-over, or victory screens
-(there's no pause menu to open there).
+again, `R` restarts the current level, `Q` quits. Playing a level you're playtesting from the map
+editor adds one more option there: `E` stops the run and takes you straight back to the editor,
+paint buffer untouched -- not offered on a built-in level, which has no editor session to return to.
+`R` also restarts the level from the game-over screen, or -- from the victory screen -- advances to
+the next level if there is one, otherwise replays the level you just won. `Esc` quits from the main
+menu, game-over, or victory screens (there's no pause menu to open there).
 
 Run the test suite with `pytest` (from the venv) -- 400+ tests covering every module, including
 `Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
