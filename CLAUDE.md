@@ -148,7 +148,51 @@ padded with empty turns to stay in sync.
 (gitignored -- local player data, not shipped content), slugging the level's name into a stable
 filename/id with a numeric suffix on collision. `list_custom_levels` skips a corrupt or
 hand-edited-invalid file rather than crashing the whole level-select screen, same spirit as
-`AssetManager` falling back to a placeholder instead of crashing on a missing sprite.
+`AssetManager` falling back to a placeholder instead of crashing on a missing sprite. A saved level
+persists across game sessions with no extra work -- `Game._enter_level_select()` calls
+`list_custom_levels()` fresh every time it's entered, reading straight off disk, so a level saved in
+an earlier run shows up exactly like one saved this session. Since the saved file is just
+self-contained JSON with no player-specific data, it doubles as this game's map-sharing mechanism:
+handing someone the file and having them drop it into their own `custom_levels/` is enough --
+`Game.last_saved_path` (shown in the wave editor's sidebar after Save, see `ui.py`) exists purely to
+tell the player where to find that file on disk to go do that.
+
+`ui.build_level_thumbnail(level, width, height)` renders a level's `path_cells`/`spawn_cells`/
+`goal_cells` as a small static image -- a `(width, height)` surface at exactly `GRID_COLS:GRID_ROWS`
+aspect ratio so each cell maps to a perfect square, colored ground/path fills plus spawn/goal dots,
+no `AssetManager` sprites involved (same placeholder-shape spirit as `AssetManager`'s own fallback,
+appropriate at this scale regardless of whether an art pack is installed). `Game._enter_level_select()`
+builds one thumbnail per entry (`level_select_thumbnails`, keyed the same as `level_select_entries`/
+`level_select_rects`) so the level-select screen reads as an actual visual map browser, not just a
+list of names.
+
+The level browser (`GameState.LEVEL_SELECT`) serves two different purposes from the same screen,
+tracked by `Game.level_select_purpose` ("play", the default, or "edit") and threaded through to
+`ui.draw_level_select_screen` for its title/back-hint/tag text: entered via the menu's `L`, it lists
+built-ins and custom levels together and picking one starts playing it (unchanged); entered via the
+editor's "Load Map..." action (`Game._handle_editor_action`'s `"load"` branch,
+`_enter_level_select(purpose="edit")`), it lists **only** custom levels -- a built-in one has no
+corresponding file to reopen -- and picking one calls `Editor.load_level(level)` instead, then
+returns to `GameState.EDITOR` rather than `PLAYING`. `Editor.load_level()` is a full replace of every
+buffer (path/spawn/goal cells, wave_specs, active wave/spawn/tool), copied at every level of nesting
+so later edits never mutate the `Level` it was loaded from -- there's no merge or unsaved-changes
+warning, same as Playtest/Save never asking about unsaved changes anywhere else in this editor.
+Escape from `LEVEL_SELECT` returns to wherever it was entered from (`MENU` for "play", `EDITOR` for
+"edit"), driven by the same `level_select_purpose`.
+
+More rows than fit between `ui.LEVEL_SELECT_TOP` and `ui.LEVEL_SELECT_BOTTOM` scroll with the mouse
+wheel rather than running off-screen unreachably: `Game.level_select_scroll_offset` (reset to 0 by
+`_enter_level_select`, updated and clamped to `ui.level_select_max_scroll(len(entries))` by
+`_scroll_level_select` on every `pygame.MOUSEWHEEL` event) feeds into
+`ui.build_level_select_rects(entries, scroll_offset)`, which is what actually shifts row positions --
+`Game._rebuild_level_select_rects()` is the one place that combines the two and is called both on
+entry and after every scroll, so `level_select_rects` (read by both the click handler and `render()`)
+is never stale. `Game._handle_level_select_click` fences `pos` to that same viewport *before* doing
+any hit-testing -- a row scrolled off the top or bottom still has a real (if currently useless) `Rect`
+whose geometry can extend into the title/hint areas, so without that fence a click there could match
+a row that isn't actually visible. `ui.draw_level_select_screen` mirrors this on the drawing side with
+an actual `surface.set_clip()` around the row loop, plus a "more above"/"more below" hint whenever
+`level_select_max_scroll(...)` is nonzero.
 
 ### Tower progression is two separate axes
 

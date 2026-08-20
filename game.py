@@ -55,6 +55,10 @@ class Game:
         self.editor = Editor()
         self.editor_tool_rects = ui.build_editor_tool_rects()
         self.editor_action_rects = ui.build_editor_action_rects()
+        # Set by the wave editor's Save action -- shown in its sidebar so
+        # the player knows where the file landed (custom_levels/), e.g. to
+        # go find and share it with someone else.
+        self.last_saved_path = None
         # Unlike the rect sets above, wave tabs depend on how many waves
         # currently exist, so they're rebuilt on demand (see
         # _wave_tab_rects()) rather than cached once here.
@@ -63,8 +67,15 @@ class Game:
 
         # Rebuilt each time _enter_level_select() runs -- see there for why
         # (the custom-levels list on disk can change between visits).
+        # level_select_rects also gets rebuilt on scroll (see
+        # _scroll_level_select) -- unlike every other cached rect set in
+        # Game, its row positions depend on scroll_offset, not just on
+        # what's currently listed.
         self.level_select_entries = []
         self.level_select_rects = {}
+        self.level_select_thumbnails = {}
+        self.level_select_purpose = "play"  # or "edit" -- see _enter_level_select
+        self.level_select_scroll_offset = 0
         self._custom_levels_by_id = {}
 
         self.state = GameState.MENU
@@ -163,6 +174,8 @@ class Game:
                 self._handle_right_click()
             elif event.type == pygame.MOUSEMOTION and self.state == GameState.EDITOR:
                 self._handle_editor_motion(event.pos, event.buttons)
+            elif event.type == pygame.MOUSEWHEEL and self.state == GameState.LEVEL_SELECT:
+                self._scroll_level_select(event.y)
 
     def _handle_keydown(self, key):
         if self.state == GameState.MENU:
@@ -182,7 +195,10 @@ class Game:
                 self.state = GameState.EDITOR  # one step back, same as the Back-to-Path button
         elif self.state == GameState.LEVEL_SELECT:
             if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
+                # Back to wherever this screen was entered from -- the
+                # menu's L, or the editor's Load Map... (see
+                # _enter_level_select's purpose param).
+                self.state = GameState.MENU if self.level_select_purpose == "play" else GameState.EDITOR
         elif self.state == GameState.PLAYING:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
@@ -248,6 +264,8 @@ class Game:
             self.state = GameState.MENU
         elif action == "waves" and self.editor.path_is_valid():
             self.state = GameState.WAVE_EDITOR
+        elif action == "load":
+            self._enter_level_select(purpose="edit")
 
     # --- Wave editor ---
 
@@ -294,33 +312,78 @@ class Game:
             self.load_custom_level(self.editor.to_level())
             self.state = GameState.PLAYING
         elif action == "save" and self.editor.can_play():
-            persistence.save_level(self.editor.to_level())
+            self.last_saved_path = persistence.save_level(self.editor.to_level())
 
     # --- Level select ---
 
-    def _enter_level_select(self):
+    def _enter_level_select(self, purpose="play"):
         """Rebuilds the level list from scratch every time this is
         entered (not just once in __init__) since the custom levels on
         disk can change between visits -- most obviously, right after
-        saving one from the editor."""
-        entries = [(level_id, level.name) for level_id, level in sorted(LEVELS.items())]
+        saving one from the editor. Custom levels persist across game
+        sessions too: they're read fresh from persistence.LEVELS_DIR here,
+        the same directory Save writes to, so a level saved in an earlier
+        run of the game shows up here just as readily as one saved this
+        session.
+
+        `purpose` is "play" (the menu's L -- picking a level starts
+        playing it) or "edit" (the editor's Load Map... action -- picking
+        a level loads it back into the editor for further editing
+        instead; see _handle_level_select_click). Built-in levels have no
+        corresponding file to reopen for editing, so "edit" only ever
+        lists custom ones."""
         custom_levels = persistence.list_custom_levels()
         self._custom_levels_by_id = {level.id: level for level in custom_levels}
-        entries += [(level.id, f"{level.name} (custom)") for level in custom_levels]
+
+        if purpose == "edit":
+            entries = [(level.id, level) for level in custom_levels]
+        else:
+            entries = [(level_id, level) for level_id, level in sorted(LEVELS.items())]
+            entries += [(level.id, level) for level in custom_levels]
 
         self.level_select_entries = entries
-        self.level_select_rects = ui.build_level_select_rects(entries)
+        self.level_select_thumbnails = {key: ui.build_level_thumbnail(level) for key, level in entries}
+        self.level_select_purpose = purpose
+        self.level_select_scroll_offset = 0  # always open scrolled to the top
+        self._rebuild_level_select_rects()
         self.state = GameState.LEVEL_SELECT
 
+    def _rebuild_level_select_rects(self):
+        """level_select_rects depends on scroll position, not just on
+        what's listed -- called both here (from _enter_level_select) and
+        after every scroll (_scroll_level_select) so it's never stale for
+        the click handler or render() to read."""
+        self.level_select_rects = ui.build_level_select_rects(
+            self.level_select_entries, self.level_select_scroll_offset,
+        )
+
+    def _scroll_level_select(self, wheel_y):
+        # pygame's MOUSEWHEEL.y is positive scrolling away from the
+        # player (up the list -> less scroll_offset) and negative toward
+        # them (down the list -> more) -- hence the sign flip.
+        max_scroll = ui.level_select_max_scroll(len(self.level_select_entries))
+        self.level_select_scroll_offset -= wheel_y * ui.LEVEL_SELECT_SCROLL_STEP
+        self.level_select_scroll_offset = max(0, min(self.level_select_scroll_offset, max_scroll))
+        self._rebuild_level_select_rects()
+
     def _handle_level_select_click(self, pos):
+        # A row scrolled off the top/bottom still has a real (just
+        # off-viewport) Rect -- see build_level_select_rects -- so a click
+        # outside the visible list area must never match one.
+        if not (ui.LEVEL_SELECT_TOP <= pos[1] <= ui.LEVEL_SELECT_BOTTOM):
+            return
         key = ui.get_clicked_level_select_entry(pos, self.level_select_rects)
         if key is None:
             return
-        if isinstance(key, int):
+        if self.level_select_purpose == "edit":
+            self.editor.load_level(self._custom_levels_by_id[key])
+            self.state = GameState.EDITOR
+        elif isinstance(key, int):
             self.load_level(key)
+            self.state = GameState.PLAYING
         else:
             self.load_custom_level(self._custom_levels_by_id[key])
-        self.state = GameState.PLAYING
+            self.state = GameState.PLAYING
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -513,6 +576,7 @@ class Game:
             ui.draw_wave_editor_screen(
                 self.screen, self.assets, self.font, self.small_font,
                 self.editor, self._wave_tab_rects(), self.wave_unit_rects, self.wave_editor_action_rects,
+                self.last_saved_path,
             )
             pygame.display.flip()
             return
@@ -520,7 +584,8 @@ class Game:
         if self.state == GameState.LEVEL_SELECT:
             ui.draw_level_select_screen(
                 self.screen, self.font, self.small_font,
-                self.level_select_entries, self.level_select_rects,
+                self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
+                self.level_select_purpose, self.level_select_scroll_offset,
             )
             pygame.display.flip()
             return

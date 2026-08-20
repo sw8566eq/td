@@ -14,6 +14,7 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import settings  # noqa: E402
+import ui  # noqa: E402
 from editor import EditorTool  # noqa: E402
 from game import Game, GameState  # noqa: E402
 from levels import LEVELS, Level  # noqa: E402
@@ -1361,19 +1362,26 @@ def test_wave_editor_back_action_returns_to_the_path_editor(game):
 
 def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch):
     saved = []
-    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+
+    def fake_save_level(level):
+        saved.append(level)
+        return "/fake/custom_levels/custom-level.json"
+
+    monkeypatch.setattr("persistence.save_level", fake_save_level)
 
     game.state = GameState.EDITOR
     _paint_valid_path(game)
     game.state = GameState.WAVE_EDITOR
     game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
     assert game.editor.can_play()
+    assert game.last_saved_path is None
 
     game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
 
     assert len(saved) == 1
     assert saved[0].wave_specs == [{(0, 2): {"grunt": 1}}]
     assert game.state == GameState.WAVE_EDITOR  # saving doesn't navigate away
+    assert game.last_saved_path == "/fake/custom_levels/custom-level.json"
 
 
 def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
@@ -1385,12 +1393,111 @@ def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
     game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
 
     assert saved == []
+    assert game.last_saved_path is None
 
 
-def test_level_select_click_on_empty_space_is_a_no_op(game):
+def test_level_select_click_outside_the_viewport_is_a_no_op(game):
     game._enter_level_select()
     game._handle_level_select_click((-1000, -1000))
     assert game.state == GameState.LEVEL_SELECT  # never left
+
+
+def test_level_select_click_inside_the_viewport_but_off_every_row_is_a_no_op(game):
+    # Distinct from the viewport-fence case above -- this is a click that
+    # passes the fence (a real y within LEVEL_SELECT_TOP..LEVEL_SELECT_BOTTOM)
+    # but still doesn't land on any row's Rect.
+    game._enter_level_select()
+    game._handle_level_select_click((settings.SCREEN_WIDTH - 1, ui.LEVEL_SELECT_TOP + 5))
+    assert game.state == GameState.LEVEL_SELECT  # never left
+
+
+# --- Level select scrolling ---
+
+def _make_many_custom_levels(count):
+    return [make_custom_level(level_id=f"level-{i}", name=f"Level {i}") for i in range(count)]
+
+
+def test_scrolling_down_moves_the_level_select_rows_up(game, monkeypatch):
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+    assert game.level_select_scroll_offset == 0
+
+    first_row_y_before = game.level_select_rects[levels[0].id].y
+    game._scroll_level_select(-1)  # wheel "down" gesture
+    first_row_y_after = game.level_select_rects[levels[0].id].y
+
+    assert game.level_select_scroll_offset > 0
+    assert first_row_y_after < first_row_y_before
+
+
+def test_scroll_offset_clamps_at_zero_and_at_max(game, monkeypatch):
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+
+    game._scroll_level_select(1)  # can't scroll up past the top
+    assert game.level_select_scroll_offset == 0
+
+    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
+    for _ in range(50):
+        game._scroll_level_select(-1)
+    assert game.level_select_scroll_offset == max_scroll
+
+
+def test_enter_level_select_resets_scroll_to_the_top(game, monkeypatch):
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+    game._scroll_level_select(-3)
+    assert game.level_select_scroll_offset > 0
+
+    game._enter_level_select()  # re-entering (e.g. via L again) starts back at the top
+    assert game.level_select_scroll_offset == 0
+
+
+def test_clicking_a_scrolled_row_still_loads_the_right_level(game, monkeypatch):
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
+    for _ in range(50):
+        game._scroll_level_select(-1)
+    assert game.level_select_scroll_offset == max_scroll
+
+    target = levels[-1]
+    rect = game.level_select_rects[target.id]
+    assert ui.LEVEL_SELECT_TOP <= rect.centery <= ui.LEVEL_SELECT_BOTTOM  # sanity: actually visible now
+
+    game._handle_level_select_click(rect.center)
+
+    assert game.state == GameState.PLAYING
+    assert game.level.id == target.id
+
+
+def test_clicking_a_partially_scrolled_off_row_above_the_viewport_is_a_no_op(game, monkeypatch):
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+    game.level_select_scroll_offset = 50
+    game._rebuild_level_select_rects()
+
+    first_key = game.level_select_entries[0][0]
+    row_rect = game.level_select_rects[first_key]
+    assert row_rect.top < ui.LEVEL_SELECT_TOP < row_rect.bottom  # straddles the fence
+
+    click_pos = (row_rect.centerx, ui.LEVEL_SELECT_TOP - 10)  # inside the rect, above the viewport
+    assert row_rect.collidepoint(click_pos)  # sanity: the rect really does cover this point
+
+    game._handle_level_select_click(click_pos)
+    assert game.state == GameState.LEVEL_SELECT  # rejected by the viewport fence
+
+
+def test_enter_level_select_builds_one_thumbnail_per_entry(game):
+    game._enter_level_select()
+    assert set(game.level_select_thumbnails.keys()) == {key for key, _level in game.level_select_entries}
+    for thumbnail in game.level_select_thumbnails.values():
+        assert thumbnail.get_size() == (ui.LEVEL_THUMBNAIL_WIDTH, ui.LEVEL_THUMBNAIL_HEIGHT)
 
 
 def test_has_next_level_is_false_for_a_custom_level(game):
@@ -1434,13 +1541,56 @@ def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
     monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
 
     game._enter_level_select()
-    assert (custom.id, f"{custom.name} (custom)") in game.level_select_entries
+    assert (custom.id, custom) in game.level_select_entries
 
     game._handle_level_select_click(game.level_select_rects[custom.id].center)
 
     assert game.state == GameState.PLAYING
     assert game.current_level_id is None
     assert game.level.id == custom.id
+
+
+# --- Loading a saved map back into the editor ---
+
+def test_editor_load_action_enters_level_select_for_editing(game):
+    game.state = GameState.EDITOR
+    game._handle_editor_click(game.editor_action_rects["load"].center)
+    assert game.state == GameState.LEVEL_SELECT
+    assert game.level_select_purpose == "edit"
+
+
+def test_level_select_for_editing_lists_only_custom_levels(game, monkeypatch):
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+
+    game._enter_level_select(purpose="edit")
+
+    assert game.level_select_entries == [(custom.id, custom)]
+    assert all(isinstance(key, str) for key, _level in game.level_select_entries)
+
+
+def test_level_select_click_while_editing_loads_the_level_into_the_editor(game, monkeypatch):
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    game._enter_level_select(purpose="edit")
+
+    game._handle_level_select_click(game.level_select_rects[custom.id].center)
+
+    assert game.state == GameState.EDITOR
+    assert game.editor.path_cells == set(custom.path_cells)
+    assert game.editor.wave_specs == custom.wave_specs
+
+
+def test_level_select_escape_returns_to_editor_when_entered_to_load_a_map(game):
+    game._enter_level_select(purpose="edit")
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.EDITOR
+
+
+def test_level_select_escape_still_returns_to_menu_when_entered_to_play(game):
+    game._enter_level_select(purpose="play")
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
 
 
 # --- render(): smoke tests across every state ---
@@ -1510,11 +1660,55 @@ def test_render_wave_editor_with_multiple_spawns_does_not_crash(game):
     game.render()
 
 
+def test_render_wave_editor_after_saving_does_not_crash(game):
+    # last_saved_path is None until a save actually happens -- the "Saved
+    # to:" status line never renders in any other wave-editor test.
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    game.last_saved_path = "/fake/custom_levels/a-fairly-long-level-name-to-test-wrapping.json"
+
+    game.render()
+
+
 def test_render_level_select_with_entries_does_not_crash(game):
     # An empty level_select_entries list never exercises the per-row
     # drawing loop -- populate it the same way _enter_level_select() does.
     game._enter_level_select()
     game.render()
+
+
+def test_render_level_select_for_editing_does_not_crash(game, monkeypatch):
+    # purpose="edit" changes the title/back-hint/tag text and (usually)
+    # lists only custom levels -- exercise both the populated and the
+    # "no custom levels saved yet" empty-state branches.
+    game._enter_level_select(purpose="edit")
+    game.render()
+
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    game._enter_level_select(purpose="edit")
+    game.render()
+
+
+def test_render_level_select_with_more_levels_than_fit_does_not_crash(game, monkeypatch):
+    # Fewer than this always fits without scrolling, so the clipped
+    # viewport and "more above"/"more below" hints never actually draw
+    # in any other render test.
+    levels = _make_many_custom_levels(10)
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    game._enter_level_select()
+    game.render()  # scrolled to the top -- only "more below" should show
+
+    game._scroll_level_select(-3)
+    game.render()  # scrolled partway -- both hints should show
+
+    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
+    for _ in range(50):
+        game._scroll_level_select(-1)
+    assert game.level_select_scroll_offset == max_scroll
+    game.render()  # scrolled to the bottom -- only "more above" should show
 
 
 def test_render_paused_on_a_custom_level_does_not_crash(game):

@@ -159,8 +159,13 @@ level's boss wave shows a "Level Complete!" screen; `R` advances to the
 next level (`Game.advance_or_replay_level()`), starting that level's
 economy fresh. Winning the last registered level shows "Victory!"
 instead, and `R` there just replays it. `L` from the main menu opens a
-level-select screen listing both of these and any custom levels you've
-saved from the map editor.
+level browser listing both of these and any custom levels you've saved
+from the map editor -- each one shown with a small thumbnail of its actual
+path (ground/path fill plus spawn/goal dots), not just its name. Saved
+levels persist across game sessions -- quit and relaunch, and `L` still
+finds everything you'd saved before, straight off disk. More levels than
+fit on screen at once scroll with the mouse wheel -- a "more below" hint
+appears whenever there's further to go.
 
 ## Map editor
 
@@ -180,6 +185,15 @@ shows live feedback (in red) on whatever's wrong -- disconnected cells, a
 missing spawn/goal, a loop -- and turns green once the path is valid, at
 which point **Edit Waves** becomes clickable.
 
+**Load Map...**, also in the sidebar, reopens a previously saved custom
+level for further editing -- it's the same level browser `L` uses, just
+filtered to only your saved custom levels (a built-in level has no file to
+reopen) and, instead of starting to play whichever one you pick, it loads
+that map's path *and* waves straight into the editor in place of whatever
+was there, ready to keep painting or rebalancing. There's no prompt about
+unsaved changes -- same as Playtest and Save elsewhere in the editor never
+asking either -- so save first if you want to keep what you were working on.
+
 That opens the wave editor: numbered tabs across the bottom select which
 wave you're editing, with **+**/**-** tabs to add or remove one (there's
 always at least one, shared by every spawn -- the whole level counts
@@ -192,8 +206,12 @@ send a wave of grunts while another sends tanks, or sits that wave out
 entirely. A wave still needs at least one unit from *some* spawn before you
 can move on. **Playtest** loads the level you're editing immediately,
 without saving; **Save** writes it to `custom_levels/` (as JSON, via
-`persistence.py`) under a name slugged from the level's name, where `L`'s
-level-select screen will find it from then on.
+`persistence.py`) under a name slugged from the level's name -- the
+sidebar shows exactly where afterward -- and `L`'s level browser will find
+it from then on, this session or a future one. Since a saved level is a
+self-contained JSON file with nothing player-specific in it, sharing one
+with another player is as simple as sending them the file and having them
+drop it into their own `custom_levels/`.
 
 Spawns stay synchronized during play: the 1st enemy out of every spawn point
 in a wave emerges at the same moment, then the 2nd from every spawn that
@@ -225,12 +243,14 @@ entry, not a change to the systems that already work.
 - **New built-in level**: add a `Level(...)` entry to `LEVELS` in `levels.py` with its own path
   (`path_cells`/`spawn_cells`/`goal_cells` -- `pathing.path_cells_from_corners()` turns a terse
   ordered corner list into `path_cells` for a simple hand-written route, same as the two existing
-  levels), wave composition (`wave_specs`, a list of `{enemy_type_name: count}` dicts -- one per
-  wave, hand-authored or via `generate_default_waves()`), and starting gold/lives. `Grid`,
-  `WaveManager`, and `Game` all consume whichever level is active generically, so this needs no
-  other changes -- registering it is also what makes it reachable: winning the level before it in
-  numeric order will offer to advance into it, and it's listed in `L`'s level-select screen. (All
-  levels currently share the same map size, set in `settings.py` -- only the path/waves differ.)
+  levels), wave composition (`wave_specs`, a list of `{spawn_cell: {enemy_type_name: count}}` dicts --
+  one per wave, each spawn's own composition independent of any other spawn's -- hand-authored, or
+  via `generate_default_waves()`/`_single_spawn_waves()` for the common single-spawn case), and
+  starting gold/lives. `Grid`, `WaveManager`, and `Game` all consume whichever level is active
+  generically, so this needs no other changes -- registering it is also what makes it reachable:
+  winning the level before it in numeric order will offer to advance into it, and it's listed in
+  `L`'s level browser. (All levels currently share the same map size, set in `settings.py` -- only
+  the path/waves differ.)
   Give its final wave a `"boss": 1` entry to match every other level -- enforced by
   `tests/test_levels.py::test_every_levels_final_wave_includes_a_boss`. A player-made level doesn't
   need a registry entry at all -- see "Map editor" above.
