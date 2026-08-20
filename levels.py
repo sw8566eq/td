@@ -23,6 +23,12 @@ class Level:
     blocked_cells: frozenset = field(default_factory=frozenset)  # extra non-buildable tiles
 
     def __post_init__(self):
+        if not self.wave_specs:
+            # WaveManager assumes at least one wave -- _begin_wave() indexes
+            # wave_specs[0] unconditionally the moment the first wave starts,
+            # so an empty list would crash deep inside WaveManager instead of
+            # failing clearly here at Level-definition time.
+            raise ValueError(f"Level {self.id!r} has no waves in wave_specs")
         for wave_number, wave in enumerate(self.wave_specs, start=1):
             for enemy_name in wave:
                 if enemy_name not in ENEMY_TYPES:

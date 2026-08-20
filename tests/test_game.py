@@ -429,6 +429,26 @@ def test_clicking_empty_ground_with_nothing_selected_clears_the_pinned_tower(pla
     assert playing_game.selected_tower is None
 
 
+def test_clicking_inert_panel_text_does_not_deselect_the_pinned_tower(playing_game):
+    # Regression test: the "click missed every button" fallback only
+    # checked pos[1] against the HUD strip, never pos[0] against the
+    # panel's left edge (settings.PLAY_WIDTH), so a click anywhere in the
+    # panel that wasn't a button -- e.g. on the tower's name or stat text
+    # -- fell through to the same "clicked empty ground" case as a click
+    # on the actual grid, silently closing the pinned tower's panel.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    playing_game.selected_tower_name = None  # not in build mode
+
+    inert_panel_point = (settings.PLAY_WIDTH + 20, 50)  # panel title/stat text, not a button
+    playing_game._handle_click(inert_panel_point)
+
+    assert playing_game.selected_tower is tower
+
+
 def test_try_sell_tower_removes_it_and_refunds_gold(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -472,6 +492,7 @@ def test_clicking_the_upgrade_button_upgrades_the_pinned_tower(playing_game):
 
     mock_mouse_pos(playing_game.upgrade_button_rect.center)  # nowhere near the tower on the grid
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(playing_game.upgrade_button_rect.center)
     finally:
         clear_mouse_mock()
@@ -496,6 +517,7 @@ def test_clicking_the_upgrade_button_when_unaffordable_does_nothing(playing_game
 
     mock_mouse_pos(playing_game.upgrade_button_rect.center)
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(playing_game.upgrade_button_rect.center)
     finally:
         clear_mouse_mock()
@@ -522,6 +544,7 @@ def test_clicking_the_upgrade_buttons_rect_at_max_level_specializes_instead(play
 
     mock_mouse_pos(playing_game.upgrade_button_rect.center)
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(playing_game.upgrade_button_rect.center)
     finally:
         clear_mouse_mock()
@@ -544,12 +567,49 @@ def test_clicking_that_shared_rect_does_nothing_once_already_specialized(playing
 
     mock_mouse_pos(playing_game.upgrade_button_rect.center)
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(playing_game.upgrade_button_rect.center)
     finally:
         clear_mouse_mock()
 
     assert tower.specialization == "power"  # unchanged
     assert playing_game.economy.gold == gold_before
+
+
+def test_action_buttons_act_on_the_tower_shown_when_rendered_not_a_stale_pin(playing_game):
+    # Regression test for a real bug: _handle_panel_action_click used to
+    # re-derive "which tower is this click for?" from _hovered_tower() at
+    # click time -- but by the time the mouse is actually over a panel
+    # button, it's not over any tower's tile_rect() on the grid, so that
+    # lookup always reads as "not hovering anything" and silently falls
+    # back to whatever's pinned. So: player hovers tower_a (panel renders
+    # showing tower_a's Upgrade button), moves the mouse onto that exact
+    # button and clicks -- all before another render() happens, matching
+    # how mouse-motion events and a click can land in the same frame's
+    # event batch ahead of the next render(). The click must act on
+    # tower_a (what was shown), not tower_b (what's pinned).
+    anchor_a = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(*anchor_a)
+    tower_a = playing_game.grid.get_tower(*anchor_a)
+
+    anchor_b = find_buildable_anchor(playing_game)
+    playing_game.try_place_tower(*anchor_b)
+    tower_b = playing_game.grid.get_tower(*anchor_b)
+
+    playing_game.selected_tower = tower_b  # tower_b is pinned
+    a_center = playing_game.grid.anchor_to_pixel_center(*anchor_a)
+
+    mock_mouse_pos((int(a_center.x), int(a_center.y)))
+    try:
+        playing_game.render()  # panel shows tower_a's button -- hover beats the pin
+        mock_mouse_pos(playing_game.upgrade_button_rect.center)  # mouse moves onto that button...
+        playing_game._handle_click(playing_game.upgrade_button_rect.center)  # ...and clicks
+    finally:
+        clear_mouse_mock()
+
+    assert tower_a.level == 2  # the tower whose button was actually shown and clicked
+    assert tower_b.level == 1  # not the stale pinned tower
 
 
 def test_hovered_specialize_key_is_none_when_not_hovering_either_button(playing_game):
@@ -667,6 +727,19 @@ def test_try_specialize_tower_fails_for_an_unknown_key(playing_game):
     assert tower.specialization is None
 
 
+def test_try_specialize_tower_fails_for_a_tower_not_on_the_field(playing_game):
+    stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    playing_game.economy.gold = 10_000
+    while not stray_tower.is_max_level:
+        stray_tower.upgrade()
+    gold_before = playing_game.economy.gold
+
+    assert playing_game.try_specialize_tower(stray_tower, "power") is False
+
+    assert stray_tower.specialization is None
+    assert playing_game.economy.gold == gold_before
+
+
 def test_clicking_a_specialize_button_specializes_the_pinned_tower(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -681,6 +754,7 @@ def test_clicking_a_specialize_button_specializes_the_pinned_tower(playing_game)
     second_button = playing_game.specialize_button_rects[1]
     mock_mouse_pos(second_button.center)  # nowhere near the tower on the grid
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(second_button.center)
     finally:
         clear_mouse_mock()
@@ -702,6 +776,7 @@ def test_clicking_a_specialize_button_before_max_level_does_nothing(playing_game
     second_button = playing_game.specialize_button_rects[1]
     mock_mouse_pos(second_button.center)
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(second_button.center)
     finally:
         clear_mouse_mock()
@@ -728,6 +803,7 @@ def test_clicking_the_sell_button_sells_the_pinned_tower(playing_game):
 
     mock_mouse_pos(playing_game.sell_button_rect.center)  # nowhere near the tower on the grid
     try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
         playing_game._handle_click(playing_game.sell_button_rect.center)
     finally:
         clear_mouse_mock()
@@ -811,6 +887,16 @@ def test_try_place_tower_succeeds_with_zero_gold_under_unlimited_gold(playing_ga
     assert playing_game.economy.gold == 0  # not actually deducted
 
 
+def test_try_place_tower_fails_when_nothing_selected(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    assert playing_game.selected_tower_name is None
+
+    assert playing_game.try_place_tower(anchor_col, anchor_row) is False
+
+    assert not playing_game.grid.is_occupied(anchor_col, anchor_row)
+    assert playing_game.economy.gold == playing_game.level.starting_gold
+
+
 def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -833,6 +919,17 @@ def test_try_upgrade_tower_fails_when_unaffordable(playing_game):
 
     assert playing_game.try_upgrade_tower(tower) is False
     assert tower.level == 1
+
+
+def test_try_upgrade_tower_fails_for_a_tower_not_on_the_field(playing_game):
+    stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    playing_game.economy.gold = 10_000
+    gold_before = playing_game.economy.gold
+
+    assert playing_game.try_upgrade_tower(stray_tower) is False
+
+    assert stray_tower.level == 1
+    assert playing_game.economy.gold == gold_before
 
 
 def test_try_upgrade_tower_fails_at_max_level(playing_game):

@@ -4,9 +4,10 @@ from projectile import Projectile
 
 
 class FakeEnemy:
-    def __init__(self, pos, is_dead=False, speed=50.0):
+    def __init__(self, pos, is_dead=False, reached_goal=False, speed=50.0):
         self.pos = pygame.Vector2(pos)
         self.is_dead = is_dead
+        self.reached_goal = reached_goal
         self.speed = speed
         self.damage_taken = 0
         self.slow_applied = None
@@ -58,6 +59,17 @@ def test_splash_damages_everyone_within_radius_including_target():
     assert out_of_radius.damage_taken == 0
 
 
+def test_splash_skips_an_enemy_that_reached_the_goal():
+    target = FakeEnemy((0, 0))
+    gone = FakeEnemy((10, 0), reached_goal=True)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=15, splash_radius=20)
+
+    projectile.update(dt=1.0, enemies=[target, gone])
+
+    assert target.damage_taken == 15
+    assert gone.damage_taken == 0
+
+
 def test_slow_effect_applied_on_direct_hit():
     target = FakeEnemy((0, 0))
     projectile = Projectile(
@@ -71,6 +83,21 @@ def test_slow_effect_applied_on_direct_hit():
 
 def test_target_dying_before_impact_makes_projectile_a_dud():
     target = FakeEnemy((100, 0), is_dead=True)
+    projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert projectile.dead
+    assert target.damage_taken == 0
+
+
+def test_target_reaching_the_goal_before_impact_makes_projectile_a_dud():
+    # Regression test: a target's pos freezes once it reaches the goal
+    # (Enemy.update returns early), so without this check an in-flight
+    # projectile would keep homing in on wherever it stopped and "hit" an
+    # enemy that's already left the level, instead of duding out like it
+    # already does when the target dies before impact.
+    target = FakeEnemy((100, 0), reached_goal=True)
     projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)
 
     projectile.update(dt=1.0, enemies=[target])
@@ -220,6 +247,22 @@ def test_chain_skips_already_dead_enemies():
 
     assert target.damage_taken == 9
     assert already_dead.damage_taken == 0
+    assert alive.damage_taken == 9
+
+
+def test_chain_skips_enemies_that_reached_the_goal():
+    target = FakeEnemy((0, 0))
+    gone = FakeEnemy((10, 0), reached_goal=True)
+    alive = FakeEnemy((15, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=9,
+        chain_range=100, max_chain_targets=3,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, gone, alive])
+
+    assert target.damage_taken == 9
+    assert gone.damage_taken == 0
     assert alive.damage_taken == 9
 
 

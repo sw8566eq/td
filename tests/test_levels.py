@@ -29,6 +29,20 @@ def test_level_rejects_unknown_enemy_type_in_wave_specs():
         )
 
 
+def test_level_rejects_empty_wave_specs():
+    # WaveManager assumes at least one wave -- _begin_wave() indexes
+    # wave_specs[0] unconditionally the moment the first wave starts, so
+    # this must fail clearly here rather than crash deep inside
+    # WaveManager the first time a level with no waves is played.
+    with pytest.raises(ValueError):
+        Level(
+            id=999,
+            name="Empty Level",
+            waypoints_tiles=[(0, 0), (1, 0)],
+            wave_specs=[],
+        )
+
+
 def test_generate_default_waves_ramps_enemy_count_per_wave():
     waves = generate_default_waves(total_waves=3, enemy_type="grunt", base_count=5, count_step=2)
     assert waves == [{"grunt": 5}, {"grunt": 7}, {"grunt": 9}]

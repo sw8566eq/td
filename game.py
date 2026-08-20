@@ -67,6 +67,10 @@ class Game:
         self.projectiles = []
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
+        # Whatever the stats panel showed as of the last render() -- see
+        # _handle_panel_action_click for why clicks must use this instead
+        # of re-deriving the subject from the click-time mouse position.
+        self._last_panel_subject = None
 
     def reset(self):
         self.load_level(self.current_level_id)
@@ -159,6 +163,9 @@ class Game:
         if self._handle_panel_action_click(pos):
             return
 
+        if pos[0] >= settings.PLAY_WIDTH:
+            return  # click landed in the stats panel but not on a button
+
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return  # click landed in the HUD area but not on a button
 
@@ -183,8 +190,17 @@ class Game:
         buttons. Returns True if `pos` was on one of them -- whether or
         not it actually did anything, e.g. an unaffordable upgrade still
         "belongs" to that button rather than falling through to the grid
-        underneath it -- so the caller knows to stop processing this click."""
-        subject = self._stats_panel_subject(self._hovered_tower())
+        underneath it -- so the caller knows to stop processing this click.
+
+        Uses self._last_panel_subject (what render() last showed) rather
+        than re-deriving the subject from _hovered_tower() at click time:
+        by the time the mouse is actually over one of these buttons, it's
+        no tower's tile_rect() ever reaches the panel to check -- so a
+        fresh lookup here always reads as "not hovering anything" and
+        silently falls back to whatever else is pinned/selected, which
+        can easily be a *different* tower than the one whose button the
+        player is actually looking at and clicking."""
+        subject = self._last_panel_subject
         is_tower = subject in self.towers  # not a build-menu class or None
 
         if self.upgrade_button_rect.collidepoint(pos):
@@ -215,6 +231,8 @@ class Game:
         return False
 
     def try_place_tower(self, anchor_col, anchor_row):
+        if self.selected_tower_name is None:
+            return False
         if not self.grid.is_buildable(anchor_col, anchor_row):
             return False
 
@@ -230,6 +248,8 @@ class Game:
         return True
 
     def try_upgrade_tower(self, tower):
+        if tower not in self.towers:
+            return False
         cost = tower.upgrade_cost()
         if cost is None or not self.economy.can_afford(cost):
             return False
@@ -239,6 +259,8 @@ class Game:
         return True
 
     def try_specialize_tower(self, tower, key):
+        if tower not in self.towers:
+            return False
         if not tower.can_specialize or key not in tower.SPECIALIZATIONS:
             return False
         cost = tower.specialization_cost()
@@ -314,6 +336,7 @@ class Game:
         self._render_placement_preview()
         hovered_tower = self._hovered_tower()
         panel_subject = self._stats_panel_subject(hovered_tower)
+        self._last_panel_subject = panel_subject  # see _handle_panel_action_click
         if panel_subject in self.towers:  # a placed tower (hovered, or pinned via selected_tower)
             ui.draw_tower_range_preview(self.screen, panel_subject)
 

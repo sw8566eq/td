@@ -5,6 +5,15 @@ chain-vs-no-chain are all differences in the data passed at construction
 (fed by each Tower subclass's create_projectile()), not separate
 Projectile subclasses -- the resolution algorithm is identical either way,
 just applied to one enemy or many.
+
+Splash and chain are the two exceptions to "freely combinable", though:
+_resolve_hit() only ever reaches chain resolution on its no-splash branch,
+so a shot with both splash_radius and chain_range set gets splash only --
+untested and unused by any current TOWER_TYPES entry, and not something
+to combine casually (a splash hit already hits every enemy in the blast
+radius by iterating `enemies` directly, so chaining "from" that impact
+raises its own questions about who counts as already-hit that a single-
+target chain doesn't have to answer).
 """
 
 import pygame
@@ -34,9 +43,16 @@ class Projectile:
         if self.dead:
             return
 
-        if self.target.is_dead:
-            # Target died before impact -- discard as a dud rather than
-            # retargeting (a deliberate MVP simplification).
+        if self.target.is_dead or self.target.reached_goal:
+            # Target died, or reached the goal, before impact -- discard
+            # as a dud rather than retargeting (a deliberate MVP
+            # simplification). Without the reached_goal check, a shot
+            # already in flight when its target reaches the goal would
+            # still connect: reached_goal enemies stop moving (see
+            # Enemy.update) but stay in memory as long as something still
+            # references them, so the projectile would keep homing in on
+            # wherever they stopped and "hit" an enemy that's already
+            # left the level.
             self.dead = True
             return
 
@@ -53,7 +69,7 @@ class Projectile:
     def _resolve_hit(self, impact_pos, enemies):
         if self.splash_radius > 0:
             for enemy in enemies:
-                if enemy.is_dead:
+                if enemy.is_dead or enemy.reached_goal:
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
                     self._apply_hit_effects(enemy)
@@ -76,7 +92,7 @@ class Projectile:
             next_target = None
             next_distance = None
             for enemy in enemies:
-                if enemy.is_dead or enemy in hit:
+                if enemy.is_dead or enemy.reached_goal or enemy in hit:
                     continue
                 distance = current.pos.distance_to(enemy.pos)
                 if distance <= self.chain_range and (next_target is None or distance < next_distance):
