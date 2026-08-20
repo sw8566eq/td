@@ -1276,6 +1276,40 @@ def test_wave_editor_back_action_returns_to_the_path_editor(game):
     assert game.state == GameState.EDITOR
 
 
+def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch):
+    saved = []
+    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.can_play()
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
+
+    assert len(saved) == 1
+    assert saved[0].wave_specs == [{"grunt": 1}]
+    assert game.state == GameState.WAVE_EDITOR  # saving doesn't navigate away
+
+
+def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
+    saved = []
+    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+
+    game.state = GameState.WAVE_EDITOR
+    assert not game.editor.can_play()
+    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
+
+    assert saved == []
+
+
+def test_level_select_click_on_empty_space_is_a_no_op(game):
+    game._enter_level_select()
+    game._handle_level_select_click((-1000, -1000))
+    assert game.state == GameState.LEVEL_SELECT  # never left
+
+
 def test_has_next_level_is_false_for_a_custom_level(game):
     game.load_custom_level(make_custom_level())
     assert game.current_level_id is None
@@ -1349,6 +1383,42 @@ def test_render_while_hovering_a_placed_tower_does_not_crash(playing_game):
         playing_game.render()
     finally:
         clear_mouse_mock()
+
+
+def test_render_editor_with_a_branching_path_does_not_crash(game):
+    # An empty editor never draws a junction/spawn/goal marker at all --
+    # paint a branch (so there's a junction) plus spawn/goal markers so
+    # render() actually exercises that drawing code, not just the empty-
+    # grid case every other render smoke test leaves it in.
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.PAINT)
+    for cell in [(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)]:
+        game.editor.paint_at(*cell_center_px(cell))
+    game.editor.set_tool(EditorTool.SPAWN)
+    game.editor.paint_at(*cell_center_px((1, 0)))
+    game.editor.set_tool(EditorTool.GOAL)
+    game.editor.paint_at(*cell_center_px((2, 1)))
+    game.editor.paint_at(*cell_center_px((1, 2)))
+    assert game.editor.junctions  # sanity: the branch was actually detected
+
+    game.render()
+
+
+def test_render_wave_editor_with_units_added_does_not_crash(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game.editor.adjust_unit_count("grunt", +2)
+    game.editor.add_wave()
+
+    game.render()
+
+
+def test_render_level_select_with_entries_does_not_crash(game):
+    # An empty level_select_entries list never exercises the per-row
+    # drawing loop -- populate it the same way _enter_level_select() does.
+    game._enter_level_select()
+    game.render()
 
 
 # --- Hover helpers ---

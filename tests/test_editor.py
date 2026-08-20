@@ -194,6 +194,22 @@ def test_remove_wave_refuses_to_drop_below_one_wave():
     assert len(editor.wave_specs) == 1
 
 
+def test_remove_wave_with_an_explicit_out_of_range_index_is_a_no_op():
+    editor = Editor()
+    editor.add_wave()
+    editor.remove_wave(index=5)
+    editor.remove_wave(index=-1)
+    assert len(editor.wave_specs) == 2
+
+
+def test_remove_wave_with_an_explicit_in_range_index_removes_that_wave_not_the_active_one():
+    editor = Editor()
+    editor.add_wave()  # wave 2, now active
+    editor.adjust_unit_count("tank", +1)  # goes on wave 2
+    editor.remove_wave(index=0)  # remove wave 1 specifically
+    assert editor.wave_specs == [{"tank": 1}]
+
+
 def test_remove_wave_clamps_active_index_after_removing_the_last_wave():
     editor = Editor()
     editor.add_wave()

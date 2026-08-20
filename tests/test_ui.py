@@ -8,6 +8,7 @@ from ui import (
     EDITOR_ACTION_ORDER,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
+    _wrap_text,
     build_button_rects,
     build_editor_action_rects,
     build_editor_tool_rects,
@@ -261,6 +262,27 @@ def test_wave_unit_rects_do_not_overlap_the_wave_editor_action_rects():
     for unit_rect in unit_rects:
         for action_rect in action_rects:
             assert not unit_rect.colliderect(action_rect)
+
+
+# --- _wrap_text (editor validation-message word wrap) ---
+
+def test_wrap_text_keeps_a_short_line_unwrapped():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 22)
+    assert _wrap_text("short message", font, max_width=1000) == ["short message"]
+
+
+def test_wrap_text_wraps_a_long_message_across_multiple_lines_within_the_width():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 22)
+    text = "a validation message with enough short words to overflow a narrow width"
+    max_width = 100
+    lines = _wrap_text(text, font, max_width)
+
+    assert len(lines) > 1
+    for line in lines:
+        assert font.size(line)[0] <= max_width
+    assert " ".join(lines) == text  # every word preserved, in order, none dropped or duplicated
 
 
 def test_specialization_descriptions_fit_the_panel_width():

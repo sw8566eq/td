@@ -148,6 +148,12 @@ def test_spawn_not_on_the_path_is_rejected():
     assert any("must be on the path" in p for p in problems)
 
 
+def test_goal_not_on_the_path_is_rejected():
+    path_cells = _corridor()
+    problems = validate_topology(path_cells, [(0, 0)], [(99, 99)], cols=15, rows=9)
+    assert any("must be on the path" in p for p in problems)
+
+
 # --- sample_route ---
 
 def test_sample_route_along_a_corridor_walks_every_cell_in_order():
@@ -199,6 +205,20 @@ def test_sample_route_never_wanders_into_a_different_spawns_dead_branch():
             route = sample_route(topo, spawn, branch_weights={}, rng=random.Random(seed))
             assert route[-1] == (1, 1)
             assert other_spawn not in route
+
+
+def test_sample_route_raises_if_it_exceeds_its_step_budget():
+    # A rigged topology: real neighbors for a 5-cell corridor (so
+    # candidates are always found -- this is *not* the dead-end case),
+    # but path_cells artificially shrunk after construction so the step
+    # budget (len(topology.path_cells) + 1) runs out before the walk
+    # actually reaches the goal at the far end. Exercises the final
+    # fallback raise, distinct from the mid-walk "no forward move" one.
+    path_cells = _corridor(length=5)
+    topo = PathTopology(path_cells, spawn_cells=[(0, 0)], goal_cells=[(4, 0)])
+    topo.path_cells = frozenset({(0, 0)})
+    with pytest.raises(RoutingError):
+        sample_route(topo, (0, 0), branch_weights={}, rng=random.Random(0))
 
 
 def test_sample_route_raises_instead_of_looping_forever_on_a_dead_end():
