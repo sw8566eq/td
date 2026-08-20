@@ -24,6 +24,7 @@ class GameState(Enum):
     GAME_OVER = auto()
     VICTORY = auto()
     EDITOR = auto()
+    WAVE_EDITOR = auto()
     LEVEL_SELECT = auto()
 
 
@@ -48,11 +49,17 @@ class Game:
         self.sell_button_rect = ui.build_sell_button_rect()
 
         # The editor instance persists for the whole session (not just
-        # while GameState.EDITOR is active) so leaving it to playtest and
-        # coming back preserves whatever's been painted so far.
+        # while GameState.EDITOR/WAVE_EDITOR is active) so leaving it to
+        # playtest and coming back preserves whatever's been painted/
+        # configured so far.
         self.editor = Editor()
         self.editor_tool_rects = ui.build_editor_tool_rects()
         self.editor_action_rects = ui.build_editor_action_rects()
+        # Unlike the rect sets above, wave tabs depend on how many waves
+        # currently exist, so they're rebuilt on demand (see
+        # _wave_tab_rects()) rather than cached once here.
+        self.wave_unit_rects = ui.build_wave_unit_rects()
+        self.wave_editor_action_rects = ui.build_wave_editor_action_rects()
 
         # Rebuilt each time _enter_level_select() runs -- see there for why
         # (the custom-levels list on disk can change between visits).
@@ -146,6 +153,8 @@ class Game:
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self.state == GameState.EDITOR:
                     self._handle_editor_click(event.pos)
+                elif self.state == GameState.WAVE_EDITOR:
+                    self._handle_wave_editor_click(event.pos)
                 elif self.state == GameState.LEVEL_SELECT:
                     self._handle_level_select_click(event.pos)
                 else:
@@ -168,6 +177,9 @@ class Game:
         elif self.state == GameState.EDITOR:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
+        elif self.state == GameState.WAVE_EDITOR:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.EDITOR  # one step back, same as the Back-to-Path button
         elif self.state == GameState.LEVEL_SELECT:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
@@ -228,6 +240,42 @@ class Game:
     def _handle_editor_action(self, action):
         if action == "back":
             self.state = GameState.MENU
+        elif action == "waves" and self.editor.path_is_valid():
+            self.state = GameState.WAVE_EDITOR
+
+    # --- Wave editor ---
+
+    def _wave_tab_rects(self):
+        """Rebuilt on demand rather than cached -- unlike every other rect
+        set in Game, this one's shape depends on how many waves currently
+        exist, which changes as the player adds/removes them."""
+        return ui.build_wave_tab_rects(len(self.editor.wave_specs))
+
+    def _handle_wave_editor_click(self, pos):
+        tab = ui.get_clicked_wave_tab(pos, self._wave_tab_rects())
+        if tab == "add":
+            self.editor.add_wave()
+            return
+        if tab == "remove":
+            self.editor.remove_wave()
+            return
+        if tab is not None:  # an int wave index
+            self.editor.set_active_wave(tab)
+            return
+
+        unit_key = ui.get_clicked_wave_unit_button(pos, self.wave_unit_rects)
+        if unit_key is not None:
+            enemy_name, sign = unit_key
+            self.editor.adjust_unit_count(enemy_name, +1 if sign == "plus" else -1)
+            return
+
+        action = ui.get_clicked_wave_editor_action(pos, self.wave_editor_action_rects)
+        if action is not None:
+            self._handle_wave_editor_action(action)
+
+    def _handle_wave_editor_action(self, action):
+        if action == "back":
+            self.state = GameState.EDITOR
         elif action == "playtest" and self.editor.can_play():
             self.load_custom_level(self.editor.to_level())
             self.state = GameState.PLAYING
@@ -443,6 +491,14 @@ class Game:
             ui.draw_editor_screen(
                 self.screen, self.assets, self.font, self.small_font,
                 self.editor, self.editor_tool_rects, self.editor_action_rects,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.WAVE_EDITOR:
+            ui.draw_wave_editor_screen(
+                self.screen, self.assets, self.font, self.small_font,
+                self.editor, self._wave_tab_rects(), self.wave_unit_rects, self.wave_editor_action_rects,
             )
             pygame.display.flip()
             return

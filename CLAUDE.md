@@ -101,11 +101,24 @@ parallel formats.
 Spawn/Goal tools mark `spawn_cells`/`goal_cells`. Junctions are **auto-detected** from painted
 geometry (`pathing.junctions_of` -- any cell with 3+ path-neighbors) rather than the player ever
 declaring "this is a branch." `Editor.validate()` reruns `pathing.validate_topology` after every
-edit so the sidebar's problem list and `can_play()` are always current live, not just at save/play
-time. Playtesting hands `Editor.to_level()`'s `Level` straight to `Game.load_custom_level()` (the
-non-registry counterpart to `load_level(level_id)`) without saving first; `current_level_id` becomes
-`None` for a custom level, which is what `has_next_level()`/`reset()`/`advance_or_replay_level()`
-check to know there's no `LEVELS` entry to look back up.
+edit, populating `path_problems` -- the only thing that gates moving on to wave editing (see below);
+`wave_problems`/`validation_problems`/`can_play()` fold in wave validity too, and are what gate
+Playtest/Save. Playtesting hands `Editor.to_level()`'s `Level` straight to `Game.load_custom_level()`
+(the non-registry counterpart to `load_level(level_id)`) without saving first; `current_level_id`
+becomes `None` for a custom level, which is what `has_next_level()`/`reset()`/
+`advance_or_replay_level()` check to know there's no `LEVELS` entry to look back up.
+
+Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
+edits `Editor.wave_specs` directly -- the exact same `[{enemy_type_name: count}, ...]` shape
+`Level.wave_specs` expects, not a separate representation converted later. Add/remove-wave tabs and
+per-species +/- buttons (`Editor.add_wave`/`remove_wave`/`set_active_wave`/`adjust_unit_count`) all
+call `validate()` afterward, same as path edits do. A wave editor's `Editor.wave_specs` always keeps
+at least one wave (`remove_wave` refuses to drop below that) and never stores an explicit zero count
+(`adjust_unit_count` pops the key at zero instead) -- `Level.__post_init__` independently rejects any
+wave whose counts sum to zero, so this invariant is enforced at the `Level` level too, not just by
+the editor's own UI. Every wave currently spawns its species together, one type fully before the
+next (`WaveManager._begin_wave`'s existing flattening) -- interleaving spawn order within a wave is
+a possible future refinement the data shape doesn't need to anticipate.
 
 `persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
 `load_level_file`/`list_custom_levels` (de)serialize a `Level` to JSON under `custom_levels/`

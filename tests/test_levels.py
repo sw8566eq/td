@@ -31,6 +31,18 @@ def test_level_rejects_unknown_enemy_type_in_wave_specs():
         )
 
 
+def test_level_rejects_a_wave_with_no_enemies_in_it():
+    with pytest.raises(ValueError):
+        Level(
+            id=999,
+            name="Empty Wave Level",
+            path_cells=frozenset({(0, 0), (1, 0)}),
+            spawn_cells=((0, 0),),
+            goal_cells=((1, 0),),
+            wave_specs=[{"grunt": 3}, {}],
+        )
+
+
 def test_level_rejects_empty_wave_specs():
     # WaveManager assumes at least one wave -- _begin_wave() indexes
     # wave_specs[0] unconditionally the moment the first wave starts, so

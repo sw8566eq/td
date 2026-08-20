@@ -47,6 +47,14 @@ class Level:
             # failing clearly here at Level-definition time.
             raise ValueError(f"Level {self.id!r} has no waves in wave_specs")
         for wave_number, wave in enumerate(self.wave_specs, start=1):
+            if sum(wave.values()) <= 0:
+                # A wave with nothing in it isn't a crash (WaveManager's
+                # spawn queue just comes out empty and the wave immediately
+                # counts as cleared), but it's never what a level actually
+                # wants -- fail clearly here rather than let a silently
+                # skipped wave slip through unnoticed (e.g. one left empty
+                # by the wave editor).
+                raise ValueError(f"Level {self.id!r} wave {wave_number} has no enemies in it")
             for enemy_name in wave:
                 if enemy_name not in ENEMY_TYPES:
                     raise ValueError(

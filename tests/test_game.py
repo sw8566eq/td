@@ -1166,29 +1166,31 @@ def test_motion_without_the_left_button_held_does_not_paint(game):
     assert game.editor.path_cells == set()
 
 
-def test_playtest_action_is_a_no_op_while_the_editors_path_is_invalid(game):
+def test_waves_action_is_a_no_op_while_the_editors_path_is_invalid(game):
     game.state = GameState.EDITOR
-    assert not game.editor.can_play()
-    game._handle_editor_click(game.editor_action_rects["playtest"].center)
-    assert game.state == GameState.EDITOR  # never left -- nothing to play yet
+    assert not game.editor.path_is_valid()
+    game._handle_editor_click(game.editor_action_rects["waves"].center)
+    assert game.state == GameState.EDITOR  # never left -- path isn't ready yet
 
 
-def test_playtest_action_loads_the_painted_level_and_switches_to_playing(game):
-    game.state = GameState.EDITOR
+def _paint_valid_path(game, row=2):
     game.editor.set_tool(EditorTool.PAINT)
     for col in range(3):
-        game.editor.paint_at(*cell_center_px((col, 2)))
+        game.editor.paint_at(*cell_center_px((col, row)))
     game.editor.set_tool(EditorTool.SPAWN)
-    game.editor.paint_at(*cell_center_px((0, 2)))
+    game.editor.paint_at(*cell_center_px((0, row)))
     game.editor.set_tool(EditorTool.GOAL)
-    game.editor.paint_at(*cell_center_px((2, 2)))
-    assert game.editor.can_play()
+    game.editor.paint_at(*cell_center_px((2, row)))
 
-    game._handle_editor_click(game.editor_action_rects["playtest"].center)
 
-    assert game.state == GameState.PLAYING
-    assert game.current_level_id is None
-    assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
+def test_waves_action_switches_to_the_wave_editor_once_the_path_is_valid(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    assert game.editor.path_is_valid()
+
+    game._handle_editor_click(game.editor_action_rects["waves"].center)
+
+    assert game.state == GameState.WAVE_EDITOR
 
 
 def test_back_action_returns_to_menu_without_touching_the_paint_buffer(game):
@@ -1197,6 +1199,81 @@ def test_back_action_returns_to_menu_without_touching_the_paint_buffer(game):
     game._handle_editor_click(game.editor_action_rects["back"].center)
     assert game.state == GameState.MENU
     assert (0, 0) in game.editor.path_cells  # still there next time the editor opens
+
+
+# --- Wave editor ---
+
+def test_wave_editor_escape_returns_to_the_path_editor(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.EDITOR
+
+
+def test_clicking_add_wave_tab_appends_a_wave(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game._wave_tab_rects()["add"].center)
+    assert len(game.editor.wave_specs) == 2
+    assert game.editor.active_wave_index == 1
+
+
+def test_clicking_remove_wave_tab_removes_the_active_wave(game):
+    game.state = GameState.WAVE_EDITOR
+    game.editor.add_wave()
+    game._handle_wave_editor_click(game._wave_tab_rects()["remove"].center)
+    assert len(game.editor.wave_specs) == 1
+
+
+def test_clicking_a_wave_number_tab_selects_it(game):
+    game.state = GameState.WAVE_EDITOR
+    game.editor.add_wave()
+    game.editor.add_wave()
+    game._handle_wave_editor_click(game._wave_tab_rects()[0].center)
+    assert game.editor.active_wave_index == 0
+
+
+def test_clicking_plus_increments_the_active_waves_unit_count(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.wave_specs[0]["grunt"] == 2
+
+
+def test_clicking_minus_decrements_and_floors_at_zero(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
+    assert game.editor.wave_specs[0] == {}
+
+
+def test_wave_editor_playtest_is_a_no_op_until_every_wave_has_units(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    assert not game.editor.can_play()  # path ready, but the one wave is empty
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
+
+    assert game.state == GameState.WAVE_EDITOR  # never left
+
+
+def test_wave_editor_playtest_loads_the_level_and_switches_to_playing(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
+    assert game.editor.can_play()
+
+    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
+
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id is None
+    assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
+    assert game.level.wave_specs == [{"grunt": 1}]
+
+
+def test_wave_editor_back_action_returns_to_the_path_editor(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_wave_editor_click(game.wave_editor_action_rects["back"].center)
+    assert game.state == GameState.EDITOR
 
 
 def test_has_next_level_is_false_for_a_custom_level(game):

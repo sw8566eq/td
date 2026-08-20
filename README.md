@@ -175,13 +175,19 @@ The one rule the brush enforces is that the path can't loop back on itself
 -- a lane splitting and later reconnecting downstream is a closed loop,
 which is rejected the same as a literal roundabout would be. The sidebar
 shows live feedback (in red) on whatever's wrong -- disconnected cells, a
-missing spawn/goal, a loop -- and turns green with "Ready to play!" once
-the path is valid. **Playtest** loads the level you're editing immediately,
-without saving; **Save** writes it to `custom_levels/` (as JSON, via
-`persistence.py`) under a name slugged from the level's name, where `L`'s
-level-select screen will find it from then on. A freshly painted level's
-waves are a simple ramping all-grunt schedule (`generate_default_waves()`)
--- designing custom wave compositions isn't part of the editor yet.
+missing spawn/goal, a loop -- and turns green once the path is valid, at
+which point **Edit Waves** becomes clickable.
+
+That opens the wave editor: numbered tabs across the bottom select which
+wave you're editing, with **+**/**-** tabs to add or remove one (there's
+always at least one). Within a wave, **+**/**-** next to each species in
+the sidebar sets how many of that type spawn in it -- every wave needs at
+least one unit before you can move on. **Playtest** loads the level you're
+editing immediately, without saving; **Save** writes it to `custom_levels/`
+(as JSON, via `persistence.py`) under a name slugged from the level's name,
+where `L`'s level-select screen will find it from then on. Every wave
+currently spawns its species together, one type fully before the next --
+interleaving spawn order within a wave is a possible future refinement.
 
 ## Adding content
 
