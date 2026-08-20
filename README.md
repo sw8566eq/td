@@ -191,9 +191,16 @@ entirely. A wave still needs at least one unit from *some* spawn before you
 can move on. **Playtest** loads the level you're editing immediately,
 without saving; **Save** writes it to `custom_levels/` (as JSON, via
 `persistence.py`) under a name slugged from the level's name, where `L`'s
-level-select screen will find it from then on. Every spawn's units still go
-out together, one type fully before the next -- interleaving spawn order
-within a wave is a possible future refinement.
+level-select screen will find it from then on.
+
+Spawns stay synchronized during play: the 1st enemy out of every spawn point
+in a wave emerges at the same moment, then the 2nd from every spawn that
+still has one, and so on -- not one spawn's whole queue emptying before the
+next spawn's even starts. A spawn with fewer enemies queued for that wave
+just stops contributing once its own queue runs out, without holding the
+others back. Within one spawn, its own species still go out together, one
+type fully before the next -- interleaving species order within a single
+spawn's queue is a possible future refinement.
 
 ## Adding content
 

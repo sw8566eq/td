@@ -125,13 +125,19 @@ wave data behind. Every wave-editing method (`add_wave`/`remove_wave`/`set_activ
 at both levels of nesting -- no explicit zero counts (`adjust_unit_count` pops the key instead) and
 no empty per-spawn dicts (an emptied-out spawn is dropped from its wave entirely) -- and
 `Level.__post_init__` independently rejects any wave whose counts sum to zero across every spawn,
-so that invariant holds at the `Level` level too, not just via the editor's own UI. Every wave still
-spawns its species together, one type fully before the next (`WaveManager._begin_wave`'s existing
-flattening) -- interleaving spawn order within a wave is a possible future refinement the data shape
-doesn't need to anticipate. Which spawn a given enemy starts from is decided once, when
-`_begin_wave()` builds the flat `(spawn_cell, enemy_cls)` spawn queue from every spawn's composition
--- no more randomness involved in *that* choice (branching further along the route, past the spawn,
-is still `pathing.sample_route`'s weighted-random job, unchanged).
+so that invariant holds at the `Level` level too, not just via the editor's own UI. Which spawn a
+given enemy starts from is decided once, when `_begin_wave()` builds one queue per spawn from that
+spawn's own composition -- no more randomness involved in *that* choice (branching further along the
+route, past the spawn, is still `pathing.sample_route`'s weighted-random job, unchanged). Every
+spawn's own queue still spawns its species together, one type fully before the next -- interleaving
+species order *within* one spawn's queue is a possible future refinement the data shape doesn't need
+to anticipate. Across *different* spawns, though, `WaveManager` keeps every queue in lockstep: each
+`spawn_interval` tick, `_spawn_next_round()` pops one enemy from *every* spawn queue that still has
+one, all spawning together on the same tick -- the 1st enemy from every spawn goes out at once, then
+the 2nd from every spawn that still has one, and so on, rather than one spawn's whole queue draining
+before the next spawn's even starts. A spawn with fewer enemies queued for the wave just stops
+contributing to later rounds once its own queue empties; it doesn't hold the others back or get
+padded with empty turns to stay in sync.
 
 `persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
 `load_level_file`/`list_custom_levels` (de)serialize a `Level` to JSON under `custom_levels/`

@@ -180,7 +180,7 @@ def test_branch_weights_bias_which_fork_spawned_enemies_take():
         assert enemy.waypoints[-1] == cell_to_pixel(2, 0)
 
 
-# --- Multi-spawn: per-spawn wave composition (not random -- see levels.py) ---
+# --- Multi-spawn: per-spawn composition (levels.py) and synchronized timing ---
 
 def _drive_to_completion(manager):
     manager.skip_delay()
@@ -236,3 +236,54 @@ def test_a_wave_can_draw_from_only_one_spawn_while_another_sits_it_out():
     wave_2_starts = [e.waypoints[0] for e in all_spawned if e.wave_number == 2]
     assert wave_1_starts == [cell_to_pixel(0, 0)] * 2
     assert wave_2_starts == [cell_to_pixel(0, 2)] * 2
+
+
+def test_each_spawns_first_enemy_emerges_on_the_same_tick():
+    # Both spawns have plenty queued -- the very first enemy from each
+    # should come out of the same update() call, not one spawn's whole
+    # queue draining before the other even starts.
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"tank": 3}}],
+    )
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=1.0, between_wave_delay=0.0)
+    manager.skip_delay()
+    manager.update(dt=1.0, active_enemies=[])  # BETWEEN_WAVES -> SPAWNING transition; nothing spawns yet
+
+    round_1 = manager.update(dt=1.0, active_enemies=[])
+
+    assert len(round_1) == 2
+    assert {e.waypoints[0] for e in round_1} == {cell_to_pixel(0, 0), cell_to_pixel(0, 2)}
+
+
+def test_every_round_stays_in_lockstep_until_a_spawn_runs_out():
+    # (0, 0) has 3 queued, (0, 2) has only 1 -- round 1 is both together,
+    # round 2 is (0, 0) alone once (0, 2)'s single enemy has already gone
+    # out, not delayed waiting for a round that will never need it again.
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"tank": 1}}],
+    )
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=1.0, between_wave_delay=0.0)
+    manager.skip_delay()
+    manager.update(dt=1.0, active_enemies=[])  # transition only
+
+    round_1 = manager.update(dt=1.0, active_enemies=[])
+    assert len(round_1) == 2
+    assert {e.waypoints[0] for e in round_1} == {cell_to_pixel(0, 0), cell_to_pixel(0, 2)}
+
+    round_2 = manager.update(dt=1.0, active_enemies=round_1)
+    assert len(round_2) == 1
+    assert round_2[0].waypoints[0] == cell_to_pixel(0, 0)
+
+    round_3 = manager.update(dt=1.0, active_enemies=round_1 + round_2)
+    assert len(round_3) == 1
+    assert round_3[0].waypoints[0] == cell_to_pixel(0, 0)
