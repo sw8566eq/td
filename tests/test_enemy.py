@@ -124,6 +124,18 @@ def test_shielded_enemy_overflow_damage_spills_into_hp():
     assert enemy.hp == starting_hp - 7
 
 
+def test_shielded_enemy_take_damage_after_shield_is_already_empty_hits_hp_directly():
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    enemy.take_damage(enemy.max_shield)  # drains it exactly to 0
+    assert enemy.shield == 0
+    starting_hp = enemy.hp
+
+    enemy.take_damage(9)  # shield already 0 -- skips straight to HP
+
+    assert enemy.shield == 0
+    assert enemy.hp == starting_hp - 9
+
+
 def test_shielded_enemy_shield_regenerates_after_delay():
     enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
     enemy.take_damage(enemy.max_shield)  # drain the shield entirely
@@ -156,6 +168,78 @@ def test_shielded_enemy_shield_never_regenerates_past_max():
     enemy.take_damage(1)
     enemy.update(dt=enemy.shield_regen_delay + 100.0)
     assert enemy.shield == enemy.max_shield
+
+
+def test_shielded_enemy_take_damage_is_a_no_op_for_dead_or_finished_enemies():
+    # Mirrors the base Enemy guard test -- ShieldedEnemy's own take_damage
+    # override has the identical guard, checked before it ever touches the
+    # shield.
+    dead = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    assert dead.is_dead
+    shield_before = dead.shield
+    dead.take_damage(1)
+    assert dead.shield == shield_before
+
+    finished = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    shield_before = finished.shield
+    finished.take_damage(1)
+    assert finished.shield == shield_before
+
+
+def test_shielded_enemy_update_is_a_no_op_for_dead_or_finished_enemies():
+    # Mirrors the base Enemy guard -- shield regen must stop once dead or
+    # finished, same as every other per-frame effect.
+    dead = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    dead.take_damage(dead.max_shield + dead.max_hp)
+    assert dead.is_dead
+    dead.update(dt=1000.0)  # would fully regenerate the shield if not guarded
+    assert dead.shield == 0
+
+    finished = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    finished.take_damage(1)  # dents the shield while still eligible
+    shield_after_hit = finished.shield
+    finished.update(dt=1000.0)
+    assert finished.shield == shield_after_hit  # no regen after reaching the goal
+
+
+def test_shielded_enemy_draw_shows_a_shield_bar_while_shield_remains():
+    from assets import AssetManager
+    assets = AssetManager()
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    enemy.pos = pygame.Vector2(50, 50)
+    enemy.take_damage(5)  # dents the shield, doesn't drain it -- bar still shows
+
+    enemy.draw(surface, assets)  # must not raise, and should draw the shield bar
+
+    bar_y = int(enemy.pos.y - enemy.radius - 4 - 2 - 3 - 2)
+    assert surface.get_at((int(enemy.pos.x), bar_y)) != (0, 0, 0, 255)
+
+
+def test_shielded_enemy_draw_omits_the_shield_bar_once_shield_is_gone():
+    from assets import AssetManager
+    assets = AssetManager()
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    enemy.pos = pygame.Vector2(50, 50)
+    enemy.take_damage(enemy.max_shield)  # drains the shield exactly to 0
+
+    bar_y = int(enemy.pos.y - enemy.radius - 4 - 2 - 3 - 2)
+    before = surface.get_at((int(enemy.pos.x), bar_y))
+    enemy.draw(surface, assets)
+
+    assert surface.get_at((int(enemy.pos.x), bar_y)) == before  # unchanged -- no bar drawn
 
 
 def test_take_damage_reduces_hp_and_marks_dead_at_zero():
@@ -460,6 +544,41 @@ def test_apply_knockback_can_cross_back_over_a_waypoint_boundary():
     assert enemy.distance_traveled == pytest.approx(80.0)
     assert enemy.pos.x == pytest.approx(80.0)
     assert enemy.wp_index == 1
+
+
+def test_apply_knockback_can_rewind_across_more_than_one_earlier_segment():
+    # A short first segment (50) followed by a much longer second one (150)
+    # -- landing back in the second segment means _seek_to_distance's walk
+    # has to pass all the way through (and past) the first segment without
+    # stopping there, exercising its "keep walking" branch, not just the
+    # "stop here" one every other knockback test happens to land on.
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(50, 0), pygame.Vector2(200, 0)]
+    enemy = GruntEnemy(waypoints, wave_number=1)
+    enemy.speed = 50.0
+    enemy.update(dt=1.0)  # snaps to waypoint 1: (50, 0), distance 50, wp_index 2
+    enemy.update(dt=1.0)  # (100, 0), distance 100, into segment 2
+    enemy.update(dt=1.0)  # (150, 0), distance 150
+
+    enemy.apply_knockback(50)  # rewind to distance 100 -- still on segment 2
+    enemy.update(dt=50.0 / enemy.knockback_speed)  # let the whole slide play out
+
+    assert enemy.distance_traveled == pytest.approx(100.0)
+    assert enemy.pos.x == pytest.approx(100.0)
+    assert enemy.wp_index == 2
+
+
+def test_apply_knockback_on_a_single_waypoint_path_has_nowhere_to_go():
+    # _seek_to_distance's degenerate fallback: a one-waypoint "path" (never
+    # produced by a real level, but not something apply_knockback itself
+    # assumes can't happen) has no segment to walk at all.
+    enemy = GruntEnemy([pygame.Vector2(5, 5)], wave_number=1)
+    enemy.apply_knockback(10)
+
+    enemy.update(dt=1.0)
+
+    assert enemy.pos == pygame.Vector2(5, 5)
+    assert enemy.wp_index == 1
+    assert enemy.knockback_remaining == 0.0
 
 
 def test_apply_knockback_clamps_at_the_start_of_the_path_and_drops_the_rest():

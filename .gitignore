@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
 
 # Player-saved custom levels (see persistence.py) -- local game data, not
 # something the repo ships or tracks.

@@ -106,6 +106,17 @@ def test_no_poison_when_effect_is_none():
     assert target.poison_applied is None
 
 
+def test_update_on_an_already_dead_projectile_is_a_no_op():
+    target = FakeEnemy((100, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)
+    projectile.dead = True
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert projectile.pos == pygame.Vector2(0, 0)  # never moved
+    assert target.damage_taken == 0
+
+
 def test_target_dying_before_impact_makes_projectile_a_dud():
     target = FakeEnemy((100, 0), is_dead=True)
     projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)

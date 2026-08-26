@@ -1,13 +1,37 @@
 import pygame
+import pytest
 
 from projectile import Projectile
-from tower import TOWER_TYPES, KnockbackTower, LightningTower, PoisonTower, SniperTower
+from tower import TOWER_TYPES, KnockbackTower, LightningTower, PoisonTower, SniperTower, Tower
 
 
 class FakeEnemy:
     def __init__(self, pos=(50, 50)):
         self.pos = pygame.Vector2(pos)
         self.is_dead = False
+
+
+def test_base_tower_create_projectile_is_not_implemented():
+    # Every registered TOWER_TYPES entry overrides this -- the base class's
+    # own stub only exists to document the required interface.
+    tower = Tower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    with pytest.raises(NotImplementedError):
+        tower.create_projectile(FakeEnemy())
+
+
+def test_draw_without_a_font_skips_the_upgrade_badge():
+    from assets import AssetManager
+    tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    surface = pygame.Surface((100, 100))
+    assets = AssetManager()
+
+    tower.draw(surface, assets)  # font defaults to None -- must not raise
+
+    # No badge drawn: the corner it would occupy stays whatever the sprite
+    # itself left there, not the badge's own selected-button color.
+    from settings import COLOR_BUTTON_SELECTED
+    cx, cy = tower.upgrade_badge_center()
+    assert surface.get_at((cx, cy))[:3] != COLOR_BUTTON_SELECTED
 
 
 def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():

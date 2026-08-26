@@ -92,6 +92,22 @@ def test_skip_delay_during_an_actual_between_wave_countdown_starts_it_immediatel
     assert manager.state == WaveState.SPAWNING
 
 
+def test_skip_delay_is_a_no_op_while_a_wave_is_actively_spawning():
+    # The HUD's Skip button is only meant to be clickable in
+    # AWAITING_START/BETWEEN_WAVES (see ui._draw_wave_countdown_and_skip's
+    # `clickable` flag), but Game._handle_click's hit-test doesn't actually
+    # gate on that -- so skip_delay() itself has to be a safe no-op here.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=100.0)
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1 -> SPAWNING
+    assert manager.state == WaveState.SPAWNING
+
+    manager.skip_delay()
+
+    assert manager.state == WaveState.SPAWNING  # unchanged
+
+
 def test_spawns_the_exact_enemy_count_for_the_wave():
     level = make_level([{"grunt": 3}])
     manager = WaveManager(level, cell_to_pixel, spawn_interval=0.1, between_wave_delay=0.0)

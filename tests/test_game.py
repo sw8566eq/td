@@ -7,6 +7,7 @@ smoke tests this project has been relying on during development.
 """
 
 import os
+import sys
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
@@ -260,6 +261,13 @@ def test_paused_e_is_a_no_op_on_a_built_in_level(playing_game):
     assert playing_game.state == GameState.PAUSED
 
 
+def test_game_over_unbound_key_is_a_no_op(game):
+    game.state = GameState.GAME_OVER
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.GAME_OVER
+    assert game.running is True
+
+
 def test_game_over_r_resets_the_same_level_and_resumes_playing(game):
     game.state = GameState.GAME_OVER
     game.economy.gold = 0
@@ -275,6 +283,24 @@ def test_game_over_escape_quits(game):
     game.state = GameState.GAME_OVER
     game._handle_keydown(pygame.K_ESCAPE)
     assert game.running is False
+
+
+def test_handle_keydown_on_an_unrecognized_state_is_a_no_op(game):
+    # Not reachable through real play -- GameState's if/elif chain already
+    # covers every one of its members, VICTORY included, so this only
+    # exercises the chain's final fallthrough as a safety net against a
+    # future state ever being added without a matching branch.
+    game.state = "not-a-real-game-state"
+    game._handle_keydown(pygame.K_r)
+    assert game.state == "not-a-real-game-state"
+    assert game.running is True
+
+
+def test_victory_unbound_key_is_a_no_op(game):
+    game.state = GameState.VICTORY
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.VICTORY
+    assert game.running is True
 
 
 def test_victory_r_advances_to_the_next_level(game):
@@ -588,6 +614,12 @@ def test_clicking_the_targeting_button_cycles_the_pinned_towers_mode(playing_gam
     assert tower.targeting_mode == "last"
 
 
+def test_clicking_the_targeting_button_with_nothing_selected_does_nothing(playing_game):
+    assert playing_game._last_panel_subject is None
+    # Must not raise -- and there's no tower to have changed a mode on.
+    playing_game._handle_click(playing_game.targeting_button_rect.center)
+
+
 def test_clicking_the_upgrade_button_with_nothing_selected_does_nothing(playing_game):
     gold_before = playing_game.economy.gold
     playing_game._handle_click(playing_game.upgrade_button_rect.center)
@@ -872,6 +904,34 @@ def test_clicking_a_specialize_button_before_max_level_does_nothing(playing_game
     assert tower.specialization is None
 
 
+def test_clicking_a_specialize_button_beyond_the_towers_own_options_does_nothing(playing_game, monkeypatch):
+    # Defensive guard: every registered tower actually has exactly two
+    # SPECIALIZATIONS (see test_tower_leveling.py), so this can't happen
+    # through real content today, but _handle_panel_action_click's index
+    # bounds-check still has to hold if a tower were ever registered with
+    # fewer than len(specialize_button_rects) options.
+    monkeypatch.setattr(BasicTower, "SPECIALIZATIONS", {"only_one": BasicTower.SPECIALIZATIONS["power"]})
+
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.selected_tower = tower
+
+    second_button = playing_game.specialize_button_rects[1]  # index 1 -- out of range for 1 key
+    mock_mouse_pos(second_button.center)
+    try:
+        playing_game.render()
+        playing_game._handle_click(second_button.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.specialization is None
+
+
 def test_clicking_a_specialize_button_with_nothing_selected_does_nothing(playing_game):
     gold_before = playing_game.economy.gold
     second_button = playing_game.specialize_button_rects[1]
@@ -1151,9 +1211,17 @@ def test_dead_projectiles_never_linger_in_the_list(playing_game):
     playing_game.try_place_tower(anchor_col, anchor_row)
     playing_game.wave_manager.skip_delay()
 
-    for _ in range(300):
+    # 600 frames (10 simulated seconds) -- comfortably more than wave 1's
+    # first enemies need to walk from the spawn to an adjacent-to-path
+    # tower and get shot at; without ever_fired, this assertion would pass
+    # vacuously on an empty (never-fired) projectile list every frame.
+    ever_fired = False
+    for _ in range(600):
         playing_game.update(dt=1 / 60)
         assert all(not p.dead for p in playing_game.projectiles)
+        ever_fired = ever_fired or bool(playing_game.projectiles)
+
+    assert ever_fired
 
 
 # --- Level loading / progression ---
@@ -1253,10 +1321,22 @@ def test_editor_escape_returns_to_menu(game):
     assert game.state == GameState.MENU
 
 
+def test_editor_unbound_key_is_a_no_op(game):
+    game.state = GameState.EDITOR
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.EDITOR
+
+
 def test_level_select_escape_returns_to_menu(game):
     game.state = GameState.LEVEL_SELECT
     game._handle_keydown(pygame.K_ESCAPE)
     assert game.state == GameState.MENU
+
+
+def test_level_select_unbound_key_is_a_no_op(game):
+    game.state = GameState.LEVEL_SELECT
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.LEVEL_SELECT
 
 
 def test_clicking_an_editor_tool_button_switches_the_active_tool(game):
@@ -1325,6 +1405,12 @@ def test_wave_editor_escape_returns_to_the_path_editor(game):
     game.state = GameState.WAVE_EDITOR
     game._handle_keydown(pygame.K_ESCAPE)
     assert game.state == GameState.EDITOR
+
+
+def test_wave_editor_unbound_key_is_a_no_op(game):
+    game.state = GameState.WAVE_EDITOR
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.WAVE_EDITOR
 
 
 def test_clicking_add_wave_tab_appends_a_wave(game):
@@ -1774,6 +1860,78 @@ def test_render_with_a_tower_selected_does_not_crash(playing_game):
     playing_game.render()
 
 
+def test_render_with_a_tower_selected_that_has_extra_stats_does_not_crash(playing_game):
+    # "basic" (used by most render tests above) has no EXTRA_STATS -- pick
+    # one that does, so the panel's EXTRA_STATS row-drawing loop actually
+    # runs at least once.
+    playing_game.selected_tower_name = "cannon"
+    playing_game.render()
+
+
+def test_render_with_a_maxed_specializable_tower_pinned_does_not_crash(playing_game):
+    # Exercises the stats panel's "not currently hovering either specialize
+    # button" branch -- distinct from a fresh, unmaxed tower's plain
+    # Upgrade-button panel every other render test above leaves it in.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+    playing_game.selected_tower = tower
+
+    mock_mouse_pos((0, 0))  # nowhere near either specialize button
+    try:
+        playing_game.render()
+    finally:
+        clear_mouse_mock()
+
+
+def test_render_with_all_waves_complete_does_not_crash(playing_game):
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.render()
+
+
+def test_render_during_the_between_waves_countdown_does_not_crash(playing_game):
+    from waves import WaveState
+    playing_game.wave_manager.skip_delay()  # AWAITING_START -> BETWEEN_WAVES, timer 0
+    assert playing_game.wave_manager.state == WaveState.BETWEEN_WAVES
+    playing_game.render()
+
+
+def test_render_victory_screen_without_a_next_level_does_not_crash(playing_game):
+    playing_game.load_level(2)  # the last built-in level -- has_next_level() is False
+    playing_game.state = GameState.VICTORY
+    assert not playing_game.has_next_level()
+    playing_game.render()
+
+
+def test_render_draws_live_enemies_projectiles_and_damage_numbers_without_crashing(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game, adjacent_to_path=True)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game.wave_manager.skip_delay()
+
+    for _ in range(600):  # see test_dead_projectiles_never_linger_in_the_list
+        playing_game.update(dt=1 / 60)
+        if playing_game.enemies and playing_game.projectiles and playing_game.damage_numbers:
+            break
+
+    assert playing_game.enemies and playing_game.projectiles and playing_game.damage_numbers
+    playing_game.render()  # must not raise with all three actually populated
+
+
+def test_render_with_the_placement_preview_hovering_the_hud_does_not_crash(playing_game):
+    playing_game.selected_tower_name = "basic"
+    hud_pos = (10, settings.SCREEN_HEIGHT - 5)  # inside the HUD band, below the grid
+    mock_mouse_pos(hud_pos)
+    try:
+        playing_game.render()
+    finally:
+        clear_mouse_mock()
+
+
 def test_render_while_hovering_a_placed_tower_does_not_crash(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -1928,3 +2086,122 @@ def test_stats_panel_subject_falls_back_to_selected_build_type(playing_game):
 
 def test_stats_panel_subject_is_none_with_nothing_hovered_or_selected(playing_game):
     assert playing_game._stats_panel_subject(hovered_tower=None) is None
+
+
+# --- handle_events(): dispatch from real pygame events ---
+#
+# monkeypatches pygame.event.get() to return one canned Event, then checks
+# the real side effect the matching branch should have caused -- proving
+# handle_events() actually routes to the right handler, not just mocking
+# the handler itself and trusting it was called correctly.
+
+_REAL_EVENT_GET = pygame.event.get  # saved once, before anything monkeypatches it
+
+
+def _fire_event(game, event):
+    # Restores the real get() afterward rather than del'ing the attribute --
+    # same gotcha as mock_mouse_pos/clear_mouse_mock above.
+    pygame.event.get = lambda: [event]
+    try:
+        game.handle_events()
+    finally:
+        pygame.event.get = _REAL_EVENT_GET
+
+
+def test_handle_events_quit_stops_the_game(playing_game):
+    _fire_event(playing_game, pygame.event.Event(pygame.QUIT))
+    assert playing_game.running is False
+
+
+def test_handle_events_keydown_dispatches_to_handle_keydown(playing_game):
+    _fire_event(playing_game, pygame.event.Event(pygame.KEYDOWN, key=pygame.K_p))
+    assert playing_game.state == GameState.PAUSED
+
+
+def test_handle_events_left_click_dispatches_to_editor_click(game):
+    game.state = GameState.EDITOR
+    rect = game.editor_tool_rects[EditorTool.ERASE]
+    _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=rect.center, button=1))
+    assert game.editor.active_tool == EditorTool.ERASE
+
+
+def test_handle_events_left_click_dispatches_to_wave_editor_click(game):
+    game.editor.path_cells = {(0, 0), (1, 0)}
+    game.editor.spawn_cells = {(0, 0)}
+    game.editor.goal_cells = {(1, 0)}
+    game.editor.validate()
+    game.state = GameState.WAVE_EDITOR
+    rect = game.wave_editor_action_rects["back"]
+    _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=rect.center, button=1))
+    assert game.state == GameState.EDITOR
+
+
+def test_handle_events_left_click_dispatches_to_level_select_click(game):
+    game._enter_level_select()
+    rect = game.level_select_rects[1]
+    _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=rect.center, button=1))
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id == 1
+
+
+def test_handle_events_left_click_dispatches_to_playing_click(playing_game):
+    rect = playing_game.button_rects["cannon"]
+    _fire_event(playing_game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=rect.center, button=1))
+    assert playing_game.selected_tower_name == "cannon"
+
+
+def test_handle_events_right_click_dispatches_to_handle_right_click(playing_game):
+    playing_game.selected_tower_name = "basic"
+    _fire_event(playing_game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(0, 0), button=3))
+    assert playing_game.selected_tower_name is None
+
+
+def test_handle_events_mousemotion_in_editor_paints_while_dragging(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.PAINT)
+    _fire_event(game, pygame.event.Event(
+        pygame.MOUSEMOTION, pos=(10, 10), buttons=(1, 0, 0), rel=(0, 0),
+    ))
+    assert game.editor.pixel_to_tile(10, 10) in game.editor.path_cells
+
+
+def test_handle_events_mousewheel_in_level_select_scrolls(game, monkeypatch):
+    monkeypatch.setattr("ui.level_select_max_scroll", lambda n: 1000)
+    game._enter_level_select()
+    _fire_event(game, pygame.event.Event(pygame.MOUSEWHEEL, y=-1, x=0, flipped=False))
+    assert game.level_select_scroll_offset > 0
+
+
+def test_handle_events_ignores_events_that_match_no_branch(playing_game):
+    # e.g. a mousewheel scroll while not in LEVEL_SELECT -- handle_events()
+    # has no branch for it at all, so it's just silently skipped.
+    before = playing_game.level_select_scroll_offset
+    _fire_event(playing_game, pygame.event.Event(pygame.MOUSEWHEEL, y=-1, x=0, flipped=False))
+    assert playing_game.state == GameState.PLAYING
+    assert playing_game.level_select_scroll_offset == before
+
+
+# --- run(): the top-level frame loop ---
+
+def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game, monkeypatch):
+    calls = []
+    monkeypatch.setattr(game, "handle_events", lambda: calls.append("handle_events"))
+    monkeypatch.setattr(game, "update", lambda dt: calls.append("update"))
+
+    def fake_render():
+        calls.append("render")
+        game.running = False  # stop after exactly one iteration
+
+    monkeypatch.setattr(game, "render", fake_render)
+
+    class FakeClock:
+        def tick(self, fps):  # pygame.time.Clock's own tick is read-only, can't be patched directly
+            return 16
+
+    monkeypatch.setattr(game, "clock", FakeClock())
+    monkeypatch.setattr(pygame, "quit", lambda: calls.append("pygame.quit"))
+    monkeypatch.setattr(sys, "exit", lambda: calls.append("sys.exit"))
+
+    game.run()
+
+    assert calls == ["handle_events", "update", "render", "pygame.quit", "sys.exit"]
