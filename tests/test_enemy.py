@@ -1,9 +1,14 @@
 import pygame
 import pytest
 
-from enemy import ENEMY_TYPES, BossEnemy, Enemy, GruntEnemy, ScoutEnemy, TankEnemy
+from enemy import ENEMY_TYPES, BossEnemy, Enemy, FlyingEnemy, GruntEnemy, ScoutEnemy, ShieldedEnemy, TankEnemy
 
 WAYPOINTS = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+# A path far too long for any test's dt to actually finish crossing -- for
+# tests that call update() with a substantial dt purely to advance timers
+# (e.g. shield regen), where reaching the goal partway through would short-
+# circuit the very thing being tested.
+LONG_WAYPOINTS = [pygame.Vector2(0, 0), pygame.Vector2(10**7, 0)]
 
 
 def test_stats_scale_up_with_wave_number():
@@ -77,12 +82,80 @@ def test_scout_speed_still_caps_at_its_own_max_speed():
 def test_every_registered_species_moves_and_can_be_damaged():
     # A light smoke test that every species -- not just the ones singled
     # out above -- behaves like a normal Enemy through the shared logic.
+    # max_shield (0 for a species without one, e.g. via getattr's default)
+    # has to be spent too -- a shielded species absorbs plain max_hp worth
+    # of damage into its shield first and survives.
     for name, enemy_cls in ENEMY_TYPES.items():
         enemy = enemy_cls(WAYPOINTS, wave_number=1)
         enemy.update(dt=0.1)
         assert enemy.distance_traveled > 0, name
-        enemy.take_damage(enemy.max_hp)
+        enemy.take_damage(enemy.max_hp + getattr(enemy, "max_shield", 0))
         assert enemy.is_dead, name
+
+
+def test_flying_enemy_is_flying_and_others_are_not():
+    assert FlyingEnemy(WAYPOINTS, wave_number=1).is_flying is True
+    for enemy_cls in (GruntEnemy, ScoutEnemy, TankEnemy, BossEnemy, ShieldedEnemy):
+        assert enemy_cls(WAYPOINTS, wave_number=1).is_flying is False
+
+
+def test_shielded_and_flying_are_registered():
+    assert ENEMY_TYPES["shielded"] is ShieldedEnemy
+    assert ENEMY_TYPES["flying"] is FlyingEnemy
+
+
+def test_shielded_enemy_shield_absorbs_damage_before_hp():
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+
+    enemy.take_damage(5)
+
+    assert enemy.shield == starting_shield - 5
+    assert enemy.hp == starting_hp
+
+
+def test_shielded_enemy_overflow_damage_spills_into_hp():
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+
+    enemy.take_damage(starting_shield + 7)
+
+    assert enemy.shield == 0
+    assert enemy.hp == starting_hp - 7
+
+
+def test_shielded_enemy_shield_regenerates_after_delay():
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.take_damage(enemy.max_shield)  # drain the shield entirely
+    assert enemy.shield == 0
+
+    enemy.update(dt=enemy.shield_regen_delay - 0.01)
+    assert enemy.shield == 0  # not yet -- still within the delay
+
+    enemy.update(dt=0.02)  # crosses the delay threshold -- regen starts this frame
+    enemy.update(dt=1.0)
+    # Regen only accrues for the portion of elapsed time spent at/above the
+    # delay threshold, i.e. these last two update() calls' own dt (0.02 and
+    # 1.0) -- not the earlier, below-threshold waiting.
+    assert enemy.shield == pytest.approx(enemy.shield_regen_rate * (0.02 + 1.0))
+
+
+def test_shielded_enemy_shield_regen_resets_on_a_new_hit():
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.take_damage(5)
+    enemy.update(dt=enemy.shield_regen_delay - 0.01)  # almost ready to regen
+    enemy.take_damage(1)  # resets the delay countdown
+
+    enemy.update(dt=0.02)  # would have crossed the old threshold, not the new one
+
+    assert enemy.shield == enemy.max_shield - 6  # unchanged since the second hit
+
+
+def test_shielded_enemy_shield_never_regenerates_past_max():
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.take_damage(1)
+    enemy.update(dt=enemy.shield_regen_delay + 100.0)
+    assert enemy.shield == enemy.max_shield
 
 
 def test_take_damage_reduces_hp_and_marks_dead_at_zero():
@@ -103,6 +176,23 @@ def test_dead_enemy_ignores_further_damage():
     assert enemy.is_dead
     enemy.take_damage(1)
     assert enemy.hp == 0
+
+
+def test_take_damage_records_a_damage_event_for_floating_text():
+    # Game.update() drains this each frame into a floating damage number at
+    # the enemy's position -- a killing blow still needs to record its own
+    # amount (see the guard ordering in take_damage), which
+    # test_dead_enemy_ignores_further_damage's follow-up hit above must NOT.
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.take_damage(10)
+    enemy.take_damage(5)
+    assert enemy.damage_events == [10, 5]
+
+    enemy.take_damage(10_000)  # killing blow -- still recorded
+    assert enemy.damage_events[-1] == 10_000
+
+    enemy.take_damage(1)  # already dead -- not recorded
+    assert enemy.damage_events[-1] == 10_000
 
 
 def test_take_damage_is_a_no_op_for_an_enemy_that_reached_the_goal():
@@ -171,6 +261,123 @@ def test_slow_expires_after_its_duration():
     enemy.update(dt=0.6)
     assert enemy.slow_multiplier == 1.0
     assert enemy.slow_timer == 0.0
+
+
+def test_apply_poison_first_tick_fires_on_the_very_next_update():
+    # tick_timer starts at 0 on a fresh application, not tick_interval --
+    # so the first tick lands immediately rather than waiting a full
+    # interval, regardless of how long that interval is.
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=10.0, duration=30.0)
+    starting_hp = enemy.hp
+
+    enemy.update(dt=0.01)
+
+    assert enemy.hp == starting_hp - 4
+
+
+def test_apply_poison_ticks_damage_at_interval():
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    starting_hp = enemy.hp
+
+    enemy.update(dt=0.1)  # immediate first tick
+    assert enemy.hp == starting_hp - 4
+
+    enemy.update(dt=0.5)  # tick_timer 0.9 -> 0.4, not due yet
+    assert enemy.hp == starting_hp - 4
+
+    enemy.update(dt=0.5)  # tick_timer 0.4 -> -0.1, due again
+    assert enemy.hp == starting_hp - 8
+
+
+def test_apply_poison_expires_after_duration():
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=1.0)
+    starting_hp = enemy.hp
+
+    enemy.update(dt=1.5)  # crosses both the tick and the duration in one frame
+
+    assert enemy.hp == starting_hp - 4  # exactly the one tick before it expired
+    assert enemy.poison_time_remaining == 0.0
+    assert enemy.poison_damage_per_tick == 0.0
+
+    enemy.update(dt=1.0)  # nothing left to tick
+    assert enemy.hp == starting_hp - 4
+
+
+def test_apply_poison_keeps_the_stronger_tick_and_extends_duration():
+    # Follows apply_slow's precedent, not apply_knockback's -- see
+    # apply_poison's docstring.
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    assert enemy.poison_damage_per_tick == 4
+    assert enemy.poison_time_remaining == 3.0
+
+    # A weaker tick with a longer duration should extend the duration but
+    # keep the stronger (higher) damage_per_tick.
+    enemy.apply_poison(damage_per_tick=2, tick_interval=1.0, duration=5.0)
+    assert enemy.poison_damage_per_tick == 4
+    assert enemy.poison_time_remaining == 5.0
+
+    # A stronger tick should override damage_per_tick.
+    enemy.apply_poison(damage_per_tick=10, tick_interval=1.0, duration=1.0)
+    assert enemy.poison_damage_per_tick == 10
+    assert enemy.poison_time_remaining == 5.0  # shorter duration doesn't shrink it
+
+
+def test_reapplying_poison_does_not_reset_the_tick_timer():
+    # Only a genuinely fresh application (nothing currently active) should
+    # zero the tick timer -- a re-hit while already poisoned must not delay
+    # a tick that's already due.
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    enemy.update(dt=0.9)  # immediate first tick; tick_timer now 1.0 - 0.9 = 0.1
+    starting_hp = enemy.hp
+
+    enemy.apply_poison(damage_per_tick=2, tick_interval=1.0, duration=5.0)
+    enemy.update(dt=0.05)  # would re-fire immediately if the timer had been reset
+
+    assert enemy.hp == starting_hp  # no new tick yet
+
+
+def test_apply_poison_is_a_no_op_for_dead_or_finished_enemies():
+    dead = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    dead.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    assert dead.poison_time_remaining == 0.0
+    assert dead.poison_damage_per_tick == 0.0
+
+    finished = GruntEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    finished.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    assert finished.poison_time_remaining == 0.0
+
+
+def test_poison_tick_on_a_shielded_enemy_is_absorbed_by_shield_first():
+    # apply_poison's tick calls take_damage() polymorphically, so
+    # ShieldedEnemy's own override absorbs poison the same as any other
+    # hit, with no extra code needed for the interaction.
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=1.0)
+
+    enemy.update(dt=0.1)  # immediate first tick
+
+    assert enemy.shield == starting_shield - 4
+    assert enemy.hp == starting_hp
+
+
+def test_poison_tick_can_kill_and_stops_further_movement_that_frame():
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=enemy.hp, tick_interval=1.0, duration=1.0)
+
+    enemy.update(dt=0.1)
+
+    assert enemy.is_dead
+    assert enemy.hp == 0
 
 
 def test_enemy_moves_toward_next_waypoint_and_tracks_distance():

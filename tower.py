@@ -30,6 +30,10 @@ def _format_count(value):
     return "Unlimited" if value == float("inf") else f"{int(value)}"
 
 
+def _format_poison_tick(value):
+    return f"{value:.0f} dmg/tick"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -38,6 +42,19 @@ class Tower:
     projectile_speed = 300.0
     sprite_name = ""
     display_name = "Tower"
+
+    # Whether this tower can hit an enemy with is_flying = True (see
+    # enemy.py) -- default True. A tower whose mechanic is a ground-impact
+    # blast (CannonTower's splash, KnockbackTower's shove) overrides this
+    # False, since neither makes sense against something airborne.
+    can_target_flying = True
+
+    # Which in-range enemy acquire_target() actually fires at -- a one-time
+    # choice at placement (see __init__), cycled per-tower via
+    # cycle_targeting_mode() (the stats panel's "Targeting: ..." row). "first"
+    # reproduces this class's original, only-ever behavior (furthest along
+    # the path) exactly -- see _target_first.
+    TARGETING_MODES = ("first", "last", "strongest", "closest")
 
     MAX_LEVEL = 3
     # Default multiplier applied to a LEVEL_SCALED_STATS entry at a given
@@ -104,6 +121,10 @@ class Tower:
         self.total_invested = self.cost
         # SPECIALIZATIONS key once chosen (see specialize()), else None.
         self.specialization = None
+        # Which TARGETING_MODES strategy acquire_target() uses -- "first"
+        # (furthest along the path) is this class's original, only-ever
+        # default; see cycle_targeting_mode().
+        self.targeting_mode = "first"
 
     @property
     def is_max_level(self):
@@ -198,21 +219,58 @@ class Tower:
         self.cooldown = 1.0 / self.fire_rate
 
     def acquire_target(self, enemies):
-        """In-range, still-on-the-path enemy furthest along it -- more
-        robust than raw proximity on a path with switchbacks, and works
-        unchanged regardless of which enemy species are involved. Must
-        exclude enemies that already reached the goal, not just dead
-        ones: Game.update() runs every tower's update() before it filters
-        reached-goal enemies out of the live list for this frame, so
-        without this check a tower could fire a brand-new shot at an
-        enemy that's already effectively gone -- and since "furthest
-        along the path" is the whole ranking, a just-arrived enemy would
-        usually *win* that ranking over every real threat still on the
-        path."""
-        candidates = [e for e in enemies if not e.is_dead and not e.reached_goal and self.in_range(e)]
+        """In-range, still-on-the-path enemy selected by targeting_mode --
+        "first" (furthest along the path) is the default and, before
+        targeting_mode existed, this method's only-ever behavior; see
+        _target_first. More robust than raw proximity on a path with
+        switchbacks, and works unchanged regardless of which enemy species
+        are involved. Must exclude enemies that already reached the goal,
+        not just dead ones: Game.update() runs every tower's update()
+        before it filters reached-goal enemies out of the live list for
+        this frame, so without this check a tower could fire a brand-new
+        shot at an enemy that's already effectively gone -- and since
+        "furthest along the path" is the whole ranking for the default
+        mode, a just-arrived enemy would usually *win* that ranking over
+        every real threat still on the path. Also excludes a flying enemy
+        (see enemy.py) from a tower whose can_target_flying is False --
+        checked via getattr rather than a bare attribute access, since not
+        every enemy stand-in (tests, mainly) defines is_flying."""
+        candidates = [
+            e for e in enemies
+            if not e.is_dead and not e.reached_goal and self.in_range(e)
+            and (self.can_target_flying or not getattr(e, "is_flying", False))
+        ]
         if not candidates:
             return None
+        return self._TARGETING_STRATEGIES[self.targeting_mode](self, candidates)
+
+    def _target_first(self, candidates):
         return max(candidates, key=lambda e: e.distance_traveled)
+
+    def _target_last(self, candidates):
+        return min(candidates, key=lambda e: e.distance_traveled)
+
+    def _target_strongest(self, candidates):
+        return max(candidates, key=lambda e: e.hp)
+
+    def _target_closest(self, candidates):
+        return min(candidates, key=lambda e: self.pos.distance_to(e.pos))
+
+    def cycle_targeting_mode(self):
+        """Advance to the next TARGETING_MODES entry, wrapping around --
+        the stats panel's "Targeting: ..." row calls this on click."""
+        index = self.TARGETING_MODES.index(self.targeting_mode)
+        self.targeting_mode = self.TARGETING_MODES[(index + 1) % len(self.TARGETING_MODES)]
+
+    # Keyed by TARGETING_MODES; acquire_target() looks itself up here rather
+    # than an if/elif chain. Defined after the strategy methods themselves
+    # so it can reference them directly.
+    _TARGETING_STRATEGIES = {
+        "first": _target_first,
+        "last": _target_last,
+        "strongest": _target_strongest,
+        "closest": _target_closest,
+    }
 
     def in_range(self, enemy):
         return self.pos.distance_to(enemy.pos) <= self.range
@@ -333,6 +391,9 @@ class CannonTower(Tower):
     sprite_name = "tower_cannon"
     display_name = "Cannon"
     EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
+    # A lobbed, ground-impact blast has nothing to detonate against in
+    # midair -- see enemy.py's FlyingEnemy.
+    can_target_flying = False
 
     def create_projectile(self, target):
         return Projectile(
@@ -383,6 +444,9 @@ class KnockbackTower(Tower):
         ("Splash radius", "splash_radius", _format_px),
         ("Knockback", "knockback_duration", _format_seconds),
     )
+    # A physical shove along the ground path doesn't reach something
+    # airborne -- see enemy.py's FlyingEnemy.
+    can_target_flying = False
 
     def create_projectile(self, target):
         return Projectile(
@@ -437,10 +501,60 @@ class LightningTower(Tower):
         )
 
 
+class SniperTower(Tower):
+    """Very high damage, very long range, slow fire rate -- a glass-cannon
+    single-target pick with no special mechanic at all: create_projectile()
+    reuses Projectile exactly as BasicTower does, just with far more
+    extreme numbers."""
+    cost = 130
+    range = 220
+    damage = 45
+    fire_rate = 0.35
+    projectile_speed = 500.0
+    sprite_name = "tower_sniper"
+    display_name = "Sniper"
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.damage, sprite_name="projectile_sniper",
+        )
+
+
+class PoisonTower(Tower):
+    """Low direct hit, but leaves a damage-over-time effect behind -- see
+    Projectile.poison_effect / Enemy.apply_poison, deliberately built as
+    close a parallel to FrostTower's slow_effect as possible."""
+    cost = 85
+    range = 100
+    damage = 3
+    fire_rate = 1.0
+    projectile_speed = 300.0
+    poison_damage_per_tick = 4
+    poison_tick_interval = 0.5
+    poison_duration = 3.0
+    sprite_name = "tower_poison"
+    display_name = "Poison"
+    EXTRA_STATS = (
+        ("Poison", "poison_damage_per_tick", _format_poison_tick),
+        ("Poison duration", "poison_duration", _format_seconds),
+    )
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.damage,
+            poison_effect=(self.poison_damage_per_tick, self.poison_tick_interval, self.poison_duration),
+            sprite_name="projectile_poison",
+        )
+
+
 TOWER_TYPES = {
     "basic": BasicTower,
     "cannon": CannonTower,
     "frost": FrostTower,
     "knockback": KnockbackTower,
     "lightning": LightningTower,
+    "sniper": SniperTower,
+    "poison": PoisonTower,
 }

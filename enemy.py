@@ -1,15 +1,16 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. Ships with four species -- GruntEnemy
+as overridable class attributes. Ships with six species -- GruntEnemy
 (baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP), BossEnemy
-(a level's one-off final-wave heavyweight) -- and a new one (a flier, a
-shielded unit, ...) is written the same way towers are:
-subclass Enemy, override stats (and update()/take_damage() too, if it needs
-genuinely different behavior like a shield), then add one line to
-ENEMY_TYPES. Levels reference enemies by their registry name string in
-wave_specs (see levels.py), so WaveManager never needs to know about
-concrete Enemy subclasses directly.
+(a level's one-off final-wave heavyweight), ShieldedEnemy (a regenerating
+shield absorbs damage before HP does), FlyingEnemy (only a tower with
+can_target_flying -- see tower.py -- can hit it) -- and a new one is
+written the same way towers are: subclass Enemy, override stats (and
+update()/take_damage() too, if it needs genuinely different behavior like a
+shield), then add one line to ENEMY_TYPES. Levels reference enemies by
+their registry name string in wave_specs (see levels.py), so WaveManager
+never needs to know about concrete Enemy subclasses directly.
 """
 
 import pygame
@@ -33,6 +34,11 @@ class Enemy:
     # enemy, not the enemy's own movement.
     knockback_speed = 150.0
 
+    # Whether a tower needs can_target_flying = True (see tower.py) to hit
+    # this species at all -- False for every ground-bound enemy, True only
+    # for FlyingEnemy below.
+    is_flying = False
+
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
         self.wp_index = 1  # index of the next waypoint to reach
@@ -47,11 +53,28 @@ class Enemy:
         self.slow_multiplier = 1.0
         self.slow_timer = 0.0
 
+        # Damage-over-time state -- see apply_poison(). damage_per_tick/
+        # tick_interval describe the currently-active poison (meaningless
+        # while time_remaining is 0); tick_timer counts down to the next
+        # actual damage application.
+        self.poison_damage_per_tick = 0.0
+        self.poison_tick_interval = 0.0
+        self.poison_tick_timer = 0.0
+        self.poison_time_remaining = 0.0
+
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
         self.distance_traveled = 0.0
         self.is_dead = False
         self.reached_goal = False
+
+        # Amounts actually applied by take_damage() since the last time
+        # something drained this -- Game.update() turns each one into a
+        # floating damage number at this enemy's current position, then
+        # clears the list every frame. A plain list rather than a single
+        # running total so multiple hits landing the same frame (a splash
+        # hit, or several links of a chain) each get their own popup.
+        self.damage_events = []
 
     @staticmethod
     def _scale(base, per_wave, wave_number):
@@ -66,6 +89,18 @@ class Enemy:
             if self.slow_timer <= 0:
                 self.slow_timer = 0.0
                 self.slow_multiplier = 1.0
+
+        if self.poison_time_remaining > 0:
+            self.poison_time_remaining -= dt
+            self.poison_tick_timer -= dt
+            if self.poison_tick_timer <= 0:
+                self.poison_tick_timer += self.poison_tick_interval
+                self.take_damage(self.poison_damage_per_tick)
+                if self.is_dead:
+                    return  # a killing tick -- don't also move the corpse this frame
+            if self.poison_time_remaining <= 0:
+                self.poison_time_remaining = 0.0
+                self.poison_damage_per_tick = 0.0
 
         if self.knockback_remaining > 0:
             # Slide backward at a fixed animation speed instead of the
@@ -105,6 +140,7 @@ class Enemy:
         # already cost a life instead.
         if self.is_dead or self.reached_goal:
             return
+        self.damage_events.append(amount)
         self.hp -= amount
         if self.hp <= 0:
             self.hp = 0
@@ -124,6 +160,25 @@ class Enemy:
         # rather than weaken the effect.
         self.slow_multiplier = min(self.slow_multiplier, factor)
         self.slow_timer = max(self.slow_timer, duration)
+
+    def apply_poison(self, damage_per_tick, tick_interval, duration):
+        """Start (or refresh) a damage-over-time effect: damage_per_tick
+        every tick_interval seconds, for duration seconds total -- see the
+        per-frame handling in update(). Re-poisoning follows apply_slow's
+        precedent, not apply_knockback's: keep the stronger tick and extend
+        the duration, rather than stacking multiple concurrent DoT
+        instances (which nothing here needs yet). Deliberately does NOT
+        reset poison_tick_timer -- only a genuinely fresh application
+        (nothing currently active) starts a new tick countdown; a re-hit
+        while already poisoned strengthens/extends it without delaying
+        whatever tick is already due."""
+        if self.is_dead or self.reached_goal:
+            return
+        if self.poison_time_remaining <= 0:
+            self.poison_tick_timer = 0.0  # first tick fires on the very next update()
+        self.poison_damage_per_tick = max(self.poison_damage_per_tick, damage_per_tick)
+        self.poison_tick_interval = tick_interval
+        self.poison_time_remaining = max(self.poison_time_remaining, duration)
 
     def apply_knockback(self, distance):
         """Queue `distance` pixels of backward path travel, animated over
@@ -253,9 +308,95 @@ class BossEnemy(Enemy):
     radius = 30
 
 
+class ShieldedEnemy(Enemy):
+    """A regenerating shield absorbs damage before HP does: take_damage()
+    depletes the shield first and only spills any remainder into HP, and
+    the shield itself regenerates once shield_regen_delay seconds pass
+    without a hit landing. Damage-over-time (PoisonTower's ticks) counts as
+    a hit like any other -- take_damage() doesn't care where the damage
+    came from -- so a poisoned shield still has to burn down before the
+    poison actually reaches HP, same as a direct hit would."""
+    base_hp = 40
+    hp_per_wave = 10
+    base_shield = 30
+    shield_per_wave = 6
+    shield_regen_delay = 3.0  # seconds without taking damage before regen starts
+    shield_regen_rate = 10.0  # shield points/sec once regenerating
+    base_speed = 55.0
+    speed_per_wave = 2.5
+    max_speed = 110.0
+    base_reward = 14
+    reward_per_wave = 3
+    sprite_name = "enemy_shielded"
+    radius = 18
+
+    def __init__(self, waypoints_px, wave_number):
+        super().__init__(waypoints_px, wave_number)
+        self.max_shield = self._scale(self.base_shield, self.shield_per_wave, wave_number)
+        self.shield = self.max_shield
+        self.time_since_hit = 0.0
+
+    def take_damage(self, amount):
+        if self.is_dead or self.reached_goal:
+            return
+        self.time_since_hit = 0.0
+        if self.shield > 0:
+            absorbed = min(self.shield, amount)
+            self.shield -= absorbed
+            amount -= absorbed
+        if amount > 0:
+            super().take_damage(amount)
+
+    def update(self, dt):
+        super().update(dt)
+        if self.is_dead or self.reached_goal:
+            return
+        if self.shield < self.max_shield:
+            self.time_since_hit += dt
+            if self.time_since_hit >= self.shield_regen_delay:
+                self.shield = min(self.max_shield, self.shield + self.shield_regen_rate * dt)
+
+    def draw(self, surface, assets):
+        super().draw(surface, assets)
+        self._draw_shield_bar(surface)
+
+    def _draw_shield_bar(self, surface):
+        if self.shield <= 0:
+            return
+        # Sits above where the health bar draws (_draw_health_bar) at a
+        # fixed offset -- not conditional on whether the health bar is
+        # currently shown (only true once hp < max_hp) -- so the two never
+        # collide regardless of which one appears when.
+        bar_width, bar_height = self.radius * 2, 3
+        x = int(self.pos.x - self.radius)
+        y = int(self.pos.y - self.radius - 4 - 2 - bar_height - 2)
+        pygame.draw.rect(surface, (30, 40, 70), (x, y, bar_width, bar_height))
+        fill_width = int(bar_width * (self.shield / self.max_shield))
+        pygame.draw.rect(surface, (90, 160, 255), (x, y, fill_width, bar_height))
+
+
+class FlyingEnemy(Enemy):
+    """Airborne -- only a tower with can_target_flying = True (see
+    tower.py; every current tower except Cannon and Knockback) can hit it
+    at all, regardless of range/targeting mode. Fast and comparatively
+    fragile, closer to Scout than Tank."""
+    is_flying = True
+    base_hp = 25
+    hp_per_wave = 5
+    base_speed = 100.0
+    speed_per_wave = 4.0
+    max_speed = 180.0
+    base_reward = 12
+    reward_per_wave = 2
+    sprite_name = "enemy_flying"
+    radius = 14
+
+
 ENEMY_TYPES = {
     "grunt": GruntEnemy,
     "scout": ScoutEnemy,
     "tank": TankEnemy,
     "boss": BossEnemy,
+    "shielded": ShieldedEnemy,
+    "flying": FlyingEnemy,
 }

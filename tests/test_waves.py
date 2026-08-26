@@ -192,6 +192,46 @@ def _drive_to_completion(manager):
     return all_spawned
 
 
+def test_next_wave_preview_aggregates_a_single_spawns_composition():
+    level = make_level([{"grunt": 8, "tank": 3}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    assert manager.next_wave_preview() == {"grunt": 8, "tank": 3}
+
+
+def test_next_wave_preview_aggregates_across_multiple_spawns():
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"grunt": 2, "tank": 2}}],
+    )
+    manager = WaveManager(level, cell_to_pixel)
+
+    assert manager.next_wave_preview() == {"grunt": 5, "tank": 2}
+
+
+def test_next_wave_preview_still_reflects_the_current_wave_while_spawning():
+    level = make_level([{"grunt": 3}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1 -> SPAWNING
+
+    assert manager.state == WaveState.SPAWNING
+    assert manager.next_wave_preview() == {"grunt": 3}
+
+
+def test_next_wave_preview_is_none_once_all_waves_complete():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    _drive_to_completion(manager)
+
+    assert manager.all_waves_complete
+    assert manager.next_wave_preview() is None
+
+
 def test_each_spawns_wave_composition_is_honored_independently():
     # Two independent spawns, (0, 0) and (0, 2), merging at (0, 1) before a
     # shared run to the goal -- spawn (0, 0) sends 3 grunts, spawn (0, 2)

@@ -76,6 +76,23 @@ class WaveManager:
     def total_waves(self):
         return len(self.level.wave_specs)
 
+    def next_wave_preview(self):
+        """{enemy_name: total_count} aggregated across every spawn's
+        composition for wave_specs[wave_index] -- the upcoming wave while
+        AWAITING_START/BETWEEN_WAVES, or the one currently in progress while
+        SPAWNING (wave_index only advances once a wave fully clears, so
+        either way this is "whatever wave the player should be planning
+        around right now"). None once every wave is complete -- there's
+        nothing left to preview. Returns a plain dict, not caring about
+        display order -- that's ui.py's job."""
+        if self.all_waves_complete:
+            return None
+        totals = {}
+        for composition in self.level.wave_specs[self.wave_index].values():
+            for enemy_name, count in composition.items():
+                totals[enemy_name] = totals.get(enemy_name, 0) + count
+        return totals
+
     def skip_delay(self):
         """Let the player start the first wave early (from
         AWAITING_START) or skip the between-waves countdown early (from

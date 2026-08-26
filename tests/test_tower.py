@@ -1,7 +1,7 @@
 import pygame
 
 from projectile import Projectile
-from tower import TOWER_TYPES, KnockbackTower, LightningTower
+from tower import TOWER_TYPES, KnockbackTower, LightningTower, PoisonTower, SniperTower
 
 
 class FakeEnemy:
@@ -96,3 +96,40 @@ def test_other_towers_do_not_chain():
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.chain_range == 0.0, name
+
+
+def test_sniper_tower_is_registered():
+    assert TOWER_TYPES["sniper"] is SniperTower
+
+
+def test_sniper_tower_has_no_special_projectile_mechanic():
+    # A pure high-damage/long-range/slow-fire-rate pick -- no splash, slow,
+    # knockback, chain, or poison, same as BasicTower.
+    tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.splash_radius == 0
+    assert projectile.slow_effect is None
+    assert projectile.knockback_duration == 0.0
+    assert projectile.chain_range == 0.0
+    assert projectile.poison_effect is None
+
+
+def test_poison_tower_is_registered():
+    assert TOWER_TYPES["poison"] is PoisonTower
+
+
+def test_poison_tower_projectile_carries_a_poison_effect():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect == (
+        PoisonTower.poison_damage_per_tick, PoisonTower.poison_tick_interval, PoisonTower.poison_duration,
+    )
+
+
+def test_other_towers_have_no_poison_effect():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name == "poison":
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.poison_effect is None, name

@@ -13,6 +13,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame  # noqa: E402
 import pytest  # noqa: E402
 
+import progress  # noqa: E402
 import settings  # noqa: E402
 import ui  # noqa: E402
 from editor import EditorTool  # noqa: E402
@@ -22,8 +23,11 @@ from tower import TOWER_TYPES, BasicTower  # noqa: E402
 
 
 @pytest.fixture
-def game():
-    g = Game()
+def game(tmp_path):
+    # progress_path pinned to a throwaway file -- Game writes real progress
+    # on VICTORY (see progress.py), and this must never touch (or leave
+    # behind) the real repo-root progress.json.
+    g = Game(progress_path=tmp_path / "progress.json")
     yield g
     pygame.quit()
 
@@ -91,16 +95,16 @@ def test_unlimited_gold_defaults_to_off(game):
     assert game.economy.unlimited_gold is False
 
 
-def test_unlimited_gold_flag_flows_through_to_the_economy():
-    g = Game(unlimited_gold=True)
+def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
+    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json")
     try:
         assert g.economy.unlimited_gold is True
     finally:
         pygame.quit()
 
 
-def test_unlimited_gold_flag_survives_a_level_reload():
-    g = Game(unlimited_gold=True)
+def test_unlimited_gold_flag_survives_a_level_reload(tmp_path):
+    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json")
     try:
         g.load_level(g.current_level_id)
         assert g.economy.unlimited_gold is True
@@ -149,6 +153,51 @@ def test_playing_unbound_key_is_a_no_op(playing_game):
     playing_game._handle_keydown(pygame.K_z)
     assert playing_game.state == GameState.PLAYING
     assert playing_game.running is True
+
+
+def test_playing_number_keys_set_time_scale(playing_game):
+    playing_game._handle_keydown(pygame.K_3)
+    assert playing_game.time_scale == 3.0
+    playing_game._handle_keydown(pygame.K_1)
+    assert playing_game.time_scale == 1.0
+    playing_game._handle_keydown(pygame.K_2)
+    assert playing_game.time_scale == 2.0
+
+
+def test_cycle_time_scale_wraps_around(game):
+    assert game.time_scale == 1.0
+    game.cycle_time_scale()
+    assert game.time_scale == 2.0
+    game.cycle_time_scale()
+    assert game.time_scale == 3.0
+    game.cycle_time_scale()
+    assert game.time_scale == 1.0
+
+
+def test_set_time_scale_ignores_an_invalid_value(game):
+    game.set_time_scale(2.0)
+    game.set_time_scale(1.5)  # not one of TIME_SCALES -- silently ignored
+    assert game.time_scale == 2.0
+
+
+def test_time_scale_speeds_up_enemy_movement(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+    baseline_distance = enemy.distance_traveled
+
+    playing_game.set_time_scale(3.0)
+    playing_game.update(dt=0.1)
+    scaled_distance = enemy.distance_traveled - baseline_distance
+
+    assert scaled_distance == pytest.approx(enemy.speed * 0.1 * 3.0)
+
+
+def test_speed_button_click_cycles_time_scale(playing_game):
+    assert playing_game.time_scale == 1.0
+    playing_game._handle_click(playing_game.speed_button_rect.center)
+    assert playing_game.time_scale == 2.0
 
 
 def test_paused_p_resumes(playing_game):
@@ -519,6 +568,24 @@ def test_clicking_the_upgrade_button_upgrades_the_pinned_tower(playing_game):
 
     assert tower.level == 2
     assert playing_game.economy.gold == gold_before - upgrade_cost
+
+
+def test_clicking_the_targeting_button_cycles_the_pinned_towers_mode(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    assert tower.targeting_mode == "first"
+
+    mock_mouse_pos(playing_game.targeting_button_rect.center)
+    try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
+        playing_game._handle_click(playing_game.targeting_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.targeting_mode == "last"
 
 
 def test_clicking_the_upgrade_button_with_nothing_selected_does_nothing(playing_game):
@@ -998,6 +1065,38 @@ def test_killing_an_enemy_grants_its_gold_reward(playing_game):
 
     assert playing_game.economy.gold == gold_before + reward
     assert enemy not in playing_game.enemies
+
+
+def test_taking_damage_spawns_a_floating_damage_number(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(7)
+    playing_game.update(dt=0.01)
+
+    assert len(playing_game.damage_numbers) == 1
+    assert playing_game.damage_numbers[0].text == "7"
+    # The enemy's own damage_events queue is drained every frame, whether or
+    # not it died -- see Game.update()'s ordering relative to the
+    # alive-filter loop.
+    assert enemy.damage_events == []
+
+
+def test_floating_damage_numbers_are_pruned_once_expired(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(7)
+    playing_game.update(dt=0.01)
+    assert playing_game.damage_numbers
+
+    playing_game.update(dt=10.0)  # comfortably past any FloatingText's lifetime
+
+    assert playing_game.damage_numbers == []
 
 
 def test_enemy_reaching_the_goal_costs_a_life_and_is_removed(playing_game):
@@ -1548,6 +1647,75 @@ def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
     assert game.state == GameState.PLAYING
     assert game.current_level_id is None
     assert game.level.id == custom.id
+
+
+# --- Level unlocking (progress.py) ---
+
+def test_level_2_is_locked_until_level_1_is_cleared(game):
+    game._enter_level_select()
+    assert 1 not in game.level_select_locked_ids  # the lowest id is always unlocked
+    assert 2 in game.level_select_locked_ids
+
+    rect = game.level_select_rects[2]
+    game._handle_level_select_click(rect.center)
+
+    assert game.state == GameState.LEVEL_SELECT  # a locked row's click is a no-op
+
+
+def test_clearing_level_1_unlocks_level_2(playing_game):
+    assert playing_game.current_level_id == 1
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)
+    assert playing_game.state == GameState.VICTORY
+
+    playing_game._enter_level_select()
+    assert 2 not in playing_game.level_select_locked_ids
+
+    rect = playing_game.level_select_rects[2]
+    playing_game._handle_level_select_click(rect.center)
+
+    assert playing_game.state == GameState.PLAYING
+    assert playing_game.current_level_id == 2
+
+
+def test_clearing_a_level_persists_across_a_fresh_game_instance(playing_game):
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)
+    assert playing_game.state == GameState.VICTORY
+
+    # A brand-new Game pointed at the same progress file should see level 2
+    # already unlocked -- progress persists across sessions, not just for
+    # the instance that earned it.
+    reloaded = Game(progress_path=playing_game.progress_path)
+    try:
+        reloaded._enter_level_select()
+        assert 2 not in reloaded.level_select_locked_ids
+    finally:
+        pygame.quit()
+
+
+def test_clearing_a_custom_level_does_not_touch_progress(playing_game):
+    custom = make_custom_level()
+    playing_game.load_custom_level(custom)
+    assert playing_game.current_level_id is None
+
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    assert progress.load_progress(playing_game.progress_path) == {}
+
+
+def test_custom_levels_are_never_locked_regardless_of_progress(game, monkeypatch):
+    custom = make_custom_level()
+    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+
+    game._enter_level_select()
+
+    assert custom.id not in game.level_select_locked_ids
 
 
 # --- Loading a saved map back into the editor ---

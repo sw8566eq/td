@@ -32,7 +32,12 @@ SUBTILE_GAP = 1
 SUBTILE_GAP_ALPHA = 60
 
 # --- Window ---
-HUD_HEIGHT = 96
+# 96px for the toolbar/button row itself, plus a 32px strip above it (see
+# ui.HUD_TOP_STRIP_HEIGHT) reserved for HUD content that's independent of
+# how many tower buttons are registered -- the speed toggle and the
+# upcoming-wave preview text both live there rather than competing for
+# whatever horizontal gap happens to be left next to the tower buttons.
+HUD_HEIGHT = 128
 # PLAY_WIDTH is the grid + the HUD bar beneath it; PANEL_WIDTH is the tower
 # stats sidebar to its right. The window is simply grown to fit both --
 # nothing about the grid/HUD's own size or position changes.

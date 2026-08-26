@@ -5,7 +5,9 @@ from enum import Enum, auto
 
 import pygame
 
+import effects
 import persistence
+import progress
 import settings
 import ui
 from assets import AssetManager
@@ -29,8 +31,25 @@ class GameState(Enum):
 
 
 class Game:
-    def __init__(self, unlimited_gold=False):
+    # Simulation speed multipliers cycled through by the HUD's speed button
+    # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
+    TIME_SCALES = (1.0, 2.0, 3.0)
+
+    def __init__(self, unlimited_gold=False, progress_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
+        # A sticky player preference for the whole session, not reset by
+        # reset()/load_level() -- same idea as unlimited_gold not being tied
+        # to any one level.
+        self.time_scale = 1.0
+
+        # Injectable path, same idea as persistence.save_level's own
+        # `directory` param -- lets tests point this at a tmp_path instead
+        # of ever touching the real repo-root progress.json. self.progress
+        # is refreshed from disk in _enter_level_select() too (same
+        # "always re-read" convention list_custom_levels() follows), not
+        # just here.
+        self.progress_path = progress_path or progress.PROGRESS_PATH
+        self.progress = progress.load_progress(self.progress_path)
 
         pygame.init()
         self.screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
@@ -44,6 +63,8 @@ class Game:
         self.assets = AssetManager()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
+        self.speed_button_rect = ui.build_speed_button_rect()
+        self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
         self.sell_button_rect = ui.build_sell_button_rect()
@@ -75,6 +96,7 @@ class Game:
         self.level_select_rects = {}
         self.level_select_thumbnails = {}
         self.level_select_purpose = "play"  # or "edit" -- see _enter_level_select
+        self.level_select_locked_ids = set()  # built-in ids not yet unlocked -- see _enter_level_select
         self.level_select_scroll_offset = 0
         self._custom_levels_by_id = {}
 
@@ -112,12 +134,21 @@ class Game:
         self.enemies = []
         self.towers = []
         self.projectiles = []
+        self.damage_numbers = []
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
         # _handle_panel_action_click for why clicks must use this instead
         # of re-deriving the subject from the click-time mouse position.
         self._last_panel_subject = None
+
+    def set_time_scale(self, scale):
+        if scale in self.TIME_SCALES:
+            self.time_scale = scale
+
+    def cycle_time_scale(self):
+        index = self.TIME_SCALES.index(self.time_scale)
+        self.time_scale = self.TIME_SCALES[(index + 1) % len(self.TIME_SCALES)]
 
     def reset(self):
         if self.current_level_id is None:
@@ -204,6 +235,12 @@ class Game:
                 self.state = GameState.PAUSED
             elif key == pygame.K_SPACE:
                 self.wave_manager.skip_delay()
+            elif key == pygame.K_1:
+                self.set_time_scale(1.0)
+            elif key == pygame.K_2:
+                self.set_time_scale(2.0)
+            elif key == pygame.K_3:
+                self.set_time_scale(3.0)
         elif self.state == GameState.PAUSED:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PLAYING
@@ -331,19 +368,32 @@ class Game:
         a level loads it back into the editor for further editing
         instead; see _handle_level_select_click). Built-in levels have no
         corresponding file to reopen for editing, so "edit" only ever
-        lists custom ones."""
+        lists custom ones.
+
+        Also refreshes self.progress from disk (same "always re-read"
+        convention list_custom_levels() follows) and, for purpose="play"
+        only, computes which built-in level ids are still locked -- a
+        custom level is never locked, and "edit" never lists built-ins at
+        all, so level_select_locked_ids is empty for both of those cases."""
         custom_levels = persistence.list_custom_levels()
         self._custom_levels_by_id = {level.id: level for level in custom_levels}
+        self.progress = progress.load_progress(self.progress_path)
 
         if purpose == "edit":
             entries = [(level.id, level) for level in custom_levels]
+            locked_ids = set()
         else:
             entries = [(level_id, level) for level_id, level in sorted(LEVELS.items())]
             entries += [(level.id, level) for level in custom_levels]
+            locked_ids = {
+                level_id for level_id in LEVELS
+                if not progress.is_unlocked(level_id, LEVELS, self.progress)
+            }
 
         self.level_select_entries = entries
         self.level_select_thumbnails = {key: ui.build_level_thumbnail(level) for key, level in entries}
         self.level_select_purpose = purpose
+        self.level_select_locked_ids = locked_ids
         self.level_select_scroll_offset = 0  # always open scrolled to the top
         self._rebuild_level_select_rects()
         self.state = GameState.LEVEL_SELECT
@@ -379,6 +429,8 @@ class Game:
             self.editor.load_level(self._custom_levels_by_id[key])
             self.state = GameState.EDITOR
         elif isinstance(key, int):
+            if key in self.level_select_locked_ids:
+                return  # locked -- stays on LEVEL_SELECT
             self.load_level(key)
             self.state = GameState.PLAYING
         else:
@@ -397,6 +449,10 @@ class Game:
 
         if self.skip_button_rect.collidepoint(pos):
             self.wave_manager.skip_delay()
+            return
+
+        if self.speed_button_rect.collidepoint(pos):
+            self.cycle_time_scale()
             return
 
         if self._handle_panel_action_click(pos):
@@ -441,6 +497,11 @@ class Game:
         player is actually looking at and clicking."""
         subject = self._last_panel_subject
         is_tower = subject in self.towers  # not a build-menu class or None
+
+        if self.targeting_button_rect.collidepoint(pos):
+            if is_tower:
+                subject.cycle_targeting_mode()
+            return True
 
         if self.upgrade_button_rect.collidepoint(pos):
             if is_tower and not subject.is_max_level:
@@ -527,6 +588,10 @@ class Game:
         if self.state != GameState.PLAYING:
             return
 
+        # Real wall-clock dt still drives self.clock.tick(FPS) in run(), so
+        # frame pacing/FPS is unaffected -- only simulated time speeds up.
+        dt = dt * self.time_scale
+
         for enemy in self.enemies:
             enemy.update(dt)
 
@@ -536,6 +601,18 @@ class Game:
         for projectile in self.projectiles:
             projectile.update(dt, self.enemies)
         self.projectiles = [p for p in self.projectiles if not p.dead]
+
+        # Drained here -- while dead enemies are still in self.enemies with
+        # a valid pos, before the alive-filter loop below removes them --
+        # so a killing blow's own damage number still gets a floating text
+        # at the spot it landed rather than being silently dropped.
+        for enemy in self.enemies:
+            for amount in enemy.damage_events:
+                self.damage_numbers.append(effects.FloatingText(enemy.pos, str(round(amount))))
+            enemy.damage_events.clear()
+        for text in self.damage_numbers:
+            text.update(dt)
+        self.damage_numbers = [t for t in self.damage_numbers if not t.dead]
 
         still_alive = []
         for enemy in self.enemies:
@@ -553,6 +630,10 @@ class Game:
             self.state = GameState.GAME_OVER
         elif self.wave_manager.all_waves_complete and not self.enemies:
             self.state = GameState.VICTORY
+            if isinstance(self.current_level_id, int):  # a built-in level -- custom ones aren't gated
+                self.progress = progress.mark_level_cleared(
+                    self.current_level_id, self.economy.lives, self.progress_path,
+                )
 
     # --- Render ---
 
@@ -586,6 +667,7 @@ class Game:
                 self.screen, self.font, self.small_font,
                 self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
                 self.level_select_purpose, self.level_select_scroll_offset,
+                self.level_select_locked_ids,
             )
             pygame.display.flip()
             return
@@ -597,6 +679,8 @@ class Game:
             enemy.draw(self.screen, self.assets)
         for projectile in self.projectiles:
             projectile.draw(self.screen, self.assets)
+        for text in self.damage_numbers:
+            text.draw(self.screen, self.tiny_font)
 
         self._render_placement_preview()
         hovered_tower = self._hovered_tower()
@@ -609,9 +693,12 @@ class Game:
             self.screen, self.assets, self.font, self.small_font,
             self.economy, self.wave_manager, self.button_rects,
             self.skip_button_rect, self.selected_tower_name,
+            self.time_scale, self.speed_button_rect,
+            self.wave_manager.next_wave_preview(),
         )
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
+            self.targeting_button_rect,
             self.upgrade_button_rect, self.specialize_button_rects, self.sell_button_rect,
             self._hovered_specialize_key(panel_subject),
         )

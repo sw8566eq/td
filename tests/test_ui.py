@@ -7,6 +7,7 @@ from levels import Level
 from tower import TOWER_TYPES
 from ui import (
     EDITOR_ACTION_ORDER,
+    HUD_TOP_STRIP_HEIGHT,
     LEVEL_SELECT_BOTTOM,
     LEVEL_SELECT_ROW_GAP,
     LEVEL_SELECT_ROW_HEIGHT,
@@ -23,7 +24,9 @@ from ui import (
     build_level_thumbnail,
     build_sell_button_rect,
     build_skip_button_rect,
+    build_speed_button_rect,
     build_specialize_button_rects,
+    build_targeting_button_rect,
     build_upgrade_button_rect,
     build_wave_editor_action_rects,
     build_wave_tab_rects,
@@ -37,6 +40,7 @@ from ui import (
     get_clicked_wave_unit_button,
     level_select_content_height,
     level_select_max_scroll,
+    _format_wave_preview,
 )
 
 
@@ -73,6 +77,56 @@ def test_skip_button_does_not_overlap_the_tower_build_buttons():
     skip_rect = build_skip_button_rect()
     for name, tower_rect in build_button_rects().items():
         assert not skip_rect.colliderect(tower_rect), name
+
+
+def test_speed_button_sits_within_the_hud_top_strip():
+    rect = build_speed_button_rect()
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    assert rect.top >= hud_top
+    assert rect.bottom <= hud_top + HUD_TOP_STRIP_HEIGHT
+    assert rect.right <= settings.PLAY_WIDTH
+
+
+def test_speed_button_does_not_overlap_the_skip_button_or_tower_buttons():
+    speed_rect = build_speed_button_rect()
+    assert not speed_rect.colliderect(build_skip_button_rect())
+    for name, tower_rect in build_button_rects().items():
+        assert not speed_rect.colliderect(tower_rect), name
+
+
+def test_format_wave_preview_orders_by_registry_order_not_dict_order():
+    from ui import ENEMY_ORDER
+
+    # Deliberately built out of ENEMY_ORDER's order to prove the formatter
+    # re-sorts rather than trusting dict iteration order.
+    reversed_order = list(reversed(ENEMY_ORDER))
+    composition = {name: index + 1 for index, name in enumerate(reversed_order)}
+
+    text = _format_wave_preview(composition)
+
+    positions = [text.index(f"{name.capitalize()} x") for name in ENEMY_ORDER]
+    assert positions == sorted(positions)
+
+
+def test_format_wave_preview_only_mentions_species_actually_present():
+    composition = {"grunt": 8}
+    text = _format_wave_preview(composition)
+    assert text == "Next: Grunt x8"
+
+
+def test_targeting_button_sits_within_the_stats_panel():
+    rect = build_targeting_button_rect()
+    assert rect.left >= settings.PLAY_WIDTH
+    assert rect.right <= settings.SCREEN_WIDTH
+    assert rect.top >= 0
+    assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_targeting_button_sits_above_the_upgrade_button_without_overlapping():
+    targeting_rect = build_targeting_button_rect()
+    upgrade_rect = build_upgrade_button_rect()
+    assert not targeting_rect.colliderect(upgrade_rect)
+    assert targeting_rect.bottom <= upgrade_rect.top
 
 
 def test_upgrade_and_sell_buttons_sit_within_the_stats_panel():
