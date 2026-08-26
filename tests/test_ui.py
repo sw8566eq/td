@@ -24,6 +24,7 @@ from ui import (
     build_level_select_rects,
     build_level_thumbnail,
     build_sell_button_rect,
+    build_settings_rects,
     build_skip_button_rect,
     build_speed_button_rect,
     build_specialize_button_rects,
@@ -32,16 +33,22 @@ from ui import (
     build_wave_editor_action_rects,
     build_wave_tab_rects,
     build_wave_unit_rects,
+    compute_tower_results,
+    draw_game_over_screen,
     draw_level_select_screen,
+    draw_results_table,
+    draw_victory_screen,
     get_clicked_editor_action,
     get_clicked_editor_tool,
     get_clicked_level_select_entry,
+    get_clicked_settings_option,
     get_clicked_tower_button,
     get_clicked_wave_editor_action,
     get_clicked_wave_tab,
     get_clicked_wave_unit_button,
     level_select_content_height,
     level_select_max_scroll,
+    _format_wave_label,
     _format_wave_preview,
 )
 
@@ -94,6 +101,147 @@ def test_speed_button_does_not_overlap_the_skip_button_or_tower_buttons():
     assert not speed_rect.colliderect(build_skip_button_rect())
     for name, tower_rect in build_button_rects().items():
         assert not speed_rect.colliderect(tower_rect), name
+
+
+def test_settings_rects_has_one_entry_per_option():
+    from ui import SETTINGS_OPTION_ORDER
+
+    rects = build_settings_rects()
+    assert set(rects.keys()) == set(SETTINGS_OPTION_ORDER)
+
+
+def test_settings_rects_do_not_overlap():
+    rects = list(build_settings_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_settings_option_returns_matching_key():
+    rects = build_settings_rects()
+    assert get_clicked_settings_option(rects["fullscreen"].center, rects) == "fullscreen"
+    assert get_clicked_settings_option(rects["hard"].center, rects) == "hard"
+
+
+def test_get_clicked_settings_option_returns_none_outside_all_buttons():
+    rects = build_settings_rects()
+    assert get_clicked_settings_option((0, 0), rects) is None
+
+
+class _FakeWaveManager:
+    def __init__(self, all_waves_complete=False, endless=False, current_wave_number=1, total_waves=1):
+        self.all_waves_complete = all_waves_complete
+        self.endless = endless
+        self.current_wave_number = current_wave_number
+        self.total_waves = total_waves
+
+
+def test_format_wave_label_shows_x_of_n_normally():
+    assert _format_wave_label(_FakeWaveManager(current_wave_number=2, total_waves=5)) == "Wave 2/5"
+
+
+def test_format_wave_label_shows_all_cleared_once_complete():
+    assert _format_wave_label(_FakeWaveManager(all_waves_complete=True)) == "All waves cleared!"
+
+
+def test_format_wave_label_shows_endless_with_no_denominator():
+    label = _format_wave_label(_FakeWaveManager(endless=True, current_wave_number=12, total_waves=99))
+    assert label == "Wave 12 (Endless)"
+    assert "/" not in label
+
+
+def test_format_wave_label_prefers_all_cleared_over_endless():
+    # all_waves_complete is checked first -- defensive ordering only
+    # (endless mode never actually sets all_waves_complete=True in
+    # practice, see WaveManager._advance_after_clear).
+    label = _format_wave_label(_FakeWaveManager(all_waves_complete=True, endless=True))
+    assert label == "All waves cleared!"
+
+
+# --- Post-level results (per-tower damage/kills/accuracy) ---
+
+class _FakeTowerResult:
+    def __init__(self, display_name, shots_fired, shots_hit, damage_dealt, kills):
+        self.display_name = display_name
+        self.shots_fired = shots_fired
+        self.shots_hit = shots_hit
+        self.damage_dealt = damage_dealt
+        self.kills = kills
+
+
+def test_compute_tower_results_sorts_by_damage_dealt_descending():
+    low = _FakeTowerResult("Basic", shots_fired=5, shots_hit=5, damage_dealt=50, kills=1)
+    high = _FakeTowerResult("Cannon", shots_fired=3, shots_hit=3, damage_dealt=200, kills=4)
+
+    results = compute_tower_results([low, high])
+
+    assert [row["display_name"] for row in results] == ["Cannon", "Basic"]
+
+
+def test_compute_tower_results_reports_none_accuracy_for_a_tower_that_never_fired():
+    never_fired = _FakeTowerResult("Support", shots_fired=0, shots_hit=0, damage_dealt=0, kills=0)
+    results = compute_tower_results([never_fired])
+    assert results[0]["accuracy"] is None
+
+
+def test_compute_tower_results_computes_accuracy_as_a_fraction():
+    tower = _FakeTowerResult("Basic", shots_fired=4, shots_hit=3, damage_dealt=30, kills=1)
+    results = compute_tower_results([tower])
+    assert results[0]["accuracy"] == 0.75
+
+
+def test_compute_tower_results_on_an_empty_list_is_an_empty_list():
+    assert compute_tower_results([]) == []
+
+
+def test_draw_results_table_with_no_results_does_not_raise():
+    pygame.font.init()
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    draw_results_table(surface, small_font, None, top_y=100)
+    draw_results_table(surface, small_font, [], top_y=100)
+
+
+def test_draw_results_table_with_results_does_not_raise():
+    pygame.font.init()
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    results = compute_tower_results([
+        _FakeTowerResult("Basic", shots_fired=4, shots_hit=3, damage_dealt=30, kills=1),
+        _FakeTowerResult("Support", shots_fired=0, shots_hit=0, damage_dealt=0, kills=0),
+    ])
+    draw_results_table(surface, small_font, results, top_y=100)
+
+
+def test_draw_results_table_collapses_extra_rows_into_a_more_line():
+    from ui import RESULTS_MAX_ROWS
+
+    pygame.font.init()
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    results = compute_tower_results([
+        _FakeTowerResult(f"Tower {i}", shots_fired=1, shots_hit=1, damage_dealt=float(i), kills=0)
+        for i in range(RESULTS_MAX_ROWS + 3)
+    ])
+    draw_results_table(surface, small_font, results, top_y=100)  # must not raise
+
+
+def test_draw_victory_screen_with_results_does_not_raise():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    results = compute_tower_results([_FakeTowerResult("Basic", 4, 3, 30, 1)])
+    draw_victory_screen(surface, font, small_font, has_next_level=True, results=results)
+
+
+def test_draw_game_over_screen_with_results_does_not_raise():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    results = compute_tower_results([_FakeTowerResult("Basic", 4, 3, 30, 1)])
+    draw_game_over_screen(surface, font, small_font, results=results)
 
 
 def test_format_wave_preview_orders_by_registry_order_not_dict_order():
@@ -266,6 +414,25 @@ def test_draw_level_select_screen_handles_a_missing_thumbnail():
     rects = build_level_select_rects(entries)
 
     draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={})
+
+
+def test_draw_level_select_screen_shows_the_survival_hint_only_for_purpose_play():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    entries = []
+    rects = {}
+
+    # None of these should raise, with the hint shown (armed and not) or
+    # hidden (purpose="edit") -- exercises every branch of the new
+    # endless_armed handling without needing to read back pixels.
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="play", endless_armed=False)
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="play", endless_armed=True)
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="edit", endless_armed=True)
 
 
 # --- Level select scrolling ---

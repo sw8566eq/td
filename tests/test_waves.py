@@ -1,6 +1,6 @@
 import random
 
-from enemy import GruntEnemy, TankEnemy
+from enemy import GruntEnemy, ShieldedEnemy, TankEnemy
 from levels import Level
 from waves import WaveManager, WaveState
 
@@ -343,3 +343,141 @@ def test_every_round_stays_in_lockstep_until_a_spawn_runs_out():
     round_3 = manager.update(dt=1.0, active_enemies=round_1 + round_2)
     assert len(round_3) == 1
     assert round_3[0].waypoints[0] == cell_to_pixel(0, 0)
+
+
+# --- Difficulty-mode multipliers (see difficulty.py / Game._load_level_object) ---
+
+def test_default_multipliers_leave_a_spawned_enemys_stats_untouched():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    unscaled = GruntEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].max_hp == unscaled.max_hp
+    assert spawned[0].speed == unscaled.speed
+    assert spawned[0].gold_reward == unscaled.gold_reward
+
+
+def test_enemy_hp_multiplier_scales_a_spawned_enemys_max_hp_and_current_hp():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           enemy_hp_multiplier=2.0)
+    unscaled = GruntEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].max_hp == unscaled.max_hp * 2.0
+    assert spawned[0].hp == unscaled.max_hp * 2.0
+
+
+def test_enemy_speed_and_gold_multipliers_scale_a_spawned_enemy():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           enemy_speed_multiplier=1.5, enemy_gold_multiplier=0.5)
+    unscaled = GruntEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].speed == unscaled.speed * 1.5
+    assert spawned[0].gold_reward == unscaled.gold_reward * 0.5
+
+
+# --- Endless/Survival mode ---
+
+def test_non_endless_still_reaches_done_and_all_waves_complete():
+    # Regression guard: the default (endless=False) behavior must be
+    # byte-identical to every pre-endless test above.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    _drive_to_completion(manager)
+    assert manager.state == WaveState.DONE
+    assert manager.all_waves_complete
+
+
+def test_endless_never_reaches_done_or_all_waves_complete():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, endless=True)
+    manager.skip_delay()
+
+    all_spawned = []
+    for _ in range(300):
+        all_spawned.extend(manager.update(dt=0.01, active_enemies=[]))
+        if len(all_spawned) >= 10:
+            break
+
+    assert manager.state != WaveState.DONE
+    assert manager.all_waves_complete is False
+    assert len(all_spawned) >= 10
+
+
+def test_endless_total_waves_grows_as_waves_are_appended():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, endless=True)
+    manager.skip_delay()
+    starting_total = manager.total_waves
+
+    all_spawned = []
+    for _ in range(300):
+        all_spawned.extend(manager.update(dt=0.01, active_enemies=[]))
+        if manager.total_waves > starting_total:
+            break
+
+    assert manager.total_waves > starting_total
+
+
+def test_endless_uses_an_injected_wave_generator():
+    generated = []
+
+    def fake_generator(level, wave_number):
+        generated.append(wave_number)
+        return {(0, 0): {"grunt": 1}}
+
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           endless=True, endless_wave_generator=fake_generator)
+    manager.skip_delay()
+
+    for _ in range(50):
+        manager.update(dt=0.01, active_enemies=[])
+        if generated:
+            break
+
+    assert generated == [2]  # level's one authored wave was #1, so the next is #2
+
+
+def test_default_endless_wave_grows_counts_relative_to_the_previous_wave():
+    from waves import _default_endless_wave
+
+    level = make_level([{"grunt": 8}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"grunt": 10}}  # 8 + max(1, 8 // 4) == 10
+
+
+def test_default_endless_wave_bumps_a_small_count_by_at_least_one():
+    from waves import _default_endless_wave
+
+    level = make_level([{"grunt": 1}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"grunt": 2}}
+
+
+def test_default_endless_wave_compounds_across_repeated_calls():
+    from waves import _default_endless_wave
+
+    level = make_level([{"grunt": 8}])
+    level.wave_specs.append(_default_endless_wave(level, wave_number=2))  # {"grunt": 10}
+    level.wave_specs.append(_default_endless_wave(level, wave_number=3))  # {"grunt": 12}
+    assert level.wave_specs[-1] == {(0, 0): {"grunt": 12}}
+
+
+def test_enemy_hp_multiplier_also_scales_a_shielded_enemys_shield():
+    level = make_level([{"shielded": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           enemy_hp_multiplier=2.0)
+    unscaled = ShieldedEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].max_shield == unscaled.max_shield * 2.0
+    assert spawned[0].shield == unscaled.max_shield * 2.0

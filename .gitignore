@@ -13,6 +13,10 @@ custom_levels/
 # game data, same spirit as custom_levels/.
 progress.json
 
+# Persisted player preferences (fullscreen, difficulty -- see
+# player_settings.py) -- local game data, same spirit as progress.json.
+player_settings.json
+
 # Claude Code local settings (machine/user-specific, not meant to be shared)
 .claude/
 CLAUDE.local.md

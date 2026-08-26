@@ -311,3 +311,109 @@ def test_no_chain_when_chain_range_is_zero():
 
     assert target.damage_taken == 10
     assert neighbor.damage_taken == 0
+
+
+# --- Source attribution (post-level results screen -- see ui.compute_tower_results) ---
+
+class FakeTower:
+    """Just the 4 counters Projectile writes into, plus nothing else --
+    real attribution logic lives entirely in Projectile, not Tower."""
+    def __init__(self):
+        self.shots_fired = 0
+        self.shots_hit = 0
+        self.damage_dealt = 0.0
+        self.kills = 0
+
+
+class KillableFakeEnemy(FakeEnemy):
+    """FakeEnemy doesn't track hp/death at all (its take_damage() just
+    accumulates a counter) -- this variant actually flips is_dead once
+    enough damage lands, so kill-counting can be tested against it."""
+    def __init__(self, pos, hp, **kwargs):
+        super().__init__(pos, **kwargs)
+        self.hp = hp
+
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        self.hp -= amount
+        if self.hp <= 0:
+            self.is_dead = True
+
+
+def test_source_none_is_never_touched_by_a_hit():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=None)
+    projectile.update(dt=1.0, enemies=[target])  # must not raise -- no source to update
+
+
+def test_direct_hit_attributes_one_shot_hit_and_its_damage_to_the_source():
+    source = FakeTower()
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.shots_hit == 1
+    assert source.damage_dealt == 10
+    assert source.kills == 0
+
+
+def test_direct_hit_that_kills_increments_kills_once():
+    source = FakeTower()
+    target = KillableFakeEnemy((0, 0), hp=5)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.is_dead
+    assert source.kills == 1
+    assert source.damage_dealt == 10
+
+
+def test_a_dud_that_never_connects_does_not_count_as_a_hit():
+    source = FakeTower()
+    target = FakeEnemy((100, 0), is_dead=True)  # already dead before impact
+    projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.shots_hit == 0
+    assert source.damage_dealt == 0
+
+
+def test_splash_counts_one_shot_hit_but_cumulative_damage_across_every_enemy_touched():
+    source = FakeTower()
+    target = FakeEnemy((0, 0))
+    in_radius = FakeEnemy((10, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=15,
+                             splash_radius=20, source=source)
+
+    projectile.update(dt=1.0, enemies=[target, in_radius])
+
+    assert source.shots_hit == 1  # one shot, not two, even though it hit two enemies
+    assert source.damage_dealt == 30  # 15 to each
+
+
+def test_splash_counts_a_kill_for_each_enemy_actually_killed():
+    source = FakeTower()
+    target = KillableFakeEnemy((0, 0), hp=5)
+    in_radius = KillableFakeEnemy((10, 0), hp=5)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=15,
+                             splash_radius=20, source=source)
+
+    projectile.update(dt=1.0, enemies=[target, in_radius])
+
+    assert source.kills == 2
+
+
+def test_chain_counts_one_shot_hit_but_cumulative_damage_across_every_link():
+    source = FakeTower()
+    target = FakeEnemy((0, 0))
+    near = FakeEnemy((10, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=7,
+                             chain_range=50, max_chain_targets=2, source=source)
+
+    projectile.update(dt=1.0, enemies=[target, near])
+
+    assert source.shots_hit == 1
+    assert source.damage_dealt == 14  # 7 to target + 7 to the one chain link

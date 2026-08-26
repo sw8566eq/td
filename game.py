@@ -1,18 +1,21 @@
 """Game state machine and main loop."""
 
+import dataclasses
 import sys
 from enum import Enum, auto
 
 import pygame
 
+import difficulty
 import effects
 import persistence
+import player_settings
 import progress
 import settings
 import ui
 from assets import AssetManager
 from economy import Economy
-from editor import Editor
+from editor import SHAPE_TOOLS, Editor, EditorTool
 from grid import Grid
 from levels import LEVELS
 from tower import TOWER_TYPES
@@ -28,6 +31,7 @@ class GameState(Enum):
     EDITOR = auto()
     WAVE_EDITOR = auto()
     LEVEL_SELECT = auto()
+    SETTINGS = auto()
 
 
 class Game:
@@ -35,11 +39,12 @@ class Game:
     # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
     TIME_SCALES = (1.0, 2.0, 3.0)
 
-    def __init__(self, unlimited_gold=False, progress_path=None):
+    def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
-        # to any one level.
+        # to any one level. Unlike fullscreen/difficulty below, this one is
+        # deliberately NOT persisted across sessions.
         self.time_scale = 1.0
 
         # Injectable path, same idea as persistence.save_level's own
@@ -51,8 +56,24 @@ class Game:
         self.progress_path = progress_path or progress.PROGRESS_PATH
         self.progress = progress.load_progress(self.progress_path)
 
+        # Persisted player preferences -- fullscreen and difficulty are the
+        # first genuinely cross-session prefs this game has (unlike
+        # time_scale/unlimited_gold above), so they're written through
+        # immediately on change rather than only on quit -- see
+        # set_fullscreen()/set_difficulty().
+        self.settings_path = settings_path or player_settings.SETTINGS_PATH
+        saved_settings = player_settings.load_settings(self.settings_path)
+        self.fullscreen = saved_settings["fullscreen"]
+        # Which difficulty.DIFFICULTY_MODES entry is currently active --
+        # read at _load_level_object time, so changing it mid-level has no
+        # effect until the next load_level()/reset() (same "applies on next
+        # load" semantics unlimited_gold already has).
+        self.difficulty = saved_settings["difficulty"]
+        if self.difficulty not in difficulty.DIFFICULTY_MODES:
+            self.difficulty = difficulty.DEFAULT_DIFFICULTY
+
         pygame.init()
-        self.screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+        self.apply_display_mode()
         pygame.display.set_caption(settings.WINDOW_TITLE)
         self.clock = pygame.time.Clock()
 
@@ -61,6 +82,7 @@ class Game:
         self.tiny_font = pygame.font.SysFont(None, 16)  # tower upgrade badges
 
         self.assets = AssetManager()
+        self.settings_rects = ui.build_settings_rects()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
@@ -98,6 +120,11 @@ class Game:
         self.level_select_purpose = "play"  # or "edit" -- see _enter_level_select
         self.level_select_locked_ids = set()  # built-in ids not yet unlocked -- see _enter_level_select
         self.level_select_scroll_offset = 0
+        # Toggled by V while browsing to play (not edit); a level picked
+        # while armed loads in endless/survival mode -- see
+        # _handle_level_select_click. Reset to False every time the
+        # browser is (re-)entered, same as scroll_offset.
+        self.level_select_endless_armed = False
         self._custom_levels_by_id = {}
 
         self.state = GameState.MENU
@@ -106,20 +133,35 @@ class Game:
         self.current_level_id = 1
         self.load_level(self.current_level_id)
 
-    def load_level(self, level_id):
-        self._load_level_object(LEVELS[level_id])
+    def load_level(self, level_id, endless=False):
+        self._load_level_object(LEVELS[level_id], endless=endless)
         self.current_level_id = level_id
 
-    def load_custom_level(self, level):
+    def load_custom_level(self, level, endless=False):
         """Load a Level that isn't in the LEVELS registry -- an
         editor-authored level, whether freshly painted or reloaded from
         disk (see persistence.py). current_level_id becomes None so
         has_next_level()/advance_or_replay_level() know there's no
         registry entry to advance through."""
-        self._load_level_object(level)
+        self._load_level_object(level, endless=endless)
         self.current_level_id = None
 
-    def _load_level_object(self, level):
+    def _load_level_object(self, level, endless=False):
+        # Sticky for this level, same as current_level_id -- reset()/
+        # advance_or_replay_level() read this back so replaying/advancing
+        # out of an endless run doesn't silently drop back into a normal,
+        # finite-waves one.
+        self.endless = endless
+        if endless:
+            # Endless mode appends newly-generated waves straight onto
+            # wave_specs as the run continues (see WaveManager.
+            # _advance_after_clear) -- level.wave_specs must be this
+            # Game's own private list, never LEVELS' shared registry
+            # entry (a module-level singleton every Game/test in the
+            # process holds the same object for), or an endless run would
+            # permanently leak generated waves into every future
+            # non-endless playthrough of the same built-in level.
+            level = dataclasses.replace(level, wave_specs=list(level.wave_specs))
         self.level = level
         self.grid = Grid(
             settings.GRID_COLS, settings.GRID_ROWS, settings.TILE_SIZE,
@@ -128,11 +170,28 @@ class Game:
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
         )
-        self.economy = Economy(level.starting_gold, level.starting_lives, unlimited_gold=self.unlimited_gold)
-        self.wave_manager = WaveManager(level, self.grid.tile_to_pixel_center)
+        mode = difficulty.DIFFICULTY_MODES[self.difficulty]
+        self.economy = Economy(
+            round(level.starting_gold * mode.starting_gold_multiplier),
+            round(level.starting_lives * mode.starting_lives_multiplier),
+            unlimited_gold=self.unlimited_gold,
+        )
+        self.wave_manager = WaveManager(
+            level, self.grid.tile_to_pixel_center,
+            enemy_hp_multiplier=mode.enemy_hp_multiplier,
+            enemy_speed_multiplier=mode.enemy_speed_multiplier,
+            enemy_gold_multiplier=mode.enemy_gold_multiplier,
+            endless=endless,
+        )
 
         self.enemies = []
         self.towers = []
+        # A tower sold mid-level is removed from self.towers (see
+        # try_sell_tower) but its lifetime stats still belong in this
+        # level's post-level results table -- kept here purely so
+        # _tower_results() can still find it. Never touched otherwise; a
+        # sold tower is already fully inert once off the grid.
+        self.sold_towers = []
         self.projectiles = []
         self.damage_numbers = []
         self.selected_tower_name = None
@@ -141,6 +200,48 @@ class Game:
         # _handle_panel_action_click for why clicks must use this instead
         # of re-deriving the subject from the click-time mouse position.
         self._last_panel_subject = None
+
+    def apply_display_mode(self, size=None):
+        """(Re)create self.screen for the current self.fullscreen setting,
+        at `size` pixels -- defaults to the configured settings.SCREEN_
+        WIDTH/HEIGHT; only ever overridden by handle_events()'s
+        pygame.VIDEORESIZE case, once the player has actually dragged a
+        non-fullscreen window to a new size.
+
+        pygame.SCALED (rendering at a fixed logical resolution, letterboxed
+        by SDL to whatever physical size the window becomes) was the first
+        choice here -- every Rect/pygame.mouse.get_pos() call in ui.py/
+        game.py would have kept working unmodified, since pygame reports
+        mouse coordinates in logical space under SCALED. Dropped: SCALED
+        allocates an SDL renderer, and constructing a second Game in the
+        same process without an intervening pygame.quit() -- which several
+        tests do, and which is otherwise perfectly safe -- fails with
+        "failed to create renderer" under the SDL dummy video driver this
+        whole suite runs under. Plain RESIZABLE has no such renderer and
+        needs no such teardown; the tradeoff is that dragging the window
+        to a non-16:PLAY_WIDTH+PANEL_WIDTH:9-ish aspect ratio just shows
+        more/less background (handled by re-running set_mode() at the new
+        size on VIDEORESIZE, same as this method's own default case)
+        rather than rescaling the content."""
+        flags = pygame.RESIZABLE
+        if self.fullscreen:
+            flags |= pygame.FULLSCREEN
+        self.screen = pygame.display.set_mode(size or (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT), flags)
+
+    def set_fullscreen(self, value):
+        self.fullscreen = bool(value)
+        self.apply_display_mode()
+        self._save_player_settings()
+
+    def set_difficulty(self, key):
+        if key in difficulty.DIFFICULTY_MODES:
+            self.difficulty = key
+            self._save_player_settings()
+
+    def _save_player_settings(self):
+        player_settings.save_settings(
+            {"fullscreen": self.fullscreen, "difficulty": self.difficulty}, self.settings_path,
+        )
 
     def set_time_scale(self, scale):
         if scale in self.TIME_SCALES:
@@ -152,9 +253,9 @@ class Game:
 
     def reset(self):
         if self.current_level_id is None:
-            self._load_level_object(self.level)  # custom level: nothing in LEVELS to re-look-up
+            self._load_level_object(self.level, endless=self.endless)  # custom level: nothing in LEVELS to re-look-up
         else:
-            self.load_level(self.current_level_id)
+            self.load_level(self.current_level_id, endless=self.endless)
         self.state = GameState.MENU
 
     def has_next_level(self):
@@ -169,11 +270,11 @@ class Game:
         guards that -- so this always just replays it."""
         if self.has_next_level():
             self.current_level_id += 1
-            self.load_level(self.current_level_id)
+            self.load_level(self.current_level_id, endless=self.endless)
         elif self.current_level_id is None:
-            self._load_level_object(self.level)
+            self._load_level_object(self.level, endless=self.endless)
         else:
-            self.load_level(self.current_level_id)
+            self.load_level(self.current_level_id, endless=self.endless)
 
     def run(self):
         while self.running:
@@ -199,14 +300,24 @@ class Game:
                     self._handle_wave_editor_click(event.pos)
                 elif self.state == GameState.LEVEL_SELECT:
                     self._handle_level_select_click(event.pos)
+                elif self.state == GameState.SETTINGS:
+                    self._handle_settings_click(event.pos)
                 else:
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 self._handle_right_click()
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.state == GameState.EDITOR:
+                self._handle_editor_mouse_up(event.pos)
             elif event.type == pygame.MOUSEMOTION and self.state == GameState.EDITOR:
                 self._handle_editor_motion(event.pos, event.buttons)
             elif event.type == pygame.MOUSEWHEEL and self.state == GameState.LEVEL_SELECT:
                 self._scroll_level_select(event.y)
+            elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
+                # Only while windowed -- a fullscreen window resizing away
+                # from the desktop resolution isn't something the player
+                # actually did (see apply_display_mode's docstring for what
+                # this makes dragging a windowed edge actually do).
+                self.apply_display_mode(event.size)
 
     def _handle_keydown(self, key):
         if self.state == GameState.MENU:
@@ -216,20 +327,34 @@ class Game:
                 self.state = GameState.EDITOR
             elif key == pygame.K_l:
                 self._enter_level_select()
+            elif key == pygame.K_s:
+                self.state = GameState.SETTINGS
             else:
                 self.state = GameState.PLAYING
+        elif self.state == GameState.SETTINGS:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.MENU
         elif self.state == GameState.EDITOR:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
+            else:
+                self._handle_editor_undo_redo_keydown(key)
         elif self.state == GameState.WAVE_EDITOR:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.EDITOR  # one step back, same as the Back-to-Path button
+            else:
+                self._handle_editor_undo_redo_keydown(key)
         elif self.state == GameState.LEVEL_SELECT:
             if key == pygame.K_ESCAPE:
                 # Back to wherever this screen was entered from -- the
                 # menu's L, or the editor's Load Map... (see
                 # _enter_level_select's purpose param).
                 self.state = GameState.MENU if self.level_select_purpose == "play" else GameState.EDITOR
+            elif key == pygame.K_v and self.level_select_purpose == "play":
+                # Arms/disarms endless/survival mode for whichever level
+                # gets picked next -- meaningless while browsing to load a
+                # map into the editor (purpose="edit"), so a no-op there.
+                self.level_select_endless_armed = not self.level_select_endless_armed
         elif self.state == GameState.PLAYING:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
@@ -274,6 +399,32 @@ class Game:
         self.selected_tower_name = None
         self.selected_tower = None
 
+    def _handle_editor_undo_redo_keydown(self, key):
+        """Ctrl+Z/Ctrl+Y -- shared by both editor screens' keydown handling
+        (GameState.EDITOR and WAVE_EDITOR), since both mutate the same
+        self.editor. Routes through _handle_editor_undo_redo_action() so
+        there's exactly one place that actually calls undo()/redo(),
+        regardless of whether it was a keypress or an action-button click."""
+        mods = pygame.key.get_mods()
+        if key == pygame.K_z and mods & pygame.KMOD_CTRL:
+            self._handle_editor_undo_redo_action("undo")
+        elif key == pygame.K_y and mods & pygame.KMOD_CTRL:
+            self._handle_editor_undo_redo_action("redo")
+
+    def _handle_editor_undo_redo_action(self, action):
+        """"undo"/"redo" -- shared by both editor screens' action bars
+        (see _handle_editor_action/_handle_wave_editor_action) and by
+        _handle_editor_undo_redo_keydown above. Returns True if `action`
+        was one of these two, so a caller chaining more action checks
+        after this one knows whether it's already been handled."""
+        if action == "undo":
+            self.editor.undo()
+            return True
+        if action == "redo":
+            self.editor.redo()
+            return True
+        return False
+
     # --- Map editor ---
 
     def _handle_editor_click(self, pos):
@@ -287,14 +438,40 @@ class Game:
             self._handle_editor_action(action)
             return
 
+        if self.editor.paste_pending:
+            self.editor.paste_clipboard(self.editor.pixel_to_tile(*pos))
+            self.editor.paste_pending = False
+            return
+
+        if self.editor.active_tool in SHAPE_TOOLS:
+            # Preview-while-dragging tools: this click just starts the
+            # drag -- see _handle_editor_motion/_handle_editor_mouse_up
+            # for how it's previewed/committed.
+            self.editor.begin_shape(self.editor.pixel_to_tile(*pos))
+            return
+
         # Editor.paint_at() silently ignores a pixel outside the grid
         # (e.g. over the toolbar/sidebar, neither of which overlaps the
         # grid's own pixel range), so no further fencing is needed here.
         self.editor.paint_at(*pos)
 
     def _handle_editor_motion(self, pos, buttons):
-        if buttons[0]:  # left button held -> drag-paint
+        if not buttons[0]:  # left button not held -> nothing to drag
+            return
+        if self.editor.active_tool in SHAPE_TOOLS:
+            self.editor.update_shape_preview(self.editor.pixel_to_tile(*pos))
+        else:
             self.editor.paint_at(*pos)
+
+    def _handle_editor_mouse_up(self, pos):
+        """Ends whatever the left button was doing on the grid: a
+        freeform drag-paint stroke (see Editor.begin_stroke(), called
+        from _apply_tool() on the first cell of the stroke), or a Line/
+        Rect/Select drag (committed here instead)."""
+        if self.editor.active_tool in SHAPE_TOOLS:
+            self.editor.commit_shape(self.editor.pixel_to_tile(*pos))
+        else:
+            self.editor.end_stroke()
 
     def _handle_editor_action(self, action):
         if action == "back":
@@ -303,6 +480,12 @@ class Game:
             self.state = GameState.WAVE_EDITOR
         elif action == "load":
             self._enter_level_select(purpose="edit")
+        elif action == "copy":
+            self.editor.copy_selection()
+        elif action == "paste":
+            self.editor.paste_pending = True
+        else:
+            self._handle_editor_undo_redo_action(action)
 
     # --- Wave editor ---
 
@@ -350,6 +533,8 @@ class Game:
             self.state = GameState.PLAYING
         elif action == "save" and self.editor.can_play():
             self.last_saved_path = persistence.save_level(self.editor.to_level())
+        else:
+            self._handle_editor_undo_redo_action(action)
 
     # --- Level select ---
 
@@ -395,6 +580,7 @@ class Game:
         self.level_select_purpose = purpose
         self.level_select_locked_ids = locked_ids
         self.level_select_scroll_offset = 0  # always open scrolled to the top
+        self.level_select_endless_armed = False  # always re-opens un-armed
         self._rebuild_level_select_rects()
         self.state = GameState.LEVEL_SELECT
 
@@ -431,11 +617,22 @@ class Game:
         elif isinstance(key, int):
             if key in self.level_select_locked_ids:
                 return  # locked -- stays on LEVEL_SELECT
-            self.load_level(key)
+            self.load_level(key, endless=self.level_select_endless_armed)
             self.state = GameState.PLAYING
         else:
-            self.load_custom_level(self._custom_levels_by_id[key])
+            self.load_custom_level(self._custom_levels_by_id[key], endless=self.level_select_endless_armed)
             self.state = GameState.PLAYING
+
+    # --- Settings ---
+
+    def _handle_settings_click(self, pos):
+        option = ui.get_clicked_settings_option(pos, self.settings_rects)
+        if option == "fullscreen":
+            self.set_fullscreen(not self.fullscreen)
+        elif option in difficulty.DIFFICULTY_MODES:
+            self.set_difficulty(option)
+        elif option == "back":
+            self.state = GameState.MENU
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -499,7 +696,13 @@ class Game:
         is_tower = subject in self.towers  # not a build-menu class or None
 
         if self.targeting_button_rect.collidepoint(pos):
-            if is_tower:
+            # The row isn't drawn for a support tower (see
+            # ui.draw_tower_stats_panel's IS_SUPPORT guard), but this
+            # Rect still occupies that screen position regardless of
+            # subject -- without this guard, a click there while a
+            # support tower is pinned/hovered would silently cycle an
+            # attribute (targeting_mode) it inherits but never reads.
+            if is_tower and not type(subject).IS_SUPPORT:
                 subject.cycle_targeting_mode()
             return True
 
@@ -577,10 +780,14 @@ class Game:
 
         self.economy.add_gold(tower.sell_value())
         self.towers.remove(tower)
+        self.sold_towers.append(tower)  # see _tower_results()
         self.grid.remove(tower.anchor_col, tower.anchor_row)
         if self.selected_tower is tower:
             self.selected_tower = None
         return True
+
+    def _tower_results(self):
+        return ui.compute_tower_results(self.towers + self.sold_towers)
 
     # --- Update ---
 
@@ -595,8 +802,15 @@ class Game:
         for enemy in self.enemies:
             enemy.update(dt)
 
+        # Two passes: every tower's aura buff is reset before any tower
+        # (support or attacking) does its own per-frame work, so which
+        # order Game happens to iterate self.towers in can never matter --
+        # a support tower later in the list still gets to (re-)buff a
+        # tower earlier in the list within the same frame.
         for tower in self.towers:
-            tower.update(dt, self.enemies, self.projectiles)
+            tower.reset_aura()
+        for tower in self.towers:
+            tower.update(dt, self.enemies, self.projectiles, self.towers)
 
         for projectile in self.projectiles:
             projectile.update(dt, self.enemies)
@@ -645,6 +859,14 @@ class Game:
             pygame.display.flip()
             return
 
+        if self.state == GameState.SETTINGS:
+            ui.draw_settings_screen(
+                self.screen, self.font, self.small_font, self.settings_rects,
+                self.fullscreen, self.difficulty,
+            )
+            pygame.display.flip()
+            return
+
         if self.state == GameState.EDITOR:
             ui.draw_editor_screen(
                 self.screen, self.assets, self.font, self.small_font,
@@ -667,7 +889,7 @@ class Game:
                 self.screen, self.font, self.small_font,
                 self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
                 self.level_select_purpose, self.level_select_scroll_offset,
-                self.level_select_locked_ids,
+                self.level_select_locked_ids, self.level_select_endless_armed,
             )
             pygame.display.flip()
             return
@@ -706,9 +928,10 @@ class Game:
         if self.state == GameState.PAUSED:
             ui.draw_pause_menu(self.screen, self.font, self.small_font, self.current_level_id is None)
         elif self.state == GameState.GAME_OVER:
-            ui.draw_game_over_screen(self.screen, self.font, self.small_font)
+            ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._tower_results())
         elif self.state == GameState.VICTORY:
-            ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level())
+            ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level(),
+                                    self._tower_results())
 
         pygame.display.flip()
 
