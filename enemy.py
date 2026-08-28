@@ -15,6 +15,8 @@ never needs to know about concrete Enemy subclasses directly.
 
 import pygame
 
+import settings
+
 
 class Enemy:
     # --- Per-wave scaling stats (all overridable per subclass) ---
@@ -294,9 +296,28 @@ class BossEnemy(Enemy):
     more HP and gold reward than any regular species, moving at a
     deliberate, menacing crawl -- towers get plenty of time to line up
     shots, but need to have actually dealt real damage over the level to
-    bring it down in time. No special immunities/behavior beyond the raw
-    numbers; giving a future boss partial slow/knockback resistance would
-    be a natural next step, just not needed yet."""
+    bring it down in time.
+
+    Two self-contained, one-time mechanics kick in as its HP drops, same
+    "override take_damage()/update(), guard is_dead/reached_goal first"
+    shape as ShieldedEnemy's regenerating shield:
+
+    - Enrage: past ENRAGE_HP_FRACTION of max_hp, permanently speeds up by
+      ENRAGE_SPEED_MULTIPLIER (capped at max_speed like any other speed
+      change) -- a boss that's taken serious damage gets more dangerous,
+      not more docile.
+    - Armor phase: past the lower ARMOR_HP_FRACTION, a one-time
+      ARMOR_DURATION-second window where incoming damage is reduced by a
+      flat ARMOR_FLAT_REDUCTION before it's applied (absorbed the same way
+      ShieldedEnemy's shield eats damage before HP does), buying a last
+      stretch of survival time right when it looks nearly dead.
+
+    Both thresholds are checked against self.max_hp *at the moment of the
+    check*, never a value cached in __init__ -- WaveManager._spawn_enemy
+    multiplies max_hp/hp by the active difficulty's enemy_hp_multiplier
+    *after* construction (see its own hasattr(enemy, "max_shield") patch-up
+    for ShieldedEnemy, same reasoning), so a threshold computed at
+    __init__ time would silently fire at the wrong HP on Easy/Hard."""
     base_hp = 500
     hp_per_wave = 50
     base_speed = 25.0
@@ -306,6 +327,52 @@ class BossEnemy(Enemy):
     reward_per_wave = 20
     sprite_name = "enemy_boss"
     radius = 30
+
+    ENRAGE_HP_FRACTION = 0.5
+    ENRAGE_SPEED_MULTIPLIER = 1.5
+    ARMOR_HP_FRACTION = 0.2
+    ARMOR_FLAT_REDUCTION = 15
+    ARMOR_DURATION = 4.0
+
+    def __init__(self, waypoints_px, wave_number):
+        super().__init__(waypoints_px, wave_number)
+        self.enraged = False
+        self.armor_used = False
+        self.armor_timer = 0.0
+
+    def take_damage(self, amount):
+        if self.is_dead or self.reached_goal:
+            return
+        if self.armor_timer > 0:
+            amount = max(0.0, amount - self.ARMOR_FLAT_REDUCTION)
+        super().take_damage(amount)
+        if self.is_dead:
+            return  # a killing blow -- no mechanic left to trigger
+
+        if not self.enraged and self.hp <= self.ENRAGE_HP_FRACTION * self.max_hp:
+            self.enraged = True
+            self.speed = min(self.speed * self.ENRAGE_SPEED_MULTIPLIER, self.max_speed)
+        if not self.armor_used and self.hp <= self.ARMOR_HP_FRACTION * self.max_hp:
+            self.armor_used = True
+            self.armor_timer = self.ARMOR_DURATION
+
+    def update(self, dt):
+        super().update(dt)
+        if self.is_dead or self.reached_goal:
+            return
+        if self.armor_timer > 0:
+            self.armor_timer = max(0.0, self.armor_timer - dt)
+
+    def draw(self, surface, assets):
+        super().draw(surface, assets)
+        # A small cosmetic tell, same spirit as ShieldedEnemy's shield bar:
+        # a ring while a damage-reduction window is active, tinted gold
+        # once enraged so either state reads at a glance without needing
+        # to watch the health bar's exact fraction.
+        if self.armor_timer > 0 or self.enraged:
+            color = settings.COLOR_GOLD if self.armor_timer > 0 else (220, 90, 40)
+            center = (int(self.pos.x), int(self.pos.y))
+            pygame.draw.circle(surface, color, center, self.radius + 4, width=2)
 
 
 class ShieldedEnemy(Enemy):

@@ -417,3 +417,47 @@ def test_chain_counts_one_shot_hit_but_cumulative_damage_across_every_link():
 
     assert source.shots_hit == 1
     assert source.damage_dealt == 14  # 7 to target + 7 to the one chain link
+
+
+# --- impact_events (drained by Game.update() into visual "juice" effects) ---
+
+def test_direct_hit_records_one_impact_event_with_no_splash_radius():
+    target = FakeEnemy((5, 5))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert projectile.impact_events == [(pygame.Vector2(5, 5), None)]
+
+
+def test_splash_hit_records_one_impact_event_with_its_splash_radius():
+    target = FakeEnemy((5, 5))
+    bystander = FakeEnemy((10, 5))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20)
+
+    projectile.update(dt=1.0, enemies=[target, bystander])
+
+    # Exactly one event -- once per projectile resolving, not once per
+    # enemy actually touched (same counting shots_hit already uses).
+    assert projectile.impact_events == [(pygame.Vector2(5, 5), 20)]
+
+
+def test_chain_hit_records_one_impact_event_at_the_original_impact_point():
+    target = FakeEnemy((5, 5))
+    near = FakeEnemy((15, 5))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=7,
+                             chain_range=50, max_chain_targets=2)
+
+    projectile.update(dt=1.0, enemies=[target, near])
+
+    assert projectile.impact_events == [(pygame.Vector2(5, 5), None)]
+
+
+def test_a_dud_that_never_connects_records_no_impact_event():
+    target = FakeEnemy((5, 5), is_dead=True)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert projectile.dead
+    assert projectile.impact_events == []

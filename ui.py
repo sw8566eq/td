@@ -13,6 +13,7 @@ import os
 import pygame
 
 import settings
+from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
 from tower import TOWER_TYPES
@@ -199,7 +200,8 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     info_x = BUTTON_MARGIN + len(TOWER_ORDER) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
     gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
     gold_text = font.render(f"Gold: {gold_display}", True, settings.COLOR_GOLD)
-    lives_text = font.render(f"Lives: {economy.lives}", True, settings.COLOR_LIVES)
+    lives_display = "infinite" if economy.invulnerable else str(economy.lives)
+    lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
     wave_text = font.render(_format_wave_label(wave_manager), True, settings.COLOR_TEXT)
 
     surface.blit(gold_text, (info_x, hud_rect.y + 8))
@@ -493,11 +495,12 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     return y
 
 
-def draw_menu_screen(surface, font, small_font):
+def draw_menu_screen(surface, font, small_font, has_saved_run=False):
     surface.fill(settings.COLOR_BG)
-    _draw_centered_overlay(surface, font, small_font, "Tower Defense",
-                            ["Press any key to start", "E -- Map Editor", "S -- Settings"],
-                            settings.COLOR_TEXT)
+    options = ["Press any key to start", "E -- Map Editor", "S -- Settings", "A -- Achievements"]
+    if has_saved_run:
+        options.append("C -- Continue")
+    _draw_centered_overlay(surface, font, small_font, "Tower Defense", options, settings.COLOR_TEXT)
 
 
 # --- Settings screen ---
@@ -556,15 +559,71 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
     surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
 
 
-def draw_pause_menu(surface, font, small_font, is_custom_level=False):
+# --- Achievements screen ---
+
+ACHIEVEMENTS_TOP = 110
+ACHIEVEMENT_ROW_HEIGHT = 34
+ACHIEVEMENTS_BACK_BUTTON_WIDTH = 240
+ACHIEVEMENTS_BACK_BUTTON_HEIGHT = 40
+ACHIEVEMENTS_BACK_BUTTON_GAP = 24
+
+
+def build_achievements_back_rect(achievement_count=len(ACHIEVEMENT_ORDER)):
+    """Rect for the Achievements screen's single 'Back to Menu' button,
+    stacked directly below the last achievement row -- the list is short
+    and fixed (the registry doesn't change at runtime), so unlike the
+    level-select browser this never needs to scroll."""
+    x = (settings.SCREEN_WIDTH - ACHIEVEMENTS_BACK_BUTTON_WIDTH) // 2
+    y = ACHIEVEMENTS_TOP + achievement_count * ACHIEVEMENT_ROW_HEIGHT + ACHIEVEMENTS_BACK_BUTTON_GAP
+    return pygame.Rect(x, y, ACHIEVEMENTS_BACK_BUTTON_WIDTH, ACHIEVEMENTS_BACK_BUTTON_HEIGHT)
+
+
+def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters, back_rect):
+    """`unlocked_keys` and `counters` are achievements.load_achievements()'s
+    own "unlocked"/"counters" values -- read fresh whenever this screen is
+    (re-)entered (see Game._enter_achievements()), same "always re-read"
+    spirit as the level-select browser's self.progress. Every registry
+    entry is always listed, in ACHIEVEMENT_ORDER (registry insertion order)
+    -- a locked one shows its live progress toward its own goal rather than
+    just "Locked", so the screen doubles as a progress tracker."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Achievements", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    y = ACHIEVEMENTS_TOP
+    for key in ACHIEVEMENT_ORDER:
+        achievement = ACHIEVEMENTS[key]
+        if key in unlocked_keys:
+            status, color = "Unlocked", settings.COLOR_GOLD
+        else:
+            progress_value = min(counters.get(achievement.counter, 0), achievement.goal)
+            status, color = f"{progress_value}/{achievement.goal}", settings.COLOR_TEXT_DIM
+        line = f"{achievement.display_name} -- {achievement.description} ({status})"
+        text = small_font.render(line, True, color)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += ACHIEVEMENT_ROW_HEIGHT
+
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
+    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=back_rect.center))
+
+    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
     # panel stays visible and undimmed to its right. "Return to Editor"
     # only makes sense while playing a level that actually came from the
     # editor -- a built-in level has no corresponding in-progress paint
-    # buffer to go back to.
+    # buffer to go back to. "Save & Quit" only makes sense between waves
+    # (see Game.can_save_run()) -- there's no live enemy/projectile state
+    # to resume back into mid-wave.
     options = ["Esc / P -- Resume", "R -- Restart Level"]
     if is_custom_level:
         options.append("E -- Return to Map Editor")
+    if can_save:
+        options.append("S -- Save & Quit")
     options.append("Q -- Quit")
     _draw_centered_overlay(surface, font, small_font, "Paused", options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
@@ -1084,7 +1143,7 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
 
 def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
                               purpose="play", scroll_offset=0, locked_ids=frozenset(),
-                              endless_armed=False):
+                              endless_armed=False, sandbox_armed=False):
     """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
     both listed, picking one starts playing it) or "edit" (the map
     editor's "Load Map..." -- only custom levels listed, since a built-in
@@ -1103,9 +1162,12 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
     and tags its label "(Locked)" instead of drawing it like a normal,
     playable entry.
 
-    `endless_armed` (only ever meaningful for purpose="play" -- see
-    Game._handle_keydown's `V` handling) shows a small hint that picking a
-    level next starts it in endless/survival mode instead of normally."""
+    `endless_armed`/`sandbox_armed` (only ever meaningful for purpose="play"
+    -- see Game._handle_keydown's `V`/`B` handling) each show a small hint
+    that picking a level next starts it in that mode instead of normally --
+    independently, since the two are combinable (infinite lives plus
+    escalating waves is a legitimate "just mess around" combo, not a
+    conflict)."""
     surface.fill(settings.COLOR_BG)
     title_text = "Load a Map to Edit" if purpose == "edit" else "Select a Level"
     title = font.render(title_text, True, settings.COLOR_TEXT)
@@ -1116,6 +1178,11 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         survival_color = settings.COLOR_BUTTON_SELECTED if endless_armed else settings.COLOR_TEXT_DIM
         survival_label = small_font.render(survival_text, True, survival_color)
         surface.blit(survival_label, survival_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 60)))
+
+        sandbox_text = f"[B] Sandbox: {'On' if sandbox_armed else 'Off'}"
+        sandbox_color = settings.COLOR_BUTTON_SELECTED if sandbox_armed else settings.COLOR_TEXT_DIM
+        sandbox_label = small_font.render(sandbox_text, True, sandbox_color)
+        surface.blit(sandbox_label, sandbox_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 80)))
 
     if not entries:
         empty_text = "No custom levels saved yet." if purpose == "edit" else "No levels available."

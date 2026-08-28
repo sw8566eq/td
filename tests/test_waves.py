@@ -1,5 +1,7 @@
 import random
 
+import pytest
+
 from enemy import GruntEnemy, ShieldedEnemy, TankEnemy
 from levels import Level
 from waves import WaveManager, WaveState
@@ -90,6 +92,54 @@ def test_skip_delay_during_an_actual_between_wave_countdown_starts_it_immediatel
     assert manager.between_wave_timer == 0.0
     manager.update(dt=0.01, active_enemies=[])
     assert manager.state == WaveState.SPAWNING
+
+
+def test_restore_sets_wave_index_state_and_timer():
+    level = make_level([{"grunt": 1}, {"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    manager.restore(wave_index=1, state=WaveState.BETWEEN_WAVES, between_wave_timer=2.5)
+
+    assert manager.wave_index == 1
+    assert manager.current_wave_number == 2
+    assert manager.state == WaveState.BETWEEN_WAVES
+    assert manager.between_wave_timer == 2.5
+
+
+def test_restore_into_awaiting_start_is_accepted():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    manager.restore(wave_index=0, state=WaveState.AWAITING_START, between_wave_timer=5.0)
+
+    assert manager.state == WaveState.AWAITING_START
+
+
+def test_restore_rejects_spawning():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    with pytest.raises(ValueError):
+        manager.restore(wave_index=0, state=WaveState.SPAWNING, between_wave_timer=0.0)
+
+
+def test_restore_rejects_done():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    with pytest.raises(ValueError):
+        manager.restore(wave_index=0, state=WaveState.DONE, between_wave_timer=0.0)
+
+
+def test_restored_wave_continues_normally_afterward():
+    level = make_level([{"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.01, between_wave_delay=0.01)
+
+    manager.restore(wave_index=1, state=WaveState.BETWEEN_WAVES, between_wave_timer=0.005)
+    manager.update(dt=0.01, active_enemies=[])  # countdown elapses -> begins wave 2
+
+    assert manager.state == WaveState.SPAWNING
+    assert manager.current_wave_number == 2
 
 
 def test_skip_delay_is_a_no_op_while_a_wave_is_actively_spawning():

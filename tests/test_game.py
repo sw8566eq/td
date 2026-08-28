@@ -14,23 +14,33 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame  # noqa: E402
 import pytest  # noqa: E402
 
+import achievements  # noqa: E402
+import difficulty  # noqa: E402
 import player_settings  # noqa: E402
 import progress  # noqa: E402
+import save_state  # noqa: E402
 import settings  # noqa: E402
 import ui  # noqa: E402
 from editor import EditorTool  # noqa: E402
 from game import Game, GameState  # noqa: E402
 from levels import LEVELS, Level  # noqa: E402
 from tower import TOWER_TYPES, BasicTower  # noqa: E402
+from waves import WaveState  # noqa: E402
 
 
 @pytest.fixture
 def game(tmp_path):
-    # progress_path/settings_path both pinned to throwaway files -- Game
-    # writes real progress on VICTORY (see progress.py) and real settings
-    # on set_fullscreen()/set_difficulty() (see player_settings.py), and
-    # this must never touch (or leave behind) either real repo-root file.
-    g = Game(progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json")
+    # progress_path/settings_path/achievements_path/save_path all pinned to
+    # throwaway files -- Game writes real progress on VICTORY (see
+    # progress.py), real settings on set_fullscreen()/set_difficulty() (see
+    # player_settings.py), real achievement counters on nearly every tower/
+    # kill/wave/level event (see achievements.py), and a real in-progress
+    # save on save_run() (see save_state.py), and this must never touch (or
+    # leave behind) any of those real repo-root files.
+    g = Game(
+        progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json",
+        achievements_path=tmp_path / "achievements.json", save_path=tmp_path / "save_state.json",
+    )
     yield g
     pygame.quit()
 
@@ -115,7 +125,8 @@ def test_unlimited_gold_defaults_to_off(game):
 
 def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
     g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
-             settings_path=tmp_path / "player_settings.json")
+             settings_path=tmp_path / "player_settings.json", achievements_path=tmp_path / "achievements.json",
+             save_path=tmp_path / "save_state.json")
     try:
         assert g.economy.unlimited_gold is True
     finally:
@@ -124,7 +135,8 @@ def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
 
 def test_unlimited_gold_flag_survives_a_level_reload(tmp_path):
     g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
-             settings_path=tmp_path / "player_settings.json")
+             settings_path=tmp_path / "player_settings.json", achievements_path=tmp_path / "achievements.json",
+             save_path=tmp_path / "save_state.json")
     try:
         g.load_level(g.current_level_id)
         assert g.economy.unlimited_gold is True
@@ -156,8 +168,10 @@ def test_set_difficulty_ignores_an_unknown_key(game):
 
 
 def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_easy(tmp_path):
-    hard = Game(progress_path=tmp_path / "hard.json", settings_path=tmp_path / "hard_settings.json")
-    easy = Game(progress_path=tmp_path / "easy.json", settings_path=tmp_path / "easy_settings.json")
+    hard = Game(progress_path=tmp_path / "hard.json", settings_path=tmp_path / "hard_settings.json",
+                achievements_path=tmp_path / "hard_achievements.json", save_path=tmp_path / "hard_save.json")
+    easy = Game(progress_path=tmp_path / "easy.json", settings_path=tmp_path / "easy_settings.json",
+                achievements_path=tmp_path / "easy_achievements.json", save_path=tmp_path / "easy_save.json")
     try:
         hard.set_difficulty("hard")
         hard.load_level(1)
@@ -184,7 +198,7 @@ def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_ea
 # --- State machine: keydown handling ---
 
 def test_menu_any_key_starts_playing(game):
-    game._handle_keydown(pygame.K_a)
+    game._handle_keydown(pygame.K_SPACE)  # not one of the menu's own bound keys (E/L/S/A)
     assert game.state == GameState.PLAYING
 
 
@@ -948,6 +962,21 @@ def test_try_specialize_tower_succeeds_and_deducts_gold(playing_game):
     assert playing_game.economy.gold == gold_before - cost
 
 
+def test_try_specialize_tower_records_the_towers_specialized_achievement_counter(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)
+
+    playing_game.try_specialize_tower(tower, "power")
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["towers_specialized"] == 1
+
+
 def test_try_specialize_tower_fails_before_max_level(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -1173,6 +1202,27 @@ def test_try_place_tower_succeeds_with_zero_gold_under_unlimited_gold(playing_ga
     assert playing_game.economy.gold == 0  # not actually deducted
 
 
+def test_try_place_tower_records_the_towers_built_achievement_counter(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+
+    playing_game.try_place_tower(anchor_col, anchor_row)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["towers_built"] == 1
+
+
+def test_try_place_tower_does_not_record_an_achievement_in_sandbox_mode(playing_game):
+    playing_game.sandbox = True
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+
+    playing_game.try_place_tower(anchor_col, anchor_row)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert "towers_built" not in counters
+
+
 def test_try_place_tower_fails_when_nothing_selected(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     assert playing_game.selected_tower_name is None
@@ -1194,6 +1244,20 @@ def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
     assert playing_game.try_upgrade_tower(tower) is True
     assert tower.level == 2
     assert playing_game.economy.gold == gold_before - cost
+
+
+def test_maxing_a_tower_records_the_towers_maxed_achievement_counter_once(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.economy.gold = 10_000
+
+    while not tower.is_max_level:
+        playing_game.try_upgrade_tower(tower)  # only the final upgrade should record
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["towers_maxed"] == 1
 
 
 def test_try_upgrade_tower_fails_when_unaffordable(playing_game):
@@ -1266,6 +1330,94 @@ def test_killing_an_enemy_grants_its_gold_reward(playing_game):
     assert enemy not in playing_game.enemies
 
 
+def test_killing_an_enemy_records_the_kills_achievement_counter(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(enemy.max_hp)
+    playing_game.update(dt=0.01)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["kills"] == 1
+
+
+def test_killing_an_enemy_in_sandbox_mode_records_no_achievement(playing_game):
+    playing_game.sandbox = True
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(enemy.max_hp)
+    playing_game.update(dt=0.01)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert "kills" not in counters
+
+
+def test_unlocking_an_achievement_queues_a_toast(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(enemy.max_hp)  # first ever kill -- unlocks "first_blood"
+    playing_game.update(dt=0.01)
+
+    assert len(playing_game.achievement_toasts) == 1
+    assert "First Blood" in playing_game.achievement_toasts[0].text
+
+
+def test_achievement_toasts_are_pruned_once_expired(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+    enemy.take_damage(enemy.max_hp)
+    playing_game.update(dt=0.01)
+    assert playing_game.achievement_toasts
+
+    playing_game.update(dt=10.0)  # comfortably past any toast's lifetime
+
+    assert playing_game.achievement_toasts == []
+
+
+def test_clearing_a_wave_records_the_waves_survived_achievement_counter(playing_game):
+    playing_game.wave_manager.state = WaveState.SPAWNING
+    playing_game.wave_manager._spawn_queues = []  # nothing left queued this wave
+    playing_game.enemies = []  # and nothing still alive -- the wave is about to clear
+
+    playing_game.update(dt=0.01)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["waves_survived"] == 1
+
+
+def test_clearing_a_level_records_the_levels_cleared_achievement_counter(playing_game):
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["levels_cleared"] == 1
+
+
+def test_clearing_a_level_in_sandbox_mode_records_no_levels_cleared_achievement(playing_game):
+    playing_game.sandbox = True
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert "levels_cleared" not in counters
+
+
 def test_taking_damage_spawns_a_floating_damage_number(playing_game):
     playing_game.wave_manager.skip_delay()
     playing_game.update(dt=0.01)
@@ -1296,6 +1448,52 @@ def test_floating_damage_numbers_are_pruned_once_expired(playing_game):
     playing_game.update(dt=10.0)  # comfortably past any FloatingText's lifetime
 
     assert playing_game.damage_numbers == []
+
+
+def test_a_projectile_hit_spawns_an_impact_effect_sized_to_its_splash_radius(playing_game):
+    from projectile import Projectile
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    # Positioned to resolve immediately -- distance to target is 0.
+    projectile = Projectile(pos=enemy.pos, target=enemy, speed=1000, damage=1, splash_radius=30)
+    playing_game.projectiles.append(projectile)
+
+    playing_game.update(dt=0.01)
+
+    assert len(playing_game.impact_effects) == 1
+    assert playing_game.impact_effects[0].max_radius == 30
+    assert projectile.impact_events == []  # drained the same frame it was populated
+
+
+def test_a_dying_enemy_spawns_a_death_poof_impact_effect(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(enemy.max_hp)
+    playing_game.update(dt=0.01)
+
+    assert len(playing_game.impact_effects) == 1
+    assert playing_game.impact_effects[0].max_radius == enemy.radius * 1.8
+
+
+def test_impact_effects_are_pruned_once_expired(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)
+    playing_game.update(dt=0.1)
+    enemy = playing_game.enemies[0]
+
+    enemy.take_damage(enemy.max_hp)
+    playing_game.update(dt=0.01)
+    assert playing_game.impact_effects
+
+    playing_game.update(dt=10.0)  # comfortably past any ExpandingRing's duration
+
+    assert playing_game.impact_effects == []
 
 
 def test_enemy_reaching_the_goal_costs_a_life_and_is_removed(playing_game):
@@ -1496,6 +1694,53 @@ def test_settings_click_off_any_button_is_a_no_op(game):
     assert game.difficulty == "normal"
 
 
+# --- Achievements screen ---
+
+def test_menu_a_key_enters_achievements(game):
+    game._handle_keydown(pygame.K_a)
+    assert game.state == GameState.ACHIEVEMENTS
+
+
+def test_achievements_escape_returns_to_menu(game):
+    game.state = GameState.ACHIEVEMENTS
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_achievements_unbound_key_is_a_no_op(game):
+    game.state = GameState.ACHIEVEMENTS
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.ACHIEVEMENTS
+
+
+def test_achievements_click_on_back_returns_to_menu(game):
+    game.state = GameState.ACHIEVEMENTS
+    game._handle_achievements_click(game.achievements_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_achievements_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.ACHIEVEMENTS
+    game._handle_achievements_click((0, 0))
+    assert game.state == GameState.ACHIEVEMENTS
+
+
+def test_entering_achievements_reloads_state_from_disk(game):
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.state = GameState.PLAYING
+    game.selected_tower_name = "basic"
+    game.try_place_tower(anchor_col, anchor_row)  # unlocks "groundbreaker" on disk
+
+    game._enter_achievements()
+
+    assert "groundbreaker" in game.achievements_state["unlocked"]
+
+
+def test_render_achievements_screen_does_not_crash(game):
+    game._enter_achievements()
+    game.render()
+
+
 def test_fullscreen_setting_persists_to_the_settings_file(game):
     game.set_fullscreen(True)
     reloaded = player_settings.load_settings(game.settings_path)
@@ -1510,14 +1755,18 @@ def test_difficulty_setting_persists_to_the_settings_file(game):
 
 def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     settings_path = tmp_path / "player_settings.json"
-    first = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path)
+    achievements_path = tmp_path / "achievements.json"
+    save_path = tmp_path / "save_state.json"
+    first = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path,
+                 achievements_path=achievements_path, save_path=save_path)
     try:
         first.set_fullscreen(True)
         first.set_difficulty("hard")
     finally:
         pygame.quit()
 
-    second = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path)
+    second = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path,
+                   achievements_path=achievements_path, save_path=save_path)
     try:
         assert second.fullscreen is True
         assert second.difficulty == "hard"
@@ -2196,6 +2445,329 @@ def test_reset_without_endless_stays_non_endless(game):
     assert game.wave_manager.endless is False
 
 
+# --- Sandbox/Creative mode ---
+
+def test_b_key_arms_sandbox_only_while_browsing_to_play(game):
+    game._enter_level_select(purpose="play")
+    assert game.level_select_sandbox_armed is False
+    game._handle_keydown(pygame.K_b)
+    assert game.level_select_sandbox_armed is True
+    game._handle_keydown(pygame.K_b)
+    assert game.level_select_sandbox_armed is False
+
+
+def test_b_key_is_a_no_op_while_browsing_to_edit(game):
+    game._enter_level_select(purpose="edit")
+    game._handle_keydown(pygame.K_b)
+    assert game.level_select_sandbox_armed is False
+
+
+def test_entering_level_select_resets_sandbox_armed(game):
+    game._enter_level_select()
+    game.level_select_sandbox_armed = True
+    game._enter_level_select()
+    assert game.level_select_sandbox_armed is False
+
+
+def test_picking_a_level_while_sandbox_armed_starts_it_in_sandbox_mode(game):
+    game._enter_level_select()
+    game.level_select_sandbox_armed = True
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.sandbox is True
+    assert game.economy.unlimited_gold is True
+    assert game.economy.invulnerable is True
+
+
+def test_picking_a_level_while_not_armed_starts_it_without_sandbox(game):
+    game._enter_level_select()
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.sandbox is False
+    assert game.economy.invulnerable is False
+
+
+def test_sandbox_and_endless_are_independently_combinable(game):
+    # Infinite lives plus escalating waves is a legitimate "just mess
+    # around" combo -- arming both must not make either a no-op.
+    game._enter_level_select()
+    game.level_select_endless_armed = True
+    game.level_select_sandbox_armed = True
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.wave_manager.endless is True
+    assert game.economy.invulnerable is True
+
+
+def test_sandbox_run_never_reaches_game_over_from_lost_lives(playing_game):
+    playing_game.load_level(1, sandbox=True)
+    playing_game.state = GameState.PLAYING
+    playing_game.economy.lives = 1
+    playing_game.economy.lose_life()
+    playing_game.update(dt=0.01)
+    assert playing_game.state == GameState.PLAYING
+    assert not playing_game.economy.is_out_of_lives
+
+
+def test_sandbox_victory_does_not_mark_progress_cleared(game):
+    # A trivial (unlimited-gold, invulnerable) clear shouldn't pollute real
+    # best-lives-remaining progress, same reasoning already applied to an
+    # endless run never reaching all_waves_complete at all.
+    game.load_level(1, sandbox=True)
+    game.state = GameState.PLAYING
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    assert game.state == GameState.VICTORY
+    assert 1 not in progress.load_progress(game.progress_path)
+
+
+def test_sandbox_flag_survives_a_reset(game):
+    game.load_level(1, sandbox=True)
+    game.reset()
+    assert game.sandbox is True
+    assert game.economy.invulnerable is True
+
+
+def test_reset_without_sandbox_stays_non_sandbox(game):
+    game.load_level(1)
+    game.reset()
+    assert game.sandbox is False
+    assert game.economy.invulnerable is False
+
+
+# --- Save/resume a run in progress ---
+
+def test_can_save_run_true_while_awaiting_start(playing_game):
+    assert playing_game.wave_manager.state == WaveState.AWAITING_START
+    assert playing_game.can_save_run() is True
+
+
+def test_can_save_run_true_during_between_waves(playing_game):
+    playing_game.wave_manager.state = WaveState.BETWEEN_WAVES
+    assert playing_game.can_save_run() is True
+
+
+def test_can_save_run_false_while_spawning(playing_game):
+    playing_game.wave_manager.state = WaveState.SPAWNING
+    assert playing_game.can_save_run() is False
+
+
+def test_can_save_run_false_once_done(playing_game):
+    playing_game.wave_manager.state = WaveState.DONE
+    assert playing_game.can_save_run() is False
+
+
+def test_save_run_writes_a_file_and_returns_true(playing_game):
+    assert playing_game.save_run() is True
+    assert save_state.has_saved_run(playing_game.save_path)
+
+
+def test_save_run_fails_and_writes_nothing_while_spawning(playing_game):
+    playing_game.wave_manager.state = WaveState.SPAWNING
+    assert playing_game.save_run() is False
+    assert not save_state.has_saved_run(playing_game.save_path)
+
+
+def test_s_key_while_paused_saves_and_returns_to_menu(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_s)
+    assert playing_game.state == GameState.MENU
+    assert save_state.has_saved_run(playing_game.save_path)
+
+
+def test_s_key_while_paused_is_a_no_op_mid_wave(playing_game):
+    playing_game.wave_manager.state = WaveState.SPAWNING
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_s)
+    assert playing_game.state == GameState.PAUSED
+    assert not save_state.has_saved_run(playing_game.save_path)
+
+
+def test_c_key_at_the_menu_is_a_no_op_without_a_saved_run(game):
+    game._handle_keydown(pygame.K_c)
+    assert game.state == GameState.PLAYING  # falls through to the generic "any key" case
+
+
+def _place_and_max_a_tower(game, tower_name="lightning", specialize_key="overcharge"):
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = tower_name
+    game.economy.gold = 10_000
+    game.try_place_tower(anchor_col, anchor_row)
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    while not tower.is_max_level:
+        game.try_upgrade_tower(tower)
+    game.try_specialize_tower(tower, specialize_key)
+    tower.cycle_targeting_mode()
+    return anchor_col, anchor_row, tower
+
+
+def test_c_key_at_the_menu_resumes_a_saved_run(playing_game):
+    anchor_col, anchor_row, tower = _place_and_max_a_tower(playing_game)
+    gold_before, lives_before = playing_game.economy.gold, playing_game.economy.lives
+    playing_game.save_run()
+    playing_game.state = GameState.MENU
+
+    playing_game._handle_keydown(pygame.K_c)
+
+    assert playing_game.state == GameState.PLAYING
+    assert playing_game.economy.gold == gold_before
+    assert playing_game.economy.lives == lives_before
+    resumed_tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    assert resumed_tower.level == tower.level
+    assert resumed_tower.specialization == tower.specialization
+    assert resumed_tower.targeting_mode == tower.targeting_mode
+
+
+def test_resuming_does_not_recharge_gold_for_reconstructed_towers(playing_game):
+    _place_and_max_a_tower(playing_game)
+    gold_after_building = playing_game.economy.gold
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert playing_game.economy.gold == gold_after_building
+
+
+def test_resuming_does_not_rebump_achievement_counters(playing_game):
+    _place_and_max_a_tower(playing_game)
+    counters_after_building = dict(achievements.load_achievements(playing_game.achievements_path)["counters"])
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    counters_after_resume = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters_after_resume == counters_after_building
+
+
+def test_resuming_reconstructs_a_custom_levels_identity(playing_game):
+    custom = make_custom_level()
+    playing_game.load_custom_level(custom)
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert playing_game.current_level_id is None
+    assert playing_game.level.id == custom.id
+
+
+def test_resuming_continues_an_endless_runs_escalation(playing_game):
+    playing_game.load_level(1, endless=True)
+    original_wave_count = len(playing_game.level.wave_specs)
+    spawn_cell = playing_game.level.spawn_cells[0]
+    playing_game.level.wave_specs.append({spawn_cell: {"grunt": 99}})  # simulate an endless-generated wave
+    playing_game.wave_manager.wave_index = original_wave_count  # "on" that generated wave
+    playing_game.wave_manager.state = WaveState.BETWEEN_WAVES
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert playing_game.wave_manager.endless is True
+    assert len(playing_game.level.wave_specs) == original_wave_count + 1
+    assert playing_game.wave_manager.wave_index == original_wave_count
+    # Regression guard, same as the non-resume endless test: the shared
+    # LEVELS registry entry must never see the generated wave either.
+    assert len(LEVELS[1].wave_specs) == original_wave_count
+
+
+def test_resuming_honors_the_saved_runs_own_difficulty_even_if_the_player_setting_changed(playing_game):
+    playing_game.difficulty = "hard"
+    playing_game.load_level(1)  # rebuild wave_manager under "hard"
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.difficulty = "easy"  # the player changes their setting afterward
+    playing_game.resume_saved_run(save_data)
+
+    hard_multiplier = difficulty.DIFFICULTY_MODES["hard"].enemy_hp_multiplier
+    assert playing_game.wave_manager.enemy_hp_multiplier == hard_multiplier
+    assert playing_game.difficulty == "easy"  # the sticky player pref itself is untouched
+
+
+def test_resuming_a_sandbox_run_restores_invulnerability_and_unlimited_gold(playing_game):
+    playing_game.load_level(1, sandbox=True)
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert playing_game.sandbox is True
+    assert playing_game.economy.invulnerable is True
+    assert playing_game.economy.unlimited_gold is True
+
+
+def test_game_over_after_resuming_deletes_the_save_file(playing_game):
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+    playing_game.resume_saved_run(save_data)
+    assert save_state.has_saved_run(playing_game.save_path)
+
+    playing_game.economy.lives = 1
+    playing_game.economy.lose_life()
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.GAME_OVER
+    assert not save_state.has_saved_run(playing_game.save_path)
+
+
+def test_victory_after_resuming_deletes_the_save_file(playing_game):
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+    playing_game.resume_saved_run(save_data)
+    assert save_state.has_saved_run(playing_game.save_path)
+
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    assert not save_state.has_saved_run(playing_game.save_path)
+
+
+def test_a_fresh_unrelated_run_reaching_victory_does_not_delete_someone_elses_save(playing_game):
+    # A save left over from a *different*, still-unresumed run must survive
+    # this instance's own, entirely separate victory.
+    save_state.save_run(playing_game, playing_game.save_path)
+    assert playing_game._resumed_from_save is False
+
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    assert save_state.has_saved_run(playing_game.save_path)  # untouched
+
+
+def test_restarting_a_resumed_run_stops_treating_it_as_resumed(playing_game):
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+    playing_game.resume_saved_run(save_data)
+    assert playing_game._resumed_from_save is True
+
+    playing_game.reset()
+
+    assert playing_game._resumed_from_save is False
+
+
+def test_render_menu_shows_no_continue_hint_without_a_saved_run(game):
+    game.render()  # must not crash either way; nothing to assert on pixels here
+
+
+def test_render_menu_with_a_saved_run_does_not_crash(playing_game):
+    playing_game.save_run()
+    playing_game.state = GameState.MENU
+    playing_game.render()
+
+
+def test_render_pause_menu_with_save_available_does_not_crash(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.render()
+
+
 # --- Level unlocking (progress.py) ---
 
 def test_level_2_is_locked_until_level_1_is_cleared(game):
@@ -2235,7 +2807,8 @@ def test_clearing_a_level_persists_across_a_fresh_game_instance(playing_game):
     # A brand-new Game pointed at the same progress file should see level 2
     # already unlocked -- progress persists across sessions, not just for
     # the instance that earned it.
-    reloaded = Game(progress_path=playing_game.progress_path, settings_path=playing_game.settings_path)
+    reloaded = Game(progress_path=playing_game.progress_path, settings_path=playing_game.settings_path,
+                     achievements_path=playing_game.achievements_path, save_path=playing_game.save_path)
     try:
         reloaded._enter_level_select()
         assert 2 not in reloaded.level_select_locked_ids
@@ -2365,9 +2938,19 @@ def test_render_with_all_waves_complete_does_not_crash(playing_game):
 
 
 def test_render_during_the_between_waves_countdown_does_not_crash(playing_game):
-    from waves import WaveState
     playing_game.wave_manager.skip_delay()  # AWAITING_START -> BETWEEN_WAVES, timer 0
     assert playing_game.wave_manager.state == WaveState.BETWEEN_WAVES
+    playing_game.render()
+
+
+def test_render_with_invulnerable_economy_shows_infinite_lives_does_not_crash(playing_game):
+    playing_game.economy.invulnerable = True
+    playing_game.render()
+
+
+def test_render_draws_impact_effects_without_crashing(playing_game):
+    import effects
+    playing_game.impact_effects.append(effects.ExpandingRing((100, 100), max_radius=30))
     playing_game.render()
 
 

@@ -1,6 +1,6 @@
 import pygame
 
-from effects import FloatingText
+from effects import ExpandingRing, FloatingText
 
 
 def _font():
@@ -62,5 +62,71 @@ def test_draw_is_a_no_op_once_dead():
     assert text.dead
 
     text.draw(surface, _font())
+
+    assert surface.get_at((50, 50)) == (0, 0, 0, 255)  # nothing drawn -- early return
+
+
+# --- ExpandingRing ---
+
+def test_ring_update_ages():
+    ring = ExpandingRing((100, 100), max_radius=20, duration=1.0)
+
+    ring.update(dt=0.5)
+
+    assert ring.age == 0.5
+    assert not ring.dead
+
+
+def test_ring_dead_once_age_reaches_duration():
+    ring = ExpandingRing((0, 0), max_radius=20, duration=0.4)
+
+    ring.update(dt=0.4)
+
+    assert ring.dead
+
+
+def test_ring_not_dead_just_before_duration_elapses():
+    ring = ExpandingRing((0, 0), max_radius=20, duration=0.4)
+
+    ring.update(dt=0.39)
+
+    assert not ring.dead
+
+
+def test_ring_pos_starts_at_the_given_position():
+    ring = ExpandingRing((12, 34), max_radius=20)
+
+    assert ring.pos == pygame.Vector2(12, 34)
+
+
+def test_ring_grows_from_start_radius_toward_max_radius():
+    ring = ExpandingRing((0, 0), max_radius=50, duration=1.0, start_radius=4.0)
+    assert ring._progress == 0.0
+
+    ring.update(dt=0.5)
+    assert ring._progress == 0.5
+
+    ring.update(dt=0.5)
+    assert ring._progress == 1.0  # fully grown, clamped at 1.0 even exactly at duration
+
+
+def test_ring_draw_blits_something_onto_the_surface():
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+    ring = ExpandingRing((50, 50), max_radius=20, start_radius=15, color=(255, 255, 255))
+
+    ring.draw(surface)
+
+    assert surface.get_at((50, 50 - 15)) != (0, 0, 0, 255)  # the ring's outline was blitted
+
+
+def test_ring_draw_is_a_no_op_once_dead():
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+    ring = ExpandingRing((50, 50), max_radius=20, duration=0.1)
+    ring.update(dt=0.2)  # now dead
+    assert ring.dead
+
+    ring.draw(surface)
 
     assert surface.get_at((50, 50)) == (0, 0, 0, 255)  # nothing drawn -- early return

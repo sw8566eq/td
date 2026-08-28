@@ -225,3 +225,29 @@ def test_boss_does_not_appear_before_the_final_wave():
     for level_id, level in LEVELS.items():
         for wave in level.wave_specs[:-1]:
             assert "boss" not in _wave_species(wave), level_id
+
+
+def test_level_7_is_a_single_spawn_branching_into_two_goals():
+    level = LEVELS[7]
+    assert len(level.spawn_cells) == 1
+    assert len(level.goal_cells) == 2
+
+
+def test_level_8_merges_two_spawns_then_branches_into_two_goals():
+    level = LEVELS[8]
+    assert len(level.spawn_cells) == 2
+    assert len(level.goal_cells) == 2
+
+
+def test_level_9_merges_three_spawns_into_a_single_goal():
+    level = LEVELS[9]
+    assert len(level.spawn_cells) == 3
+    assert len(level.goal_cells) == 1
+
+
+def test_at_least_one_registered_level_branches_into_multiple_goals():
+    # Levels 1-6 all funnel into exactly one goal each (even Confluence,
+    # which merges spawns but still has a single goal) -- Level 7/8 are the
+    # first to actually branch, the mirror image of the existing
+    # multi-spawn-merge coverage above.
+    assert any(len(level.goal_cells) > 1 for level in LEVELS.values())

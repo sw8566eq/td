@@ -64,3 +64,25 @@ def test_unlimited_gold_defaults_to_off():
     economy = Economy(starting_gold=0, starting_lives=20)
     assert economy.unlimited_gold is False
     assert not economy.can_afford(1)
+
+
+# --- Sandbox mode: invulnerability ---
+
+def test_invulnerable_lose_life_is_a_no_op():
+    economy = Economy(starting_gold=0, starting_lives=5, invulnerable=True)
+    economy.lose_life()
+    economy.lose_life(100)
+    assert economy.lives == 5  # never actually deducted, same as unlimited_gold's spend()
+
+
+def test_invulnerable_is_never_out_of_lives_even_at_zero():
+    economy = Economy(starting_gold=0, starting_lives=0, invulnerable=True)
+    assert not economy.is_out_of_lives
+
+
+def test_invulnerable_defaults_to_off():
+    economy = Economy(starting_gold=0, starting_lives=1)
+    assert economy.invulnerable is False
+    economy.lose_life()
+    assert economy.lives == 0
+    assert economy.is_out_of_lives

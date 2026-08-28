@@ -1,0 +1,94 @@
+"""Save/load a single in-progress run to/from disk as JSON.
+
+Only ever one save slot (save_state.json), mirroring progress.py/player_
+settings.py's own "one JSON file for this kind of data" convention. Saving
+is only ever offered between waves (see Game.can_save_run()/save_run()) --
+never mid-SPAWNING -- so there is no live enemy/projectile/effect state to
+serialize at all; a resumed run always starts from a clean wave boundary,
+same restriction WaveManager.restore() itself enforces on the way back in.
+
+Reuses persistence.level_to_dict()/level_from_dict() for the level blob
+(a Level is exactly as JSON-serializable here as it is for a saved custom
+level, endless-appended waves included) rather than re-deriving that shape.
+"""
+
+import json
+import os
+
+from persistence import level_from_dict, level_to_dict
+from tower import TOWER_TYPES
+
+SCHEMA_VERSION = 1
+SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "save_state.json")
+
+
+def _tower_type_name(tower):
+    for name, cls in TOWER_TYPES.items():
+        if type(tower) is cls:
+            return name
+    raise ValueError(f"{tower!r} is not an instance of a registered TOWER_TYPES class")
+
+
+def save_run(game, path=SAVE_PATH):
+    """Serialize `game`'s current in-progress run to `path`. The caller
+    (Game.save_run()) is responsible for only ever calling this between
+    waves -- see this module's own docstring for why."""
+    data = {
+        "schema_version": SCHEMA_VERSION,
+        "current_level_id": game.current_level_id,
+        "level": level_to_dict(game.level),
+        "endless": game.endless,
+        "sandbox": game.sandbox,
+        # This run's own difficulty, not necessarily whatever
+        # game.difficulty (a sticky, cross-session player preference) says
+        # by the time it's resumed -- see Game.resume_saved_run().
+        "difficulty": game.difficulty,
+        "gold": game.economy.gold,
+        "lives": game.economy.lives,
+        "wave_index": game.wave_manager.wave_index,
+        "wave_state": game.wave_manager.state,
+        "between_wave_timer": game.wave_manager.between_wave_timer,
+        "towers": [
+            {
+                "type": _tower_type_name(tower),
+                "anchor_col": tower.anchor_col,
+                "anchor_row": tower.anchor_row,
+                "level": tower.level,
+                "specialization": tower.specialization,
+                "targeting_mode": tower.targeting_mode,
+            }
+            for tower in game.towers
+        ],
+    }
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_run(path=SAVE_PATH):
+    """The saved-run dict (its "level" entry already converted to a live
+    Level via persistence.level_from_dict -- everything else stays plain
+    JSON-safe data for Game.resume_saved_run() to interpret), or None if
+    there's nothing valid to resume. A missing or corrupt file is "nothing
+    to resume," not a crash, same spirit as persistence.list_custom_levels()
+    skipping a bad file."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        data["level"] = level_from_dict(data["level"])
+        return data
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def has_saved_run(path=SAVE_PATH):
+    return os.path.isfile(path)
+
+
+def delete_saved_run(path=SAVE_PATH):
+    """Remove the save file if it exists -- a no-op otherwise. Called once
+    a resumed run reaches GAME_OVER/VICTORY (see Game), so "Continue" only
+    ever offers a genuinely resumable in-progress run."""
+    if os.path.isfile(path):
+        os.remove(path)

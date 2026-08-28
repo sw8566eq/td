@@ -52,6 +52,135 @@ def test_boss_is_slower_than_every_regular_species():
         assert boss.speed < regular.speed, enemy_cls
 
 
+def test_boss_enrages_once_hp_drops_to_the_threshold():
+    boss = BossEnemy(WAYPOINTS, wave_number=1)  # max_hp=500, enrage at hp<=250
+    base_speed = boss.speed
+    boss.take_damage(250)  # hp == 250, exactly at the threshold
+
+    assert boss.enraged is True
+    assert boss.speed == pytest.approx(base_speed * BossEnemy.ENRAGE_SPEED_MULTIPLIER)
+
+    # Further damage (still above 0) must not re-trigger/compound the boost.
+    boss.take_damage(50)
+    assert boss.speed == pytest.approx(base_speed * BossEnemy.ENRAGE_SPEED_MULTIPLIER)
+
+
+def test_boss_enrage_speed_is_capped_at_max_speed():
+    # A late-wave boss is already at (or near) max_speed before enraging --
+    # the 1.5x multiplier must never push it past the cap every other
+    # speed change in this codebase respects.
+    boss = BossEnemy(WAYPOINTS, wave_number=26)  # speed already capped at max_speed
+    assert boss.speed == BossEnemy.max_speed
+    boss.take_damage(boss.max_hp * 0.6)  # crosses the enrage threshold without killing it
+    assert boss.enraged is True
+    assert boss.speed == BossEnemy.max_speed
+
+
+def test_boss_enrage_threshold_uses_live_max_hp_not_a_cached_one():
+    # Mirrors what WaveManager._spawn_enemy actually does: scale max_hp/hp
+    # for difficulty *after* construction. A threshold baked in at
+    # __init__ would silently fire at the wrong HP here.
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    boss.max_hp *= 2.0  # e.g. difficulty's enemy_hp_multiplier
+    boss.hp = boss.max_hp
+
+    boss.take_damage(boss.max_hp * 0.6)  # leaves hp at 40% of the *new* max_hp
+    assert boss.enraged is True
+
+
+def test_boss_armor_phase_reduces_flat_damage_until_it_expires():
+    boss = BossEnemy(LONG_WAYPOINTS, wave_number=1)  # max_hp=500, armor at hp<=100
+    boss.take_damage(400)  # hp == 100 -- crosses both enrage and armor thresholds
+    assert boss.armor_used is True
+    assert boss.armor_timer == BossEnemy.ARMOR_DURATION
+
+    boss.take_damage(50)  # reduced by ARMOR_FLAT_REDUCTION while armor is active
+    assert boss.hp == 100 - (50 - BossEnemy.ARMOR_FLAT_REDUCTION)
+
+    boss.update(dt=BossEnemy.ARMOR_DURATION)  # armor window fully elapses
+    assert boss.armor_timer == 0
+
+    hp_before = boss.hp
+    boss.take_damage(50)  # full damage now that armor has expired
+    assert boss.hp == hp_before - 50
+
+
+def test_boss_armor_flat_reduction_never_makes_damage_negative():
+    boss = BossEnemy(LONG_WAYPOINTS, wave_number=1)
+    boss.take_damage(400)  # triggers armor phase
+    hp_before = boss.hp
+    boss.take_damage(1)  # far less than ARMOR_FLAT_REDUCTION
+    assert boss.hp == hp_before  # clamped at 0 damage, not negative
+
+
+def test_boss_armor_phase_is_a_one_time_effect():
+    boss = BossEnemy(LONG_WAYPOINTS, wave_number=1)
+    boss.take_damage(450)  # hp == 50, well past the armor threshold
+    assert boss.armor_used is True
+    boss.update(dt=BossEnemy.ARMOR_DURATION)  # armor window elapses
+    assert boss.armor_timer == 0
+
+    boss.take_damage(10)  # still below the armor threshold -- must not re-arm
+    assert boss.armor_timer == 0
+    assert boss.armor_used is True
+
+
+def test_boss_take_damage_is_a_no_op_for_dead_or_finished_enemies():
+    dead = BossEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    assert dead.is_dead
+    assert dead.enraged is False  # a killing blow has no mechanic left to trigger
+    dead.take_damage(1)  # guarded -- must not raise or change state
+    assert dead.enraged is False
+
+    finished = BossEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    hp_before = finished.hp
+    finished.take_damage(1)
+    assert finished.hp == hp_before
+
+
+def test_boss_update_does_not_tick_armor_timer_for_dead_or_finished_enemies():
+    dead = BossEnemy(LONG_WAYPOINTS, wave_number=1)
+    dead.take_damage(dead.max_hp)  # kill -- armor never triggers on a killing blow
+    dead.armor_timer = 2.0  # force a timer as if it had (hypothetically) been armed
+    dead.update(dt=10.0)
+    assert dead.armor_timer == 2.0  # unchanged -- guarded before ever ticking
+
+
+def test_boss_draw_shows_a_status_ring_once_enraged():
+    from assets import AssetManager
+    assets = AssetManager()
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    boss.pos = pygame.Vector2(50, 50)
+    boss.take_damage(300)  # hp == 200 -- past the enrage threshold
+
+    boss.draw(surface, assets)
+
+    ring_y = int(boss.pos.y - (boss.radius + 4))
+    assert surface.get_at((int(boss.pos.x), ring_y)) != (0, 0, 0, 255)
+
+
+def test_boss_draw_omits_the_status_ring_before_any_mechanic_triggers():
+    from assets import AssetManager
+    assets = AssetManager()
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    boss.pos = pygame.Vector2(50, 50)
+
+    boss.draw(surface, assets)
+
+    ring_y = int(boss.pos.y - (boss.radius + 4))
+    assert surface.get_at((int(boss.pos.x), ring_y)) == (0, 0, 0, 255)
+
+
 def test_scout_is_faster_and_squishier_than_grunt():
     grunt = GruntEnemy(WAYPOINTS, wave_number=1)
     scout = ScoutEnemy(WAYPOINTS, wave_number=1)
