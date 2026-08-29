@@ -1,5 +1,8 @@
 import settings
-from tower import TOWER_TYPES, BasicTower, CannonTower, LightningTower
+from tower import (
+    TOWER_TYPES, BasicTower, CannonTower, FrostTower, KnockbackTower,
+    LightningTower, PoisonTower, SniperTower, Tower,
+)
 
 
 def make_tower(tower_cls=BasicTower, anchor_col=0, anchor_row=0):
@@ -200,6 +203,171 @@ def test_lightning_tower_overcharge_boosts_damage_only():
 
     assert tower.damage == base_damage * multiplier
     assert tower.chain_range == base_chain_range  # unaffected
+
+
+def test_basic_tower_specializations_are_tuned_differently_from_the_generic_placeholder():
+    # Basic keeps the same "power"/"precision" *keys* as the generic
+    # placeholder (see tower.py's comment on BasicTower.SPECIALIZATIONS for
+    # why -- several tests above hardcode those key strings), but its own
+    # values should no longer just be Tower's placeholder verbatim.
+    assert set(BasicTower.SPECIALIZATIONS.keys()) == set(Tower.SPECIALIZATIONS.keys())
+    assert BasicTower.SPECIALIZATIONS != Tower.SPECIALIZATIONS
+
+
+def test_basic_tower_power_boosts_damage_only():
+    tower = _max_out(make_tower(BasicTower))
+    base_damage, base_fire_rate = tower.damage, tower.fire_rate
+    multiplier = BasicTower.SPECIALIZATIONS["power"]["stat_multipliers"]["damage"]
+
+    assert tower.specialize("power") is True
+
+    assert tower.damage == base_damage * multiplier
+    assert tower.fire_rate == base_fire_rate  # unaffected
+
+
+def test_basic_tower_precision_boosts_fire_rate_only():
+    tower = _max_out(make_tower(BasicTower))
+    base_damage, base_fire_rate = tower.damage, tower.fire_rate
+    multiplier = BasicTower.SPECIALIZATIONS["precision"]["stat_multipliers"]["fire_rate"]
+
+    assert tower.specialize("precision") is True
+
+    assert tower.fire_rate == base_fire_rate * multiplier
+    assert tower.damage == base_damage  # unaffected
+
+
+def test_sniper_tower_overrides_the_generic_specializations():
+    assert set(SniperTower.SPECIALIZATIONS.keys()) == {"armor_piercing", "extended_scope"}
+
+
+def test_sniper_tower_armor_piercing_boosts_damage_only():
+    tower = _max_out(make_tower(SniperTower))
+    base_damage, base_range = tower.damage, tower.range
+    multiplier = SniperTower.SPECIALIZATIONS["armor_piercing"]["stat_multipliers"]["damage"]
+
+    assert tower.specialize("armor_piercing") is True
+
+    assert tower.damage == base_damage * multiplier
+    assert tower.range == base_range  # unaffected
+
+
+def test_sniper_tower_extended_scope_boosts_range_only():
+    tower = _max_out(make_tower(SniperTower))
+    base_damage, base_range = tower.damage, tower.range
+    multiplier = SniperTower.SPECIALIZATIONS["extended_scope"]["stat_multipliers"]["range"]
+
+    assert tower.specialize("extended_scope") is True
+
+    assert tower.range == base_range * multiplier
+    assert tower.damage == base_damage  # unaffected
+
+
+def test_cannon_tower_overrides_the_generic_specializations():
+    assert set(CannonTower.SPECIALIZATIONS.keys()) == {"bigger_blast", "heavier_payload"}
+
+
+def test_cannon_tower_bigger_blast_boosts_splash_radius_only():
+    tower = _max_out(make_tower(CannonTower))
+    base_splash, base_damage = tower.splash_radius, tower.damage
+    multiplier = CannonTower.SPECIALIZATIONS["bigger_blast"]["stat_multipliers"]["splash_radius"]
+
+    assert tower.specialize("bigger_blast") is True
+
+    assert tower.splash_radius == base_splash * multiplier
+    assert tower.damage == base_damage  # unaffected
+
+
+def test_cannon_tower_heavier_payload_boosts_damage_only():
+    tower = _max_out(make_tower(CannonTower))
+    base_splash, base_damage = tower.splash_radius, tower.damage
+    multiplier = CannonTower.SPECIALIZATIONS["heavier_payload"]["stat_multipliers"]["damage"]
+
+    assert tower.specialize("heavier_payload") is True
+
+    assert tower.damage == base_damage * multiplier
+    assert tower.splash_radius == base_splash  # unaffected
+
+
+def test_frost_tower_overrides_the_generic_specializations():
+    assert set(FrostTower.SPECIALIZATIONS.keys()) == {"deep_freeze", "lingering_frost"}
+
+
+def test_frost_tower_deep_freeze_lowers_slow_factor_only():
+    # Deep Freeze's multiplier is deliberately < 1.0 -- a lower slow_factor
+    # is a *stronger* slow (see tower.py's comment on this override).
+    tower = _max_out(make_tower(FrostTower))
+    base_slow_factor, base_slow_duration = tower.slow_factor, tower.slow_duration
+    multiplier = FrostTower.SPECIALIZATIONS["deep_freeze"]["stat_multipliers"]["slow_factor"]
+    assert multiplier < 1.0
+
+    assert tower.specialize("deep_freeze") is True
+
+    assert tower.slow_factor == base_slow_factor * multiplier
+    assert tower.slow_factor < base_slow_factor
+    assert tower.slow_duration == base_slow_duration  # unaffected
+
+
+def test_frost_tower_lingering_frost_boosts_slow_duration_only():
+    tower = _max_out(make_tower(FrostTower))
+    base_slow_factor, base_slow_duration = tower.slow_factor, tower.slow_duration
+    multiplier = FrostTower.SPECIALIZATIONS["lingering_frost"]["stat_multipliers"]["slow_duration"]
+
+    assert tower.specialize("lingering_frost") is True
+
+    assert tower.slow_duration == base_slow_duration * multiplier
+    assert tower.slow_factor == base_slow_factor  # unaffected
+
+
+def test_knockback_tower_overrides_the_generic_specializations():
+    assert set(KnockbackTower.SPECIALIZATIONS.keys()) == {"wrecking_ball", "concussive_force"}
+
+
+def test_knockback_tower_wrecking_ball_boosts_splash_radius_only():
+    tower = _max_out(make_tower(KnockbackTower))
+    base_splash, base_knockback = tower.splash_radius, tower.knockback_duration
+    multiplier = KnockbackTower.SPECIALIZATIONS["wrecking_ball"]["stat_multipliers"]["splash_radius"]
+
+    assert tower.specialize("wrecking_ball") is True
+
+    assert tower.splash_radius == base_splash * multiplier
+    assert tower.knockback_duration == base_knockback  # unaffected
+
+
+def test_knockback_tower_concussive_force_boosts_knockback_duration_only():
+    tower = _max_out(make_tower(KnockbackTower))
+    base_splash, base_knockback = tower.splash_radius, tower.knockback_duration
+    multiplier = KnockbackTower.SPECIALIZATIONS["concussive_force"]["stat_multipliers"]["knockback_duration"]
+
+    assert tower.specialize("concussive_force") is True
+
+    assert tower.knockback_duration == base_knockback * multiplier
+    assert tower.splash_radius == base_splash  # unaffected
+
+
+def test_poison_tower_overrides_the_generic_specializations():
+    assert set(PoisonTower.SPECIALIZATIONS.keys()) == {"virulent_strain", "lingering_toxin"}
+
+
+def test_poison_tower_virulent_strain_boosts_tick_damage_only():
+    tower = _max_out(make_tower(PoisonTower))
+    base_tick, base_duration = tower.poison_damage_per_tick, tower.poison_duration
+    multiplier = PoisonTower.SPECIALIZATIONS["virulent_strain"]["stat_multipliers"]["poison_damage_per_tick"]
+
+    assert tower.specialize("virulent_strain") is True
+
+    assert tower.poison_damage_per_tick == base_tick * multiplier
+    assert tower.poison_duration == base_duration  # unaffected
+
+
+def test_poison_tower_lingering_toxin_boosts_duration_only():
+    tower = _max_out(make_tower(PoisonTower))
+    base_tick, base_duration = tower.poison_damage_per_tick, tower.poison_duration
+    multiplier = PoisonTower.SPECIALIZATIONS["lingering_toxin"]["stat_multipliers"]["poison_duration"]
+
+    assert tower.specialize("lingering_toxin") is True
+
+    assert tower.poison_duration == base_duration * multiplier
+    assert tower.poison_damage_per_tick == base_tick  # unaffected
 
 
 def test_only_stats_in_level_scaled_stats_change_on_upgrade():

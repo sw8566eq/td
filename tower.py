@@ -97,10 +97,13 @@ class Tower:
     # branching choice, not another step of the generic LEVEL_SCALED_STATS
     # curve. Keyed by an arbitrary string id; "stat_multipliers" is
     # applied the same way a level-up's multiplier is (current value *=
-    # multiplier). Every tower shares these two generic placeholders for
-    # now -- effects/costs/names are meant to be tuned (or made
-    # tower-specific, by overriding this in a subclass) once the choose-
-    # and-apply mechanism itself is confirmed working.
+    # multiplier). This base-class pair is only ever seen directly by a
+    # tower with no distinctive mechanic of its own to name a
+    # specialization after -- every concrete TOWER_TYPES entry now
+    # overrides SPECIALIZATIONS with its own tower-specific pair (see e.g.
+    # LightningTower/SupportTower/CannonTower), even BasicTower/SniperTower,
+    # whose options still land on generic damage/range/fire_rate stats but
+    # get their own names and tuning rather than inheriting this verbatim.
     SPECIALIZATIONS = {
         "power": {
             "display_name": "Power",
@@ -431,6 +434,26 @@ class BasicTower(Tower):
     # numbers don't always make for a fun upgrade path. Range still uses
     # the generic LEVEL_STAT_MULTIPLIERS.
     LEVEL_STAT_MULTIPLIER_OVERRIDES = {"damage": {1: 1.0, 2: 1.7, 3: 2.6}}
+    # Basic has no distinctive EXTRA_STATS mechanic to name a specialization
+    # after (same boat as Sniper), so its own options stay damage/fire_rate
+    # flavored like the generic placeholder -- but with its own names/
+    # tuning rather than silently inheriting Tower's. Keys are kept as the
+    # literal "power"/"precision" (not renamed to match the new flavor)
+    # since several tests in test_tower_leveling.py/test_game.py exercise
+    # the generic specialize() mechanism via a default-constructed
+    # BasicTower and hardcode those two key strings.
+    SPECIALIZATIONS = {
+        "power": {
+            "display_name": "Heavy Rounds",
+            "description": "Hits noticeably harder.",
+            "stat_multipliers": {"damage": 1.45},
+        },
+        "precision": {
+            "display_name": "Overclock",
+            "description": "Fires much faster.",
+            "stat_multipliers": {"fire_rate": 1.35},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(
@@ -452,6 +475,20 @@ class CannonTower(Tower):
     # A lobbed, ground-impact blast has nothing to detonate against in
     # midair -- see enemy.py's FlyingEnemy.
     can_target_flying = False
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Cannon's own splash mechanic instead.
+    SPECIALIZATIONS = {
+        "bigger_blast": {
+            "display_name": "Bigger Blast",
+            "description": "Wider splash radius.",
+            "stat_multipliers": {"splash_radius": 1.4},
+        },
+        "heavier_payload": {
+            "display_name": "Heavier Payload",
+            "description": "Harder-hitting shells.",
+            "stat_multipliers": {"damage": 1.35},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(
@@ -475,6 +512,24 @@ class FrostTower(Tower):
         ("Slow", "slow_factor", _format_slow_percent),
         ("Slow duration", "slow_duration", _format_seconds),
     )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Frost's own slow mechanic instead. Deep Freeze's multiplier
+    # is deliberately *less* than 1.0 -- slow_factor is the one stat in this
+    # whole registry where "better" means smaller (see _format_slow_percent:
+    # a lower slow_factor is a stronger slow), the opposite direction of
+    # every other tower's >1.0 buff convention here.
+    SPECIALIZATIONS = {
+        "deep_freeze": {
+            "display_name": "Deep Freeze",
+            "description": "Slows even more.",
+            "stat_multipliers": {"slow_factor": 0.7},
+        },
+        "lingering_frost": {
+            "display_name": "Lingering Frost",
+            "description": "Slow lasts much longer.",
+            "stat_multipliers": {"slow_duration": 1.6},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(
@@ -505,6 +560,20 @@ class KnockbackTower(Tower):
     # A physical shove along the ground path doesn't reach something
     # airborne -- see enemy.py's FlyingEnemy.
     can_target_flying = False
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Knockback's own splash/shove mechanic instead.
+    SPECIALIZATIONS = {
+        "wrecking_ball": {
+            "display_name": "Wrecking Ball",
+            "description": "Wider splash radius.",
+            "stat_multipliers": {"splash_radius": 1.4},
+        },
+        "concussive_force": {
+            "display_name": "Concussive Force",
+            "description": "Bigger backward shove.",
+            "stat_multipliers": {"knockback_duration": 1.5},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(
@@ -571,6 +640,23 @@ class SniperTower(Tower):
     projectile_speed = 500.0
     sprite_name = "tower_sniper"
     display_name = "Sniper"
+    # Like Basic, Sniper has no distinctive EXTRA_STATS mechanic to key a
+    # specialization off -- its own options just lean further into what it
+    # already is (a glass cannon), with names to match. Unlike Basic, no
+    # test hardcodes Sniper's specific key strings, so these are free to be
+    # genuinely new rather than reusing "power"/"precision".
+    SPECIALIZATIONS = {
+        "armor_piercing": {
+            "display_name": "Armor Piercing",
+            "description": "Even harder-hitting shots.",
+            "stat_multipliers": {"damage": 1.5},
+        },
+        "extended_scope": {
+            "display_name": "Extended Scope",
+            "description": "Reaches much further.",
+            "stat_multipliers": {"range": 1.4},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(
@@ -597,6 +683,20 @@ class PoisonTower(Tower):
         ("Poison", "poison_damage_per_tick", _format_poison_tick),
         ("Poison duration", "poison_duration", _format_seconds),
     )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Poison's own damage-over-time mechanic instead.
+    SPECIALIZATIONS = {
+        "virulent_strain": {
+            "display_name": "Virulent Strain",
+            "description": "Stronger poison ticks.",
+            "stat_multipliers": {"poison_damage_per_tick": 1.5},
+        },
+        "lingering_toxin": {
+            "display_name": "Lingering Toxin",
+            "description": "Poison lasts much longer.",
+            "stat_multipliers": {"poison_duration": 1.6},
+        },
+    }
 
     def create_projectile(self, target):
         return Projectile(

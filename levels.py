@@ -205,6 +205,35 @@ LEVEL_5_WAVE_SPECS = [
     {"grunt": 12, "scout": 10, "tank": 8, "shielded": 6, "flying": 6, "boss": 2},
 ]
 
+def _multi_lane_level(level_id, name, lane_corner_lists, spawn_cells, goal_cells, wave_specs,
+                       starting_gold=150, starting_lives=20):
+    """Build a Level whose path is the union of several straight-segment
+    corner chains (see pathing.path_cells_from_corners) -- the shape any
+    branching/merging level beyond a single corridor needs, since
+    _corridor_level() only ever produces one spawn and one goal. Each entry
+    in `lane_corner_lists` is its own corner list (e.g. a spawn-to-junction
+    run, or a junction-to-goal run); together they union into one
+    path_cells set, the same recipe Level 6 ("Confluence") below used
+    inline before this helper existed. `wave_specs` must already be in
+    Level's nested {spawn_cell: {...}} shape -- a multi-spawn level's
+    per-wave composition genuinely differs per spawn, so there's no terse
+    single-list shorthand to wrap here the way _single_spawn_waves() does
+    for a corridor level."""
+    path_cells = frozenset()
+    for corners in lane_corner_lists:
+        path_cells |= pathing.path_cells_from_corners(corners)
+    return Level(
+        id=level_id,
+        name=name,
+        path_cells=path_cells,
+        spawn_cells=spawn_cells,
+        goal_cells=goal_cells,
+        wave_specs=wave_specs,
+        starting_gold=starting_gold,
+        starting_lives=starting_lives,
+    )
+
+
 # Level 6 is this campaign's one genuinely multi-spawn level, built from the
 # full nested wave_specs shape directly (no corner-list shorthand, no
 # _single_spawn_waves) -- two independent lanes converge at (6, 4) before a
@@ -255,3 +284,104 @@ LEVELS = {
         starting_lives=20,
     ),
 }
+
+# Level 7: "Forked River" -- the campaign's first genuine *branch* (as
+# opposed to Confluence's merge): one spawn, one shared trunk, then a
+# junction fanning out into two independent goals. Built with
+# _multi_lane_level rather than _corridor_level since the latter only ever
+# produces a single goal.
+LEVEL_7_SPAWN = (0, 4)
+LEVEL_7_JUNCTION = (4, 4)
+LEVEL_7_GOAL_TOP = (14, 1)
+LEVEL_7_GOAL_BOTTOM = (14, 7)
+LEVEL_7_WAVE_SPECS = _single_spawn_waves(LEVEL_7_SPAWN, [
+    {"grunt": 8},
+    {"grunt": 9, "scout": 6},
+    {"grunt": 10, "scout": 7, "tank": 4},
+    {"grunt": 11, "scout": 8, "tank": 5, "flying": 5},
+    {"grunt": 10, "scout": 8, "tank": 6, "shielded": 4, "boss": 1},
+])
+
+# Level 8: "Twin Confluence" -- combines both shapes at once: two spawns
+# merge into a shared trunk, which then itself branches into two goals.
+# Still a forest (no diamond): each lane only ever touches the rest of the
+# tree at its own single junction cell.
+LEVEL_8_SPAWN_TOP = (0, 2)
+LEVEL_8_SPAWN_BOTTOM = (0, 6)
+LEVEL_8_MERGE_JUNCTION = (5, 4)
+LEVEL_8_BRANCH_JUNCTION = (9, 4)
+LEVEL_8_GOAL_TOP = (14, 1)
+LEVEL_8_GOAL_BOTTOM = (14, 7)
+LEVEL_8_WAVE_SPECS = [
+    {LEVEL_8_SPAWN_TOP: {"grunt": 7}, LEVEL_8_SPAWN_BOTTOM: {"scout": 7}},
+    {LEVEL_8_SPAWN_TOP: {"grunt": 9, "tank": 2}, LEVEL_8_SPAWN_BOTTOM: {"scout": 9, "flying": 3}},
+    {LEVEL_8_SPAWN_TOP: {"grunt": 9, "tank": 5}, LEVEL_8_SPAWN_BOTTOM: {"scout": 9, "flying": 6, "shielded": 3}},
+    {LEVEL_8_SPAWN_TOP: {"grunt": 11, "tank": 7}, LEVEL_8_SPAWN_BOTTOM: {"scout": 11, "flying": 7, "shielded": 5}},
+    {LEVEL_8_SPAWN_TOP: {"grunt": 11, "tank": 7, "boss": 1},
+     LEVEL_8_SPAWN_BOTTOM: {"scout": 11, "flying": 7, "shielded": 5}},
+]
+
+# Level 9: "Triple Crossing" -- three spawns merging into one shared trunk
+# (a wider star than Confluence's two-lane merge) toward a single goal.
+LEVEL_9_SPAWN_TOP = (0, 1)
+LEVEL_9_SPAWN_MID = (0, 4)
+LEVEL_9_SPAWN_BOTTOM = (0, 7)
+LEVEL_9_JUNCTION = (6, 4)
+LEVEL_9_GOAL = (14, 4)
+LEVEL_9_WAVE_SPECS = [
+    {LEVEL_9_SPAWN_TOP: {"grunt": 5}, LEVEL_9_SPAWN_MID: {"scout": 5}, LEVEL_9_SPAWN_BOTTOM: {"grunt": 5}},
+    {LEVEL_9_SPAWN_TOP: {"grunt": 6, "tank": 2}, LEVEL_9_SPAWN_MID: {"scout": 7, "flying": 2},
+     LEVEL_9_SPAWN_BOTTOM: {"grunt": 6, "tank": 2}},
+    {LEVEL_9_SPAWN_TOP: {"grunt": 7, "tank": 4}, LEVEL_9_SPAWN_MID: {"scout": 8, "flying": 4, "shielded": 2},
+     LEVEL_9_SPAWN_BOTTOM: {"grunt": 7, "tank": 4}},
+    {LEVEL_9_SPAWN_TOP: {"grunt": 8, "tank": 5}, LEVEL_9_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
+     LEVEL_9_SPAWN_BOTTOM: {"grunt": 8, "tank": 5}},
+    {LEVEL_9_SPAWN_TOP: {"grunt": 8, "tank": 6},
+     LEVEL_9_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 4, "boss": 1},
+     LEVEL_9_SPAWN_BOTTOM: {"grunt": 8, "tank": 6}},
+]
+
+LEVELS[7] = _multi_lane_level(
+    7, "Forked River",
+    lane_corner_lists=[
+        [LEVEL_7_SPAWN, LEVEL_7_JUNCTION],
+        [LEVEL_7_JUNCTION, (4, 1), LEVEL_7_GOAL_TOP],
+        [LEVEL_7_JUNCTION, (4, 7), LEVEL_7_GOAL_BOTTOM],
+    ],
+    spawn_cells=(LEVEL_7_SPAWN,),
+    goal_cells=(LEVEL_7_GOAL_TOP, LEVEL_7_GOAL_BOTTOM),
+    wave_specs=LEVEL_7_WAVE_SPECS,
+    starting_gold=160,
+    starting_lives=20,
+)
+
+LEVELS[8] = _multi_lane_level(
+    8, "Twin Confluence",
+    lane_corner_lists=[
+        [LEVEL_8_SPAWN_TOP, (5, 2), LEVEL_8_MERGE_JUNCTION],
+        [LEVEL_8_SPAWN_BOTTOM, (5, 6), LEVEL_8_MERGE_JUNCTION],
+        [LEVEL_8_MERGE_JUNCTION, LEVEL_8_BRANCH_JUNCTION],
+        [LEVEL_8_BRANCH_JUNCTION, (9, 1), LEVEL_8_GOAL_TOP],
+        [LEVEL_8_BRANCH_JUNCTION, (9, 7), LEVEL_8_GOAL_BOTTOM],
+    ],
+    spawn_cells=(LEVEL_8_SPAWN_TOP, LEVEL_8_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_8_GOAL_TOP, LEVEL_8_GOAL_BOTTOM),
+    wave_specs=LEVEL_8_WAVE_SPECS,
+    starting_gold=190,
+    starting_lives=20,
+)
+
+LEVELS[9] = _multi_lane_level(
+    9, "Triple Crossing",
+    lane_corner_lists=[
+        [LEVEL_9_SPAWN_TOP, (6, 1), LEVEL_9_JUNCTION],
+        [LEVEL_9_SPAWN_MID, LEVEL_9_JUNCTION],
+        [LEVEL_9_SPAWN_BOTTOM, (6, 7), LEVEL_9_JUNCTION],
+        [LEVEL_9_JUNCTION, LEVEL_9_GOAL],
+    ],
+    spawn_cells=(LEVEL_9_SPAWN_TOP, LEVEL_9_SPAWN_MID, LEVEL_9_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_9_GOAL,),
+    wave_specs=LEVEL_9_WAVE_SPECS,
+    starting_gold=200,
+    starting_lives=20,
+)

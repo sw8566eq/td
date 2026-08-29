@@ -47,6 +47,20 @@ one subclass per tower -- splash/slow/knockback/chain are just constructor args 
 `create_projectile()` passes in, and the hit-resolution algorithm doesn't care which combination
 it got.
 
+### Boss enemy mechanics
+
+`BossEnemy` (`enemy.py`) layers two self-contained, one-time mechanics on top of the generic
+`Enemy` base, following the same "override `take_damage()`/`update()`, guard `is_dead`/
+`reached_goal` first" shape `ShieldedEnemy`'s regenerating shield already established: **enrage**
+(a permanent speed multiplier once HP drops to/below `ENRAGE_HP_FRACTION` of `max_hp`, capped at
+`max_speed` like any other speed change) and a one-time **armor phase** (a flat damage reduction
+for `ARMOR_DURATION` seconds once HP drops to/below the lower `ARMOR_HP_FRACTION`, absorbed the
+same way `ShieldedEnemy`'s shield eats damage before HP does). Both thresholds are checked against
+`self.max_hp` *at the moment of the check*, never a value cached in `__init__` -- `WaveManager.
+_spawn_enemy` multiplies `max_hp`/`hp` by the active difficulty's `enemy_hp_multiplier` *after*
+construction (the same reason it already has a `hasattr(enemy, "max_shield")` patch-up for
+`ShieldedEnemy`), so a threshold baked in early would silently fire at the wrong HP on Easy/Hard.
+
 ### Grid has two coordinate systems
 
 `Grid` (`grid.py`) tracks the map at two granularities at once:
@@ -111,6 +125,22 @@ when `current_level_id is None`; see `ui.draw_pause_menu`'s `is_custom_level` an
 `Game._handle_keydown`'s `GameState.PAUSED` branch) -- check to know there's no `LEVELS` entry to
 look back up. That option just switches `state` back to `GameState.EDITOR` without touching
 `self.editor` at all, so whatever was playtested is still sitting there exactly as painted.
+
+Painting itself has three additional quality-of-life layers, all scoped to the path editor (the
+wave editor has no equivalent undo history of its own). **Undo/redo** (`Editor._undo_stack`/
+`_redo_stack`, capped at `UNDO_LIMIT`) is whole-stroke, not per-cell -- `begin_stroke()`/
+`end_stroke()` bracket an entire drag so painting a long corridor undoes as one step, not one cell
+at a time. **Shape tools** (`EditorTool.LINE`/`RECT`/`SELECT`, `SHAPE_TOOLS`) preview a straight
+line/rectangle/selection while dragging and only commit it to `path_cells` on mouse-up, reusing
+`pathing.path_cells_from_corners()` the same way the freeform brush's own straight runs already do;
+a freshly-stamped `RECT` is *always* a closed loop (exactly the shape `validate_topology` forbids),
+which the sidebar calls out explicitly as a one-cell-erase fix rather than leaving the player to
+puzzle out why a rectangle fails validation. **Copy/paste** (`select_region()`/`copy_selection()`/
+`paste_clipboard()`) copies a rectangular selection's path/spawn/goal cells and re-anchors them
+relative to wherever the paste lands; a pasted spawn starts with zero wave composition entries in
+every wave -- wave data never carries over on copy, since the whole point of `wave_specs` staying
+keyed by concrete spawn cell is that a copy is a genuinely new spawn point, not an alias for the one
+it was copied from.
 
 Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
 edits `Editor.wave_specs` directly -- the exact same `[{spawn_cell: {enemy_type_name: count}}, ...]`
@@ -204,9 +234,52 @@ an actual `surface.set_clip()` around the row loop, plus a "more above"/"more be
 2. **Specialization**: a one-time branching choice available only at `MAX_LEVEL`
    (`Tower.can_specialize`), picking one of two named options in `Tower.SPECIALIZATIONS` (each a
    `stat_multipliers` dict applied on top of current stats). Independent of `level` -- a maxed,
-   unspecialized tower and a maxed, specialized tower are both `level == MAX_LEVEL`. Every tower
-   currently shares the same two generic placeholder specializations from the base class; a
-   subclass can override `SPECIALIZATIONS` to offer its own.
+   unspecialized tower and a maxed, specialized tower are both `level == MAX_LEVEL`. `Tower`'s own
+   `SPECIALIZATIONS` (`"power"`/`"precision"`, generic damage/range-and-rate buffs) is a fallback
+   for a tower with no distinctive mechanic to name a specialization after -- every concrete
+   `TOWER_TYPES` entry overrides it with its own tower-specific pair playing off that tower's own
+   `EXTRA_STATS` mechanic instead (e.g. `CannonTower`'s bigger-splash-radius vs. bigger-damage,
+   `FrostTower`'s colder-slow vs. longer-slow-duration -- note `slow_factor` is the one stat in the
+   whole registry where *smaller* is the buff direction, the opposite of everything else here), down
+   to `BasicTower`/`SniperTower`, which have no unique mechanic to key off and so just get their own
+   names/tuning on the same damage/range/fire_rate stats. `BasicTower` deliberately keeps the base
+   class's literal `"power"`/`"precision"` *keys* (only its values/flavor text differ) since several
+   tests exercise the generic `specialize()` mechanism via a default-constructed `BasicTower` and
+   hardcode those two key strings.
+
+### Support towers and the two-pass update loop
+
+`SupportTower` (`tower.py`) is the one `TOWER_TYPES` entry that never attacks at all
+(`damage = fire_rate = 0`, `IS_SUPPORT = True`) -- instead, every frame, it buffs every *other*
+tower within its `range` (`buff_damage_multiplier`/`buff_range_multiplier`, its own
+`LEVEL_SCALED_STATS` in place of the now-meaningless `damage`). This needed one real change to
+`Game.update()`: towers are updated in **two passes** -- every tower's `reset_aura()` runs before
+any tower's own `update()` does -- so a `SupportTower` later in `self.towers` still gets to
+(re-)buff a tower earlier in the list within the same frame, regardless of iteration order.
+`Tower.receive_aura()` takes the `max()` of every buff offered that frame rather than stacking them,
+so several overlapping support towers don't compound into an ever-growing buff, and a tower that
+walks out of every support tower's range this frame reverts to `1.0x` (via `reset_aura()`) rather
+than keeping a stale buff. Every attack path reads `effective_damage()`/`in_range()` (which fold the
+current aura multiplier in) instead of `self.damage`/`self.range` directly, so a buffed tower's own
+stats shown in the sidebar and its actual shots always agree. `ui.py`'s stats panel and
+`Game._handle_panel_action_click` both check `IS_SUPPORT` to skip the targeting-mode row and the
+plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless
+`"Damage: 0.0"`/a clickable targeting mode a support tower never reads.
+
+### Post-level results
+
+Every `Tower` tracks its own lifetime `shots_fired`/`shots_hit`/`damage_dealt`/`kills` purely for
+display -- no gameplay logic ever reads them. `Projectile._apply_hit_effects()` is the one place
+that attributes a hit back to `self.source` (the firing tower), counting `shots_hit`/`damage_dealt`/
+`kills` once per *projectile* even for a splash/chain shot that actually touches several enemies at
+once (matching how `shots_fired` itself is counted once per fire in `Tower.update()`, not once per
+enemy it eventually hits). `Game.try_sell_tower()` moves a sold tower into `self.sold_towers` rather
+than discarding it, so a tower's stats still show up in the results table even after being sold
+mid-level -- `Game._tower_results()` reports on `self.towers + self.sold_towers` together.
+`ui.compute_tower_results()`/`draw_results_table()` render that as a compact, damage-sorted table
+capped at `RESULTS_MAX_ROWS` rows (with a "+N more" line for the overflow) underneath both the
+Victory and Game Over overlays -- `accuracy` is `None` (not `0`) for a tower that never got a shot
+off, which is *every* `SupportTower`, so the table shows `"--"` rather than a misleading `0%`.
 
 `Tower.total_invested` (base `cost` + every upgrade/specialization cost actually paid) is what
 `sell_value()` refunds a fraction of (`settings.SELL_REFUND_FRACTION`) -- selling isn't just base
@@ -236,6 +309,119 @@ in `test_ui.py`/`test_game.py` exist to catch.
 the timer zeroed, same as skipping any later between-wave countdown. Every wave after the first
 auto-counts down `between_wave_delay` as normal.
 
+**Endless (Survival) mode** is the same state machine with one exit removed: constructed with
+`endless=True`, `WaveManager._advance_after_clear()` never transitions to `DONE` once the last
+authored wave clears -- instead it calls `endless_wave_generator(level, next_wave_number)` (default
+`_default_endless_wave`: take the *immediately preceding* wave's own per-spawn composition and bump
+every count by `max(1, count // 4)`) and appends the result onto `level.wave_specs`, so growth
+compounds off whatever the last wave actually was rather than the level's original final wave --
+unbounded escalation, not a curve that flattens out. `all_waves_complete` staying permanently
+`False` is what keeps `Game.update()`'s win-check from ever firing for a genuine endless run (it
+only ever reaches `GAME_OVER`). Because `WaveManager.level` and `Game.level` are the *same object*,
+appending a generated wave would otherwise permanently leak it into the shared `LEVELS` registry
+singleton for a built-in level -- `Game._load_level_object` sidesteps this with
+`dataclasses.replace(level, wave_specs=list(level.wave_specs))` whenever `endless=True`, so every
+endless run gets its own private wave list to grow. `Game.level_select_endless_armed` (toggled by
+`V` while browsing to play, reset every time the browser reopens) is what threads `endless=True`
+into whichever level gets picked next; it's independent of, and combinable with, Sandbox mode (see
+below).
+
+### Difficulty modes, Sandbox mode, and player settings
+
+`difficulty.py`'s `DIFFICULTY_MODES` registry (easy/normal/hard, same `{key: ...}` shape as every
+other registry in this codebase) is a bundle of multipliers -- `enemy_hp_multiplier`/
+`enemy_speed_multiplier`/`enemy_gold_multiplier`/`starting_gold_multiplier`/
+`starting_lives_multiplier` -- composed as an *extra* factor on top of `Enemy`'s own existing
+per-wave scaling math, never replacing it. `"normal"` is every multiplier at `1.0`, so picking it is
+byte-for-byte the pre-difficulty behavior -- neither `Enemy` nor `Economy` needed any changes to
+support this; `WaveManager._spawn_enemy` (enemy stats, applied post-construction) and
+`Game._load_level_object` (starting gold/lives) are the only two application points. The active
+difficulty is a **sticky, cross-session player preference** (`self.difficulty`, persisted via
+`player_settings.py`), read at `_load_level_object` time -- changing it mid-level has no effect
+until the next level load, the same "applies on next load" precedent `unlimited_gold` already set.
+
+**Sandbox/Creative mode** is a player-reachable, per-run alternative to the CLI-only
+`--unlimited-gold` debug flag, threaded through `load_level`/`load_custom_level`/
+`_load_level_object` exactly parallel to `endless` above (a sticky `self.sandbox`, a second
+level-select toggle -- `B`, independent of and combinable with `V` -- and its own
+`Game.level_select_sandbox_armed`). It sets both `Economy.unlimited_gold` and a new
+`Economy.invulnerable` (`lose_life()` becomes a no-op, `is_out_of_lives` stays `False` regardless of
+`self.lives`, mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a
+decrement-then-clamp `ui.py` would then have to also mask). A sandbox win intentionally does *not*
+call `progress.mark_level_cleared()` or bump any achievement counter -- trivializing victory
+shouldn't trivialize real progress -- the same reasoning that already keeps a genuine endless run's
+`all_waves_complete` from ever firing at all.
+
+The `GameState.SETTINGS` screen (`S` from the menu) is where `fullscreen` and `difficulty` actually
+get changed (`ui.draw_settings_screen`/`get_clicked_settings_option`); both persist immediately on
+change via `player_settings.save_settings()` rather than only on quit, the same "write through
+immediately" choice `progress.mark_level_cleared()` and the achievement/save-state modules below all
+make too.
+
+### Small on-disk JSON state files: progress, achievements, and a saved run
+
+Four modules now follow the exact same shape for local player data: one JSON file, a defensive
+`load_*()` that falls back to an empty/default state on a missing or corrupt file rather than
+crashing (same spirit as `AssetManager` falling back to a placeholder sprite), and a path that's
+always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievements_path`/
+`save_path` params) so tests never touch the real repo-root files. All four are gitignored -- local
+player data, not shipped content, same as `custom_levels/`.
+
+- `progress.py` tracks `{level_id: best_lives_remaining}` and gates sequential unlocking
+  (`is_unlocked()`: the lowest id in a level registry is always unlocked, every other one needs its
+  immediate sorted predecessor already cleared) -- a custom (editor-authored) level is never gated
+  by this at all.
+- `achievements.py` is a registry (`ACHIEVEMENTS`, same shape as every other registry) of
+  unlockable achievements, each keyed off a threshold on one of a handful of cumulative lifetime
+  counters (kills, towers built/maxed/specialized, levels cleared, waves survived). `bump()` mirrors
+  `progress.mark_level_cleared()`'s exact load-mutate-save-return shape, so it's always safe to call
+  from wherever the relevant event actually happens with no in-memory counters of its own to go
+  stale. Every counter is bumped from `Game` itself (`try_place_tower`/`try_upgrade_tower`/
+  `try_specialize_tower` on success, and a few points in `update()`) -- **never** from inside
+  `Tower`/`Enemy`/`Economy`, since `resume_saved_run()` (below) reconstructs a resumed tower via
+  `Tower.upgrade()`/`specialize()` directly, and a counter living inside those methods would
+  silently double-count on every resume. Every bump site is gated on `not self.sandbox`, mirroring
+  `progress.mark_level_cleared()`'s own sandbox guard.
+- `save_state.py` saves a single in-progress run -- but **only** between waves
+  (`Game.can_save_run()`: `WaveManager.state` in `AWAITING_START`/`BETWEEN_WAVES`), so there's no
+  live enemy/projectile/effect state to serialize at all; a resumed run always starts from a clean
+  wave boundary. It reuses `persistence.level_to_dict`/`level_from_dict` for the level blob (an
+  endless run's already-appended escalation waves live directly on `game.level.wave_specs` by save
+  time, so they're captured for free) and snapshots the run's *own* difficulty rather than
+  `self.difficulty` -- the live, sticky player preference could have changed between saving and
+  resuming, and applying new multipliers mid-run to waves already fought under the old ones would be
+  inconsistent. `Game.resume_saved_run()` reconstructs via `_load_level_object()` directly (never
+  `load_level()`'s `LEVELS[id]` re-lookup, even for a built-in id -- that would silently discard the
+  endless escalation above) and rebuilds each tower via `TOWER_TYPES[name](...)` plus replaying
+  `upgrade()`/`specialize()` the right number of times, bypassing `Game.try_upgrade_tower`/
+  `try_specialize_tower` entirely so resuming never re-charges gold. `WaveManager.restore()` is the
+  one method that actually mutates `wave_index`/`state`/`between_wave_timer` from outside, kept as a
+  single guarded entry point (rejecting anything but the two resumable states) rather than `Game`
+  poking those fields directly. `Game._resumed_from_save` -- true only between a `resume_saved_run()`
+  call and that run's own eventual `GAME_OVER`/`VICTORY` -- is what gates deleting the save file on
+  conclusion, so a fresh, unrelated session's own victory can never delete a different, still-valid
+  save left over from some other abandoned run; every `_load_level_object()` call resets it to
+  `False` first, and `resume_saved_run()` is the one caller that sets it back to `True` afterward.
+
+### Visual effects: the drain-a-per-frame-event-list idiom
+
+`effects.py` holds small, short-lived, data-parametrized visual effects -- `FloatingText` (a
+rising, fading damage-number popup) and `ExpandingRing` (a growing, fading ring, reused for both a
+splash-blast flash and an enemy death poof via different constructor args, the same "one class,
+several constructor-arg shapes" spirit as `Projectile` itself). Both are spawned via the same
+idiom: the thing that actually causes the effect (`Enemy.damage_events`, a list of raw damage
+amounts appended in `take_damage()` and cleared every frame; `Projectile.impact_events`, one
+`(impact_pos, splash_radius_or_None)` tuple appended once per resolved hit in `_resolve_hit()`,
+counted once per *projectile* the same way `shots_hit` already is) has zero knowledge of
+`effects.py` at all -- `Game.update()` is the one place that drains each per-frame list into an
+owned, aged-and-pruned effect list (`self.damage_numbers`/`self.impact_effects`) every frame, in
+each case *before* whatever produced the event (a dead enemy, a dead projectile) is actually
+removed, so a killing blow's own popup/flash still spawns at the position it landed rather than
+being silently dropped. Adding a new transient visual effect anywhere in this codebase means
+following this same three-step shape: a class in `effects.py`, a per-frame event list on whatever
+produces the event, and one drain site in `Game.update()` -- never a new effect spawned directly
+from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering.
+
 ### Assets
 
 Every sprite is referenced elsewhere by a logical name (`"tower_basic"`, `"enemy_grunt"`, ...),
@@ -251,4 +437,7 @@ unless filenames differ from the manifest.
 `Economy.unlimited_gold` (set via `Game(unlimited_gold=...)`, which `main.py --unlimited-gold`
 threads through) makes `can_afford()` always `True` and `spend()` a no-op that leaves `gold`
 untouched -- every purchase path (place/upgrade/specialize a tower) needed no changes to support
-it. `ui.py`'s HUD shows `"Gold: unlimited"` while it's set.
+it. `ui.py`'s HUD shows `"Gold: unlimited"` while it's set. Sandbox mode (see "Difficulty modes,
+Sandbox mode, and player settings" above) reuses this exact flag for its own unlimited-gold behavior
+(`unlimited_gold=self.unlimited_gold or sandbox`) rather than introducing a second, parallel
+concept -- `Economy.invulnerable` is the one genuinely new flag Sandbox needed.

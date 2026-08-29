@@ -17,6 +17,14 @@ progress.json
 # player_settings.py) -- local game data, same spirit as progress.json.
 player_settings.json
 
+# Cumulative achievement counters/unlocks (see achievements.py) -- local
+# game data, same spirit as progress.json.
+achievements.json
+
+# An in-progress run saved from the pause menu (see save_state.py) -- local
+# game data, same spirit as progress.json.
+save_state.json
+
 # Claude Code local settings (machine/user-specific, not meant to be shared)
 .claude/
 CLAUDE.local.md

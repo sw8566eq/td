@@ -6,11 +6,13 @@ from enum import Enum, auto
 
 import pygame
 
+import achievements
 import difficulty
 import effects
 import persistence
 import player_settings
 import progress
+import save_state
 import settings
 import ui
 from assets import AssetManager
@@ -19,7 +21,7 @@ from editor import SHAPE_TOOLS, Editor, EditorTool
 from grid import Grid
 from levels import LEVELS
 from tower import TOWER_TYPES
-from waves import WaveManager
+from waves import WaveManager, WaveState
 
 
 class GameState(Enum):
@@ -32,6 +34,7 @@ class GameState(Enum):
     WAVE_EDITOR = auto()
     LEVEL_SELECT = auto()
     SETTINGS = auto()
+    ACHIEVEMENTS = auto()
 
 
 class Game:
@@ -39,7 +42,8 @@ class Game:
     # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
     TIME_SCALES = (1.0, 2.0, 3.0)
 
-    def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None):
+    def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
+                 achievements_path=None, save_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -55,6 +59,28 @@ class Game:
         # just here.
         self.progress_path = progress_path or progress.PROGRESS_PATH
         self.progress = progress.load_progress(self.progress_path)
+
+        # Same injectable-path convention as progress_path above.
+        # achievements_state is re-read fresh whenever the Achievements
+        # screen is (re-)entered (see _enter_achievements()), same "always
+        # re-read" spirit as self.progress in _enter_level_select().
+        self.achievements_path = achievements_path or achievements.ACHIEVEMENTS_PATH
+        self.achievements_state = achievements.load_achievements(self.achievements_path)
+        self.achievements_back_rect = ui.build_achievements_back_rect()
+        # Newly-unlocked-achievement toasts -- see _record_achievement().
+        self.achievement_toasts = []
+
+        # Same injectable-path convention as progress_path/achievements_path
+        # above. True only between resume_saved_run() and that resumed
+        # run's own eventual GAME_OVER/VICTORY (see update()'s win/loss
+        # branches) -- what actually gates deleting the save file once it's
+        # been played out, so a fresh, unrelated session's own victory can
+        # never delete some other still-valid in-progress save. Every
+        # _load_level_object() call resets this to False first (see
+        # there); resume_saved_run() is the one caller that sets it back to
+        # True afterward.
+        self.save_path = save_path or save_state.SAVE_PATH
+        self._resumed_from_save = False
 
         # Persisted player preferences -- fullscreen and difficulty are the
         # first genuinely cross-session prefs this game has (unlike
@@ -125,6 +151,11 @@ class Game:
         # _handle_level_select_click. Reset to False every time the
         # browser is (re-)entered, same as scroll_offset.
         self.level_select_endless_armed = False
+        # Same idea as the endless toggle above, but for Sandbox/Creative
+        # mode (B, also "play"-only) -- independently armable/combinable
+        # with endless, since infinite lives plus escalating waves is a
+        # legitimate "just mess around" combo, not a conflict.
+        self.level_select_sandbox_armed = False
         self._custom_levels_by_id = {}
 
         self.state = GameState.MENU
@@ -133,25 +164,35 @@ class Game:
         self.current_level_id = 1
         self.load_level(self.current_level_id)
 
-    def load_level(self, level_id, endless=False):
-        self._load_level_object(LEVELS[level_id], endless=endless)
+    def load_level(self, level_id, endless=False, sandbox=False):
+        self._load_level_object(LEVELS[level_id], endless=endless, sandbox=sandbox)
         self.current_level_id = level_id
 
-    def load_custom_level(self, level, endless=False):
+    def load_custom_level(self, level, endless=False, sandbox=False):
         """Load a Level that isn't in the LEVELS registry -- an
         editor-authored level, whether freshly painted or reloaded from
         disk (see persistence.py). current_level_id becomes None so
         has_next_level()/advance_or_replay_level() know there's no
         registry entry to advance through."""
-        self._load_level_object(level, endless=endless)
+        self._load_level_object(level, endless=endless, sandbox=sandbox)
         self.current_level_id = None
 
-    def _load_level_object(self, level, endless=False):
+    def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
         # out of an endless run doesn't silently drop back into a normal,
-        # finite-waves one.
+        # finite-waves one. sandbox follows the identical pattern (see
+        # Economy construction below and the win-check in update()).
         self.endless = endless
+        self.sandbox = sandbox
+        # Every level load starts "not resumed" by default -- only
+        # resume_saved_run() (the one caller that also passes
+        # difficulty_override) sets this back to True, after this method
+        # returns. This is what stops an unrelated fresh level load (picked
+        # from the menu/level-select while an old save from a different,
+        # abandoned run still sits on disk) from later deleting that
+        # unrelated save on its own eventual victory/game-over.
+        self._resumed_from_save = False
         if endless:
             # Endless mode appends newly-generated waves straight onto
             # wave_specs as the run continues (see WaveManager.
@@ -170,11 +211,12 @@ class Game:
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
         )
-        mode = difficulty.DIFFICULTY_MODES[self.difficulty]
+        mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
             round(level.starting_gold * mode.starting_gold_multiplier),
             round(level.starting_lives * mode.starting_lives_multiplier),
-            unlimited_gold=self.unlimited_gold,
+            unlimited_gold=self.unlimited_gold or sandbox,
+            invulnerable=sandbox,
         )
         self.wave_manager = WaveManager(
             level, self.grid.tile_to_pixel_center,
@@ -194,6 +236,7 @@ class Game:
         self.sold_towers = []
         self.projectiles = []
         self.damage_numbers = []
+        self.impact_effects = []
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
@@ -253,9 +296,10 @@ class Game:
 
     def reset(self):
         if self.current_level_id is None:
-            self._load_level_object(self.level, endless=self.endless)  # custom level: nothing in LEVELS to re-look-up
+            # custom level: nothing in LEVELS to re-look-up
+            self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
         else:
-            self.load_level(self.current_level_id, endless=self.endless)
+            self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
         self.state = GameState.MENU
 
     def has_next_level(self):
@@ -270,11 +314,79 @@ class Game:
         guards that -- so this always just replays it."""
         if self.has_next_level():
             self.current_level_id += 1
-            self.load_level(self.current_level_id, endless=self.endless)
+            self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
         elif self.current_level_id is None:
-            self._load_level_object(self.level, endless=self.endless)
+            self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
         else:
-            self.load_level(self.current_level_id, endless=self.endless)
+            self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
+
+    # --- Save/resume a run in progress ---
+
+    def can_save_run(self):
+        """Whether the current run is at a point save_run() can capture --
+        only between waves (AWAITING_START/BETWEEN_WAVES), never
+        mid-SPAWNING or once DONE -- see save_state.py's module docstring
+        and WaveManager.restore() for why."""
+        return self.wave_manager.state in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES)
+
+    def save_run(self):
+        """Persist the current run to disk for the pause menu's "Save &
+        Quit" -- a no-op (returns False) unless can_save_run()."""
+        if not self.can_save_run():
+            return False
+        save_state.save_run(self, self.save_path)
+        return True
+
+    def resume_saved_run(self, save_data):
+        """Restore a run saved via save_run()/save_state.save_run() --
+        reconstructed via _load_level_object() directly (never load_level()'s
+        LEVELS[id] re-lookup, even for a built-in level id), so an endless
+        run's already-appended escalation waves -- baked into
+        save_data["level"] by persistence.level_to_dict/level_from_dict --
+        are never silently discarded back to the registry's original,
+        un-extended wave list. current_level_id is restored explicitly
+        afterward, since _load_level_object() itself doesn't touch it (see
+        load_level()/load_custom_level(), the two normal callers that do).
+
+        Towers are rebuilt via TOWER_TYPES directly and Tower.upgrade()/
+        specialize() called the right number of times/with the right key --
+        never through try_upgrade_tower()/try_specialize_tower() -- so
+        resuming never re-charges gold or re-bumps achievement counters for
+        progress the player already paid for and was already credited with
+        once, back when it first happened."""
+        level = save_data["level"]
+        self._load_level_object(
+            level, endless=save_data["endless"], sandbox=save_data["sandbox"],
+            difficulty_override=save_data["difficulty"],
+        )
+        self.current_level_id = save_data["current_level_id"]
+        self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
+        self.economy.gold = save_data["gold"]
+        self.economy.lives = save_data["lives"]
+
+        for tower_data in save_data["towers"]:
+            tower_cls = TOWER_TYPES[tower_data["type"]]
+            anchor_col, anchor_row = tower_data["anchor_col"], tower_data["anchor_row"]
+            pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+            tower = tower_cls(anchor_col, anchor_row, pixel_pos)
+            for _ in range(tower_data["level"] - 1):
+                tower.upgrade()
+            if tower_data["specialization"] is not None:
+                tower.specialize(tower_data["specialization"])
+            tower.targeting_mode = tower_data["targeting_mode"]
+            self.towers.append(tower)
+            self.grid.occupy(anchor_col, anchor_row, tower)
+
+        self._resumed_from_save = True  # see __init__'s comment on this flag
+        self.state = GameState.PLAYING
+
+    def _continue_saved_run(self):
+        """The main menu's "Continue" -- a no-op (stays on MENU) if the
+        save file is missing or has since become corrupt, same defensive
+        spirit as every other on-disk-data load in this codebase."""
+        save_data = save_state.load_run(self.save_path)
+        if save_data is not None:
+            self.resume_saved_run(save_data)
 
     def run(self):
         while self.running:
@@ -302,6 +414,8 @@ class Game:
                     self._handle_level_select_click(event.pos)
                 elif self.state == GameState.SETTINGS:
                     self._handle_settings_click(event.pos)
+                elif self.state == GameState.ACHIEVEMENTS:
+                    self._handle_achievements_click(event.pos)
                 else:
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -329,9 +443,16 @@ class Game:
                 self._enter_level_select()
             elif key == pygame.K_s:
                 self.state = GameState.SETTINGS
+            elif key == pygame.K_a:
+                self._enter_achievements()
+            elif key == pygame.K_c and save_state.has_saved_run(self.save_path):
+                self._continue_saved_run()
             else:
                 self.state = GameState.PLAYING
         elif self.state == GameState.SETTINGS:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.MENU
+        elif self.state == GameState.ACHIEVEMENTS:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
         elif self.state == GameState.EDITOR:
@@ -355,6 +476,9 @@ class Game:
                 # gets picked next -- meaningless while browsing to load a
                 # map into the editor (purpose="edit"), so a no-op there.
                 self.level_select_endless_armed = not self.level_select_endless_armed
+            elif key == pygame.K_b and self.level_select_purpose == "play":
+                # Arms/disarms Sandbox/Creative mode, same idea as V above.
+                self.level_select_sandbox_armed = not self.level_select_sandbox_armed
         elif self.state == GameState.PLAYING:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
@@ -378,6 +502,9 @@ class Game:
                 # playtested, untouched, so this is just "stop playing,"
                 # not a reload.
                 self.state = GameState.EDITOR
+            elif key == pygame.K_s and self.can_save_run():
+                self.save_run()
+                self.state = GameState.MENU
             elif key == pygame.K_q:
                 self.running = False
         elif self.state == GameState.GAME_OVER:
@@ -581,6 +708,7 @@ class Game:
         self.level_select_locked_ids = locked_ids
         self.level_select_scroll_offset = 0  # always open scrolled to the top
         self.level_select_endless_armed = False  # always re-opens un-armed
+        self.level_select_sandbox_armed = False  # same -- always re-opens un-armed
         self._rebuild_level_select_rects()
         self.state = GameState.LEVEL_SELECT
 
@@ -617,10 +745,13 @@ class Game:
         elif isinstance(key, int):
             if key in self.level_select_locked_ids:
                 return  # locked -- stays on LEVEL_SELECT
-            self.load_level(key, endless=self.level_select_endless_armed)
+            self.load_level(key, endless=self.level_select_endless_armed, sandbox=self.level_select_sandbox_armed)
             self.state = GameState.PLAYING
         else:
-            self.load_custom_level(self._custom_levels_by_id[key], endless=self.level_select_endless_armed)
+            self.load_custom_level(
+                self._custom_levels_by_id[key],
+                endless=self.level_select_endless_armed, sandbox=self.level_select_sandbox_armed,
+            )
             self.state = GameState.PLAYING
 
     # --- Settings ---
@@ -633,6 +764,53 @@ class Game:
             self.set_difficulty(option)
         elif option == "back":
             self.state = GameState.MENU
+
+    # --- Achievements ---
+
+    def _enter_achievements(self):
+        # Re-read fresh from disk every time -- same "always re-read"
+        # convention _enter_level_select() follows for self.progress,
+        # since an achievement can have unlocked since this screen was last
+        # open (e.g. right after a victory earned one -- see update()'s
+        # win-check).
+        self.achievements_state = achievements.load_achievements(self.achievements_path)
+        self.state = GameState.ACHIEVEMENTS
+
+    def _handle_achievements_click(self, pos):
+        if self.achievements_back_rect.collidepoint(pos):
+            self.state = GameState.MENU
+
+    def _delete_save_if_this_run_was_resumed(self):
+        """Called from both of update()'s win/loss branches -- a resumed
+        run that's been played out to a real conclusion has nothing left to
+        "Continue" back into, so its save file shouldn't still be offered.
+        Guarded on _resumed_from_save (see __init__'s comment on it) so a
+        fresh, unrelated run reaching its own conclusion never deletes a
+        different, still-valid save left over from some other abandoned
+        run."""
+        if self._resumed_from_save:
+            save_state.delete_saved_run(self.save_path)
+            self._resumed_from_save = False
+
+    def _record_achievement(self, counter_name, amount=1):
+        """Bump `counter_name` (see achievements.py) and queue a toast for
+        anything newly unlocked -- called from every Game-level event an
+        achievement can key off (see try_place_tower/try_upgrade_tower/
+        try_specialize_tower and update()'s kill/wave/level-clear hooks),
+        each already gated on `not self.sandbox` at the call site so a
+        trivial sandbox run never counts toward real progress, same
+        reasoning already applied to progress.mark_level_cleared."""
+        for key in achievements.bump(counter_name, amount, self.achievements_path):
+            achievement = achievements.ACHIEVEMENTS[key]
+            # Stacked toasts offset by however many are already queued, so
+            # several unlocks landing the same frame (e.g. crossing two
+            # kill thresholds on one death) read as distinct lines rather
+            # than overlapping illegibly.
+            y = 40 + 24 * len(self.achievement_toasts)
+            self.achievement_toasts.append(effects.FloatingText(
+                (settings.PLAY_WIDTH // 2, y), f"Achievement unlocked: {achievement.display_name}",
+                lifetime=3.0, rise_speed=8.0, color=settings.COLOR_GOLD,
+            ))
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -748,6 +926,8 @@ class Game:
         tower = tower_cls(anchor_col, anchor_row, pixel_pos)
         self.towers.append(tower)
         self.grid.occupy(anchor_col, anchor_row, tower)
+        if not self.sandbox:
+            self._record_achievement("towers_built")
         return True
 
     def try_upgrade_tower(self, tower):
@@ -759,6 +939,13 @@ class Game:
 
         self.economy.spend(cost)
         tower.upgrade()
+        # Fires exactly once per tower, the moment it actually reaches
+        # MAX_LEVEL -- try_upgrade_tower's own cost-is-None guard above
+        # already stops this method from ever being reached again for an
+        # already-maxed tower, so there's no risk of over-counting on a
+        # later no-op call.
+        if not self.sandbox and tower.is_max_level:
+            self._record_achievement("towers_maxed")
         return True
 
     def try_specialize_tower(self, tower, key):
@@ -772,6 +959,8 @@ class Game:
 
         self.economy.spend(cost)
         tower.specialize(key)
+        if not self.sandbox:
+            self._record_achievement("towers_specialized")
         return True
 
     def try_sell_tower(self, tower):
@@ -814,6 +1003,27 @@ class Game:
 
         for projectile in self.projectiles:
             projectile.update(dt, self.enemies)
+
+        # Drained here, before dead projectiles are pruned below -- same
+        # per-frame-event-list idiom as enemy.damage_events -> damage_
+        # numbers just below: an impact is recorded the instant a shot
+        # resolves (see Projectile._resolve_hit), so this always catches it
+        # before the projectile itself disappears.
+        for projectile in self.projectiles:
+            for impact_pos, splash_radius in projectile.impact_events:
+                if splash_radius:
+                    # Sized to the blast's real splash_radius, so the ring
+                    # actually shows what it hit -- not just that it hit.
+                    self.impact_effects.append(effects.ExpandingRing(
+                        impact_pos, max_radius=splash_radius, duration=0.4,
+                        color=settings.COLOR_RANGE_PREVIEW,
+                    ))
+                else:
+                    self.impact_effects.append(effects.ExpandingRing(
+                        impact_pos, max_radius=14, duration=0.25,
+                        color=settings.COLOR_RANGE_PREVIEW,
+                    ))
+            projectile.impact_events.clear()
         self.projectiles = [p for p in self.projectiles if not p.dead]
 
         # Drained here -- while dead enemies are still in self.enemies with
@@ -828,26 +1038,58 @@ class Game:
             text.update(dt)
         self.damage_numbers = [t for t in self.damage_numbers if not t.dead]
 
+        for ring in self.impact_effects:
+            ring.update(dt)
+        self.impact_effects = [r for r in self.impact_effects if not r.dead]
+
+        for toast in self.achievement_toasts:
+            toast.update(dt)
+        self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
+
         still_alive = []
         for enemy in self.enemies:
             if enemy.is_dead:
                 self.economy.add_gold(enemy.gold_reward)
+                if not self.sandbox:
+                    self._record_achievement("kills")
+                # A small death poof, same spot the killing blow's own
+                # damage number is spawned from -- reads enemy.pos before
+                # this enemy is dropped from self.enemies just below.
+                self.impact_effects.append(effects.ExpandingRing(
+                    enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
+                ))
             elif enemy.reached_goal:
                 self.economy.lose_life()
             else:
                 still_alive.append(enemy)
         self.enemies = still_alive
 
+        # Compared before/after to detect a wave actually clearing this
+        # tick (WaveManager._advance_after_clear bumping wave_index) --
+        # counts a survived wave whether it came from the level's own
+        # authored waves or an endless-generated one, without adding any
+        # Game/persistence coupling into waves.py itself.
+        wave_number_before_update = self.wave_manager.current_wave_number
         self.enemies.extend(self.wave_manager.update(dt, self.enemies))
+        if not self.sandbox and self.wave_manager.current_wave_number > wave_number_before_update:
+            self._record_achievement("waves_survived")
 
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
+            self._delete_save_if_this_run_was_resumed()
         elif self.wave_manager.all_waves_complete and not self.enemies:
             self.state = GameState.VICTORY
-            if isinstance(self.current_level_id, int):  # a built-in level -- custom ones aren't gated
+            # A built-in level's progress is gated by real clears -- a
+            # sandbox run (unlimited gold, invulnerable) trivializes
+            # winning, so it shouldn't count as one, same reasoning that
+            # already keeps an endless run's all_waves_complete from ever
+            # firing at all.
+            if isinstance(self.current_level_id, int) and not self.sandbox:
                 self.progress = progress.mark_level_cleared(
                     self.current_level_id, self.economy.lives, self.progress_path,
                 )
+                self._record_achievement("levels_cleared")
+            self._delete_save_if_this_run_was_resumed()
 
     # --- Render ---
 
@@ -855,7 +1097,8 @@ class Game:
         self.screen.fill(settings.COLOR_BG)
 
         if self.state == GameState.MENU:
-            ui.draw_menu_screen(self.screen, self.font, self.small_font)
+            ui.draw_menu_screen(self.screen, self.font, self.small_font,
+                                 save_state.has_saved_run(self.save_path))
             pygame.display.flip()
             return
 
@@ -863,6 +1106,15 @@ class Game:
             ui.draw_settings_screen(
                 self.screen, self.font, self.small_font, self.settings_rects,
                 self.fullscreen, self.difficulty,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.ACHIEVEMENTS:
+            ui.draw_achievements_screen(
+                self.screen, self.font, self.small_font,
+                self.achievements_state["unlocked"], self.achievements_state["counters"],
+                self.achievements_back_rect,
             )
             pygame.display.flip()
             return
@@ -890,6 +1142,7 @@ class Game:
                 self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
                 self.level_select_purpose, self.level_select_scroll_offset,
                 self.level_select_locked_ids, self.level_select_endless_armed,
+                self.level_select_sandbox_armed,
             )
             pygame.display.flip()
             return
@@ -901,6 +1154,8 @@ class Game:
             enemy.draw(self.screen, self.assets)
         for projectile in self.projectiles:
             projectile.draw(self.screen, self.assets)
+        for ring in self.impact_effects:
+            ring.draw(self.screen)
         for text in self.damage_numbers:
             text.draw(self.screen, self.tiny_font)
 
@@ -924,9 +1179,12 @@ class Game:
             self.upgrade_button_rect, self.specialize_button_rects, self.sell_button_rect,
             self._hovered_specialize_key(panel_subject),
         )
+        for toast in self.achievement_toasts:
+            toast.draw(self.screen, self.small_font)
 
         if self.state == GameState.PAUSED:
-            ui.draw_pause_menu(self.screen, self.font, self.small_font, self.current_level_id is None)
+            ui.draw_pause_menu(self.screen, self.font, self.small_font,
+                                self.current_level_id is None, self.can_save_run())
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._tower_results())
         elif self.state == GameState.VICTORY:

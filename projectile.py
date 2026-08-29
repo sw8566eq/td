@@ -50,6 +50,15 @@ class Projectile:
         self.source = source
         self.dead = False
 
+        # (impact_pos, splash_radius_or_None) tuples -- one appended per
+        # resolved hit (see _resolve_hit), regardless of whether it was a
+        # splash/chain/single-target shot, same "once per projectile, not
+        # once per enemy touched" counting shots_hit already uses below.
+        # Game.update() drains this every frame into effects.ExpandingRing
+        # instances, same drain-a-per-frame-event-list idiom Enemy.
+        # damage_events already established for floating damage numbers.
+        self.impact_events = []
+
     def update(self, dt, enemies):
         if self.dead:
             return
@@ -78,6 +87,12 @@ class Projectile:
             self.pos += to_target.normalize() * step
 
     def _resolve_hit(self, impact_pos, enemies):
+        # Recorded once per projectile resolving, before hit_anything is
+        # even known -- an impact flash reads as "this is where/how big the
+        # blast was," not "this actually connected," so it fires the same
+        # whether or not any enemy was still there to be hit.
+        self.impact_events.append((pygame.Vector2(impact_pos), self.splash_radius or None))
+
         hit_anything = False
         if self.splash_radius > 0:
             for enemy in enemies:

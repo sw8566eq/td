@@ -6,6 +6,8 @@ from enemy import ENEMY_TYPES
 from levels import Level
 from tower import TOWER_TYPES
 from ui import (
+    ACHIEVEMENTS_TOP,
+    ACHIEVEMENT_ROW_HEIGHT,
     EDITOR_ACTION_ORDER,
     HUD_TOP_STRIP_HEIGHT,
     LEVEL_SELECT_BOTTOM,
@@ -18,6 +20,7 @@ from ui import (
     WAVE_EDITOR_ACTION_ORDER,
     _draw_centered_overlay,
     _wrap_text,
+    build_achievements_back_rect,
     build_button_rects,
     build_editor_action_rects,
     build_editor_tool_rects,
@@ -34,6 +37,7 @@ from ui import (
     build_wave_tab_rects,
     build_wave_unit_rects,
     compute_tower_results,
+    draw_achievements_screen,
     draw_game_over_screen,
     draw_level_select_screen,
     draw_results_table,
@@ -126,6 +130,41 @@ def test_get_clicked_settings_option_returns_matching_key():
 def test_get_clicked_settings_option_returns_none_outside_all_buttons():
     rects = build_settings_rects()
     assert get_clicked_settings_option((0, 0), rects) is None
+
+
+# --- Achievements screen ---
+
+def test_build_achievements_back_rect_sits_below_the_last_achievement_row():
+    from achievements import ACHIEVEMENT_ORDER
+    rect = build_achievements_back_rect()
+    last_row_bottom = ACHIEVEMENTS_TOP + len(ACHIEVEMENT_ORDER) * ACHIEVEMENT_ROW_HEIGHT
+    assert rect.top >= last_row_bottom
+
+
+def test_draw_achievements_screen_does_not_crash_with_nothing_unlocked():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_achievements_back_rect()
+
+    draw_achievements_screen(surface, font, small_font, unlocked_keys=set(), counters={}, back_rect=back_rect)
+
+
+def test_draw_achievements_screen_shows_unlocked_and_in_progress_entries():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_achievements_back_rect()
+
+    # Exercises both branches (unlocked vs. still-locked-with-progress)
+    # without needing to read pixels back.
+    draw_achievements_screen(
+        surface, font, small_font,
+        unlocked_keys={"first_blood"}, counters={"kills": 1, "towers_built": 0},
+        back_rect=back_rect,
+    )
 
 
 class _FakeWaveManager:
@@ -433,6 +472,24 @@ def test_draw_level_select_screen_shows_the_survival_hint_only_for_purpose_play(
                               purpose="play", endless_armed=True)
     draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
                               purpose="edit", endless_armed=True)
+
+
+def test_draw_level_select_screen_shows_the_sandbox_hint_only_for_purpose_play():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    entries = []
+    rects = {}
+
+    # Same idea as the Survival hint above, for the independent Sandbox
+    # toggle -- exercises every branch of the new sandbox_armed handling.
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="play", sandbox_armed=False)
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="play", sandbox_armed=True)
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
+                              purpose="edit", sandbox_armed=True)
 
 
 # --- Level select scrolling ---

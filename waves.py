@@ -111,6 +111,23 @@ class WaveManager:
                 totals[enemy_name] = totals.get(enemy_name, 0) + count
         return totals
 
+    def restore(self, wave_index, state, between_wave_timer):
+        """Restore progress from a previously saved run (see save_state.py)
+        -- only ever into one of the two states a save is ever taken from
+        (AWAITING_START/BETWEEN_WAVES; see Game.can_save_run()), the same
+        restriction enforced on the way *out* to a save file. There is no
+        live enemy/projectile state to resume mid-SPAWNING, and DONE has
+        nothing left to progress through, so both are refused here rather
+        than silently accepted into a state this class can't actually
+        continue from."""
+        if state not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
+            raise ValueError(
+                f"WaveManager.restore() only supports AWAITING_START/BETWEEN_WAVES, got {state!r}"
+            )
+        self.wave_index = wave_index
+        self.state = state
+        self.between_wave_timer = between_wave_timer
+
     def skip_delay(self):
         """Let the player start the first wave early (from
         AWAITING_START) or skip the between-waves countdown early (from
