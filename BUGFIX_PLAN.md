@@ -10,7 +10,7 @@ Run `pytest -q` after every commit before moving on.
 
 - [x] 1. `waves.py:245` -- final wave never increments `wave_index`, undercounts `waves_survived`.
       Fix: increment `wave_index` in `_advance_after_clear`'s non-endless DONE branch too.
-- [ ] 2. `enemy.py:354` -- boss enrage can *reduce* speed on Hard once `speed` already exceeds
+- [x] 2. `enemy.py:354` -- boss enrage can *reduce* speed on Hard once `speed` already exceeds
       `max_speed` (difficulty multiplier applied post-construction, never re-clamped).
       Fix: `WaveManager._spawn_enemy` clamps `enemy.speed` to `enemy.max_speed` after applying
       `enemy_speed_multiplier`, not just at `Enemy.__init__` time.
@@ -58,7 +58,7 @@ Run `pytest -q` after every commit before moving on.
 ## Commit grouping (in order)
 
 1. [x] waves.py wave_index fix (#1) + test
-2. [ ] enemy speed-cap fix (#2) + test
+2. [x] enemy speed-cap fix (#2) + test
 3. [ ] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
 4. [ ] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
 5. [ ] save/resume fixes: #10, #11, #12 + tests

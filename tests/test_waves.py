@@ -433,6 +433,24 @@ def test_enemy_speed_and_gold_multipliers_scale_a_spawned_enemy():
     assert spawned[0].gold_reward == unscaled.gold_reward * 0.5
 
 
+def test_enemy_speed_multiplier_never_exceeds_max_speed():
+    # Regression guard: Enemy.__init__ already clamps its own pre-
+    # difficulty speed to max_speed, but _spawn_enemy used to multiply by
+    # enemy_speed_multiplier afterward with nothing left to re-clamp it --
+    # a wave number high enough to have saturated speed (endless mode, or
+    # a late wave) combined with a >1.0 multiplier (Hard) could push speed
+    # past max_speed, which would then make a later speed change that
+    # itself clamps to max_speed (e.g. BossEnemy's enrage) actually slow
+    # the enemy down instead of speeding it up.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           enemy_speed_multiplier=100.0)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].speed == spawned[0].max_speed
+
+
 # --- Endless/Survival mode ---
 
 def test_non_endless_still_reaches_done_and_all_waves_complete():

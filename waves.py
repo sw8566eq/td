@@ -204,7 +204,14 @@ class WaveManager:
         enemy = enemy_cls(waypoints_px, self.current_wave_number)
         enemy.max_hp *= self.enemy_hp_multiplier
         enemy.hp = enemy.max_hp
-        enemy.speed *= self.enemy_speed_multiplier
+        # Re-clamped to max_speed, not just multiplied -- Enemy.__init__
+        # already capped the pre-difficulty speed there, but a wave number
+        # high enough to have saturated it (endless mode, or a late wave)
+        # combined with a >1.0 enemy_speed_multiplier (Hard) can otherwise
+        # push speed past max_speed here with nothing left to clamp it, so
+        # a later speed change that itself clamps to max_speed (e.g.
+        # BossEnemy's enrage) would actually *slow the enemy down*.
+        enemy.speed = min(enemy.speed * self.enemy_speed_multiplier, enemy.max_speed)
         enemy.gold_reward *= self.enemy_gold_multiplier
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
             enemy.max_shield *= self.enemy_hp_multiplier
