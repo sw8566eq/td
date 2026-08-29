@@ -3,10 +3,15 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
 
 # Player-saved custom levels (see persistence.py) -- local game data, not
 # something the repo ships or tracks.
 custom_levels/
+
+# Which built-in levels the player has cleared (see progress.py) -- local
+# game data, same spirit as custom_levels/.
+progress.json
 
 # Claude Code local settings (machine/user-specific, not meant to be shared)
 .claude/

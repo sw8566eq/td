@@ -105,6 +105,37 @@ def test_every_manifest_entry_can_be_loaded_as_a_placeholder():
         assert surface.get_size() == (20, 20), name
 
 
+def test_small_circle_placeholder_is_plain_with_no_outline():
+    # Below the "plain" threshold (short_side < 12), a circle placeholder
+    # skips the outline stroke entirely -- not enough pixels left for one
+    # without the shape collapsing into a dot (see _make_placeholder).
+    manager = make_manager()
+    _, fallback_color, shape = SPRITE_MANIFEST["enemy_grunt"]
+    assert shape == "circle"
+
+    surface = manager.get("enemy_grunt", (10, 10))
+
+    assert surface.get_at((5, 5))[:3] == fallback_color  # plain fill, no lighter outline ring
+
+
+def test_real_file_on_disk_with_no_requested_size_keeps_the_original_size():
+    pygame.init()
+    pygame.display.set_mode((10, 10))
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, "enemies"))
+            source = pygame.Surface((20, 20), pygame.SRCALPHA)
+            pygame.draw.circle(source, (10, 20, 30, 255), (10, 10), 9)
+            pygame.image.save(source, os.path.join(tmpdir, "enemies", "grunt.png"))
+
+            manager = AssetManager(asset_root=tmpdir)
+            surface = manager.get("enemy_grunt")  # no size -- never scaled
+
+            assert surface.get_size() == (20, 20)  # the real file's own size, untouched
+    finally:
+        pygame.quit()
+
+
 def test_real_file_on_disk_is_loaded_and_scaled_instead_of_the_placeholder():
     pygame.init()
     pygame.display.set_mode((10, 10))

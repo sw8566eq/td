@@ -1,10 +1,10 @@
 """A single, data-parametrized Projectile class.
 
-Splash-vs-single-target, slow-vs-no-slow, knockback-vs-no-knockback, and
-chain-vs-no-chain are all differences in the data passed at construction
-(fed by each Tower subclass's create_projectile()), not separate
-Projectile subclasses -- the resolution algorithm is identical either way,
-just applied to one enemy or many.
+Splash-vs-single-target, slow-vs-no-slow, knockback-vs-no-knockback,
+chain-vs-no-chain, and poison-vs-no-poison are all differences in the data
+passed at construction (fed by each Tower subclass's create_projectile()),
+not separate Projectile subclasses -- the resolution algorithm is identical
+either way, just applied to one enemy or many.
 
 Splash and chain are the two exceptions to "freely combinable", though:
 _resolve_hit() only ever reaches chain resolution on its no-splash branch,
@@ -21,7 +21,8 @@ import pygame
 
 class Projectile:
     def __init__(self, pos, target, speed, damage, splash_radius=0, slow_effect=None,
-                 knockback_duration=0.0, chain_range=0.0, max_chain_targets=1, sprite_name=""):
+                 knockback_duration=0.0, chain_range=0.0, max_chain_targets=1,
+                 poison_effect=None, sprite_name=""):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -36,6 +37,9 @@ class Projectile:
         # chain_range 0 means no chaining, single-target only.
         self.chain_range = chain_range
         self.max_chain_targets = max_chain_targets
+        # (damage_per_tick, tick_interval, duration) or None -- same shape
+        # as slow_effect, just handed to enemy.apply_poison() instead.
+        self.poison_effect = poison_effect
         self.sprite_name = sprite_name
         self.dead = False
 
@@ -110,6 +114,8 @@ class Projectile:
             enemy.apply_slow(*self.slow_effect)
         if self.knockback_duration:
             enemy.apply_knockback(enemy.speed * self.knockback_duration)
+        if self.poison_effect is not None:
+            enemy.apply_poison(*self.poison_effect)
 
     def draw(self, surface, assets):
         size = (12, 12)

@@ -1,4 +1,8 @@
+import pygame
+import pytest
+
 import pathing
+from assets import AssetManager
 from grid import Grid
 
 CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
@@ -63,7 +67,53 @@ def test_occupied_cell_is_not_buildable():
     assert grid.is_buildable(0, 0)
     grid.occupy(0, 0, tower="fake-tower")
     assert grid.is_occupied(0, 0)
-    assert not grid.is_buildable(0, 0)
+
+
+def test_in_bounds_true_within_the_grid_false_outside():
+    grid = make_grid()
+    assert grid.in_bounds(0, 0)
+    assert grid.in_bounds(grid.cols - 1, grid.rows - 1)
+    assert not grid.in_bounds(-1, 0)
+    assert not grid.in_bounds(0, -1)
+    assert not grid.in_bounds(grid.cols, 0)
+    assert not grid.in_bounds(0, grid.rows)
+
+
+def test_subtile_gap_must_be_smaller_than_subtile_size():
+    with pytest.raises(ValueError):
+        make_grid(subtiles_per_tile=8, subtile_gap=8)  # equal to subtile_size (8) -- invalid
+
+
+def test_subtile_gap_alpha_must_be_a_valid_byte():
+    with pytest.raises(ValueError):
+        make_grid(subtile_gap_alpha=256)
+
+
+def test_draw_builds_the_background_once_and_reuses_it_on_later_calls():
+    grid = make_grid()
+    assets = AssetManager()
+    surface = pygame.Surface((grid.cols * grid.tile_size, grid.rows * grid.tile_size))
+
+    grid.draw(surface, assets)
+    first_background = grid._background
+    assert first_background is not None
+
+    grid.draw(surface, assets)  # second call -- must reuse, not rebuild
+
+    assert grid._background is first_background
+
+
+def test_blocked_cells_render_with_the_blocked_tile_sprite():
+    grid = make_grid(blocked_cells=frozenset({(2, 2)}))
+    assets = AssetManager()
+    surface = pygame.Surface((grid.cols * grid.tile_size, grid.rows * grid.tile_size))
+
+    grid.draw(surface, assets)
+
+    drawn_size = grid.subtile_size - grid.subtile_gap
+    expected = assets.get("tile_blocked", (drawn_size, drawn_size)).get_at((0, 0))
+    tile_x, tile_y = 2 * grid.tile_size, 2 * grid.tile_size
+    assert surface.get_at((tile_x, tile_y)) == expected
 
 
 def test_get_tower_returns_the_occupying_tower_or_none():

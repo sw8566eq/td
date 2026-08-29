@@ -1,13 +1,37 @@
 import pygame
+import pytest
 
 from projectile import Projectile
-from tower import TOWER_TYPES, KnockbackTower, LightningTower
+from tower import TOWER_TYPES, KnockbackTower, LightningTower, PoisonTower, SniperTower, Tower
 
 
 class FakeEnemy:
     def __init__(self, pos=(50, 50)):
         self.pos = pygame.Vector2(pos)
         self.is_dead = False
+
+
+def test_base_tower_create_projectile_is_not_implemented():
+    # Every registered TOWER_TYPES entry overrides this -- the base class's
+    # own stub only exists to document the required interface.
+    tower = Tower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    with pytest.raises(NotImplementedError):
+        tower.create_projectile(FakeEnemy())
+
+
+def test_draw_without_a_font_skips_the_upgrade_badge():
+    from assets import AssetManager
+    tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    surface = pygame.Surface((100, 100))
+    assets = AssetManager()
+
+    tower.draw(surface, assets)  # font defaults to None -- must not raise
+
+    # No badge drawn: the corner it would occupy stays whatever the sprite
+    # itself left there, not the badge's own selected-button color.
+    from settings import COLOR_BUTTON_SELECTED
+    cx, cy = tower.upgrade_badge_center()
+    assert surface.get_at((cx, cy))[:3] != COLOR_BUTTON_SELECTED
 
 
 def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():
@@ -96,3 +120,40 @@ def test_other_towers_do_not_chain():
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.chain_range == 0.0, name
+
+
+def test_sniper_tower_is_registered():
+    assert TOWER_TYPES["sniper"] is SniperTower
+
+
+def test_sniper_tower_has_no_special_projectile_mechanic():
+    # A pure high-damage/long-range/slow-fire-rate pick -- no splash, slow,
+    # knockback, chain, or poison, same as BasicTower.
+    tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.splash_radius == 0
+    assert projectile.slow_effect is None
+    assert projectile.knockback_duration == 0.0
+    assert projectile.chain_range == 0.0
+    assert projectile.poison_effect is None
+
+
+def test_poison_tower_is_registered():
+    assert TOWER_TYPES["poison"] is PoisonTower
+
+
+def test_poison_tower_projectile_carries_a_poison_effect():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect == (
+        PoisonTower.poison_damage_per_tick, PoisonTower.poison_tick_interval, PoisonTower.poison_duration,
+    )
+
+
+def test_other_towers_have_no_poison_effect():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name == "poison":
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.poison_effect is None, name

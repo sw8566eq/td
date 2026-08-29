@@ -12,6 +12,7 @@ class FakeEnemy:
         self.damage_taken = 0
         self.slow_applied = None
         self.knockback_applied = None
+        self.poison_applied = None
 
     def take_damage(self, amount):
         self.damage_taken += amount
@@ -21,6 +22,9 @@ class FakeEnemy:
 
     def apply_knockback(self, distance):
         self.knockback_applied = distance
+
+    def apply_poison(self, damage_per_tick, tick_interval, duration):
+        self.poison_applied = (damage_per_tick, tick_interval, duration)
 
 
 def test_direct_hit_damages_only_the_target():
@@ -79,6 +83,38 @@ def test_slow_effect_applied_on_direct_hit():
     projectile.update(dt=1.0, enemies=[target])
 
     assert target.slow_applied == (0.5, 2.0)
+
+
+def test_poison_effect_applied_on_direct_hit():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=3, poison_effect=(4, 0.5, 3.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 3
+    assert target.poison_applied == (4, 0.5, 3.0)
+
+
+def test_no_poison_when_effect_is_none():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied is None
+
+
+def test_update_on_an_already_dead_projectile_is_a_no_op():
+    target = FakeEnemy((100, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)
+    projectile.dead = True
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert projectile.pos == pygame.Vector2(0, 0)  # never moved
+    assert target.damage_taken == 0
 
 
 def test_target_dying_before_impact_makes_projectile_a_dud():

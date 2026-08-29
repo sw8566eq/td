@@ -92,6 +92,22 @@ def test_skip_delay_during_an_actual_between_wave_countdown_starts_it_immediatel
     assert manager.state == WaveState.SPAWNING
 
 
+def test_skip_delay_is_a_no_op_while_a_wave_is_actively_spawning():
+    # The HUD's Skip button is only meant to be clickable in
+    # AWAITING_START/BETWEEN_WAVES (see ui._draw_wave_countdown_and_skip's
+    # `clickable` flag), but Game._handle_click's hit-test doesn't actually
+    # gate on that -- so skip_delay() itself has to be a safe no-op here.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=100.0)
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1 -> SPAWNING
+    assert manager.state == WaveState.SPAWNING
+
+    manager.skip_delay()
+
+    assert manager.state == WaveState.SPAWNING  # unchanged
+
+
 def test_spawns_the_exact_enemy_count_for_the_wave():
     level = make_level([{"grunt": 3}])
     manager = WaveManager(level, cell_to_pixel, spawn_interval=0.1, between_wave_delay=0.0)
@@ -190,6 +206,46 @@ def _drive_to_completion(manager):
         if manager.all_waves_complete:
             break
     return all_spawned
+
+
+def test_next_wave_preview_aggregates_a_single_spawns_composition():
+    level = make_level([{"grunt": 8, "tank": 3}])
+    manager = WaveManager(level, cell_to_pixel)
+
+    assert manager.next_wave_preview() == {"grunt": 8, "tank": 3}
+
+
+def test_next_wave_preview_aggregates_across_multiple_spawns():
+    level = Level(
+        id=1,
+        name="Test Level",
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        spawn_cells=((0, 0), (0, 2)),
+        goal_cells=((1, 1),),
+        wave_specs=[{(0, 0): {"grunt": 3}, (0, 2): {"grunt": 2, "tank": 2}}],
+    )
+    manager = WaveManager(level, cell_to_pixel)
+
+    assert manager.next_wave_preview() == {"grunt": 5, "tank": 2}
+
+
+def test_next_wave_preview_still_reflects_the_current_wave_while_spawning():
+    level = make_level([{"grunt": 3}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    manager.skip_delay()
+    manager.update(dt=0.01, active_enemies=[])  # begins wave 1 -> SPAWNING
+
+    assert manager.state == WaveState.SPAWNING
+    assert manager.next_wave_preview() == {"grunt": 3}
+
+
+def test_next_wave_preview_is_none_once_all_waves_complete():
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    _drive_to_completion(manager)
+
+    assert manager.all_waves_complete
+    assert manager.next_wave_preview() is None
 
 
 def test_each_spawns_wave_composition_is_honored_independently():

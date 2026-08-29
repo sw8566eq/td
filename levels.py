@@ -120,17 +120,20 @@ LEVEL_1_CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
 
 # Hand-authored rather than generate_default_waves(), so it can introduce
 # the other species partway through and cap off with a boss: grunts alone
-# to start, scouts joining wave 2, tanks wave 3, and a single BossEnemy
-# alongside a smaller support wave on the final wave. Terse (unwrapped)
-# form -- see _single_spawn_waves(), used below where this level's Level(...)
-# is actually built, since this level (like every level below) has just
-# the one spawn.
+# to start, scouts joining wave 2, tanks wave 3, flying wave 4, and
+# shielded alongside a single BossEnemy on the final wave -- every
+# registered species gets introduced somewhere across this level's own
+# waves (see test_levels.py's test_level_1_introduces_every_enemy_species_
+# across_its_waves), since this is the first level a new player sees.
+# Terse (unwrapped) form -- see _single_spawn_waves(), used below where
+# this level's Level(...) is actually built, since this level (like every
+# level below) has just the one spawn.
 LEVEL_1_WAVE_SPECS = [
     {"grunt": 6},
     {"grunt": 8, "scout": 5},
     {"grunt": 8, "scout": 6, "tank": 3},
-    {"grunt": 10, "scout": 8, "tank": 4},
-    {"grunt": 8, "scout": 6, "tank": 4, "boss": 1},
+    {"grunt": 10, "scout": 8, "tank": 4, "flying": 4},
+    {"grunt": 8, "scout": 6, "tank": 4, "shielded": 3, "boss": 1},
 ]
 
 LEVEL_2_CORNERS = [(0, 1), (6, 1), (6, 6), (10, 6), (10, 2), (14, 2)]

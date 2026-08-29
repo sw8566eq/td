@@ -7,6 +7,7 @@ from levels import Level
 from tower import TOWER_TYPES
 from ui import (
     EDITOR_ACTION_ORDER,
+    HUD_TOP_STRIP_HEIGHT,
     LEVEL_SELECT_BOTTOM,
     LEVEL_SELECT_ROW_GAP,
     LEVEL_SELECT_ROW_HEIGHT,
@@ -15,6 +16,7 @@ from ui import (
     LEVEL_THUMBNAIL_WIDTH,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
+    _draw_centered_overlay,
     _wrap_text,
     build_button_rects,
     build_editor_action_rects,
@@ -23,11 +25,14 @@ from ui import (
     build_level_thumbnail,
     build_sell_button_rect,
     build_skip_button_rect,
+    build_speed_button_rect,
     build_specialize_button_rects,
+    build_targeting_button_rect,
     build_upgrade_button_rect,
     build_wave_editor_action_rects,
     build_wave_tab_rects,
     build_wave_unit_rects,
+    draw_level_select_screen,
     get_clicked_editor_action,
     get_clicked_editor_tool,
     get_clicked_level_select_entry,
@@ -37,6 +42,7 @@ from ui import (
     get_clicked_wave_unit_button,
     level_select_content_height,
     level_select_max_scroll,
+    _format_wave_preview,
 )
 
 
@@ -73,6 +79,56 @@ def test_skip_button_does_not_overlap_the_tower_build_buttons():
     skip_rect = build_skip_button_rect()
     for name, tower_rect in build_button_rects().items():
         assert not skip_rect.colliderect(tower_rect), name
+
+
+def test_speed_button_sits_within_the_hud_top_strip():
+    rect = build_speed_button_rect()
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    assert rect.top >= hud_top
+    assert rect.bottom <= hud_top + HUD_TOP_STRIP_HEIGHT
+    assert rect.right <= settings.PLAY_WIDTH
+
+
+def test_speed_button_does_not_overlap_the_skip_button_or_tower_buttons():
+    speed_rect = build_speed_button_rect()
+    assert not speed_rect.colliderect(build_skip_button_rect())
+    for name, tower_rect in build_button_rects().items():
+        assert not speed_rect.colliderect(tower_rect), name
+
+
+def test_format_wave_preview_orders_by_registry_order_not_dict_order():
+    from ui import ENEMY_ORDER
+
+    # Deliberately built out of ENEMY_ORDER's order to prove the formatter
+    # re-sorts rather than trusting dict iteration order.
+    reversed_order = list(reversed(ENEMY_ORDER))
+    composition = {name: index + 1 for index, name in enumerate(reversed_order)}
+
+    text = _format_wave_preview(composition)
+
+    positions = [text.index(f"{name.capitalize()} x") for name in ENEMY_ORDER]
+    assert positions == sorted(positions)
+
+
+def test_format_wave_preview_only_mentions_species_actually_present():
+    composition = {"grunt": 8}
+    text = _format_wave_preview(composition)
+    assert text == "Next: Grunt x8"
+
+
+def test_targeting_button_sits_within_the_stats_panel():
+    rect = build_targeting_button_rect()
+    assert rect.left >= settings.PLAY_WIDTH
+    assert rect.right <= settings.SCREEN_WIDTH
+    assert rect.top >= 0
+    assert rect.bottom <= settings.SCREEN_HEIGHT
+
+
+def test_targeting_button_sits_above_the_upgrade_button_without_overlapping():
+    targeting_rect = build_targeting_button_rect()
+    upgrade_rect = build_upgrade_button_rect()
+    assert not targeting_rect.colliderect(upgrade_rect)
+    assert targeting_rect.bottom <= upgrade_rect.top
 
 
 def test_upgrade_and_sell_buttons_sit_within_the_stats_panel():
@@ -191,6 +247,25 @@ def test_get_clicked_level_select_entry_returns_matching_key():
 
 def test_build_level_select_rects_handles_an_empty_entry_list():
     assert build_level_select_rects([]) == {}
+
+
+def test_draw_level_select_screen_handles_a_missing_thumbnail():
+    # Game._enter_level_select() always builds one thumbnail per entry, so
+    # this only ever happens defensively -- a caller passing a thumbnails
+    # dict that doesn't have every listed entry's key must not crash, just
+    # skip the thumbnail and still render the row's label.
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    class FakeLevel:
+        name = "No Thumbnail Level"
+
+    entries = [(1, FakeLevel())]
+    rects = build_level_select_rects(entries)
+
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={})
 
 
 # --- Level select scrolling ---
@@ -355,7 +430,33 @@ def test_wave_unit_rects_do_not_overlap_the_wave_editor_action_rects():
             assert not unit_rect.colliderect(action_rect)
 
 
+# --- _draw_centered_overlay ---
+
+def test_draw_centered_overlay_skips_a_falsy_subtitle_line():
+    # Documented in the docstring ("an empty string/list draws no subtitle
+    # at all") -- no current caller (menu/pause/game-over/victory screens)
+    # actually passes one, so this exercises it directly.
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((400, 300))
+
+    _draw_centered_overlay(surface, font, small_font, "Title", ["", "a real line"], (255, 255, 255))
+    # Must not raise, and the blank entry shouldn't have consumed a line's
+    # worth of vertical space -- diffing against a version with just the
+    # one real line should render identically.
+    surface_without_blank = pygame.Surface((400, 300))
+    _draw_centered_overlay(surface_without_blank, font, small_font, "Title", ["a real line"], (255, 255, 255))
+    assert surface.get_buffer().raw == surface_without_blank.get_buffer().raw
+
+
 # --- _wrap_text (editor validation-message word wrap) ---
+
+def test_wrap_text_returns_an_empty_list_for_empty_text():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 22)
+    assert _wrap_text("", font, max_width=1000) == []
+
 
 def test_wrap_text_keeps_a_short_line_unwrapped():
     pygame.font.init()

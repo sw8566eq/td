@@ -21,7 +21,16 @@ ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion o
 
 BUTTON_SIZE = 72
 BUTTON_MARGIN = 12
-BUTTON_Y = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT + (settings.HUD_HEIGHT - BUTTON_SIZE) // 2
+
+# The HUD's top 32px is reserved for content that doesn't depend on how many
+# tower buttons are registered -- the speed toggle (build_speed_button_rect)
+# and the upcoming-wave preview text (_format_wave_preview) both draw here
+# instead of squeezing into whatever horizontal gap happens to be left next
+# to the tower buttons, which shrinks every time a new tower is added.
+HUD_TOP_STRIP_HEIGHT = 32
+HUD_BUTTON_ROW_HEIGHT = settings.HUD_HEIGHT - HUD_TOP_STRIP_HEIGHT
+BUTTON_Y = (settings.SCREEN_HEIGHT - HUD_BUTTON_ROW_HEIGHT
+            + (HUD_BUTTON_ROW_HEIGHT - BUTTON_SIZE) // 2)
 
 PANEL_PADDING = 16
 PANEL_ROW_HEIGHT = 22
@@ -45,7 +54,13 @@ SKIP_BUTTON_MARGIN = 16
 ACTION_BUTTON_WIDTH = 200
 ACTION_BUTTON_HEIGHT = 36
 ACTION_BUTTON_GAP = 10
-ACTION_AREA_TOP = 260
+# A placed tower's "Targeting: <Mode>" row (see build_targeting_button_rect)
+# occupies the old ACTION_AREA_TOP slot; the Upgrade/Specialize/Sell block
+# below it is pushed down by one more button-height-plus-gap to make room,
+# same shared-geometry convention the editor/wave-editor action buttons
+# below already reuse this constant for.
+TARGETING_BUTTON_TOP = 260
+ACTION_AREA_TOP = TARGETING_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
 SELL_BUTTON_TOP = ACTION_AREA_TOP + 2 * (ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP)
 
 
@@ -79,9 +94,32 @@ def build_skip_button_rect():
     return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
 
 
+SPEED_BUTTON_WIDTH = 84
+SPEED_BUTTON_HEIGHT = 28
+
+
+def build_speed_button_rect():
+    """Rect for the HUD's speed-toggle button ('Speed: 1x', cycling to 2x/
+    3x on click -- see Game.cycle_time_scale) -- right-aligned in the HUD's
+    top strip (see HUD_TOP_STRIP_HEIGHT), independent of both the tower
+    button row below it and the skip button, which lives in that row."""
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    x = settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN
+    y = hud_top + (HUD_TOP_STRIP_HEIGHT - SPEED_BUTTON_HEIGHT) // 2
+    return pygame.Rect(x, y, SPEED_BUTTON_WIDTH, SPEED_BUTTON_HEIGHT)
+
+
 def _action_button_rect(top):
     x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - ACTION_BUTTON_WIDTH) // 2
     return pygame.Rect(x, top, ACTION_BUTTON_WIDTH, ACTION_BUTTON_HEIGHT)
+
+
+def build_targeting_button_rect():
+    """Rect for the stats panel's 'Targeting: <Mode>' row -- fixed position
+    within the panel (see TARGETING_BUTTON_TOP), horizontally centered.
+    Only meaningful (and only drawn/clickable) while the panel's subject is
+    a placed tower -- see draw_tower_stats_panel and Game._handle_click."""
+    return _action_button_rect(TARGETING_BUTTON_TOP)
 
 
 def build_upgrade_button_rect():
@@ -117,12 +155,17 @@ def build_sell_button_rect():
 
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
-             skip_button_rect, selected_tower_name):
+             skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
+             wave_preview=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
                             settings.PLAY_WIDTH, settings.HUD_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
+
+    _draw_speed_button(surface, small_font, speed_button_rect, time_scale)
+    if wave_preview is not None:
+        _draw_wave_preview(surface, small_font, hud_rect, wave_preview)
 
     for name, rect in button_rects.items():
         tower_cls = TOWER_TYPES[name]
@@ -159,6 +202,34 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     surface.blit(wave_text, (info_x, hud_rect.y + 64))
 
     _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
+
+
+def _format_wave_preview(composition):
+    """'Next: Grunt x8, Scout x5' -- ordered by ENEMY_ORDER (registry
+    insertion order), not whatever order the dict happens to iterate in, so
+    the same species always lines up in the same spot from wave to wave."""
+    ordered_names = [name for name in ENEMY_ORDER if name in composition]
+    parts = [f"{name.capitalize()} x{composition[name]}" for name in ordered_names]
+    return "Next: " + ", ".join(parts)
+
+
+def _draw_wave_preview(surface, font, hud_rect, wave_preview):
+    text = _format_wave_preview(wave_preview)
+    # Wrapped as a defensive cap, not because it's normally needed -- the
+    # top strip has generous width (PLAY_WIDTH minus a small margin) well
+    # beyond any realistic wave composition string.
+    max_width = settings.PLAY_WIDTH - 2 * BUTTON_MARGIN
+    y = hud_rect.y + 4
+    for line in _wrap_text(text, font, max_width)[:2]:
+        rendered = font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(rendered, (BUTTON_MARGIN, y))
+        y += rendered.get_height() + 2
+
+
+def _draw_speed_button(surface, font, speed_button_rect, time_scale):
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, speed_button_rect, border_radius=6)
+    label = font.render(f"Speed: {time_scale:g}x", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=speed_button_rect.center))
 
 
 def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
@@ -220,14 +291,16 @@ def draw_tower_range_preview(surface, tower):
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
 
 
-def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_button_rect,
-                            specialize_button_rects, sell_button_rect, hovered_specialize_key=None):
+def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
+                            upgrade_button_rect, specialize_button_rects, sell_button_rect,
+                            hovered_specialize_key=None):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
       - a Tower *instance* (a placed tower, either hovered or clicked to
         stay pinned open -- shows its live stats, with a '-> value'
-        preview of what upgrading would change; an Upgrade button below
+        preview of what upgrading would change; a "Targeting: <Mode>" row
+        that cycles targeting_mode on click; an Upgrade button below
         MAX_LEVEL, or two Specialize choices once at MAX_LEVEL and not
         yet specialized (hovering one shows its description via
         `hovered_specialize_key`); and a Sell button), or
@@ -251,8 +324,19 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, upgrade_
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
 
     if is_placed:
+        _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
         _draw_panel_action_buttons(surface, small_font, subject, economy,
                                     upgrade_button_rect, specialize_button_rects, sell_button_rect)
+
+
+def _draw_targeting_row(surface, small_font, subject, targeting_button_rect):
+    """The "Targeting: <Mode>" button -- always shown for a placed tower
+    (unlike Upgrade/Specialize, which are mutually exclusive with each
+    other), since a tower's targeting mode is always choosable regardless
+    of level."""
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, targeting_button_rect, border_radius=6)
+    label = small_font.render(f"Targeting: {subject.targeting_mode.capitalize()}", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=targeting_button_rect.center))
 
 
 def _draw_panel_hint(surface, small_font, x):
@@ -578,7 +662,8 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
 
 WAVE_TAB_SIZE = 48
 WAVE_TAB_MARGIN = 8
-WAVE_TAB_Y = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT + (settings.HUD_HEIGHT - WAVE_TAB_SIZE) // 2
+WAVE_TAB_Y = (settings.SCREEN_HEIGHT - HUD_BUTTON_ROW_HEIGHT
+              + (HUD_BUTTON_ROW_HEIGHT - WAVE_TAB_SIZE) // 2)
 
 WAVE_UNIT_ROWS_TOP = 100
 WAVE_UNIT_ROW_HEIGHT = 32
@@ -838,7 +923,7 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
 
 
 def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
-                              purpose="play", scroll_offset=0):
+                              purpose="play", scroll_offset=0, locked_ids=frozenset()):
     """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
     both listed, picking one starts playing it) or "edit" (the map
     editor's "Load Map..." -- only custom levels listed, since a built-in
@@ -850,7 +935,12 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
     than running off-screen unreachably -- rects/scroll_offset are
     expected to already agree (both built from the same scroll position;
     see Game._level_select_rects), this just clips the drawing and shows
-    a hint when there's more list than fits either direction."""
+    a hint when there's more list than fits either direction.
+
+    `locked_ids` (only ever nonempty for purpose="play" -- see
+    Game._enter_level_select) dims a not-yet-unlocked built-in level's row
+    and tags its label "(Locked)" instead of drawing it like a normal,
+    playable entry."""
     surface.fill(settings.COLOR_BG)
     title_text = "Load a Map to Edit" if purpose == "edit" else "Select a Level"
     title = font.render(title_text, True, settings.COLOR_TEXT)
@@ -869,7 +959,9 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         rect = rects[key]
         if not rect.colliderect(viewport):
             continue  # scrolled fully out of view -- nothing to draw
-        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+        locked = key in locked_ids
+        row_color = settings.COLOR_BUTTON_DISABLED if locked else settings.COLOR_BUTTON
+        pygame.draw.rect(surface, row_color, rect, border_radius=6)
 
         thumbnail = thumbnails.get(key)
         text_x = rect.left + LEVEL_SELECT_ROW_PADDING
@@ -883,12 +975,17 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         # built-in one's is the int key it's registered under in LEVELS.
         # purpose == "edit" never lists a built-in at all (see
         # Game._enter_level_select), so the "(custom)" tag would just be
-        # redundant noise there -- every row already is one.
+        # redundant noise there -- every row already is one. locked_ids is
+        # always empty for purpose == "edit" and for a custom level's own
+        # key, so the "(Locked)" tag only ever applies to a "play" row.
         if purpose == "edit" or isinstance(key, int):
             label = level.name
         else:
             label = f"{level.name} (custom)"
-        text = small_font.render(label, True, settings.COLOR_TEXT)
+        if locked:
+            label += " (Locked)"
+        text_color = settings.COLOR_TEXT_DIM if locked else settings.COLOR_TEXT
+        text = small_font.render(label, True, text_color)
         surface.blit(text, text.get_rect(midleft=(text_x, rect.centery)))
 
     surface.set_clip(previous_clip)

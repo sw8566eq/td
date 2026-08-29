@@ -54,6 +54,20 @@ def test_paint_adds_a_path_cell_at_the_clicked_pixel():
     assert (3, 4) in editor.path_cells
 
 
+def test_an_unrecognized_active_tool_paints_nothing():
+    # Not reachable through set_tool() (it only accepts TOOL_ORDER members),
+    # but _apply_tool()'s if/elif chain still needs a safe fallthrough for
+    # any value that doesn't match one of the four known tools.
+    editor = Editor()
+    editor.active_tool = "bogus-tool"
+
+    editor.paint_at(*cell_center_px((3, 4)))
+
+    assert editor.path_cells == set()
+    assert editor.spawn_cells == set()
+    assert editor.goal_cells == set()
+
+
 def test_erase_removes_a_previously_painted_cell():
     editor = Editor()
     editor.paint_at(*cell_center_px((3, 4)))
