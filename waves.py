@@ -243,6 +243,17 @@ class WaveManager:
                 self.state = WaveState.BETWEEN_WAVES
                 self.between_wave_timer = self.between_wave_delay
             else:
+                # Bump wave_index here too, symmetric with both branches
+                # above -- current_wave_number (wave_index + 1) is what
+                # Game.update() compares before/after its own update() call
+                # to detect a wave surviving for the waves_survived
+                # achievement counter; leaving wave_index at the last
+                # wave's own index would silently make the *final* wave of
+                # every level never count. Safe once DONE: _begin_wave()
+                # (the only other reader of wave_specs[wave_index]) is
+                # never called again, and next_wave_preview() guards on
+                # all_waves_complete before ever indexing with it.
+                self.wave_index += 1
                 self.state = WaveState.DONE
                 self.all_waves_complete = True
         else:

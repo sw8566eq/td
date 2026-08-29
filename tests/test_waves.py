@@ -445,6 +445,18 @@ def test_non_endless_still_reaches_done_and_all_waves_complete():
     assert manager.all_waves_complete
 
 
+def test_clearing_the_final_wave_still_advances_wave_index():
+    # Regression guard: current_wave_number (wave_index + 1) must reflect
+    # every wave actually cleared, the final one included -- Game.update()
+    # relies on it rising to detect a survived wave for its
+    # waves_survived achievement counter.
+    level = make_level([{"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    before_final_wave = manager.total_waves  # current_wave_number once wave 2 (the last) begins
+    _drive_to_completion(manager)
+    assert manager.current_wave_number > before_final_wave
+
+
 def test_endless_never_reaches_done_or_all_waves_complete():
     level = make_level([{"grunt": 1}])
     manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, endless=True)

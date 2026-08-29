@@ -1395,6 +1395,23 @@ def test_clearing_a_wave_records_the_waves_survived_achievement_counter(playing_
     assert counters["waves_survived"] == 1
 
 
+def test_clearing_a_levels_final_wave_still_records_waves_survived(playing_game):
+    # Regression test: _advance_after_clear's non-endless DONE branch used
+    # to never bump wave_index, so current_wave_number never rose on the
+    # very last wave and this counter silently missed it.
+    wave_manager = playing_game.wave_manager
+    wave_manager.wave_index = wave_manager.total_waves - 1  # on the level's last wave
+    wave_manager.state = WaveState.SPAWNING
+    wave_manager._spawn_queues = []
+    playing_game.enemies = []
+
+    playing_game.update(dt=0.01)
+
+    assert wave_manager.all_waves_complete
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["waves_survived"] == 1
+
+
 def test_clearing_a_level_records_the_levels_cleared_achievement_counter(playing_game):
     playing_game.wave_manager.all_waves_complete = True
     playing_game.enemies = []
