@@ -553,3 +553,397 @@ def test_to_level_raises_for_a_valid_path_with_an_empty_wave():
     # No units ever added -- path is valid, but the one wave is empty.
     with pytest.raises(ValueError):
         editor.to_level()
+
+
+# --- Undo/redo ---
+
+def test_undo_on_a_fresh_editor_is_a_no_op():
+    editor = Editor()
+    assert editor.undo() is False
+    assert editor.path_cells == set()
+
+
+def test_redo_with_nothing_undone_is_a_no_op():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((0, 0)))
+    assert editor.redo() is False
+
+
+def test_undo_reverts_a_single_painted_cell():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((3, 4)))
+
+    assert editor.undo() is True
+
+    assert (3, 4) not in editor.path_cells
+
+
+def test_redo_reapplies_an_undone_edit():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((3, 4)))
+    editor.undo()
+
+    assert editor.redo() is True
+
+    assert (3, 4) in editor.path_cells
+
+
+def test_a_whole_drag_stroke_undoes_as_one_step_not_one_per_cell():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0), (2, 0), (3, 0)])  # one continuous drag
+
+    editor.undo()
+
+    assert editor.path_cells == set()  # the whole stroke gone in a single undo
+    assert editor.undo() is False  # nothing more to undo -- it was one step
+
+
+def test_ending_a_stroke_starts_a_fresh_undo_step_for_the_next_one():
+    editor = Editor()
+    editor.set_tool(EditorTool.PAINT)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.end_stroke()  # simulates a mouse-up between strokes
+    editor.paint_at(*cell_center_px((1, 0)))
+
+    editor.undo()  # undoes only the second stroke
+
+    assert (0, 0) in editor.path_cells
+    assert (1, 0) not in editor.path_cells
+
+
+def test_new_edit_after_an_undo_clears_the_redo_stack():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.end_stroke()
+    editor.undo()
+
+    editor.paint_at(*cell_center_px((5, 5)))  # a genuinely new edit
+
+    assert editor.redo() is False
+
+
+def test_undo_limit_caps_how_far_back_history_goes():
+    editor = Editor()
+    # Wrap within the grid's real bounds (default 15x9 = 135 cells) --
+    # painting straight off the edge past col 15 would silently no-op
+    # (see Editor.in_bounds()) and never push an undo step at all.
+    for i in range(Editor.UNDO_LIMIT + 10):
+        col, row = i % editor.cols, i // editor.cols
+        editor.paint_at(*cell_center_px((col, row)))
+        editor.end_stroke()
+
+    undo_count = 0
+    while editor.undo():
+        undo_count += 1
+
+    assert undo_count == Editor.UNDO_LIMIT
+
+
+def test_undo_restores_wave_data_too():
+    editor = Editor()
+    _paint_valid_corridor(editor)  # includes one grunt in wave 1
+    editor.adjust_unit_count("grunt", +5)
+    assert editor.wave_specs[0][(0, 0)]["grunt"] == 6
+
+    editor.undo()
+
+    assert editor.wave_specs[0][(0, 0)]["grunt"] == 1
+
+
+def test_undo_after_clear_restores_everything():
+    editor = Editor()
+    _paint_valid_corridor(editor)
+    editor.clear()
+    assert editor.path_cells == set()
+
+    editor.undo()
+
+    assert editor.can_play()
+
+
+def test_undo_after_load_level_restores_the_previous_in_progress_buffer():
+    editor = Editor()
+    _paint_corridor(editor, [(5, 5), (5, 6)])  # some in-progress, unsaved work
+    other_level = Level(
+        id="other", name="Other", path_cells=frozenset({(0, 0), (1, 0)}),
+        spawn_cells=((0, 0),), goal_cells=((1, 0),),
+        wave_specs=[{(0, 0): {"grunt": 1}}],
+    )
+
+    editor.load_level(other_level)
+    assert editor.path_cells == {(0, 0), (1, 0)}
+
+    editor.undo()
+
+    assert editor.path_cells == {(5, 5), (5, 6)}
+
+
+def test_undo_after_add_wave_removes_it():
+    editor = Editor()
+    assert len(editor.wave_specs) == 1
+    editor.add_wave()
+    assert len(editor.wave_specs) == 2
+
+    editor.undo()
+
+    assert len(editor.wave_specs) == 1
+
+
+def test_undo_after_remove_wave_restores_it():
+    editor = Editor()
+    editor.add_wave()
+    editor.remove_wave(0)
+    assert len(editor.wave_specs) == 1
+
+    editor.undo()
+
+    assert len(editor.wave_specs) == 2
+
+
+def test_remove_wave_no_op_does_not_push_an_undo_step():
+    editor = Editor()
+    editor.paint_at(*cell_center_px((0, 0)))  # one real edit on the stack
+    editor.end_stroke()
+    editor.remove_wave()  # only one wave exists -- a no-op, must not push anything
+
+    editor.undo()
+
+    assert (0, 0) not in editor.path_cells  # undid the paint, not a phantom no-op step
+    assert editor.undo() is False
+
+
+# --- Line/Rectangle tools ---
+
+def test_line_tool_paints_a_straight_run_between_two_points():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.begin_shape((0, 0))
+    editor.update_shape_preview((3, 0))
+    editor.commit_shape((3, 0))
+
+    assert editor.path_cells == {(0, 0), (1, 0), (2, 0), (3, 0)}
+
+
+def test_line_tool_snaps_a_diagonal_drag_to_the_dominant_axis():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.begin_shape((0, 0))
+    editor.update_shape_preview((5, 2))  # diagonal -- horizontal movement dominates
+
+    editor.commit_shape((5, 2))  # must not raise (path_cells_from_corners rejects diagonals)
+
+    assert (5, 0) in editor.path_cells  # snapped to the start row, not the end row
+    assert (5, 2) not in editor.path_cells
+
+
+def test_pending_shape_cells_does_not_mutate_path_cells_before_commit():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.begin_shape((0, 0))
+    editor.update_shape_preview((3, 0))
+
+    preview = editor.pending_shape_cells()
+
+    assert preview == {(0, 0), (1, 0), (2, 0), (3, 0)}
+    assert editor.path_cells == set()  # nothing committed yet
+
+
+def test_pending_shape_cells_is_empty_with_no_drag_in_progress():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    assert editor.pending_shape_cells() == frozenset()
+
+
+def test_rect_tool_paints_a_hollow_perimeter():
+    editor = Editor()
+    editor.set_tool(EditorTool.RECT)
+    editor.begin_shape((0, 0))
+    editor.commit_shape((2, 2))
+
+    assert editor.path_cells == {
+        (0, 0), (1, 0), (2, 0),
+        (0, 1), (2, 1),
+        (0, 2), (1, 2), (2, 2),
+    }
+    assert (1, 1) not in editor.path_cells  # hollow, not filled
+
+
+def test_rect_tool_initially_reports_a_loop():
+    editor = Editor()
+    editor.set_tool(EditorTool.RECT)
+    editor.begin_shape((0, 0))
+    editor.commit_shape((2, 2))
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.set_tool(EditorTool.GOAL)
+    editor.paint_at(*cell_center_px((2, 2)))
+
+    assert not editor.path_is_valid()
+    assert any("loop" in problem for problem in editor.path_problems)
+
+
+def test_erasing_one_edge_of_a_rect_opens_it_into_a_valid_corridor():
+    editor = Editor()
+    editor.set_tool(EditorTool.RECT)
+    editor.begin_shape((0, 0))
+    editor.commit_shape((2, 2))
+    editor.set_tool(EditorTool.ERASE)
+    editor.paint_at(*cell_center_px((1, 0)))  # break the loop
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.set_tool(EditorTool.GOAL)
+    editor.paint_at(*cell_center_px((2, 0)))
+
+    assert editor.path_is_valid()
+
+
+def test_begin_shape_ignores_an_out_of_bounds_cell():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.begin_shape((-5, -5))
+    assert editor.pending_shape_cells() == frozenset()
+
+
+def test_a_click_with_no_drag_paints_a_single_cell_with_the_line_tool():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.begin_shape((4, 4))
+    editor.commit_shape((4, 4))
+    assert editor.path_cells == {(4, 4)}
+
+
+def test_commit_shape_with_no_drag_in_progress_is_a_no_op():
+    editor = Editor()
+    editor.set_tool(EditorTool.LINE)
+    editor.commit_shape((4, 4))  # no begin_shape() call first
+    assert editor.path_cells == set()
+
+
+def test_a_whole_rect_drag_undoes_as_one_step():
+    editor = Editor()
+    editor.set_tool(EditorTool.RECT)
+    editor.begin_shape((0, 0))
+    editor.commit_shape((3, 3))
+    assert editor.path_cells != set()
+
+    editor.undo()
+
+    assert editor.path_cells == set()
+
+
+# --- Select tool + copy/paste ---
+
+def test_select_tool_does_not_mutate_path_cells():
+    editor = Editor()
+    _paint_valid_corridor(editor)
+    before = set(editor.path_cells)
+    editor.set_tool(EditorTool.SELECT)
+    editor.begin_shape((0, 0))
+    editor.commit_shape((2, 0))
+
+    assert editor.path_cells == before
+
+
+def test_select_tool_sets_selection_bounds():
+    editor = Editor()
+    editor.set_tool(EditorTool.SELECT)
+    editor.begin_shape((1, 3))
+    editor.commit_shape((4, 5))
+
+    assert editor.selection_bounds == (1, 3, 4, 5)
+
+
+def test_select_bounds_are_normalized_regardless_of_drag_direction():
+    editor = Editor()
+    editor.set_tool(EditorTool.SELECT)
+    editor.begin_shape((4, 5))  # dragging from bottom-right to top-left
+    editor.commit_shape((1, 3))
+
+    assert editor.selection_bounds == (1, 3, 4, 5)
+
+
+def test_copy_selection_captures_relative_offsets():
+    editor = Editor()
+    _paint_corridor(editor, [(2, 2), (3, 2), (4, 2)])
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((2, 2)))
+    editor.select_region((2, 2), (4, 2))
+
+    editor.copy_selection()
+
+    assert editor.clipboard["path"] == {(0, 0), (1, 0), (2, 0)}
+    assert editor.clipboard["spawn"] == {(0, 0)}
+    assert editor.clipboard["goal"] == frozenset()
+
+
+def test_copy_selection_with_nothing_selected_is_a_no_op():
+    editor = Editor()
+    editor.copy_selection()
+    assert editor.clipboard is None
+
+
+def test_copy_selection_excludes_cells_outside_the_bounds():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0), (2, 0), (3, 0)])
+    editor.select_region((0, 0), (1, 0))  # only the first 2 cells
+
+    editor.copy_selection()
+
+    assert editor.clipboard["path"] == {(0, 0), (1, 0)}
+
+
+def test_paste_clipboard_stamps_at_a_new_anchor_additively():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0)])
+    editor.select_region((0, 0), (1, 0))
+    editor.copy_selection()
+
+    editor.paste_clipboard((10, 10))
+
+    assert (10, 10) in editor.path_cells
+    assert (11, 10) in editor.path_cells
+    assert (0, 0) in editor.path_cells  # original untouched -- additive, not a move
+
+
+def test_paste_clipboard_includes_a_copied_spawn_marker():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0)])
+    editor.set_tool(EditorTool.SPAWN)
+    editor.paint_at(*cell_center_px((0, 0)))
+    editor.select_region((0, 0), (1, 0))
+    editor.copy_selection()
+
+    editor.paste_clipboard((10, 10))
+
+    assert (10, 10) in editor.spawn_cells
+
+
+def test_pasted_spawn_has_no_wave_data_attached():
+    editor = Editor()
+    _paint_valid_corridor(editor)  # spawn at (0, 0) already has a grunt in wave 1
+    editor.select_region((0, 0), (0, 0))
+    editor.copy_selection()
+
+    editor.paste_clipboard((10, 10))
+
+    assert editor.wave_specs[0].get((10, 10)) is None
+
+
+def test_paste_with_empty_clipboard_is_a_no_op():
+    editor = Editor()
+    before = set(editor.path_cells)
+    editor.paste_clipboard((5, 5))
+    assert editor.path_cells == before
+
+
+def test_paste_is_undoable_as_one_step():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0)])
+    editor.select_region((0, 0), (1, 0))
+    editor.copy_selection()
+    editor.paste_clipboard((10, 10))
+    assert (10, 10) in editor.path_cells
+
+    editor.undo()
+
+    assert (10, 10) not in editor.path_cells

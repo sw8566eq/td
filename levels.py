@@ -111,6 +111,26 @@ def generate_default_waves(spawn_cell, total_waves, enemy_type="grunt", base_cou
     return _single_spawn_waves(spawn_cell, flat)
 
 
+def _corridor_level(level_id, name, corners, wave_specs, starting_gold=150, starting_lives=20):
+    """Build a Level for the shape every hand-authored level below except
+    Confluence shares: a single spawn (the corner list's first corner), a
+    single goal (its last), and a path traced straight from the corners.
+    `wave_specs` must already be in Level's own nested {spawn_cell: {...}}
+    shape -- callers wrap a terse per-wave list with _single_spawn_waves()
+    themselves first (generate_default_waves() already returns that shape
+    directly, so a level built from it can just pass its result through)."""
+    return Level(
+        id=level_id,
+        name=name,
+        path_cells=pathing.path_cells_from_corners(corners),
+        spawn_cells=(corners[0],),
+        goal_cells=(corners[-1],),
+        wave_specs=wave_specs,
+        starting_gold=starting_gold,
+        starting_lives=starting_lives,
+    )
+
+
 # Hand-written levels are authored as a simple ordered corner list -- terser
 # than spelling out every tile -- and converted to the shared path_cells/
 # spawn_cells/goal_cells shape via pathing.path_cells_from_corners. A
@@ -148,25 +168,90 @@ LEVEL_2_WAVE_SPECS = [
     {"grunt": 9, "scout": 7, "tank": 5, "boss": 1},
 ]
 
+LEVEL_3_CORNERS = [(0, 8), (3, 8), (3, 5), (7, 5), (7, 2), (11, 2), (11, 8), (14, 8)]
+
+# More switchbacks than levels 1-2, and correspondingly larger waves.
+LEVEL_3_WAVE_SPECS = [
+    {"grunt": 9},
+    {"grunt": 10, "scout": 7},
+    {"grunt": 10, "scout": 8, "tank": 5},
+    {"grunt": 12, "scout": 10, "tank": 6, "flying": 5},
+    {"grunt": 10, "scout": 8, "tank": 6, "shielded": 4, "boss": 1},
+]
+
+LEVEL_4_CORNERS = [(0, 0), (0, 3), (13, 3), (13, 0)]
+
+# Built from generate_default_waves() (a plain grunt ramp) for the first
+# four waves -- this level is a quick, simple corridor, not a hand-tuned
+# species showcase -- with one hand-built final wave appended for the
+# mandatory boss (see test_levels.py's test_every_levels_final_wave_
+# includes_a_boss, which checks every registered level, not just 1 and 2).
+LEVEL_4_WAVE_SPECS = generate_default_waves(
+    LEVEL_4_CORNERS[0], total_waves=4, enemy_type="grunt", base_count=10, count_step=4,
+)
+LEVEL_4_WAVE_SPECS.append({LEVEL_4_CORNERS[0]: {"grunt": 12, "scout": 8, "boss": 1}})
+
+LEVEL_5_CORNERS = [(0, 2), (2, 2), (2, 7), (5, 7), (5, 1), (8, 1), (8, 7), (11, 7), (11, 1), (14, 1)]
+
+# The hardest hand-tuned single-spawn level: six waves (one more than any
+# other level), ramping through every species and finishing with two
+# bosses at once.
+LEVEL_5_WAVE_SPECS = [
+    {"grunt": 10, "scout": 4},
+    {"grunt": 10, "scout": 8, "tank": 4},
+    {"grunt": 12, "scout": 9, "tank": 6, "flying": 6},
+    {"grunt": 12, "scout": 10, "tank": 7, "shielded": 5},
+    {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "shielded": 6},
+    {"grunt": 12, "scout": 10, "tank": 8, "shielded": 6, "flying": 6, "boss": 2},
+]
+
+# Level 6 is this campaign's one genuinely multi-spawn level, built from the
+# full nested wave_specs shape directly (no corner-list shorthand, no
+# _single_spawn_waves) -- two independent lanes converge at (6, 4) before a
+# shared run to the goal, and each spawn sends a completely different
+# species mix in every wave (grunt/tank from the top lane, scout/flying/
+# shielded from the bottom one).
+LEVEL_6_SPAWN_TOP = (0, 2)
+LEVEL_6_SPAWN_BOTTOM = (0, 6)
+LEVEL_6_GOAL = (14, 4)
+LEVEL_6_PATH_CELLS = frozenset(
+    pathing.path_cells_from_corners([LEVEL_6_SPAWN_TOP, (6, 2), (6, 4)])
+    | pathing.path_cells_from_corners([LEVEL_6_SPAWN_BOTTOM, (6, 6), (6, 4)])
+    | pathing.path_cells_from_corners([(6, 4), LEVEL_6_GOAL])
+)
+LEVEL_6_WAVE_SPECS = [
+    {LEVEL_6_SPAWN_TOP: {"grunt": 6}, LEVEL_6_SPAWN_BOTTOM: {"scout": 6}},
+    {LEVEL_6_SPAWN_TOP: {"grunt": 8, "tank": 2}, LEVEL_6_SPAWN_BOTTOM: {"scout": 8, "flying": 3}},
+    {LEVEL_6_SPAWN_TOP: {"grunt": 8, "tank": 4}, LEVEL_6_SPAWN_BOTTOM: {"scout": 8, "flying": 5, "shielded": 2}},
+    {LEVEL_6_SPAWN_TOP: {"grunt": 10, "tank": 6}, LEVEL_6_SPAWN_BOTTOM: {"scout": 10, "flying": 6, "shielded": 4}},
+    {LEVEL_6_SPAWN_TOP: {"grunt": 10, "tank": 6, "boss": 1},
+     LEVEL_6_SPAWN_BOTTOM: {"scout": 10, "flying": 6, "shielded": 4}},
+]
+
 LEVELS = {
-    1: Level(
-        id=1,
-        name="Winding Road",
-        path_cells=pathing.path_cells_from_corners(LEVEL_1_CORNERS),
-        spawn_cells=(LEVEL_1_CORNERS[0],),
-        goal_cells=(LEVEL_1_CORNERS[-1],),
-        wave_specs=_single_spawn_waves(LEVEL_1_CORNERS[0], LEVEL_1_WAVE_SPECS),
-        starting_gold=150,
-        starting_lives=20,
-    ),
-    2: Level(
-        id=2,
-        name="Serpentine Pass",
-        path_cells=pathing.path_cells_from_corners(LEVEL_2_CORNERS),
-        spawn_cells=(LEVEL_2_CORNERS[0],),
-        goal_cells=(LEVEL_2_CORNERS[-1],),
-        wave_specs=_single_spawn_waves(LEVEL_2_CORNERS[0], LEVEL_2_WAVE_SPECS),
-        starting_gold=150,
+    1: _corridor_level(1, "Winding Road", LEVEL_1_CORNERS,
+                        _single_spawn_waves(LEVEL_1_CORNERS[0], LEVEL_1_WAVE_SPECS)),
+    2: _corridor_level(2, "Serpentine Pass", LEVEL_2_CORNERS,
+                        _single_spawn_waves(LEVEL_2_CORNERS[0], LEVEL_2_WAVE_SPECS)),
+    3: _corridor_level(3, "Broken Switchback", LEVEL_3_CORNERS,
+                        _single_spawn_waves(LEVEL_3_CORNERS[0], LEVEL_3_WAVE_SPECS)),
+    # Already in the nested shape -- generate_default_waves() (see
+    # LEVEL_4_WAVE_SPECS above) returns it directly, no _single_spawn_waves()
+    # wrap needed here.
+    4: _corridor_level(4, "Straight Cut", LEVEL_4_CORNERS, LEVEL_4_WAVE_SPECS),
+    5: _corridor_level(5, "Twin Peaks", LEVEL_5_CORNERS,
+                        _single_spawn_waves(LEVEL_5_CORNERS[0], LEVEL_5_WAVE_SPECS)),
+    # Confluence doesn't fit _corridor_level's single-spawn/single-goal
+    # shape -- built directly instead, same as the comment above its own
+    # LEVEL_6_* constants explains.
+    6: Level(
+        id=6,
+        name="Confluence",
+        path_cells=LEVEL_6_PATH_CELLS,
+        spawn_cells=(LEVEL_6_SPAWN_TOP, LEVEL_6_SPAWN_BOTTOM),
+        goal_cells=(LEVEL_6_GOAL,),
+        wave_specs=LEVEL_6_WAVE_SPECS,
+        starting_gold=180,
         starting_lives=20,
     ),
 }

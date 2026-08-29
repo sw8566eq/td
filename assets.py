@@ -34,6 +34,7 @@ SPRITE_MANIFEST = {
     "tower_lightning": ("towers/lightning.png", (250, 235, 90), "rect"),
     "tower_sniper": ("towers/sniper.png", (60, 60, 60), "rect"),
     "tower_poison": ("towers/poison.png", (100, 160, 60), "rect"),
+    "tower_support": ("towers/support.png", (200, 180, 80), "rect"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),
     "enemy_scout": ("enemies/scout.png", (255, 205, 60), "circle"),
     "enemy_tank": ("enemies/tank.png", (90, 45, 45), "circle"),

@@ -44,8 +44,19 @@ class WaveState:
 
 class WaveManager:
     def __init__(self, level, cell_to_pixel, spawn_interval=settings.SPAWN_INTERVAL,
-                 between_wave_delay=settings.BETWEEN_WAVE_DELAY, rng=None):
+                 between_wave_delay=settings.BETWEEN_WAVE_DELAY, rng=None,
+                 enemy_hp_multiplier=1.0, enemy_speed_multiplier=1.0, enemy_gold_multiplier=1.0,
+                 endless=False, endless_wave_generator=None):
         self.level = level
+        # Endless/Survival mode: once the last authored wave clears,
+        # _advance_after_clear() generates and appends one more wave
+        # instead of ever reaching WaveState.DONE -- see there.
+        # endless_wave_generator is injectable (like rng) for deterministic
+        # tests; Game._load_level_object is responsible for handing this a
+        # `level` whose wave_specs list is safe to mutate (a private copy,
+        # not a shared LEVELS registry entry -- see there for why).
+        self.endless = endless
+        self.endless_wave_generator = endless_wave_generator or _default_endless_wave
         # (col, row) -> pixel Vector2-like; Grid.tile_to_pixel_center in
         # practice, injected rather than requiring a live Grid so tests can
         # pass a plain lambda.
@@ -54,6 +65,13 @@ class WaveManager:
         self.rng = rng or random.Random()
         self.spawn_interval = spawn_interval
         self.between_wave_delay = between_wave_delay
+        # Difficulty-mode multipliers (see difficulty.py), applied to every
+        # spawned enemy's stats post-construction in _spawn_enemy -- 1.0
+        # (the default) is exact parity with pre-difficulty behavior, and
+        # Enemy itself needs no changes at all to support this.
+        self.enemy_hp_multiplier = enemy_hp_multiplier
+        self.enemy_speed_multiplier = enemy_speed_multiplier
+        self.enemy_gold_multiplier = enemy_gold_multiplier
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -158,10 +176,23 @@ class WaveManager:
         along a fresh sample through the level's path topology -- a
         weighted-random route to a goal through any branches along the way
         (see pathing.sample_route). Enemy itself just gets the resulting
-        flat pixel waypoint list, same as it always has."""
+        flat pixel waypoint list, same as it always has.
+
+        Difficulty multipliers are applied here, after construction, rather
+        than threaded into Enemy.__init__ -- Enemy's own per-wave scaling
+        (_scale) stays untouched, and this is the only place a live Enemy
+        instance is ever built, so there's exactly one call site to adjust."""
         route_cells = pathing.sample_route(self.topology, spawn_cell, self.level.branch_weights, self.rng)
         waypoints_px = [self.cell_to_pixel(col, row) for col, row in route_cells]
-        return enemy_cls(waypoints_px, self.current_wave_number)
+        enemy = enemy_cls(waypoints_px, self.current_wave_number)
+        enemy.max_hp *= self.enemy_hp_multiplier
+        enemy.hp = enemy.max_hp
+        enemy.speed *= self.enemy_speed_multiplier
+        enemy.gold_reward *= self.enemy_gold_multiplier
+        if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
+            enemy.max_shield *= self.enemy_hp_multiplier
+            enemy.shield = enemy.max_shield
+        return enemy
 
     def _begin_wave(self):
         wave_spec = self.level.wave_specs[self.wave_index]  # {spawn_cell: {enemy_name: count}}
@@ -182,9 +213,44 @@ class WaveManager:
 
     def _advance_after_clear(self):
         if self.wave_index >= self.total_waves - 1:
-            self.state = WaveState.DONE
-            self.all_waves_complete = True
+            if self.endless:
+                # Generate and append one more wave rather than ever
+                # setting state = DONE -- all_waves_complete stays False
+                # forever, so Game's win-check (all_waves_complete and no
+                # enemies left) simply never fires for an endless run.
+                # The new wave's own 1-based number is one past whatever
+                # the just-cleared wave's was.
+                next_wave_number = self.current_wave_number + 1
+                self.level.wave_specs.append(self.endless_wave_generator(self.level, next_wave_number))
+                self.wave_index += 1
+                self.state = WaveState.BETWEEN_WAVES
+                self.between_wave_timer = self.between_wave_delay
+            else:
+                self.state = WaveState.DONE
+                self.all_waves_complete = True
         else:
             self.wave_index += 1
             self.state = WaveState.BETWEEN_WAVES
             self.between_wave_timer = self.between_wave_delay
+
+
+def _default_endless_wave(level, wave_number):
+    """Extrapolate one more wave for endless/survival mode: keep the same
+    per-spawn species mix as the immediately preceding wave
+    (level.wave_specs[-1] -- whichever of the level's own last authored
+    wave or a previously-generated endless one that is -- read *before*
+    _advance_after_clear appends this new one), with every count bumped up
+    a bit further than last time. Growing relative to the previous wave
+    (rather than the level's original final wave) is what makes this
+    compound into unbounded escalation the longer a run goes, rather than
+    flattening out at some fixed ceiling above the authored content.
+
+    `wave_number` (this new wave's 1-based number) isn't needed by this
+    default growth curve, but is passed through for a custom
+    endless_wave_generator that wants to scale off the absolute wave
+    number instead of the previous wave's own counts."""
+    previous_wave = level.wave_specs[-1]
+    return {
+        spawn_cell: {name: count + max(1, count // 4) for name, count in composition.items()}
+        for spawn_cell, composition in previous_wave.items()
+    }

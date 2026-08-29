@@ -13,6 +13,7 @@ import os
 import pygame
 
 import settings
+from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
 from tower import TOWER_TYPES
 from waves import WaveState
@@ -74,12 +75,20 @@ def build_button_rects():
     return rects
 
 
+def _key_of_rect_containing(pos, rects):
+    """The key of whichever `rects` dict entry contains `pos`, or None --
+    every `get_clicked_*` button/row/tab lookup in this module is exactly
+    this same "which Rect owns this point" query against a different
+    dict, so they all delegate here instead of repeating the loop."""
+    for key, rect in rects.items():
+        if rect.collidepoint(pos):
+            return key
+    return None
+
+
 def get_clicked_tower_button(pos, button_rects):
     """Return the tower registry name whose button contains pos, or None."""
-    for name, rect in button_rects.items():
-        if rect.collidepoint(pos):
-            return name
-    return None
+    return _key_of_rect_containing(pos, button_rects)
 
 
 def build_skip_button_rect():
@@ -191,17 +200,28 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
     gold_text = font.render(f"Gold: {gold_display}", True, settings.COLOR_GOLD)
     lives_text = font.render(f"Lives: {economy.lives}", True, settings.COLOR_LIVES)
-    if wave_manager.all_waves_complete:
-        wave_label = "All waves cleared!"
-    else:
-        wave_label = f"Wave {wave_manager.current_wave_number}/{wave_manager.total_waves}"
-    wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
+    wave_text = font.render(_format_wave_label(wave_manager), True, settings.COLOR_TEXT)
 
     surface.blit(gold_text, (info_x, hud_rect.y + 8))
     surface.blit(lives_text, (info_x, hud_rect.y + 36))
     surface.blit(wave_text, (info_x, hud_rect.y + 64))
 
     _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
+
+
+def _format_wave_label(wave_manager):
+    """The HUD's "Wave X/N" line -- pulled out as a pure function (like
+    _format_wave_preview below) so its three cases are unit-testable
+    without a display."""
+    if wave_manager.all_waves_complete:
+        return "All waves cleared!"
+    if wave_manager.endless:
+        # Never "x/N" here -- total_waves keeps growing as endless mode
+        # generates more content, so a fixed-looking denominator would be
+        # actively misleading about how many waves are actually left
+        # (infinite, by design).
+        return f"Wave {wave_manager.current_wave_number} (Endless)"
+    return f"Wave {wave_manager.current_wave_number}/{wave_manager.total_waves}"
 
 
 def _format_wave_preview(composition):
@@ -324,7 +344,8 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
 
     if is_placed:
-        _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
+        if not tower_cls.IS_SUPPORT:
+            _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
         _draw_panel_action_buttons(surface, small_font, subject, economy,
                                     upgrade_button_rect, specialize_button_rects, sell_button_rect)
 
@@ -401,11 +422,17 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
-    stat_row("Damage", subject.damage if is_placed else tower_cls.damage,
-              subject.damage_after_next_upgrade() if show_upgrade_preview else None)
-    stat_row("Range", subject.range if is_placed else tower_cls.range,
-              subject.range_after_next_upgrade() if show_upgrade_preview else None)
-    stat_row("Fire rate", subject.fire_rate if is_placed else tower_cls.fire_rate, suffix="/s")
+    # A support tower never attacks -- Damage/Range/Fire rate would just
+    # show a misleading "Damage: 0.0"/"Fire rate: 0.0/s" (and a "Range"
+    # that's actually its buff radius, not an attack range). Its own
+    # EXTRA_STATS (Damage buff / Range buff, see tower.SupportTower) are
+    # its entire visible stat block instead.
+    if not tower_cls.IS_SUPPORT:
+        stat_row("Damage", subject.damage if is_placed else tower_cls.damage,
+                  subject.damage_after_next_upgrade() if show_upgrade_preview else None)
+        stat_row("Range", subject.range if is_placed else tower_cls.range,
+                  subject.range_after_next_upgrade() if show_upgrade_preview else None)
+        stat_row("Fire rate", subject.fire_rate if is_placed else tower_cls.fire_rate, suffix="/s")
 
     for label, attr_name, format_fn in tower_cls.EXTRA_STATS:
         value = getattr(subject if is_placed else tower_cls, attr_name)
@@ -439,7 +466,11 @@ def _draw_panel_action_buttons(surface, small_font, subject, economy,
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
     """`subtitle` is a single string, or a list of strings each rendered
     on its own line below the title (used by the pause menu's option
-    list) -- an empty string/list draws no subtitle at all."""
+    list) -- an empty string/list draws no subtitle at all. Returns the y
+    position just past the last line drawn, so a caller (see
+    draw_victory_screen/draw_game_over_screen) can layer more content
+    (the post-level results table) below it without hardcoding its own
+    guess at how tall the title+subtitle block turned out to be."""
     if width is None:
         width = settings.SCREEN_WIDTH
     overlay = pygame.Surface((width, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -459,12 +490,70 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
         line_rect = line_text.get_rect(center=(width // 2, y))
         surface.blit(line_text, line_rect)
         y += line_text.get_height() + 6
+    return y
 
 
 def draw_menu_screen(surface, font, small_font):
     surface.fill(settings.COLOR_BG)
     _draw_centered_overlay(surface, font, small_font, "Tower Defense",
-                            ["Press any key to start", "E -- Map Editor"], settings.COLOR_TEXT)
+                            ["Press any key to start", "E -- Map Editor", "S -- Settings"],
+                            settings.COLOR_TEXT)
+
+
+# --- Settings screen ---
+
+SETTINGS_BUTTON_WIDTH = 240
+SETTINGS_BUTTON_HEIGHT = 44
+SETTINGS_BUTTON_GAP = 16
+SETTINGS_TOP = 160
+
+# "fullscreen" toggles on/off; each difficulty.DIFFICULTY_ORDER key picks
+# that difficulty.DIFFICULTY_MODES entry directly (so get_clicked_settings_
+# option's result plugs straight into Game.set_difficulty with no
+# translation); "back" returns to the menu.
+SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, "back"]
+
+
+def _settings_button_rect(index):
+    x = (settings.SCREEN_WIDTH - SETTINGS_BUTTON_WIDTH) // 2
+    y = SETTINGS_TOP + index * (SETTINGS_BUTTON_HEIGHT + SETTINGS_BUTTON_GAP)
+    return pygame.Rect(x, y, SETTINGS_BUTTON_WIDTH, SETTINGS_BUTTON_HEIGHT)
+
+
+def build_settings_rects():
+    """Rects for the Settings screen's buttons, keyed by option name -- see
+    SETTINGS_OPTION_ORDER."""
+    return {key: _settings_button_rect(index) for index, key in enumerate(SETTINGS_OPTION_ORDER)}
+
+
+def get_clicked_settings_option(pos, settings_rects):
+    """Return the settings option key whose button contains pos, or None."""
+    return _key_of_rect_containing(pos, settings_rects)
+
+
+def _draw_settings_button(surface, font, rect, label, selected):
+    color = settings.COLOR_BUTTON_SELECTED if selected else settings.COLOR_BUTTON
+    pygame.draw.rect(surface, color, rect, border_radius=6)
+    text = font.render(label, True, settings.COLOR_TEXT)
+    surface.blit(text, text.get_rect(center=rect.center))
+
+
+def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Settings", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
+
+    fullscreen_label = f"Fullscreen: {'On' if fullscreen else 'Off'}"
+    _draw_settings_button(surface, small_font, settings_rects["fullscreen"], fullscreen_label, fullscreen)
+
+    for key in DIFFICULTY_ORDER:
+        label = f"Difficulty: {DIFFICULTY_MODES[key].display_name}"
+        _draw_settings_button(surface, small_font, settings_rects[key], label, key == difficulty_key)
+
+    _draw_settings_button(surface, small_font, settings_rects["back"], "Back to Menu", False)
+
+    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
 
 
 def draw_pause_menu(surface, font, small_font, is_custom_level=False):
@@ -481,18 +570,83 @@ def draw_pause_menu(surface, font, small_font, is_custom_level=False):
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 
-def draw_game_over_screen(surface, font, small_font):
-    _draw_centered_overlay(surface, font, small_font, "Game Over", "Press R to restart",
-                            settings.COLOR_LIVES, width=settings.PLAY_WIDTH)
+def _draw_overlay_with_results(surface, font, small_font, title, subtitle, title_color, results):
+    """Shared by draw_game_over_screen/draw_victory_screen: the title +
+    subtitle overlay (see _draw_centered_overlay), then the post-level
+    results table stacked directly below wherever that overlay ended."""
+    bottom = _draw_centered_overlay(surface, font, small_font, title, subtitle,
+                                     title_color, width=settings.PLAY_WIDTH)
+    draw_results_table(surface, small_font, results, bottom + 16, width=settings.PLAY_WIDTH)
 
 
-def draw_victory_screen(surface, font, small_font, has_next_level=False):
+def draw_game_over_screen(surface, font, small_font, results=None):
+    _draw_overlay_with_results(surface, font, small_font, "Game Over", "Press R to restart",
+                                settings.COLOR_LIVES, results)
+
+
+def draw_victory_screen(surface, font, small_font, has_next_level=False, results=None):
     if has_next_level:
         title, subtitle = "Level Complete!", "Press R for the next level"
     else:
         title, subtitle = "Victory!", "Press R to play again"
-    _draw_centered_overlay(surface, font, small_font, title, subtitle,
-                            settings.COLOR_GOLD, width=settings.PLAY_WIDTH)
+    _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_GOLD, results)
+
+
+# --- Post-level results (per-tower damage/kills/accuracy) ---
+
+RESULTS_ROW_HEIGHT = 22
+RESULTS_MAX_ROWS = 6
+
+
+def compute_tower_results(towers):
+    """{display_name, shots_fired, shots_hit, damage_dealt, kills,
+    accuracy} for every tower in `towers` (placed and sold alike -- see
+    Game._tower_results), sorted by damage dealt descending. `accuracy` is
+    None (not 0, not a ZeroDivisionError) for a tower that never fired --
+    true of every Support tower (see tower.py's IS_SUPPORT), and of any
+    attacking tower that just never got a shot off. Pure and
+    display-agnostic, same spirit as WaveManager.next_wave_preview()."""
+    rows = [{
+        "display_name": tower.display_name,
+        "shots_fired": tower.shots_fired,
+        "shots_hit": tower.shots_hit,
+        "damage_dealt": tower.damage_dealt,
+        "kills": tower.kills,
+        "accuracy": (tower.shots_hit / tower.shots_fired) if tower.shots_fired else None,
+    } for tower in towers]
+    return sorted(rows, key=lambda row: row["damage_dealt"], reverse=True)
+
+
+def draw_results_table(surface, small_font, results, top_y, width=None):
+    """A compact per-tower results table, drawn below the Victory/Game
+    Over overlay's title and subtitle (see _draw_centered_overlay's
+    return value). `results` is None or empty (e.g. a level with no
+    towers ever placed) draws nothing at all. No scrolling machinery --
+    realistic tower counts fit within RESULTS_MAX_ROWS rows, and anything
+    beyond that collapses into a single "+N more" line instead, the same
+    "finite room, note the overflow" spirit as the editor sidebar's own
+    status_lines[:6] cap."""
+    if not results:
+        return
+    if width is None:
+        width = settings.PLAY_WIDTH
+    center_x = width // 2
+
+    header = small_font.render("Tower -- Damage / Kills / Accuracy", True, settings.COLOR_TEXT_DIM)
+    surface.blit(header, header.get_rect(center=(center_x, top_y)))
+    y = top_y + RESULTS_ROW_HEIGHT
+
+    for row in results[:RESULTS_MAX_ROWS]:
+        accuracy = "--" if row["accuracy"] is None else f"{round(row['accuracy'] * 100)}%"
+        text = f"{row['display_name']}: {row['damage_dealt']:.0f} dmg / {row['kills']} kills / {accuracy}"
+        line = small_font.render(text, True, settings.COLOR_TEXT)
+        surface.blit(line, line.get_rect(center=(center_x, y)))
+        y += RESULTS_ROW_HEIGHT
+
+    remaining = len(results) - RESULTS_MAX_ROWS
+    if remaining > 0:
+        more = small_font.render(f"+{remaining} more", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more, more.get_rect(center=(center_x, y)))
 
 
 # --- Map editor ---
@@ -507,6 +661,9 @@ EDITOR_TOOL_LABELS = {
     "erase": "Erase",
     "spawn": "Spawn",
     "goal": "Goal",
+    "line": "Line",
+    "rect": "Rect",
+    "select": "Select",
 }
 EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
 
@@ -514,6 +671,10 @@ EDITOR_ACTION_LABELS = {
     "load": "Load Map...",
     "waves": "Edit Waves ->",
     "back": "Back to Menu",
+    "undo": "Undo",
+    "redo": "Redo",
+    "copy": "Copy",
+    "paste": "Paste",
 }
 EDITOR_ACTION_ORDER = list(EDITOR_ACTION_LABELS.keys())
 
@@ -531,10 +692,7 @@ def build_editor_tool_rects():
 
 def get_clicked_editor_tool(pos, tool_rects):
     """Return the editor tool name whose button contains pos, or None."""
-    for name, rect in tool_rects.items():
-        if rect.collidepoint(pos):
-            return name
-    return None
+    return _key_of_rect_containing(pos, tool_rects)
 
 
 def build_editor_action_rects():
@@ -550,15 +708,12 @@ def build_editor_action_rects():
 
 def get_clicked_editor_action(pos, action_rects):
     """Return the editor action name whose button contains pos, or None."""
-    for name, rect in action_rects.items():
-        if rect.collidepoint(pos):
-            return name
-    return None
+    return _key_of_rect_containing(pos, action_rects)
 
 
 def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects):
     surface.fill(settings.COLOR_BG)
-    _draw_editor_grid(surface, assets, small_font, editor)
+    _draw_editor_grid(surface, assets, small_font, editor, pending_shape_cells=editor.pending_shape_cells())
     _draw_editor_toolbar(surface, small_font, editor, tool_rects)
     _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects)
 
@@ -571,19 +726,28 @@ def _cell_center(editor, cell):
     )
 
 
-def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None):
+def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None, pending_shape_cells=frozenset()):
     """The path/spawn/goal/junction preview shared by both editor screens.
     Spawns are numbered (stable sort order by cell) so a multi-spawn
     level's spawns have a consistent, referenceable identity across both
     screens; `active_spawn`, when given (only the wave editor has one),
     gets a highlight ring -- see Game._handle_wave_editor_click, which is
-    what clicking a spawn marker there actually changes."""
+    what clicking a spawn marker there actually changes. `pending_shape_
+    cells` (only the path editor ever has any -- see Editor.pending_
+    shape_cells()) is a translucent ghost overlay for an in-progress
+    Line/Rect/Select drag, drawn over the tiles but under every marker."""
     for row in range(editor.rows):
         for col in range(editor.cols):
             cell = (col, row)
             name = "tile_path" if cell in editor.path_cells else "tile_grass"
             sprite = assets.get(name, (editor.tile_size, editor.tile_size))
             surface.blit(sprite, (col * editor.tile_size, row * editor.tile_size))
+
+    if pending_shape_cells:
+        overlay = pygame.Surface((editor.tile_size, editor.tile_size), pygame.SRCALPHA)
+        overlay.fill((255, 255, 255, 90))
+        for col, row in pending_shape_cells:
+            surface.blit(overlay, (col * editor.tile_size, row * editor.tile_size))
 
     for cell in editor.junctions:
         _draw_editor_marker(surface, editor, cell, settings.COLOR_EDITOR_JUNCTION, radius_fraction=0.18)
@@ -636,6 +800,12 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
     path_ok = editor.path_is_valid()
     status_color = settings.COLOR_GOLD if path_ok else settings.COLOR_LIVES
     status_lines = ["Path ready -- edit waves next!"] if path_ok else editor.path_problems
+    if editor.active_tool == "rect":
+        # A freshly-stamped rectangle is always a closed loop (exactly the
+        # shape validate_topology forbids) -- not a bug, but genuinely
+        # non-obvious the first time; the fix is one Erase click on any
+        # edge cell to open it into a valid corridor.
+        status_lines = list(status_lines) + ["Rectangles start as a loop -- erase one cell to open it"]
     y = PANEL_PADDING + 40
     for line in status_lines[:6]:  # panel has finite room; the rest are still in path_problems
         for wrapped in _wrap_text(line, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING):
@@ -673,6 +843,8 @@ WAVE_EDITOR_ACTION_LABELS = {
     "playtest": "Playtest",
     "save": "Save",
     "back": "Back to Path",
+    "undo": "Undo",
+    "redo": "Redo",
 }
 WAVE_EDITOR_ACTION_ORDER = list(WAVE_EDITOR_ACTION_LABELS.keys())
 
@@ -696,10 +868,7 @@ def build_wave_tab_rects(wave_count):
 def get_clicked_wave_tab(pos, tab_rects):
     """Return the clicked entry's key -- an int wave index, or "add"/
     "remove" -- or None."""
-    for key, rect in tab_rects.items():
-        if rect.collidepoint(pos):
-            return key
-    return None
+    return _key_of_rect_containing(pos, tab_rects)
 
 
 def build_wave_unit_rects():
@@ -719,10 +888,7 @@ def build_wave_unit_rects():
 def get_clicked_wave_unit_button(pos, unit_rects):
     """Return the (enemy_name, "minus"|"plus") key whose button contains
     pos, or None."""
-    for key, rect in unit_rects.items():
-        if rect.collidepoint(pos):
-            return key
-    return None
+    return _key_of_rect_containing(pos, unit_rects)
 
 
 def build_wave_editor_action_rects():
@@ -738,10 +904,7 @@ def build_wave_editor_action_rects():
 
 def get_clicked_wave_editor_action(pos, action_rects):
     """Return the wave editor action name whose button contains pos, or None."""
-    for name, rect in action_rects.items():
-        if rect.collidepoint(pos):
-            return name
-    return None
+    return _key_of_rect_containing(pos, action_rects)
 
 
 def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects,
@@ -887,10 +1050,7 @@ def build_level_select_rects(entries, scroll_offset=0):
 
 def get_clicked_level_select_entry(pos, rects):
     """Return the entry key whose row contains pos, or None."""
-    for key, rect in rects.items():
-        if rect.collidepoint(pos):
-            return key
-    return None
+    return _key_of_rect_containing(pos, rects)
 
 
 def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMBNAIL_HEIGHT):
@@ -923,7 +1083,8 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
 
 
 def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
-                              purpose="play", scroll_offset=0, locked_ids=frozenset()):
+                              purpose="play", scroll_offset=0, locked_ids=frozenset(),
+                              endless_armed=False):
     """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
     both listed, picking one starts playing it) or "edit" (the map
     editor's "Load Map..." -- only custom levels listed, since a built-in
@@ -940,11 +1101,21 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
     `locked_ids` (only ever nonempty for purpose="play" -- see
     Game._enter_level_select) dims a not-yet-unlocked built-in level's row
     and tags its label "(Locked)" instead of drawing it like a normal,
-    playable entry."""
+    playable entry.
+
+    `endless_armed` (only ever meaningful for purpose="play" -- see
+    Game._handle_keydown's `V` handling) shows a small hint that picking a
+    level next starts it in endless/survival mode instead of normally."""
     surface.fill(settings.COLOR_BG)
     title_text = "Load a Map to Edit" if purpose == "edit" else "Select a Level"
     title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    if purpose == "play":
+        survival_text = f"[V] Survival: {'On' if endless_armed else 'Off'}"
+        survival_color = settings.COLOR_BUTTON_SELECTED if endless_armed else settings.COLOR_TEXT_DIM
+        survival_label = small_font.render(survival_text, True, survival_color)
+        surface.blit(survival_label, survival_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 60)))
 
     if not entries:
         empty_text = "No custom levels saved yet." if purpose == "edit" else "No levels available."

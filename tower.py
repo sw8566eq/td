@@ -34,6 +34,10 @@ def _format_poison_tick(value):
     return f"{value:.0f} dmg/tick"
 
 
+def _format_buff_percent(value):
+    return f"+{round((value - 1) * 100)}%"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -42,6 +46,14 @@ class Tower:
     projectile_speed = 300.0
     sprite_name = ""
     display_name = "Tower"
+
+    # True only for SupportTower -- a tower that never attacks at all, just
+    # buffs other towers in range (see SupportTower.update()). Gates the
+    # stats panel's hard-coded Damage/Range/Fire-rate and Targeting rows
+    # (ui.py's _draw_panel_stats/draw_tower_stats_panel), which would
+    # otherwise show a meaningless "Damage: 0.0" and a clickable targeting
+    # mode a support tower never reads.
+    IS_SUPPORT = False
 
     # Whether this tower can hit an enemy with is_flying = True (see
     # enemy.py) -- default True. A tower whose mechanic is a ground-impact
@@ -126,6 +138,28 @@ class Tower:
         # default; see cycle_targeting_mode().
         self.targeting_mode = "first"
 
+        # Lifetime stats, purely for the post-level results screen (see
+        # ui.compute_tower_results) -- never read by any gameplay logic.
+        # shots_fired counts every successful acquire-and-fire cycle in
+        # update() (including one whose projectile turns out to be a dud,
+        # e.g. its target died first -- see Projectile.update), which is
+        # what makes shots_hit / shots_fired a meaningful accuracy stat.
+        self.shots_fired = 0
+        self.shots_hit = 0
+        self.damage_dealt = 0.0
+        self.kills = 0
+
+        # Recomputed every frame by reset_aura()/receive_aura() (see
+        # Game.update()'s two-pass tower loop) -- 1.0 means "no support
+        # tower currently in range." Never mutates self.damage/self.range
+        # directly: create_projectile()/in_range() read through these
+        # multipliers instead, so a buff can never compound across
+        # multiple SupportTowers in range or drift permanently once one
+        # leaves range (both would happen if a SupportTower multiplied
+        # self.damage/self.range in place instead).
+        self.aura_damage_multiplier = 1.0
+        self.aura_range_multiplier = 1.0
+
     @property
     def is_max_level(self):
         return self.level >= self.MAX_LEVEL
@@ -206,7 +240,23 @@ class Tower:
         for the same idea applied to damage."""
         return self._stat_after_next_upgrade("damage")
 
-    def update(self, dt, enemies, projectiles):
+    def reset_aura(self):
+        """Called on every tower, every frame, before any tower's own
+        update() runs (see Game.update()) -- a buff only lasts the frame a
+        SupportTower is actually in range to re-apply it via receive_aura()."""
+        self.aura_damage_multiplier = 1.0
+        self.aura_range_multiplier = 1.0
+
+    def receive_aura(self, damage_multiplier, range_multiplier):
+        """Called by a SupportTower in range, once per frame, for every
+        other tower it buffs. max(), not stacking/multiplying: several
+        support towers in range at once don't compound into a stronger
+        buff, and this is deterministic regardless of what order Game's
+        tower loop happens to visit them in."""
+        self.aura_damage_multiplier = max(self.aura_damage_multiplier, damage_multiplier)
+        self.aura_range_multiplier = max(self.aura_range_multiplier, range_multiplier)
+
+    def update(self, dt, enemies, projectiles, towers=None):
         self.cooldown -= dt
         if self.cooldown > 0:
             return
@@ -215,6 +265,7 @@ class Tower:
         if target is None:
             return
 
+        self.shots_fired += 1
         projectiles.append(self.create_projectile(target))
         self.cooldown = 1.0 / self.fire_rate
 
@@ -273,7 +324,14 @@ class Tower:
     }
 
     def in_range(self, enemy):
-        return self.pos.distance_to(enemy.pos) <= self.range
+        return self.pos.distance_to(enemy.pos) <= self.range * self.aura_range_multiplier
+
+    def effective_damage(self):
+        """self.damage scaled by any currently-active aura buff (see
+        reset_aura()/receive_aura()) -- every create_projectile() below
+        reads this instead of self.damage directly, so a buffed tower's
+        shots reflect it without each subclass repeating the multiplication."""
+        return self.damage * self.aura_damage_multiplier
 
     def create_projectile(self, target):
         raise NotImplementedError
@@ -377,7 +435,7 @@ class BasicTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, sprite_name="projectile_basic",
+            damage=self.effective_damage(), sprite_name="projectile_basic", source=self,
         )
 
 
@@ -398,8 +456,8 @@ class CannonTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, splash_radius=self.splash_radius,
-            sprite_name="projectile_cannon",
+            damage=self.effective_damage(), splash_radius=self.splash_radius,
+            sprite_name="projectile_cannon", source=self,
         )
 
 
@@ -421,8 +479,8 @@ class FrostTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, slow_effect=(self.slow_factor, self.slow_duration),
-            sprite_name="projectile_frost",
+            damage=self.effective_damage(), slow_effect=(self.slow_factor, self.slow_duration),
+            sprite_name="projectile_frost", source=self,
         )
 
 
@@ -451,9 +509,9 @@ class KnockbackTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, splash_radius=self.splash_radius,
+            damage=self.effective_damage(), splash_radius=self.splash_radius,
             knockback_duration=self.knockback_duration,
-            sprite_name="projectile_knockback",
+            sprite_name="projectile_knockback", source=self,
         )
 
 
@@ -495,9 +553,9 @@ class LightningTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, chain_range=self.chain_range,
+            damage=self.effective_damage(), chain_range=self.chain_range,
             max_chain_targets=self.max_chain_targets,
-            sprite_name="projectile_lightning",
+            sprite_name="projectile_lightning", source=self,
         )
 
 
@@ -517,7 +575,7 @@ class SniperTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage, sprite_name="projectile_sniper",
+            damage=self.effective_damage(), sprite_name="projectile_sniper", source=self,
         )
 
 
@@ -543,10 +601,61 @@ class PoisonTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.damage,
+            damage=self.effective_damage(),
             poison_effect=(self.poison_damage_per_tick, self.poison_tick_interval, self.poison_duration),
-            sprite_name="projectile_poison",
+            sprite_name="projectile_poison", source=self,
         )
+
+
+class SupportTower(Tower):
+    """Never attacks -- buffs every other tower within range instead (see
+    Tower.reset_aura()/receive_aura(), and Game.update()'s two-pass tower
+    loop that calls reset_aura() on every tower before any tower's own
+    update() runs, so buff application order can't matter). damage/
+    fire_rate are 0 and never scale -- LEVEL_SCALED_STATS names
+    buff_damage_multiplier instead of damage, so upgrade()'s generic
+    rescale-from-base loop scales the actual buff strength, not a
+    permanently-zero attack stat."""
+    cost = 120
+    range = 90
+    damage = 0
+    fire_rate = 0.0
+    sprite_name = "tower_support"
+    display_name = "Support"
+    IS_SUPPORT = True
+
+    buff_damage_multiplier = 1.25
+    buff_range_multiplier = 1.15
+    LEVEL_SCALED_STATS = ("buff_damage_multiplier", "range")
+    EXTRA_STATS = (
+        ("Damage buff", "buff_damage_multiplier", _format_buff_percent),
+        ("Range buff", "buff_range_multiplier", _format_buff_percent),
+    )
+    # Overrides the generic Power/Precision placeholders (which multiply
+    # "damage", permanently 0 here) with options that play off this
+    # tower's own mechanic instead.
+    SPECIALIZATIONS = {
+        "amplify": {
+            "display_name": "Amplify",
+            "description": "Stronger damage buff.",
+            "stat_multipliers": {"buff_damage_multiplier": 1.2},
+        },
+        "reach": {
+            "display_name": "Reach",
+            "description": "Buffs a wider radius.",
+            "stat_multipliers": {"buff_range_multiplier": 1.15, "range": 1.2},
+        },
+    }
+
+    def update(self, dt, enemies, projectiles, towers=None):
+        for other in (towers or ()):
+            if other is self:
+                continue
+            if self.pos.distance_to(other.pos) <= self.range:
+                other.receive_aura(self.buff_damage_multiplier, self.buff_range_multiplier)
+
+    def create_projectile(self, target):
+        raise NotImplementedError("SupportTower never fires -- see update()")
 
 
 TOWER_TYPES = {
@@ -557,4 +666,5 @@ TOWER_TYPES = {
     "lightning": LightningTower,
     "sniper": SniperTower,
     "poison": PoisonTower,
+    "support": SupportTower,
 }

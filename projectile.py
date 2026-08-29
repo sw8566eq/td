@@ -22,7 +22,7 @@ import pygame
 class Projectile:
     def __init__(self, pos, target, speed, damage, splash_radius=0, slow_effect=None,
                  knockback_duration=0.0, chain_range=0.0, max_chain_targets=1,
-                 poison_effect=None, sprite_name=""):
+                 poison_effect=None, sprite_name="", source=None):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -41,6 +41,13 @@ class Projectile:
         # as slow_effect, just handed to enemy.apply_poison() instead.
         self.poison_effect = poison_effect
         self.sprite_name = sprite_name
+        # The Tower that fired this shot, or None -- purely inert data (never
+        # read by movement/collision math above), used only to attribute
+        # damage_dealt/shots_hit/kills back to it for the post-level results
+        # screen (see _resolve_hit/_apply_hit_effects and ui.compute_tower_
+        # results). None for a projectile built without a real tower behind
+        # it (e.g. a test double).
+        self.source = source
         self.dead = False
 
     def update(self, dt, enemies):
@@ -71,16 +78,25 @@ class Projectile:
             self.pos += to_target.normalize() * step
 
     def _resolve_hit(self, impact_pos, enemies):
+        hit_anything = False
         if self.splash_radius > 0:
             for enemy in enemies:
                 if enemy.is_dead or enemy.reached_goal:
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
                     self._apply_hit_effects(enemy)
+                    hit_anything = True
         else:
             self._apply_hit_effects(self.target)
+            hit_anything = True
             if self.chain_range > 0:
                 self._resolve_chain(enemies)
+        # Counted once per projectile, not per enemy actually touched --
+        # see _apply_hit_effects for the cumulative per-enemy totals -- so
+        # shots_hit / shots_fired never exceeds 1.0 even for a splash/chain
+        # shot that connects with several enemies at once.
+        if self.source is not None and hit_anything:
+            self.source.shots_hit += 1
 
     def _resolve_chain(self, enemies):
         """From the just-hit enemy, hop to the nearest enemy this shot
@@ -109,7 +125,12 @@ class Projectile:
             current = next_target
 
     def _apply_hit_effects(self, enemy):
+        was_alive = not enemy.is_dead
         enemy.take_damage(self.damage)
+        if self.source is not None:
+            self.source.damage_dealt += self.damage
+            if was_alive and enemy.is_dead:
+                self.source.kills += 1
         if self.slow_effect is not None:
             enemy.apply_slow(*self.slow_effect)
         if self.knockback_duration:

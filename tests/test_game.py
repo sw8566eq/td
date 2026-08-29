@@ -14,6 +14,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame  # noqa: E402
 import pytest  # noqa: E402
 
+import player_settings  # noqa: E402
 import progress  # noqa: E402
 import settings  # noqa: E402
 import ui  # noqa: E402
@@ -25,10 +26,11 @@ from tower import TOWER_TYPES, BasicTower  # noqa: E402
 
 @pytest.fixture
 def game(tmp_path):
-    # progress_path pinned to a throwaway file -- Game writes real progress
-    # on VICTORY (see progress.py), and this must never touch (or leave
-    # behind) the real repo-root progress.json.
-    g = Game(progress_path=tmp_path / "progress.json")
+    # progress_path/settings_path both pinned to throwaway files -- Game
+    # writes real progress on VICTORY (see progress.py) and real settings
+    # on set_fullscreen()/set_difficulty() (see player_settings.py), and
+    # this must never touch (or leave behind) either real repo-root file.
+    g = Game(progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json")
     yield g
     pygame.quit()
 
@@ -74,6 +76,21 @@ def clear_mouse_mock():
     pygame.mouse.get_pos = _REAL_MOUSE_GET_POS
 
 
+_REAL_KEY_GET_MODS = pygame.key.get_mods  # saved once, before anything monkeypatches it
+
+
+def mock_key_mods(mods):
+    """Same idea as mock_mouse_pos -- pygame.key.get_mods() reads real
+    global keyboard state, which a headless test can't hold Ctrl/Shift/etc.
+    on, so tests needing a specific modifier state (Ctrl+Z/Ctrl+Y) mock it
+    directly instead."""
+    pygame.key.get_mods = lambda: mods
+
+
+def clear_key_mods():
+    pygame.key.get_mods = _REAL_KEY_GET_MODS
+
+
 # --- Initialization ---
 
 def test_starts_at_the_menu_on_level_one(game):
@@ -97,7 +114,8 @@ def test_unlimited_gold_defaults_to_off(game):
 
 
 def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
-    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json")
+    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
+             settings_path=tmp_path / "player_settings.json")
     try:
         assert g.economy.unlimited_gold is True
     finally:
@@ -105,7 +123,8 @@ def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
 
 
 def test_unlimited_gold_flag_survives_a_level_reload(tmp_path):
-    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json")
+    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
+             settings_path=tmp_path / "player_settings.json")
     try:
         g.load_level(g.current_level_id)
         assert g.economy.unlimited_gold is True
@@ -118,6 +137,48 @@ def test_starts_with_no_entities_or_selection(game):
     assert game.towers == []
     assert game.projectiles == []
     assert game.selected_tower_name is None
+
+
+# --- Difficulty modes ---
+
+def test_defaults_to_normal_difficulty(game):
+    assert game.difficulty == "normal"
+
+
+def test_set_difficulty_accepts_a_known_key(game):
+    game.set_difficulty("hard")
+    assert game.difficulty == "hard"
+
+
+def test_set_difficulty_ignores_an_unknown_key(game):
+    game.set_difficulty("nonsense")
+    assert game.difficulty == "normal"
+
+
+def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_easy(tmp_path):
+    hard = Game(progress_path=tmp_path / "hard.json", settings_path=tmp_path / "hard_settings.json")
+    easy = Game(progress_path=tmp_path / "easy.json", settings_path=tmp_path / "easy_settings.json")
+    try:
+        hard.set_difficulty("hard")
+        hard.load_level(1)
+        easy.set_difficulty("easy")
+        easy.load_level(1)
+
+        assert hard.economy.lives < easy.economy.lives
+        assert hard.economy.gold < easy.economy.gold
+
+        hard.wave_manager.skip_delay()
+        easy.wave_manager.skip_delay()
+        hard_spawned = hard.wave_manager.update(dt=1.0, active_enemies=[])
+        while not hard_spawned:
+            hard_spawned = hard.wave_manager.update(dt=0.1, active_enemies=[])
+        easy_spawned = easy.wave_manager.update(dt=1.0, active_enemies=[])
+        while not easy_spawned:
+            easy_spawned = easy.wave_manager.update(dt=0.1, active_enemies=[])
+
+        assert hard_spawned[0].max_hp > easy_spawned[0].max_hp
+    finally:
+        pygame.quit()
 
 
 # --- State machine: keydown handling ---
@@ -559,6 +620,31 @@ def test_try_sell_tower_removes_it_and_refunds_gold(playing_game):
     assert playing_game.grid.is_buildable(anchor_col, anchor_row)
 
 
+def test_try_sell_tower_keeps_it_in_sold_towers_for_the_results_screen(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+
+    playing_game.try_sell_tower(tower)
+
+    assert tower not in playing_game.towers
+    assert tower in playing_game.sold_towers
+
+
+def test_tower_results_includes_a_sold_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    tower.damage_dealt = 42.0
+    playing_game.try_sell_tower(tower)
+
+    results = playing_game._tower_results()
+
+    assert any(row["damage_dealt"] == 42.0 for row in results)
+
+
 def test_try_sell_tower_clears_a_matching_pinned_selection(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -574,6 +660,37 @@ def test_try_sell_tower_clears_a_matching_pinned_selection(playing_game):
 def test_try_sell_tower_fails_for_a_tower_not_on_the_field(playing_game):
     stray_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
     assert playing_game.try_sell_tower(stray_tower) is False
+
+
+def test_loading_a_new_level_clears_sold_towers_from_the_previous_one(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.try_sell_tower(tower)
+    assert playing_game.sold_towers != []
+
+    playing_game.load_level(2)
+
+    assert playing_game.sold_towers == []
+
+
+def test_render_victory_screen_with_tower_stats_does_not_crash(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game.grid.get_tower(anchor_col, anchor_row).damage_dealt = 99.0
+    playing_game.state = GameState.VICTORY
+    playing_game.render()
+
+
+def test_render_game_over_screen_with_tower_stats_does_not_crash(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game.grid.get_tower(anchor_col, anchor_row).damage_dealt = 99.0
+    playing_game.state = GameState.GAME_OVER
+    playing_game.render()
 
 
 def test_clicking_the_upgrade_button_upgrades_the_pinned_tower(playing_game):
@@ -618,6 +735,28 @@ def test_clicking_the_targeting_button_with_nothing_selected_does_nothing(playin
     assert playing_game._last_panel_subject is None
     # Must not raise -- and there's no tower to have changed a mode on.
     playing_game._handle_click(playing_game.targeting_button_rect.center)
+
+
+def test_clicking_the_targeting_button_on_a_pinned_support_tower_is_a_no_op(playing_game):
+    # Regression test for the click-routing gotcha: the targeting row
+    # isn't drawn for a support tower (see ui.draw_tower_stats_panel's
+    # IS_SUPPORT guard), but targeting_button_rect still occupies that
+    # screen position regardless of subject.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "support"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+    assert tower.targeting_mode == "first"
+
+    mock_mouse_pos(playing_game.targeting_button_rect.center)
+    try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
+        playing_game._handle_click(playing_game.targeting_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert tower.targeting_mode == "first"  # unchanged
 
 
 def test_clicking_the_upgrade_button_with_nothing_selected_does_nothing(playing_game):
@@ -1315,6 +1454,77 @@ def test_menu_l_key_enters_level_select(game):
     assert game.state == GameState.LEVEL_SELECT
 
 
+def test_menu_s_key_enters_settings(game):
+    game._handle_keydown(pygame.K_s)
+    assert game.state == GameState.SETTINGS
+
+
+def test_settings_escape_returns_to_menu(game):
+    game.state = GameState.SETTINGS
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_settings_unbound_key_is_a_no_op(game):
+    game.state = GameState.SETTINGS
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.SETTINGS
+
+
+def test_settings_click_toggles_fullscreen(game):
+    assert game.fullscreen is False
+    game._handle_settings_click(game.settings_rects["fullscreen"].center)
+    assert game.fullscreen is True
+    game._handle_settings_click(game.settings_rects["fullscreen"].center)
+    assert game.fullscreen is False
+
+
+def test_settings_click_picks_a_difficulty(game):
+    game._handle_settings_click(game.settings_rects["hard"].center)
+    assert game.difficulty == "hard"
+
+
+def test_settings_click_on_back_returns_to_menu(game):
+    game.state = GameState.SETTINGS
+    game._handle_settings_click(game.settings_rects["back"].center)
+    assert game.state == GameState.MENU
+
+
+def test_settings_click_off_any_button_is_a_no_op(game):
+    game._handle_settings_click((0, 0))
+    assert game.fullscreen is False
+    assert game.difficulty == "normal"
+
+
+def test_fullscreen_setting_persists_to_the_settings_file(game):
+    game.set_fullscreen(True)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["fullscreen"] is True
+
+
+def test_difficulty_setting_persists_to_the_settings_file(game):
+    game.set_difficulty("easy")
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["difficulty"] == "easy"
+
+
+def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
+    settings_path = tmp_path / "player_settings.json"
+    first = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path)
+    try:
+        first.set_fullscreen(True)
+        first.set_difficulty("hard")
+    finally:
+        pygame.quit()
+
+    second = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path)
+    try:
+        assert second.fullscreen is True
+        assert second.difficulty == "hard"
+    finally:
+        pygame.quit()
+
+
 def test_editor_escape_returns_to_menu(game):
     game.state = GameState.EDITOR
     game._handle_keydown(pygame.K_ESCAPE)
@@ -1325,6 +1535,61 @@ def test_editor_unbound_key_is_a_no_op(game):
     game.state = GameState.EDITOR
     game._handle_keydown(pygame.K_z)
     assert game.state == GameState.EDITOR
+
+
+def test_ctrl_z_undoes_in_the_editor(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+    assert (3, 4) in game.editor.path_cells
+
+    mock_key_mods(pygame.KMOD_CTRL)
+    try:
+        game._handle_keydown(pygame.K_z)
+    finally:
+        clear_key_mods()
+
+    assert (3, 4) not in game.editor.path_cells
+
+
+def test_z_without_ctrl_does_not_undo_in_the_editor(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+
+    game._handle_keydown(pygame.K_z)  # no Ctrl mocked -- real (unheld) modifier state
+
+    assert (3, 4) in game.editor.path_cells
+
+
+def test_ctrl_y_redoes_in_the_editor(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+    game.editor.undo()
+    assert (3, 4) not in game.editor.path_cells
+
+    mock_key_mods(pygame.KMOD_CTRL)
+    try:
+        game._handle_keydown(pygame.K_y)
+    finally:
+        clear_key_mods()
+
+    assert (3, 4) in game.editor.path_cells
+
+
+def test_ctrl_z_undoes_in_the_wave_editor(game):
+    game.state = GameState.WAVE_EDITOR
+    _paint_valid_path(game)
+    game.editor.validate()
+    game.editor.set_active_spawn((0, 2))
+    game.editor.adjust_unit_count("grunt", +1)
+    assert game.editor.wave_specs[0][(0, 2)]["grunt"] == 1
+
+    mock_key_mods(pygame.KMOD_CTRL)
+    try:
+        game._handle_keydown(pygame.K_z)
+    finally:
+        clear_key_mods()
+
+    assert game.editor.wave_specs[0].get((0, 2)) is None
 
 
 def test_level_select_escape_returns_to_menu(game):
@@ -1362,6 +1627,118 @@ def test_motion_without_the_left_button_held_does_not_paint(game):
     game.state = GameState.EDITOR
     game._handle_editor_motion(cell_center_px((5, 5)), (False, False, False))
     assert game.editor.path_cells == set()
+
+
+# --- Map editor: undo/redo, Line/Rect/Select tools, copy/paste ---
+
+def test_editor_mouse_up_ends_a_freeform_stroke(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.PAINT)
+    game._handle_editor_click(cell_center_px((0, 0)))
+    assert game.editor._stroke_active is True
+
+    game._handle_editor_mouse_up(cell_center_px((0, 0)))
+
+    assert game.editor._stroke_active is False
+
+
+def test_clicking_the_grid_with_the_line_tool_begins_a_shape_not_a_paint(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.LINE)
+    game._handle_editor_click(cell_center_px((3, 3)))
+
+    assert game.editor.path_cells == set()  # not painted yet -- only a drag started
+    assert game.editor._shape_start == (3, 3)
+
+
+def test_dragging_with_the_line_tool_updates_the_preview(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.LINE)
+    game._handle_editor_click(cell_center_px((0, 0)))
+    game._handle_editor_motion(cell_center_px((3, 0)), (True, False, False))
+
+    assert game.editor.pending_shape_cells() == {(0, 0), (1, 0), (2, 0), (3, 0)}
+    assert game.editor.path_cells == set()  # still just a preview
+
+
+def test_releasing_the_line_tool_commits_the_shape(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.LINE)
+    game._handle_editor_click(cell_center_px((0, 0)))
+    game._handle_editor_motion(cell_center_px((3, 0)), (True, False, False))
+
+    game._handle_editor_mouse_up(cell_center_px((3, 0)))
+
+    assert game.editor.path_cells == {(0, 0), (1, 0), (2, 0), (3, 0)}
+
+
+def test_releasing_the_select_tool_commits_a_selection_not_a_paint(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.editor.set_tool(EditorTool.SELECT)
+    game._handle_editor_click(cell_center_px((0, 2)))
+    game._handle_editor_mouse_up(cell_center_px((2, 2)))
+
+    assert game.editor.selection_bounds == (0, 2, 2, 2)
+
+
+def test_clicking_the_undo_action_button_undoes_the_last_edit(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+    game._handle_editor_click(game.editor_action_rects["undo"].center)
+    assert (3, 4) not in game.editor.path_cells
+
+
+def test_clicking_the_redo_action_button_redoes_the_last_undo(game):
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+    game.editor.undo()
+    game._handle_editor_click(game.editor_action_rects["redo"].center)
+    assert (3, 4) in game.editor.path_cells
+
+
+def test_wave_editor_undo_action_button_undoes_the_last_edit(game):
+    game.state = GameState.WAVE_EDITOR
+    _paint_valid_path(game)
+    game.editor.adjust_unit_count("grunt", +1)
+    count_before = game.editor.wave_specs[0][(0, 2)]["grunt"]
+
+    game._handle_wave_editor_action("undo")
+
+    assert game.editor.wave_specs[0].get((0, 2), {}).get("grunt", 0) != count_before
+
+
+def test_clicking_copy_then_paste_stamps_the_selection_at_a_new_anchor(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.editor.set_tool(EditorTool.SELECT)
+    game._handle_editor_click(cell_center_px((0, 2)))
+    game._handle_editor_mouse_up(cell_center_px((2, 2)))
+
+    game._handle_editor_click(game.editor_action_rects["copy"].center)
+    game._handle_editor_click(game.editor_action_rects["paste"].center)
+    assert game.editor.paste_pending is True
+
+    game._handle_editor_click(cell_center_px((10, 5)))  # consumes paste_pending
+
+    assert (10, 5) in game.editor.path_cells
+    assert game.editor.paste_pending is False
+
+
+def test_paste_pending_takes_priority_over_the_active_tool(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.editor.set_tool(EditorTool.SELECT)
+    game._handle_editor_click(cell_center_px((0, 2)))
+    game._handle_editor_mouse_up(cell_center_px((2, 2)))
+    game.editor.copy_selection()
+    game.editor.paste_pending = True
+    game.editor.set_tool(EditorTool.LINE)  # switch tools before the paste click lands
+
+    game._handle_editor_click(cell_center_px((10, 5)))
+
+    assert (10, 5) in game.editor.path_cells
+    assert game.editor._shape_start is None  # never started a Line drag
 
 
 def test_waves_action_is_a_no_op_while_the_editors_path_is_invalid(game):
@@ -1728,11 +2105,95 @@ def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
     game._enter_level_select()
     assert (custom.id, custom) in game.level_select_entries
 
+    # Custom entries are listed after every built-in one -- with as many
+    # built-ins as there are now, this one is scrolled below the fold, so
+    # scroll all the way down (like the player would) before clicking it.
+    game._scroll_level_select(-9999)
     game._handle_level_select_click(game.level_select_rects[custom.id].center)
 
     assert game.state == GameState.PLAYING
     assert game.current_level_id is None
     assert game.level.id == custom.id
+
+
+# --- Endless/Survival mode ---
+
+def test_v_key_arms_endless_only_while_browsing_to_play(game):
+    game._enter_level_select(purpose="play")
+    assert game.level_select_endless_armed is False
+    game._handle_keydown(pygame.K_v)
+    assert game.level_select_endless_armed is True
+    game._handle_keydown(pygame.K_v)
+    assert game.level_select_endless_armed is False
+
+
+def test_v_key_is_a_no_op_while_browsing_to_edit(game):
+    game._enter_level_select(purpose="edit")
+    game._handle_keydown(pygame.K_v)
+    assert game.level_select_endless_armed is False
+
+
+def test_entering_level_select_resets_endless_armed(game):
+    game._enter_level_select()
+    game.level_select_endless_armed = True
+    game._enter_level_select()
+    assert game.level_select_endless_armed is False
+
+
+def test_picking_a_level_while_endless_armed_starts_it_in_endless_mode(game):
+    game._enter_level_select()
+    game.level_select_endless_armed = True
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.wave_manager.endless is True
+
+
+def test_picking_a_level_while_not_armed_starts_it_normally(game):
+    game._enter_level_select()
+    rect = game.level_select_rects[1]
+    game._handle_level_select_click(rect.center)
+    assert game.wave_manager.endless is False
+
+
+def test_endless_run_never_reaches_victory_but_still_reaches_game_over(game):
+    game.load_level(1, endless=True)
+    game.state = GameState.PLAYING
+    game.wave_manager.all_waves_complete = False
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+    game.update(dt=0.01)
+    assert game.state == GameState.GAME_OVER
+
+
+def test_endless_mode_never_mutates_the_shared_levels_registry(game):
+    # Regression guard: WaveManager.level is a live reference, and LEVELS
+    # is a module-level singleton every Game/test in the process shares --
+    # entering endless mode must hand WaveManager a private copy, or an
+    # endless run's generated waves would permanently leak into every
+    # future non-endless playthrough of the same built-in level (and into
+    # other tests run afterward in this same process).
+    original_wave_count = len(LEVELS[1].wave_specs)
+
+    game.load_level(1, endless=True)
+    game.wave_manager.level.wave_specs.append({(0, 0): {"grunt": 1}})
+
+    assert len(LEVELS[1].wave_specs) == original_wave_count
+    assert game.level is not LEVELS[1]
+
+
+def test_endless_flag_survives_a_reset(game):
+    game.load_level(1, endless=True)
+    game.reset()
+    assert game.endless is True
+    assert game.wave_manager.endless is True
+
+
+def test_reset_without_endless_stays_non_endless(game):
+    game.load_level(1)
+    game.reset()
+    assert game.endless is False
+    assert game.wave_manager.endless is False
 
 
 # --- Level unlocking (progress.py) ---
@@ -1774,7 +2235,7 @@ def test_clearing_a_level_persists_across_a_fresh_game_instance(playing_game):
     # A brand-new Game pointed at the same progress file should see level 2
     # already unlocked -- progress persists across sessions, not just for
     # the instance that earned it.
-    reloaded = Game(progress_path=playing_game.progress_path)
+    reloaded = Game(progress_path=playing_game.progress_path, settings_path=playing_game.settings_path)
     try:
         reloaded._enter_level_select()
         assert 2 not in reloaded.level_select_locked_ids
@@ -1868,6 +2329,16 @@ def test_render_with_a_tower_selected_that_has_extra_stats_does_not_crash(playin
     playing_game.render()
 
 
+def test_render_with_a_placed_support_tower_pinned_does_not_crash(playing_game):
+    # Exercises the panel's IS_SUPPORT-gated branches: no Damage/Range/
+    # Fire-rate rows, no targeting row -- just its own EXTRA_STATS.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "support"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.render()
+
+
 def test_render_with_a_maxed_specializable_tower_pinned_does_not_crash(playing_game):
     # Exercises the stats panel's "not currently hovering either specialize
     # button" branch -- distinct from a fresh, unmaxed tower's plain
@@ -1901,7 +2372,7 @@ def test_render_during_the_between_waves_countdown_does_not_crash(playing_game):
 
 
 def test_render_victory_screen_without_a_next_level_does_not_crash(playing_game):
-    playing_game.load_level(2)  # the last built-in level -- has_next_level() is False
+    playing_game.load_level(max(LEVELS.keys()))  # the last built-in level -- has_next_level() is False
     playing_game.state = GameState.VICTORY
     assert not playing_game.has_next_level()
     playing_game.render()
@@ -1959,6 +2430,24 @@ def test_render_editor_with_a_branching_path_does_not_crash(game):
     game.editor.paint_at(*cell_center_px((2, 1)))
     game.editor.paint_at(*cell_center_px((1, 2)))
     assert game.editor.junctions  # sanity: the branch was actually detected
+
+    game.render()
+
+
+def test_render_editor_with_an_in_progress_line_drag_does_not_crash(game):
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.LINE)
+    game._handle_editor_click(cell_center_px((0, 0)))
+    game._handle_editor_motion(cell_center_px((3, 0)), (True, False, False))
+    assert game.editor.pending_shape_cells()  # sanity: a drag is actually in progress
+
+    game.render()
+
+
+def test_render_editor_with_the_rect_tool_active_shows_the_loop_hint(game):
+    # Exercises ui._draw_editor_path_sidebar's RECT-specific hint line.
+    game.state = GameState.EDITOR
+    game.editor.set_tool(EditorTool.RECT)
 
     game.render()
 
@@ -2170,6 +2659,23 @@ def test_handle_events_mousewheel_in_level_select_scrolls(game, monkeypatch):
     game._enter_level_select()
     _fire_event(game, pygame.event.Event(pygame.MOUSEWHEEL, y=-1, x=0, flipped=False))
     assert game.level_select_scroll_offset > 0
+
+
+def test_handle_events_videoresize_while_windowed_resizes_the_screen(game):
+    _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
+    assert game.screen.get_size() == (1000, 600)
+
+
+def test_handle_events_videoresize_while_fullscreen_is_ignored(game):
+    # A fullscreen window resizing away from the desktop resolution isn't
+    # something the player actually did -- e.g. a display mode change --
+    # so it must not shrink self.screen out from under a fullscreen game.
+    game.set_fullscreen(True)
+    original_size = game.screen.get_size()
+
+    _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
+
+    assert game.screen.get_size() == original_size
 
 
 def test_handle_events_ignores_events_that_match_no_branch(playing_game):
