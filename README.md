@@ -57,12 +57,12 @@ there is one, otherwise replays the level you just won. `Esc` quits from the mai
 or victory screens (there's no pause menu to open there).
 
 The level browser (`L`) has two extra toggles, both reset every time you reopen it and combinable
-with each other: `V` arms **Survival** (endless) mode and `B` arms **Sandbox** mode for whichever
+with each other: `V` arms **Endless** (Survival) mode and `B` arms **Sandbox** mode for whichever
 level you pick next -- see "Difficulty, Endless, and Sandbox modes" below.
 
 ## Testing
 
-Run the test suite with `pytest` (from the venv) -- 850+ tests covering every module, including
+Run the test suite with `pytest` (from the venv) -- 860+ tests covering every module, including
 `Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
 `AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
 real pygame window, so they force the SDL dummy video driver themselves
@@ -207,17 +207,17 @@ scroll with the mouse wheel -- a "more below" hint appears whenever there's furt
 
 **Difficulty** (`S` from the main menu -> Settings) picks one of Easy/Normal/Hard -- a bundle of
 multipliers on enemy HP/speed/gold reward and starting gold/lives (`difficulty.py`). Normal is
-every multiplier at 1.0, i.e. exactly the original numbers. Your choice (and fullscreen) is saved
-and reloaded automatically next time you launch the game.
+every multiplier at 1.0, i.e. exactly the original numbers -- see "Settings" below for how your
+choice persists.
 
-**Endless/Survival mode** -- armed with `V` from the level browser before picking a level -- keeps
+**Endless (Survival) mode** -- armed with `V` from the level browser before picking a level -- keeps
 generating new waves once a level's own last wave clears instead of ending the level: each new wave
 takes the previous one's enemy counts and bumps them up further, so it escalates without limit
 rather than plateauing. There's no way to "win" an endless run; it plays until you run out of
 lives.
 
 **Sandbox mode** -- armed with `B` from the level browser, independently of and combinable with
-Survival -- gives you unlimited gold and makes you invulnerable (a leaked enemy never actually
+Endless -- gives you unlimited gold and makes you invulnerable (a leaked enemy never actually
 costs a life), for freely experimenting with tower combinations. A sandbox win/clear doesn't count
 toward your real level-unlock progress or your achievements, since it isn't a real test of
 anything.
@@ -236,8 +236,8 @@ so you can see which of your towers actually carried the level.
 
 ## Achievements
 
-`A` from the main menu opens an Achievements screen listing everything you can unlock -- landing
-your first kill, racking up 100/1000 kills total, placing your first tower, maxing one out,
+`A` from the main menu opens an Achievements screen listing all ten you can unlock -- landing your
+first kill, racking up 100/1000 kills total, placing your first tower, maxing one out,
 choosing your first specialization, clearing your first level (and eventually every built-in one),
 and clearing waves of enemies over time. Progress toward a still-locked achievement is shown right
 there (e.g. "37/100"), and a small toast pops up in-game the moment you unlock a new one. None of
