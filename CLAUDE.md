@@ -17,6 +17,8 @@ pytest                             # full suite
 pytest tests/test_grid.py          # one file
 pytest tests/test_grid.py::test_non_path_cell_is_buildable   # one test
 pytest -v                          # what CI runs (.github/workflows/tests.yml)
+
+pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
 
 No linter/formatter is configured. `pyproject.toml` only sets pytest's `pythonpath`.
@@ -432,11 +434,13 @@ from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to
 
 Every sprite is referenced elsewhere by a logical name (`"tower_basic"`, `"enemy_grunt"`, ...),
 never a file path. `AssetManager` (`assets.py`) looks the name up in `SPRITE_MANIFEST` for a
-relative path + fallback color/shape; if the file exists under `asset_root` (default `assets/`) it
-loads and scales that, otherwise it synthesizes a placeholder (rounded rect / circle with an
-outline at normal sizes, a plain flat fill below ~12px so tiny sprites like the map's subtile
-mosaic don't collapse into a dot). Dropping in real art is a files-only change -- no code changes
-unless filenames differ from the manifest.
+relative path + fallback color/shape; if the file exists under `asset_root` (default
+`DEFAULT_ASSET_ROOT`, an `assets/` folder resolved relative to `assets.py`'s own location, not the
+process's current working directory -- see "Release binary" below for why that distinction matters
+for a packaged build) it loads and scales that, otherwise it synthesizes a placeholder (rounded
+rect / circle with an outline at normal sizes, a plain flat fill below ~12px so tiny sprites like
+the map's subtile mosaic don't collapse into a dot). Dropping in real art is a files-only change --
+no code changes unless filenames differ from the manifest.
 
 ### Economy debug flag
 
@@ -447,3 +451,39 @@ it. `ui.py`'s HUD shows `"Gold: unlimited"` while it's set. Sandbox mode (see "D
 Sandbox mode, and player settings" above) reuses this exact flag for its own unlimited-gold behavior
 (`unlimited_gold=self.unlimited_gold or sandbox`) rather than introducing a second, parallel
 concept -- `Economy.invulnerable` is the one genuinely new flag Sandbox needed.
+
+### Release binary
+
+`.github/workflows/release.yml` builds a standalone Linux binary with PyInstaller and publishes it
+to a GitHub Release whenever a `v*` tag is pushed -- `requirements.txt` includes `pyinstaller`
+alongside `pygame`/`pytest` for exactly this, so `pip install -r requirements.txt` is still the one
+setup command that covers running, testing, *and* packaging the game. Linux only, deliberately --
+this project has never had a Windows/macOS build, and nothing about the packaging step below has
+been verified on either.
+
+It's `--onedir`, never `--onefile`, and that's load-bearing rather than a style preference:
+`--onefile` re-extracts every bundled file into a *fresh* temp directory on every single launch and
+deletes it again on exit. `progress.py`/`achievements.py`/`player_settings.py`/`save_state.py` (see
+"Small on-disk JSON state files" above) all resolve their JSON file's path relative to their own
+module's `__file__` -- under `--onefile` that's a different, vanishing directory every run, so none
+of progress/achievements/settings/a saved run would actually survive being closed and reopened,
+even though every one of those features works perfectly when run from source. `--onedir` keeps that
+directory stable (it's just the unpacked folder sitting next to the executable), so persistence
+works exactly like an ordinary `python main.py` run. This was verified empirically, not assumed --
+building a throwaway diagnostic executable and comparing `__file__` across two separate launches is
+what caught it, since it isn't the kind of bug a single smoke-test launch would ever surface.
+
+`assets.py`'s `DEFAULT_ASSET_ROOT` exists for the same category of reason: it used to be a bare
+`asset_root="assets"` default, resolved against the process's current working directory -- fine for
+`python main.py` run from the repo root (the only way this project was ever launched before a
+packaged build existed), but a packaged binary double-clicked from a file manager or run via a PATH
+symlink has no such guarantee about its own cwd. `DEFAULT_ASSET_ROOT` is computed once, relative to
+`assets.py`'s own `__file__`, the same fix in the same spirit as the JSON state files above -- and
+under PyInstaller's `--onedir`, that resolves to the bundled `assets/` folder sitting right next to
+the module itself regardless of launch directory, which is also why the release build step passes
+`--add-data "assets:assets"` to put it there in the first place.
+
+The workflow runs the full test suite before building (`pytest -q`) as a last line of defense, then
+tars up `dist/td` (a directory, not a single file -- `--onedir`'s whole point) and attaches it to
+the release via `gh release create`, using the pushed tag itself as both the release name and the
+archive's version suffix.

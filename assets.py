@@ -21,6 +21,18 @@ import os
 
 import pygame
 
+# Anchored to this file's own location, not the process's current working
+# directory -- a bare "assets" default would resolve against whatever
+# directory the game happened to be launched from, which is only ever
+# guaranteed to be the repo root when running `python main.py` from there.
+# A packaged build (see .github/workflows/release.yml) launched from a
+# different cwd -- double-clicked from a file manager, run via a PATH
+# symlink, etc. -- needs this to still find its own bundled assets/
+# folder, which PyInstaller's --onedir mode places right next to this very
+# module (see AssetManager's own docstring below for what happens if it
+# doesn't).
+DEFAULT_ASSET_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
 # logical_name -> (relative_path_under_assets/, fallback_color, fallback_shape)
 # fallback_shape is one of "rect" or "circle".
 SPRITE_MANIFEST = {
@@ -53,9 +65,12 @@ SPRITE_MANIFEST = {
 
 class AssetManager:
     """Loads sprites by logical name, caching results and falling back to a
-    synthesized placeholder Surface when the real image file is absent."""
+    synthesized placeholder Surface when the real image file is absent.
+    Falling back is silent either way -- a missing art pack and a missing
+    asset_root directory entirely look identical to _load_or_placeholder,
+    which only ever checks os.path.isfile."""
 
-    def __init__(self, asset_root="assets"):
+    def __init__(self, asset_root=DEFAULT_ASSET_ROOT):
         self.asset_root = asset_root
         self._cache = {}
 

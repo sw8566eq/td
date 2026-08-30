@@ -22,7 +22,8 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame  # noqa: E402
 import pytest  # noqa: E402
 
-from assets import SPRITE_MANIFEST, AssetManager  # noqa: E402
+import assets as assets_module  # noqa: E402
+from assets import DEFAULT_ASSET_ROOT, SPRITE_MANIFEST, AssetManager  # noqa: E402
 
 MISSING_ASSET_ROOT = "/nonexistent/path/for/tests/xyz"
 
@@ -164,3 +165,23 @@ def test_real_file_on_disk_is_loaded_and_scaled_instead_of_the_placeholder():
             assert surface.get_at((20, 20))[:3] == (10, 20, 30)
     finally:
         pygame.quit()
+
+
+# --- DEFAULT_ASSET_ROOT (a packaged build's launch-cwd independence) ---
+
+def test_default_asset_root_is_anchored_to_assets_py_not_a_bare_relative_path():
+    # Regression guard: a bare "assets" default resolves against the
+    # process's current working directory, which is only ever the repo
+    # root for `python main.py` run from there -- a packaged --onedir
+    # build (release.yml) launched from anywhere else would silently stop
+    # finding its own bundled assets/ folder. DEFAULT_ASSET_ROOT must stay
+    # an absolute path derived from this module's own location instead.
+    assert DEFAULT_ASSET_ROOT == os.path.join(
+        os.path.dirname(os.path.abspath(assets_module.__file__)), "assets"
+    )
+    assert os.path.isabs(DEFAULT_ASSET_ROOT)
+
+
+def test_asset_manager_with_no_args_defaults_to_default_asset_root():
+    manager = AssetManager()
+    assert manager.asset_root == DEFAULT_ASSET_ROOT

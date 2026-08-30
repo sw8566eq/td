@@ -19,6 +19,12 @@ specializing a tower) always succeed without actually spending gold -- the HUD s
 of this same idea, plus invulnerability.) Pass `--editor` to launch straight into the map editor
 instead of the main menu (see "Map editor" below).
 
+Don't want to set up Python at all? Grab a pre-built Linux binary from the
+[Releases page](https://github.com/sw8566eq/td/releases) instead -- extract the tarball and run
+`./td/td`. Keep the whole `td/` folder together (it bundles its own Python runtime and assets next
+to the executable); progress, achievements, settings, and saved runs are all written there too, so
+moving just the `td` binary out on its own would leave those behind.
+
 ## Controls
 
 From the main **menu**: press any other key to start playing the currently loaded level, `E` opens

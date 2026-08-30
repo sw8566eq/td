@@ -5,6 +5,14 @@ __pycache__/
 .pytest_cache/
 .coverage
 
+# PyInstaller output from building a release binary locally (see
+# .github/workflows/release.yml, which builds the same way in CI and
+# publishes the result to a GitHub Release -- these are build output, not
+# something the repo itself ships).
+build/
+dist/
+*.spec
+
 # Player-saved custom levels (see persistence.py) -- local game data, not
 # something the repo ships or tracks.
 custom_levels/

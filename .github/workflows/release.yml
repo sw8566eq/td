@@ -1,0 +1,66 @@
+name: Release
+
+# Fires on any tag matching v* (e.g. v1.0.0) -- push a tag to cut a release.
+# Linux only: this game has never had a Windows/macOS build, and nothing
+# below assumes one -- see CLAUDE.md if that ever changes, since --onedir
+# packaging and DEFAULT_ASSET_ROOT below would need re-verifying per OS.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # gh release create needs this to publish against GITHUB_TOKEN
+
+jobs:
+  build-and-release-linux:
+    runs-on: ubuntu-latest
+    env:
+      # Same reasoning as tests.yml's own SDL_VIDEODRIVER -- belt-and-
+      # suspenders robustness for the `pytest` step below, not strictly
+      # required (test_game.py/test_assets.py already set this themselves).
+      SDL_VIDEODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: pip install -r requirements.txt # pygame, pytest, and pyinstaller together
+
+      # Don't ship a build the test suite itself wouldn't pass.
+      - run: pytest -q
+
+      # --onedir, deliberately not --onefile: --onefile re-extracts every
+      # bundled file into a fresh temp directory on every single launch and
+      # deletes it again on exit. progress.py/achievements.py/
+      # player_settings.py/save_state.py all resolve their JSON file's path
+      # relative to their own module's __file__ (see CLAUDE.md's "Small
+      # on-disk JSON state files" section) -- under --onefile that's a
+      # different, vanishing directory every run, so nothing would ever
+      # actually persist across launches. --onedir keeps that directory
+      # stable (it's just the unpacked folder next to the executable), so
+      # persistence works exactly like a normal `python main.py` run.
+      # assets/ is bundled the same way, and works for the same reason:
+      # assets.py's DEFAULT_ASSET_ROOT is __file__-relative too, not
+      # cwd-relative, so it finds its bundled assets/ folder regardless of
+      # what directory the binary gets launched from.
+      - name: Build the release binary
+        run: pyinstaller --onedir --name td --add-data "assets:assets" main.py
+
+      - name: Package the binary
+        run: tar -C dist -czf "td-linux-x86_64-${GITHUB_REF_NAME}.tar.gz" td
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "td-linux-x86_64-${GITHUB_REF_NAME}.tar.gz" \
+            --title "td $GITHUB_REF_NAME" \
+            --notes "Linux (x86_64) build, packaged with PyInstaller (--onedir).
+
+          Download the tarball, extract it, and run \`./td/td\` -- keep the whole \`td/\` folder together (it holds the bundled Python runtime and game assets alongside the executable). Progress, achievements, settings, and saved runs are written next to the binary itself, not wherever you happen to launch it from.
+
+          No display server needed beyond a normal desktop X11/Wayland session; nothing else to install."
