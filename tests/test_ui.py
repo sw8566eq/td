@@ -52,9 +52,40 @@ from ui import (
     get_clicked_wave_unit_button,
     level_select_content_height,
     level_select_max_scroll,
+    menu_options,
     _format_wave_label,
     _format_wave_preview,
 )
+
+
+# --- Main menu ---
+#
+# menu_options() is the pure, directly-testable half of draw_menu_screen
+# (same split as compute_tower_results()/draw_results_table() below --
+# draw_menu_screen itself only gets a "does not crash" smoke test in
+# test_game.py, since reading rendered text back out of pixels isn't done
+# anywhere in this suite). It exists because it used to be an options list
+# inlined straight into draw_menu_screen with nothing pinning its contents
+# down at all -- which is exactly how "L -- Level Browser" went missing
+# from the title screen for a while despite the L key always having
+# worked; see test_game.py's test_every_special_cased_menu_key_has_an_on_
+# screen_hint for the complementary check that ties this list back to what
+# Game._handle_keydown's GameState.MENU branch actually does.
+
+def test_menu_options_lists_every_key_in_documented_order():
+    assert menu_options(has_saved_run=False) == [
+        "Press any key to start",
+        "E -- Map Editor",
+        "L -- Level Browser",
+        "S -- Settings",
+        "A -- Achievements",
+    ]
+
+
+def test_menu_options_adds_continue_only_with_a_saved_run():
+    without = menu_options(has_saved_run=False)
+    assert "C -- Continue" not in without
+    assert menu_options(has_saved_run=True) == without + ["C -- Continue"]
 
 
 def test_build_button_rects_has_one_entry_per_registered_tower():

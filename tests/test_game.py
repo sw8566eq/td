@@ -8,6 +8,7 @@ smoke tests this project has been relying on during development.
 
 import json
 import os
+import string
 import sys
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -1739,6 +1740,34 @@ def test_settings_click_off_any_button_is_a_no_op(game):
 def test_menu_a_key_enters_achievements(game):
     game._handle_keydown(pygame.K_a)
     assert game.state == GameState.ACHIEVEMENTS
+
+
+def test_every_special_cased_menu_key_has_an_on_screen_hint(game):
+    """Regression test for a real bug: ui.draw_menu_screen's on-screen
+    options list once silently fell out of sync with this very handler --
+    the L key worked (see test_menu_l_key_enters_level_select above) but
+    nothing on the title screen told a player it existed. Rather than hand-
+    list today's known keys (exactly the kind of second copy that drifted
+    unnoticed before), this *behaviorally discovers* every letter
+    _handle_keydown treats specially from the menu -- anything that routes
+    somewhere other than the default "start playing" catch-all -- and
+    checks ui.menu_options() actually has a hint for it. A future special-
+    cased menu key added with no matching hint line fails here on its own,
+    without anyone having to remember this test exists."""
+    game.has_saved_run = True  # so a real saved run's "C" hint is covered too, not just E/L/S/A
+    hinted_letters = {
+        option.split(" -- ", 1)[0]
+        for option in ui.menu_options(has_saved_run=game.has_saved_run)
+        if " -- " in option
+    }
+    for letter in string.ascii_lowercase:
+        game.state = GameState.MENU
+        game._handle_keydown(pygame.key.key_code(letter))
+        if game.state not in (GameState.MENU, GameState.PLAYING):
+            assert letter.upper() in hinted_letters, (
+                f"{letter.upper()} silently routes the menu to {game.state} but has no "
+                "on-screen hint in ui.menu_options() -- add one there."
+            )
 
 
 def test_achievements_escape_returns_to_menu(game):
