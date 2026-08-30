@@ -365,7 +365,13 @@ Four modules now follow the exact same shape for local player data: one JSON fil
 crashing (same spirit as `AssetManager` falling back to a placeholder sprite), and a path that's
 always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievements_path`/
 `save_path` params) so tests never touch the real repo-root files. All four are gitignored -- local
-player data, not shipped content, same as `custom_levels/`.
+player data, not shipped content, same as `custom_levels/`. That shared shape isn't just
+convention -- `json_io.load_json_with_fallback(path, transform, default)` is the one function all
+four `load_*()`s actually call: it does the file-exists check and `try`/`except` itself, and takes
+`transform` (parsed JSON -> whatever shape the caller wants, also where a caller raises on
+well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
+`default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
+accidentally shared across calls) as the two places each module still supplies its own behavior.
 
 - `progress.py` tracks `{level_id: best_lives_remaining}` and gates sequential unlocking
   (`is_unlocked()`: the lowest id in a level registry is always unlocked, every other one needs its

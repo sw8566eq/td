@@ -62,7 +62,7 @@ level you pick next -- see "Difficulty, Endless, and Sandbox modes" below.
 
 ## Testing
 
-Run the test suite with `pytest` (from the venv) -- 860+ tests covering every module, including
+Run the test suite with `pytest` (from the venv) -- 890+ tests covering every module, including
 `Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
 `AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
 real pygame window, so they force the SDL dummy video driver themselves
