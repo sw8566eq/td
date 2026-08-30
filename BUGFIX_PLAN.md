@@ -49,7 +49,7 @@ Run `pytest -q` after every commit before moving on.
       4x (progress.py, player_settings.py, achievements.py, save_state.py).
       Fix: new `json_io.load_json_with_fallback()` shared helper, all four delegate to it.
       Bundle with 10/11/12 since save_state.py is already being touched there.
-- [ ] 14. `levels.py:246` -- Level 6 hand-builds its path inline instead of using this same diff's
+- [x] 14. `levels.py:246` -- Level 6 hand-builds its path inline instead of using this same diff's
       own `_multi_lane_level()` helper (used by Levels 7-9).
 - [ ] 15. `game.py:1101` -- `has_saved_run()` stats the filesystem every render() frame on the
       menu. Fix: cache as `self.has_saved_run`, refreshed only at the 3 points that change it
@@ -63,7 +63,7 @@ Run `pytest -q` after every commit before moving on.
 4. [x] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
 5. [x] save/resume fixes: #10, #11, #12 + tests
 6. [x] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
-7. [ ] levels.py Level 6 -> _multi_lane_level (#14)
+7. [x] levels.py Level 6 -> _multi_lane_level (#14)
 8. [ ] has_saved_run caching (#15) + test
 
 Delete this file once everything above is checked off and merged.

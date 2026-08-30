@@ -213,12 +213,11 @@ def _multi_lane_level(level_id, name, lane_corner_lists, spawn_cells, goal_cells
     _corridor_level() only ever produces one spawn and one goal. Each entry
     in `lane_corner_lists` is its own corner list (e.g. a spawn-to-junction
     run, or a junction-to-goal run); together they union into one
-    path_cells set, the same recipe Level 6 ("Confluence") below used
-    inline before this helper existed. `wave_specs` must already be in
-    Level's nested {spawn_cell: {...}} shape -- a multi-spawn level's
-    per-wave composition genuinely differs per spawn, so there's no terse
-    single-list shorthand to wrap here the way _single_spawn_waves() does
-    for a corridor level."""
+    path_cells set -- Levels 6-9 below all use this. `wave_specs` must
+    already be in Level's nested {spawn_cell: {...}} shape -- a multi-spawn
+    level's per-wave composition genuinely differs per spawn, so there's no
+    terse single-list shorthand to wrap here the way _single_spawn_waves()
+    does for a corridor level."""
     path_cells = frozenset()
     for corners in lane_corner_lists:
         path_cells |= pathing.path_cells_from_corners(corners)
@@ -243,11 +242,11 @@ def _multi_lane_level(level_id, name, lane_corner_lists, spawn_cells, goal_cells
 LEVEL_6_SPAWN_TOP = (0, 2)
 LEVEL_6_SPAWN_BOTTOM = (0, 6)
 LEVEL_6_GOAL = (14, 4)
-LEVEL_6_PATH_CELLS = frozenset(
-    pathing.path_cells_from_corners([LEVEL_6_SPAWN_TOP, (6, 2), (6, 4)])
-    | pathing.path_cells_from_corners([LEVEL_6_SPAWN_BOTTOM, (6, 6), (6, 4)])
-    | pathing.path_cells_from_corners([(6, 4), LEVEL_6_GOAL])
-)
+LEVEL_6_LANE_CORNER_LISTS = [
+    [LEVEL_6_SPAWN_TOP, (6, 2), (6, 4)],
+    [LEVEL_6_SPAWN_BOTTOM, (6, 6), (6, 4)],
+    [(6, 4), LEVEL_6_GOAL],
+]
 LEVEL_6_WAVE_SPECS = [
     {LEVEL_6_SPAWN_TOP: {"grunt": 6}, LEVEL_6_SPAWN_BOTTOM: {"scout": 6}},
     {LEVEL_6_SPAWN_TOP: {"grunt": 8, "tank": 2}, LEVEL_6_SPAWN_BOTTOM: {"scout": 8, "flying": 3}},
@@ -271,12 +270,10 @@ LEVELS = {
     5: _corridor_level(5, "Twin Peaks", LEVEL_5_CORNERS,
                         _single_spawn_waves(LEVEL_5_CORNERS[0], LEVEL_5_WAVE_SPECS)),
     # Confluence doesn't fit _corridor_level's single-spawn/single-goal
-    # shape -- built directly instead, same as the comment above its own
-    # LEVEL_6_* constants explains.
-    6: Level(
-        id=6,
-        name="Confluence",
-        path_cells=LEVEL_6_PATH_CELLS,
+    # shape -- built via _multi_lane_level instead, same as Levels 7-9
+    # below.
+    6: _multi_lane_level(
+        6, "Confluence", LEVEL_6_LANE_CORNER_LISTS,
         spawn_cells=(LEVEL_6_SPAWN_TOP, LEVEL_6_SPAWN_BOTTOM),
         goal_cells=(LEVEL_6_GOAL,),
         wave_specs=LEVEL_6_WAVE_SPECS,
