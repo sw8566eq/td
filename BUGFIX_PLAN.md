@@ -51,7 +51,7 @@ Run `pytest -q` after every commit before moving on.
       Bundle with 10/11/12 since save_state.py is already being touched there.
 - [x] 14. `levels.py:246` -- Level 6 hand-builds its path inline instead of using this same diff's
       own `_multi_lane_level()` helper (used by Levels 7-9).
-- [ ] 15. `game.py:1101` -- `has_saved_run()` stats the filesystem every render() frame on the
+- [x] 15. `game.py:1101` -- `has_saved_run()` stats the filesystem every render() frame on the
       menu. Fix: cache as `self.has_saved_run`, refreshed only at the 3 points that change it
       (save_run/resume_saved_run/_delete_save_if_this_run_was_resumed).
 
@@ -64,6 +64,6 @@ Run `pytest -q` after every commit before moving on.
 5. [x] save/resume fixes: #10, #11, #12 + tests
 6. [x] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
 7. [x] levels.py Level 6 -> _multi_lane_level (#14)
-8. [ ] has_saved_run caching (#15) + test
+8. [x] has_saved_run caching (#15) + test
 
 Delete this file once everything above is checked off and merged.

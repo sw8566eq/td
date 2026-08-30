@@ -2601,6 +2601,7 @@ def test_can_save_run_false_once_done(playing_game):
 def test_save_run_writes_a_file_and_returns_true(playing_game):
     assert playing_game.save_run() is True
     assert save_state.has_saved_run(playing_game.save_path)
+    assert playing_game.has_saved_run is True  # the cached copy render()/K_c actually read
 
 
 def test_save_run_fails_and_writes_nothing_while_spawning(playing_game):
@@ -2625,8 +2626,24 @@ def test_s_key_while_paused_is_a_no_op_mid_wave(playing_game):
 
 
 def test_c_key_at_the_menu_is_a_no_op_without_a_saved_run(game):
+    assert game.has_saved_run is False
     game._handle_keydown(pygame.K_c)
     assert game.state == GameState.PLAYING  # falls through to the generic "any key" case
+
+
+def test_a_fresh_game_instance_picks_up_an_existing_save_file(tmp_path):
+    # has_saved_run is cached rather than re-stat()'d every frame (see
+    # __init__), but must still reflect whatever's already on disk at
+    # construction time -- a save file from an earlier session, here.
+    save_path = tmp_path / "save_state.json"
+    save_path.write_text("{}")
+
+    game = Game(progress_path=tmp_path / "progress.json", settings_path=tmp_path / "settings.json",
+                achievements_path=tmp_path / "achievements.json", save_path=save_path)
+    try:
+        assert game.has_saved_run is True
+    finally:
+        pygame.quit()
 
 
 def _place_and_max_a_tower(game, tower_name="lightning", specialize_key="overcharge"):
@@ -2736,6 +2753,21 @@ def test_resuming_does_not_rebump_achievement_counters(playing_game):
 
     counters_after_resume = achievements.load_achievements(playing_game.achievements_path)["counters"]
     assert counters_after_resume == counters_after_building
+
+
+def test_has_saved_run_is_cleared_once_a_resumed_run_concludes(playing_game):
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+    playing_game.resume_saved_run(save_data)
+    assert playing_game.has_saved_run is True  # still on disk -- the run isn't over yet
+
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+    playing_game.update(dt=0.01)  # reaches VICTORY, deletes the now-played-out save
+
+    assert playing_game.state == GameState.VICTORY
+    assert not save_state.has_saved_run(playing_game.save_path)
+    assert playing_game.has_saved_run is False
 
 
 def test_resuming_reconstructs_a_custom_levels_identity(playing_game):

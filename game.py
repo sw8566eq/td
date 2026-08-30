@@ -81,6 +81,12 @@ class Game:
         # True afterward.
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
+        # Cached rather than re-stat()'d on every render() frame while
+        # sitting on the menu -- refreshed only at the 3 points that
+        # actually change it: save_run(), resume_saved_run() (no change --
+        # the file is still on disk until the run concludes), and
+        # _delete_save_if_this_run_was_resumed().
+        self.has_saved_run = save_state.has_saved_run(self.save_path)
 
         # Persisted player preferences -- fullscreen and difficulty are the
         # first genuinely cross-session prefs this game has (unlike
@@ -339,6 +345,7 @@ class Game:
         if not self.can_save_run():
             return False
         save_state.save_run(self, self.save_path)
+        self.has_saved_run = True
         return True
 
     def resume_saved_run(self, save_data):
@@ -468,7 +475,7 @@ class Game:
                 self.state = GameState.SETTINGS
             elif key == pygame.K_a:
                 self._enter_achievements()
-            elif key == pygame.K_c and save_state.has_saved_run(self.save_path):
+            elif key == pygame.K_c and self.has_saved_run:
                 self._continue_saved_run()
             else:
                 self.state = GameState.PLAYING
@@ -814,6 +821,7 @@ class Game:
         if self._resumed_from_save:
             save_state.delete_saved_run(self.save_path)
             self._resumed_from_save = False
+            self.has_saved_run = False
 
     def _record_achievement(self, counter_name, amount=1):
         """Bump `counter_name` by `amount` (see achievements.py) and queue
@@ -1158,8 +1166,7 @@ class Game:
         self.screen.fill(settings.COLOR_BG)
 
         if self.state == GameState.MENU:
-            ui.draw_menu_screen(self.screen, self.font, self.small_font,
-                                 save_state.has_saved_run(self.save_path))
+            ui.draw_menu_screen(self.screen, self.font, self.small_font, self.has_saved_run)
             pygame.display.flip()
             return
 
