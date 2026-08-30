@@ -495,11 +495,31 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     return y
 
 
-def draw_menu_screen(surface, font, small_font, has_saved_run=False):
-    surface.fill(settings.COLOR_BG)
-    options = ["Press any key to start", "E -- Map Editor", "S -- Settings", "A -- Achievements"]
+def menu_options(has_saved_run=False):
+    """The main menu's line-per-option hint list, in the same order the
+    keys are listed in the README/CLAUDE.md ("start / E / L / S / A / C").
+    Pulled out as its own pure function -- rather than inlined in
+    draw_menu_screen below -- so it's unit-testable directly against
+    Game._handle_keydown's own GameState.MENU key list (see test_ui.py's
+    test_menu_options_has_a_hint_for_every_key_the_menu_handles) without
+    reading back rendered pixels: this is exactly the list that went
+    stale (missing "L -- Level Browser") until a test actually pinned it
+    down, even though the L key itself was never broken."""
+    options = [
+        "Press any key to start",
+        "E -- Map Editor",
+        "L -- Level Browser",
+        "S -- Settings",
+        "A -- Achievements",
+    ]
     if has_saved_run:
         options.append("C -- Continue")
+    return options
+
+
+def draw_menu_screen(surface, font, small_font, has_saved_run=False):
+    surface.fill(settings.COLOR_BG)
+    options = menu_options(has_saved_run)
     _draw_centered_overlay(surface, font, small_font, "Tower Defense", options, settings.COLOR_TEXT)
 
 
