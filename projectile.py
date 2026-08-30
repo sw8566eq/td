@@ -141,9 +141,14 @@ class Projectile:
 
     def _apply_hit_effects(self, enemy):
         was_alive = not enemy.is_dead
-        enemy.take_damage(self.damage)
+        # take_damage() returns however much of self.damage actually
+        # reached hp -- usually all of it, but a shielded or armored
+        # enemy (ShieldedEnemy/BossEnemy) can absorb part of a hit first,
+        # and damage_dealt should reflect what was really done, not the
+        # full nominal shot damage regardless of what landed.
+        applied = enemy.take_damage(self.damage)
         if self.source is not None:
-            self.source.damage_dealt += self.damage
+            self.source.damage_dealt += applied
             if was_alive and enemy.is_dead:
                 self.source.kills += 1
         if self.slow_effect is not None:

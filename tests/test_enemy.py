@@ -94,15 +94,20 @@ def test_boss_armor_phase_reduces_flat_damage_until_it_expires():
     assert boss.armor_used is True
     assert boss.armor_timer == BossEnemy.ARMOR_DURATION
 
-    boss.take_damage(50)  # reduced by ARMOR_FLAT_REDUCTION while armor is active
+    applied = boss.take_damage(50)  # reduced by ARMOR_FLAT_REDUCTION while armor is active
     assert boss.hp == 100 - (50 - BossEnemy.ARMOR_FLAT_REDUCTION)
+    # take_damage()'s return value is what Projectile credits to a tower's
+    # damage_dealt stat -- it must reflect the armor-reduced amount that
+    # actually landed, not the full nominal hit.
+    assert applied == 50 - BossEnemy.ARMOR_FLAT_REDUCTION
 
     boss.update(dt=BossEnemy.ARMOR_DURATION)  # armor window fully elapses
     assert boss.armor_timer == 0
 
     hp_before = boss.hp
-    boss.take_damage(50)  # full damage now that armor has expired
+    applied = boss.take_damage(50)  # full damage now that armor has expired
     assert boss.hp == hp_before - 50
+    assert applied == 50
 
 
 def test_boss_armor_flat_reduction_never_makes_damage_negative():
@@ -237,20 +242,25 @@ def test_shielded_enemy_shield_absorbs_damage_before_hp():
     enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
     starting_hp, starting_shield = enemy.hp, enemy.shield
 
-    enemy.take_damage(5)
+    applied = enemy.take_damage(5)
 
     assert enemy.shield == starting_shield - 5
     assert enemy.hp == starting_hp
+    # A hit fully absorbed by the shield never reaches hp, so the amount
+    # take_damage() reports as actually applied -- what Projectile credits
+    # to a tower's damage_dealt stat -- must be zero, not the full 5.
+    assert applied == 0
 
 
 def test_shielded_enemy_overflow_damage_spills_into_hp():
     enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
     starting_hp, starting_shield = enemy.hp, enemy.shield
 
-    enemy.take_damage(starting_shield + 7)
+    applied = enemy.take_damage(starting_shield + 7)
 
     assert enemy.shield == 0
     assert enemy.hp == starting_hp - 7
+    assert applied == 7  # only the overflow past the shield reached hp
 
 
 def test_shielded_enemy_take_damage_after_shield_is_already_empty_hits_hp_directly():

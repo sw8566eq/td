@@ -141,12 +141,21 @@ class Enemy:
         # reached_goal, so it would award gold for an enemy that had
         # already cost a life instead.
         if self.is_dead or self.reached_goal:
-            return
+            return 0.0
         self.damage_events.append(amount)
         self.hp -= amount
         if self.hp <= 0:
             self.hp = 0
             self.is_dead = True
+        # Returns exactly `amount` here (an overkill hit still reports its
+        # full nominal damage, not clamped to however much hp had left) --
+        # a subclass that absorbs part of a hit before it ever reaches hp
+        # (ShieldedEnemy's shield, BossEnemy's armor phase) is what makes
+        # this genuinely differ from `amount`, by passing in the smaller,
+        # already-reduced figure. Projectile._apply_hit_effects() credits
+        # this return value, not the raw shot damage, to the firing
+        # tower's lifetime damage_dealt stat.
+        return amount
 
     def apply_slow(self, factor, duration):
         # Guards like take_damage/apply_knockback do -- a hit that kills
@@ -342,12 +351,12 @@ class BossEnemy(Enemy):
 
     def take_damage(self, amount):
         if self.is_dead or self.reached_goal:
-            return
+            return 0.0
         if self.armor_timer > 0:
             amount = max(0.0, amount - self.ARMOR_FLAT_REDUCTION)
-        super().take_damage(amount)
+        applied = super().take_damage(amount)
         if self.is_dead:
-            return  # a killing blow -- no mechanic left to trigger
+            return applied  # a killing blow -- no mechanic left to trigger
 
         if not self.enraged and self.hp <= self.ENRAGE_HP_FRACTION * self.max_hp:
             self.enraged = True
@@ -355,6 +364,7 @@ class BossEnemy(Enemy):
         if not self.armor_used and self.hp <= self.ARMOR_HP_FRACTION * self.max_hp:
             self.armor_used = True
             self.armor_timer = self.ARMOR_DURATION
+        return applied
 
     def update(self, dt):
         super().update(dt)
@@ -405,14 +415,15 @@ class ShieldedEnemy(Enemy):
 
     def take_damage(self, amount):
         if self.is_dead or self.reached_goal:
-            return
+            return 0.0
         self.time_since_hit = 0.0
         if self.shield > 0:
             absorbed = min(self.shield, amount)
             self.shield -= absorbed
             amount -= absorbed
         if amount > 0:
-            super().take_damage(amount)
+            return super().take_damage(amount)
+        return 0.0  # fully absorbed by the shield -- no real hp damage dealt
 
     def update(self, dt):
         super().update(dt)

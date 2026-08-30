@@ -16,6 +16,7 @@ class FakeEnemy:
 
     def take_damage(self, amount):
         self.damage_taken += amount
+        return amount  # matches Enemy.take_damage()'s real contract
 
     def apply_slow(self, factor, duration):
         self.slow_applied = (factor, duration)
@@ -334,10 +335,52 @@ class KillableFakeEnemy(FakeEnemy):
         self.hp = hp
 
     def take_damage(self, amount):
-        super().take_damage(amount)
+        applied = super().take_damage(amount)
         self.hp -= amount
         if self.hp <= 0:
             self.is_dead = True
+        return applied
+
+
+class ArmoredFakeEnemy(FakeEnemy):
+    """A fake that absorbs a flat amount of every hit before it "reaches"
+    anything -- same shape as BossEnemy's armor phase or ShieldedEnemy's
+    shield -- used to prove damage_dealt is credited with what actually
+    got through, not the raw nominal shot damage."""
+    def __init__(self, pos, absorption, **kwargs):
+        super().__init__(pos, **kwargs)
+        self.absorption = absorption
+
+    def take_damage(self, amount):
+        applied = max(0.0, amount - self.absorption)
+        self.damage_taken += applied
+        return applied
+
+
+def test_a_partially_absorbed_hit_only_credits_the_amount_actually_applied():
+    # Regression guard: _apply_hit_effects used to credit self.damage (the
+    # full nominal shot damage) regardless of what take_damage() actually
+    # applied, over-reporting damage_dealt for any enemy that absorbs part
+    # of a hit before it reaches hp.
+    source = FakeTower()
+    target = ArmoredFakeEnemy((0, 0), absorption=15)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=50, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 35
+    assert source.damage_dealt == 35
+
+
+def test_a_fully_absorbed_hit_credits_zero_damage_dealt():
+    source = FakeTower()
+    target = ArmoredFakeEnemy((0, 0), absorption=100)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=50, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.damage_dealt == 0
+    assert source.shots_hit == 1  # still a hit -- just one that did no real damage
 
 
 def test_source_none_is_never_touched_by_a_hit():

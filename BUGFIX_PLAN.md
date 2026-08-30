@@ -31,7 +31,7 @@ Run `pytest -q` after every commit before moving on.
 - [x] 8. `achievements.py:109` -- `bump()` does sync file I/O per kill; a multi-kill splash/chain
       hit does N round-trips in one frame.
       Fix: accumulate kills this frame in `update()`, one `_record_achievement("kills", n)` call.
-- [ ] 9. `projectile.py:144` -- `damage_dealt` credited with nominal shot damage even when
+- [x] 9. `projectile.py:144` -- `damage_dealt` credited with nominal shot damage even when
       armor/shield absorbed part of it before HP.
       Fix: `Enemy.take_damage()`/`ShieldedEnemy`/`BossEnemy` all return the amount actually
       applied; `Projectile._apply_hit_effects` credits that instead of `self.damage`. Update
@@ -60,7 +60,7 @@ Run `pytest -q` after every commit before moving on.
 1. [x] waves.py wave_index fix (#1) + test
 2. [x] enemy speed-cap fix (#2) + test
 3. [x] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
-4. [ ] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
+4. [x] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
 5. [ ] save/resume fixes: #10, #11, #12 + tests
 6. [ ] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
 7. [ ] levels.py Level 6 -> _multi_lane_level (#14)
