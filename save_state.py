@@ -17,6 +17,7 @@ import os
 
 from persistence import level_from_dict, level_to_dict
 from tower import TOWER_TYPES
+from waves import WaveState
 
 SCHEMA_VERSION = 1
 SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "save_state.json")
@@ -27,6 +28,28 @@ def _tower_type_name(tower):
         if type(tower) is cls:
             return name
     raise ValueError(f"{tower!r} is not an instance of a registered TOWER_TYPES class")
+
+
+def _tower_to_dict(tower):
+    """One Tower -> the plain-JSON dict Game._tower_from_save_data()
+    reconstructs it from -- shared by both `towers` and `sold_towers`
+    below, since a sold tower needs everything a placed one does (it's
+    still shown in the post-level results table) except grid occupancy."""
+    return {
+        "type": _tower_type_name(tower),
+        "anchor_col": tower.anchor_col,
+        "anchor_row": tower.anchor_row,
+        "level": tower.level,
+        "specialization": tower.specialization,
+        "targeting_mode": tower.targeting_mode,
+        # Lifetime stats, purely for display (see CLAUDE.md's "Post-level
+        # results") -- without these, every tower reconstructed on resume
+        # would show 0 shots/damage/kills even after real combat history.
+        "shots_fired": tower.shots_fired,
+        "shots_hit": tower.shots_hit,
+        "damage_dealt": tower.damage_dealt,
+        "kills": tower.kills,
+    }
 
 
 def save_run(game, path=SAVE_PATH):
@@ -48,17 +71,11 @@ def save_run(game, path=SAVE_PATH):
         "wave_index": game.wave_manager.wave_index,
         "wave_state": game.wave_manager.state,
         "between_wave_timer": game.wave_manager.between_wave_timer,
-        "towers": [
-            {
-                "type": _tower_type_name(tower),
-                "anchor_col": tower.anchor_col,
-                "anchor_row": tower.anchor_row,
-                "level": tower.level,
-                "specialization": tower.specialization,
-                "targeting_mode": tower.targeting_mode,
-            }
-            for tower in game.towers
-        ],
+        "towers": [_tower_to_dict(tower) for tower in game.towers],
+        # A tower sold before saving still belongs in this run's eventual
+        # post-level results table (see Game._tower_results()) -- without
+        # this, resuming would silently drop it from that table entirely.
+        "sold_towers": [_tower_to_dict(tower) for tower in game.sold_towers],
     }
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
@@ -68,15 +85,26 @@ def load_run(path=SAVE_PATH):
     """The saved-run dict (its "level" entry already converted to a live
     Level via persistence.level_from_dict -- everything else stays plain
     JSON-safe data for Game.resume_saved_run() to interpret), or None if
-    there's nothing valid to resume. A missing or corrupt file is "nothing
-    to resume," not a crash, same spirit as persistence.list_custom_levels()
-    skipping a bad file."""
+    there's nothing valid to resume. A missing, corrupt, or semantically
+    invalid file (a wave_state Game.resume_saved_run() can't actually
+    restore into, a wave_index out of range, an unrecognized tower type)
+    is all "nothing to resume," not a crash, same spirit as
+    persistence.list_custom_levels() skipping a bad file -- every field
+    resume_saved_run() goes on to read is validated here first, so it
+    never has to guard against a malformed save itself."""
     if not os.path.isfile(path):
         return None
     try:
         with open(path) as f:
             data = json.load(f)
         data["level"] = level_from_dict(data["level"])
+        if data["wave_state"] not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
+            return None
+        if not 0 <= data["wave_index"] < len(data["level"].wave_specs):
+            return None
+        for tower_data in data["towers"] + data.get("sold_towers", []):
+            if tower_data["type"] not in TOWER_TYPES:
+                return None
         return data
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return None

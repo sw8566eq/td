@@ -357,7 +357,10 @@ class Game:
         never through try_upgrade_tower()/try_specialize_tower() -- so
         resuming never re-charges gold or re-bumps achievement counters for
         progress the player already paid for and was already credited with
-        once, back when it first happened."""
+        once, back when it first happened. Lifetime shots/damage/kills
+        stats and sold_towers are restored too (see _tower_from_save_data),
+        so a level's post-level results table still reflects everything
+        that happened before the save, not just what happens after."""
         level = save_data["level"]
         self._load_level_object(
             level, endless=save_data["endless"], sandbox=save_data["sandbox"],
@@ -369,20 +372,36 @@ class Game:
         self.economy.lives = save_data["lives"]
 
         for tower_data in save_data["towers"]:
-            tower_cls = TOWER_TYPES[tower_data["type"]]
-            anchor_col, anchor_row = tower_data["anchor_col"], tower_data["anchor_row"]
-            pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
-            tower = tower_cls(anchor_col, anchor_row, pixel_pos)
-            for _ in range(tower_data["level"] - 1):
-                tower.upgrade()
-            if tower_data["specialization"] is not None:
-                tower.specialize(tower_data["specialization"])
-            tower.targeting_mode = tower_data["targeting_mode"]
-            self.towers.append(tower)
-            self.grid.occupy(anchor_col, anchor_row, tower)
+            self._register_tower(self._tower_from_save_data(tower_data))
+        for tower_data in save_data.get("sold_towers", []):
+            self.sold_towers.append(self._tower_from_save_data(tower_data))
 
         self._resumed_from_save = True  # see __init__'s comment on this flag
         self.state = GameState.PLAYING
+
+    def _tower_from_save_data(self, tower_data):
+        """Reconstruct one Tower from save_state.py's per-tower dict --
+        level/specialization/targeting mode and lifetime stat counters
+        applied in the same order they were originally reached, via
+        Tower.upgrade()/specialize() directly (see resume_saved_run's own
+        docstring for why). Used for both a still-placed tower
+        (resume_saved_run registers it onto self.towers/the grid itself)
+        and a sold one (self.sold_towers only -- never registered onto
+        the grid, since it no longer occupies any space). `.get(...)`
+        defaults on the stat counters/sold_towers keep an older save file
+        from before these existed resumable rather than KeyError-ing."""
+        tower_cls = TOWER_TYPES[tower_data["type"]]
+        tower = self._construct_tower(tower_cls, tower_data["anchor_col"], tower_data["anchor_row"])
+        for _ in range(tower_data["level"] - 1):
+            tower.upgrade()
+        if tower_data["specialization"] is not None:
+            tower.specialize(tower_data["specialization"])
+        tower.targeting_mode = tower_data["targeting_mode"]
+        tower.shots_fired = tower_data.get("shots_fired", 0)
+        tower.shots_hit = tower_data.get("shots_hit", 0)
+        tower.damage_dealt = tower_data.get("damage_dealt", 0.0)
+        tower.kills = tower_data.get("kills", 0)
+        return tower
 
     def _continue_saved_run(self):
         """The main menu's "Continue" -- a no-op (stays on MENU) if the
@@ -940,22 +959,30 @@ class Game:
             return False
 
         self.economy.spend(tower_cls.cost)
-        self._register_tower(tower_cls, anchor_col, anchor_row)
+        tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
+        self._register_tower(tower)
         self._record_achievement("towers_built")
         return True
 
-    def _register_tower(self, tower_cls, anchor_col, anchor_row):
-        """Construct a `tower_cls` anchored at (anchor_col, anchor_row) and
-        register it onto both self.towers and the grid -- the exact
-        construct-and-occupy sequence shared by a fresh placement
+    def _construct_tower(self, tower_cls, anchor_col, anchor_row):
+        """Build a fresh, level-1, unregistered `tower_cls` anchored at
+        (anchor_col, anchor_row) -- shared by a fresh placement
         (try_place_tower, above) and rebuilding a tower from a save file
-        (resume_saved_run, below), so the two can never quietly drift
-        apart. Returns the new tower."""
+        (_tower_from_save_data, below), which then applies its own saved
+        level/specialization/stats before the tower is ever registered."""
         pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
-        tower = tower_cls(anchor_col, anchor_row, pixel_pos)
+        return tower_cls(anchor_col, anchor_row, pixel_pos)
+
+    def _register_tower(self, tower):
+        """Add an already-built tower to both self.towers and the grid --
+        the exact registration step shared by try_place_tower (a freshly
+        constructed tower) and resume_saved_run (a fully reconstructed
+        one, already leveled/specialized), so the two can never quietly
+        drift apart. A sold tower being restored from a save is the one
+        case that deliberately skips this: it no longer occupies any
+        space, so it only ever goes into self.sold_towers."""
         self.towers.append(tower)
-        self.grid.occupy(anchor_col, anchor_row, tower)
-        return tower
+        self.grid.occupy(tower.anchor_col, tower.anchor_row, tower)
 
     def try_upgrade_tower(self, tower):
         if tower not in self.towers:

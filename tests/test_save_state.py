@@ -52,7 +52,8 @@ class _FakeGame:
 
     def __init__(self, level, towers, current_level_id=1, endless=False, sandbox=False,
                  difficulty="normal", gold=150, lives=20,
-                 wave_index=0, wave_state=WaveState.BETWEEN_WAVES, between_wave_timer=3.0):
+                 wave_index=0, wave_state=WaveState.BETWEEN_WAVES, between_wave_timer=3.0,
+                 sold_towers=None):
         self.current_level_id = current_level_id
         self.level = level
         self.endless = endless
@@ -61,6 +62,7 @@ class _FakeGame:
         self.economy = _FakeEconomy(gold, lives)
         self.wave_manager = _FakeWaveManager(wave_index, wave_state, between_wave_timer)
         self.towers = towers
+        self.sold_towers = sold_towers or []
 
 
 def test_save_and_load_run_round_trips(tmp_path):
@@ -70,7 +72,7 @@ def test_save_and_load_run_round_trips(tmp_path):
     tower.upgrade()
     tower.targeting_mode = "strongest"
     game = _FakeGame(level, [tower], current_level_id=1, gold=222, lives=17,
-                      wave_index=2, wave_state=WaveState.BETWEEN_WAVES, between_wave_timer=1.5)
+                      wave_index=1, wave_state=WaveState.BETWEEN_WAVES, between_wave_timer=1.5)
 
     save_state.save_run(game, path=path)
     loaded = save_state.load_run(path=path)
@@ -82,13 +84,15 @@ def test_save_and_load_run_round_trips(tmp_path):
     assert loaded["difficulty"] == "normal"
     assert loaded["gold"] == 222
     assert loaded["lives"] == 17
-    assert loaded["wave_index"] == 2
+    assert loaded["wave_index"] == 1
     assert loaded["wave_state"] == WaveState.BETWEEN_WAVES
     assert loaded["between_wave_timer"] == 1.5
     assert loaded["towers"] == [{
         "type": "basic", "anchor_col": 2, "anchor_row": 3,
         "level": 2, "specialization": None, "targeting_mode": "strongest",
+        "shots_fired": 0, "shots_hit": 0, "damage_dealt": 0.0, "kills": 0,
     }]
+    assert loaded["sold_towers"] == []
 
 
 def test_save_run_captures_endless_appended_waves():
@@ -129,6 +133,26 @@ def test_save_run_captures_specialization_and_multiple_towers(tmp_path):
     assert by_type["lightning"]["specialization"] is None
 
 
+def test_save_run_captures_tower_lifetime_stats_and_sold_towers(tmp_path):
+    path = tmp_path / "save_state.json"
+    level = make_level()
+    placed = make_tower(BasicTower, anchor_col=0, anchor_row=0)
+    placed.shots_fired, placed.shots_hit, placed.damage_dealt, placed.kills = 10, 8, 123.5, 3
+    sold = make_tower(BasicTower, anchor_col=1, anchor_row=0)
+    sold.shots_fired, sold.shots_hit, sold.damage_dealt, sold.kills = 5, 5, 50.0, 1
+    game = _FakeGame(level, [placed], sold_towers=[sold])
+
+    save_state.save_run(game, path=path)
+    loaded = save_state.load_run(path=path)
+
+    assert loaded["towers"][0]["shots_fired"] == 10
+    assert loaded["towers"][0]["shots_hit"] == 8
+    assert loaded["towers"][0]["damage_dealt"] == 123.5
+    assert loaded["towers"][0]["kills"] == 3
+    assert len(loaded["sold_towers"]) == 1
+    assert loaded["sold_towers"][0]["kills"] == 1
+
+
 def test_to_dict_shape_is_plain_json_serializable(tmp_path):
     path = tmp_path / "save_state.json"
     level = make_level()
@@ -156,6 +180,51 @@ def test_load_run_on_a_corrupt_file_returns_none_instead_of_raising(tmp_path):
 def test_load_run_on_an_unparseable_level_returns_none_instead_of_raising(tmp_path):
     path = tmp_path / "save_state.json"
     path.write_text(json.dumps({"schema_version": 1, "level": {"missing": "required keys"}}))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_wave_state_that_cannot_be_resumed_into_returns_none(tmp_path):
+    # Regression guard: WaveManager.restore() only accepts AWAITING_START/
+    # BETWEEN_WAVES -- a save file with any other wave_state used to sail
+    # straight through load_run() and crash resume_saved_run() with an
+    # uncaught ValueError instead of leaving the player on the menu.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], wave_state=WaveState.SPAWNING)
+    save_state.save_run(game, path=path)
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_an_out_of_range_wave_index_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], wave_index=5)  # make_level() only has 2 waves
+    save_state.save_run(game, path=path)
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_an_unrecognized_tower_type_returns_none(tmp_path):
+    # Regression guard: a stale/renamed/hand-edited tower type name used
+    # to sail through load_run() and crash resume_saved_run() with an
+    # uncaught KeyError on TOWER_TYPES[tower_data["type"]].
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [make_tower(BasicTower)])
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["towers"][0]["type"] = "no_such_tower"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_an_unrecognized_sold_tower_type_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], sold_towers=[make_tower(BasicTower)])
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["sold_towers"][0]["type"] = "no_such_tower"
+    path.write_text(json.dumps(data))
 
     assert save_state.load_run(path=path) is None
 

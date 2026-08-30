@@ -36,14 +36,14 @@ Run `pytest -q` after every commit before moving on.
       Fix: `Enemy.take_damage()`/`ShieldedEnemy`/`BossEnemy` all return the amount actually
       applied; `Projectile._apply_hit_effects` credits that instead of `self.damage`. Update
       `FakeEnemy`/`KillableFakeEnemy` test doubles in `tests/test_projectile.py` to match.
-- [ ] 10. `game.py:363` -- corrupt-but-valid-JSON save crashes (`ValueError`/`KeyError`) on
+- [x] 10. `game.py:363` -- corrupt-but-valid-JSON save crashes (`ValueError`/`KeyError`) on
       Continue instead of degrading gracefully, contradicting `load_run()`'s own docstring.
-- [ ] 11. `game.py:371` -- `resume_saved_run()` zeroes every tower's lifetime stats and drops
+- [x] 11. `game.py:371` -- `resume_saved_run()` zeroes every tower's lifetime stats and drops
       `sold_towers` entirely.
       Fix (bundled with 10 and 13): `save_state.save_run()` also serializes
       shots_fired/shots_hit/damage_dealt/kills and a `sold_towers` list; `resume_saved_run`
       restores both via a shared `_tower_from_save_data()` helper.
-- [ ] 12. `game.py:371` (dup line ref) -- `resume_saved_run` duplicates `try_place_tower`'s
+- [x] 12. `game.py:371` (dup line ref) -- `resume_saved_run` duplicates `try_place_tower`'s
       construct-and-register sequence. Fix: shared `_register_tower()` helper.
 - [ ] 13. `progress.py:20` -- the same "missing/corrupt JSON -> fallback" boilerplate hand-copied
       4x (progress.py, player_settings.py, achievements.py, save_state.py).
@@ -61,7 +61,7 @@ Run `pytest -q` after every commit before moving on.
 2. [x] enemy speed-cap fix (#2) + test
 3. [x] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
 4. [x] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
-5. [ ] save/resume fixes: #10, #11, #12 + tests
+5. [x] save/resume fixes: #10, #11, #12 + tests
 6. [ ] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
 7. [ ] levels.py Level 6 -> _multi_lane_level (#14)
 8. [ ] has_saved_run caching (#15) + test

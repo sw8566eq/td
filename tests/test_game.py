@@ -6,6 +6,7 @@ to run headless in CI/sandboxes with no real display, same as the manual
 smoke tests this project has been relying on during development.
 """
 
+import json
 import os
 import sys
 
@@ -2667,6 +2668,62 @@ def test_resuming_does_not_recharge_gold_for_reconstructed_towers(playing_game):
     playing_game.resume_saved_run(save_data)
 
     assert playing_game.economy.gold == gold_after_building
+
+
+def test_resuming_restores_tower_lifetime_stats(playing_game):
+    # Regression guard: resume_saved_run() used to rebuild every tower via
+    # a fresh Tower.__init__, silently zeroing shots_fired/shots_hit/
+    # damage_dealt/kills even though real combat history existed before
+    # the save -- the post-level results table would show 0 for
+    # everything after resuming.
+    anchor_col, anchor_row, tower = _place_and_max_a_tower(playing_game)
+    tower.shots_fired, tower.shots_hit, tower.damage_dealt, tower.kills = 12, 9, 145.0, 4
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    resumed_tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    assert resumed_tower.shots_fired == 12
+    assert resumed_tower.shots_hit == 9
+    assert resumed_tower.damage_dealt == 145.0
+    assert resumed_tower.kills == 4
+
+
+def test_resuming_restores_sold_towers_for_the_results_table(playing_game):
+    # Regression guard: resume_saved_run() used to never repopulate
+    # sold_towers at all, so a tower sold before saving would silently
+    # vanish from the post-level results table after resuming.
+    _anchor_col, _anchor_row, tower = _place_and_max_a_tower(playing_game)
+    tower.kills = 7
+    playing_game.try_sell_tower(tower)
+    assert playing_game.sold_towers == [tower]
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert len(playing_game.sold_towers) == 1
+    assert playing_game.sold_towers[0].kills == 7
+    assert playing_game.sold_towers[0] not in playing_game.towers
+
+
+def test_continuing_a_run_that_cannot_be_resumed_stays_on_the_menu(playing_game):
+    # Regression guard: a semantically-invalid-but-syntactically-fine save
+    # file (an unresumable wave_state, here) used to reach
+    # resume_saved_run() and crash instead of leaving the player on the
+    # menu -- see save_state.load_run()'s own validation.
+    playing_game.save_run()
+    with open(playing_game.save_path) as f:
+        data = json.load(f)
+    data["wave_state"] = "spawning"
+    with open(playing_game.save_path, "w") as f:
+        json.dump(data, f)
+    playing_game.state = GameState.MENU
+
+    playing_game._handle_keydown(pygame.K_c)  # must not raise
+
+    assert playing_game.state == GameState.MENU
 
 
 def test_resuming_does_not_rebump_achievement_counters(playing_game):
