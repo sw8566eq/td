@@ -14,21 +14,21 @@ Run `pytest -q` after every commit before moving on.
       `max_speed` (difficulty multiplier applied post-construction, never re-clamped).
       Fix: `WaveManager._spawn_enemy` clamps `enemy.speed` to `enemy.max_speed` after applying
       `enemy_speed_multiplier`, not just at `Enemy.__init__` time.
-- [ ] 3. `game.py:71` -- `achievement_toasts` never reset in `_load_level_object`, can bleed
+- [x] 3. `game.py:71` -- `achievement_toasts` never reset in `_load_level_object`, can bleed
       into the next level. Fix: reset it alongside the other per-level lists.
-- [ ] 4. `game.py:1087` -- `levels_cleared` achievement bump nested inside the built-in-only
+- [x] 4. `game.py:1087` -- `levels_cleared` achievement bump nested inside the built-in-only
       `isinstance(current_level_id, int)` guard, so custom levels never count.
       Fix: split the guard -- sandbox gates both, isinstance gates only `progress.mark_level_cleared`.
-- [ ] 5. `achievements.py:65` -- `campaign_complete` keyed off a naive incrementing counter,
+- [x] 5. `achievements.py:65` -- `campaign_complete` keyed off a naive incrementing counter,
       gameable by replaying one already-cleared level repeatedly.
       Fix: new `achievements.set_counter()` (monotonic max, not +=) driven by
       `len(self.progress)` (distinct built-in levels, from `progress.py`'s own dict) instead.
-- [ ] 6. `game.py:795` -- `if not self.sandbox:` hand-repeated at 6 call sites instead of once.
+- [x] 6. `game.py:795` -- `if not self.sandbox:` hand-repeated at 6 call sites instead of once.
       Fix: move the guard inside `_record_achievement` itself.
-- [ ] 7. `game.py:1017` -- duplicated `ExpandingRing` construction branches (splash vs. not).
+- [x] 7. `game.py:1017` -- duplicated `ExpandingRing` construction branches (splash vs. not).
       Fix: pick `(max_radius, duration)` once, single `.append()`.
       (Bundled with 3/4/5/6/9 below -- same `update()`/achievements region, one commit.)
-- [ ] 8. `achievements.py:109` -- `bump()` does sync file I/O per kill; a multi-kill splash/chain
+- [x] 8. `achievements.py:109` -- `bump()` does sync file I/O per kill; a multi-kill splash/chain
       hit does N round-trips in one frame.
       Fix: accumulate kills this frame in `update()`, one `_record_achievement("kills", n)` call.
 - [ ] 9. `projectile.py:144` -- `damage_dealt` credited with nominal shot damage even when
@@ -59,7 +59,7 @@ Run `pytest -q` after every commit before moving on.
 
 1. [x] waves.py wave_index fix (#1) + test
 2. [x] enemy speed-cap fix (#2) + test
-3. [ ] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
+3. [x] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
 4. [ ] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
 5. [ ] save/resume fixes: #10, #11, #12 + tests
 6. [ ] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)

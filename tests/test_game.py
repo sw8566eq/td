@@ -1421,6 +1421,28 @@ def test_clearing_a_level_records_the_levels_cleared_achievement_counter(playing
     assert playing_game.state == GameState.VICTORY
     counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
     assert counters["levels_cleared"] == 1
+    assert counters["distinct_levels_cleared"] == len(playing_game.progress)
+
+
+def test_clearing_a_custom_level_still_records_the_levels_cleared_achievement(playing_game):
+    # Regression guard: the levels_cleared achievement bump used to live
+    # inside the isinstance(current_level_id, int) guard meant only for
+    # progress.mark_level_cleared() (which genuinely only applies to a
+    # LEVELS registry entry) -- a custom, editor-authored level was never
+    # able to unlock "First Victory" no matter how many times it was won.
+    playing_game.load_custom_level(make_custom_level())
+    assert playing_game.current_level_id is None
+    playing_game.wave_manager.all_waves_complete = True
+    playing_game.enemies = []
+
+    playing_game.update(dt=0.01)
+
+    assert playing_game.state == GameState.VICTORY
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["levels_cleared"] == 1
+    # A custom level has no registry entry to unlock progress against, and
+    # doesn't count toward "every built-in level" either.
+    assert "distinct_levels_cleared" not in counters
 
 
 def test_clearing_a_level_in_sandbox_mode_records_no_levels_cleared_achievement(playing_game):

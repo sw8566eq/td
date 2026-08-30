@@ -237,6 +237,10 @@ class Game:
         self.projectiles = []
         self.damage_numbers = []
         self.impact_effects = []
+        # A toast still queued the instant a level ends (e.g. an
+        # achievement unlocked on the killing blow of the last wave) would
+        # otherwise keep rising/fading on top of whatever loads next.
+        self.achievement_toasts = []
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
@@ -793,14 +797,28 @@ class Game:
             self._resumed_from_save = False
 
     def _record_achievement(self, counter_name, amount=1):
-        """Bump `counter_name` (see achievements.py) and queue a toast for
-        anything newly unlocked -- called from every Game-level event an
-        achievement can key off (see try_place_tower/try_upgrade_tower/
-        try_specialize_tower and update()'s kill/wave/level-clear hooks),
-        each already gated on `not self.sandbox` at the call site so a
-        trivial sandbox run never counts toward real progress, same
-        reasoning already applied to progress.mark_level_cleared."""
-        for key in achievements.bump(counter_name, amount, self.achievements_path):
+        """Bump `counter_name` by `amount` (see achievements.py) and queue
+        a toast for anything newly unlocked -- called from every Game-
+        level event an achievement can key off (try_place_tower/
+        try_upgrade_tower/try_specialize_tower and update()'s kill/wave/
+        level-clear hooks). Sandbox-gated once, here, rather than at each
+        of those call sites -- a trivial sandbox run should never count
+        toward real progress, same reasoning already applied to
+        progress.mark_level_cleared, but that's a policy every caller
+        shares, not something each one should have to remember on its
+        own."""
+        if self.sandbox:
+            return
+        self._queue_achievement_toasts(achievements.bump(counter_name, amount, self.achievements_path))
+
+    def _queue_achievement_toasts(self, newly_unlocked_keys):
+        """Queue one rising/fading toast per achievement key in
+        `newly_unlocked_keys` (the return value of achievements.bump()/
+        set_counter()) -- pulled out of _record_achievement so
+        set_counter()-driven achievements (see the victory branch of
+        update(), for "campaign_complete") can share the same toast
+        presentation without going through bump()'s +1-per-event shape."""
+        for key in newly_unlocked_keys:
             achievement = achievements.ACHIEVEMENTS[key]
             # Stacked toasts offset by however many are already queued, so
             # several unlocks landing the same frame (e.g. crossing two
@@ -922,13 +940,22 @@ class Game:
             return False
 
         self.economy.spend(tower_cls.cost)
+        self._register_tower(tower_cls, anchor_col, anchor_row)
+        self._record_achievement("towers_built")
+        return True
+
+    def _register_tower(self, tower_cls, anchor_col, anchor_row):
+        """Construct a `tower_cls` anchored at (anchor_col, anchor_row) and
+        register it onto both self.towers and the grid -- the exact
+        construct-and-occupy sequence shared by a fresh placement
+        (try_place_tower, above) and rebuilding a tower from a save file
+        (resume_saved_run, below), so the two can never quietly drift
+        apart. Returns the new tower."""
         pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
         tower = tower_cls(anchor_col, anchor_row, pixel_pos)
         self.towers.append(tower)
         self.grid.occupy(anchor_col, anchor_row, tower)
-        if not self.sandbox:
-            self._record_achievement("towers_built")
-        return True
+        return tower
 
     def try_upgrade_tower(self, tower):
         if tower not in self.towers:
@@ -944,7 +971,7 @@ class Game:
         # already stops this method from ever being reached again for an
         # already-maxed tower, so there's no risk of over-counting on a
         # later no-op call.
-        if not self.sandbox and tower.is_max_level:
+        if tower.is_max_level:
             self._record_achievement("towers_maxed")
         return True
 
@@ -959,8 +986,7 @@ class Game:
 
         self.economy.spend(cost)
         tower.specialize(key)
-        if not self.sandbox:
-            self._record_achievement("towers_specialized")
+        self._record_achievement("towers_specialized")
         return True
 
     def try_sell_tower(self, tower):
@@ -1011,18 +1037,14 @@ class Game:
         # before the projectile itself disappears.
         for projectile in self.projectiles:
             for impact_pos, splash_radius in projectile.impact_events:
-                if splash_radius:
-                    # Sized to the blast's real splash_radius, so the ring
-                    # actually shows what it hit -- not just that it hit.
-                    self.impact_effects.append(effects.ExpandingRing(
-                        impact_pos, max_radius=splash_radius, duration=0.4,
-                        color=settings.COLOR_RANGE_PREVIEW,
-                    ))
-                else:
-                    self.impact_effects.append(effects.ExpandingRing(
-                        impact_pos, max_radius=14, duration=0.25,
-                        color=settings.COLOR_RANGE_PREVIEW,
-                    ))
+                # Sized to the blast's real splash_radius when there is
+                # one, so the ring actually shows what it hit -- a small
+                # fixed flash otherwise, just to mark a direct hit landed.
+                max_radius, duration = (splash_radius, 0.4) if splash_radius else (14, 0.25)
+                self.impact_effects.append(effects.ExpandingRing(
+                    impact_pos, max_radius=max_radius, duration=duration,
+                    color=settings.COLOR_RANGE_PREVIEW,
+                ))
             projectile.impact_events.clear()
         self.projectiles = [p for p in self.projectiles if not p.dead]
 
@@ -1047,11 +1069,11 @@ class Game:
         self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
 
         still_alive = []
+        kills_this_frame = 0
         for enemy in self.enemies:
             if enemy.is_dead:
                 self.economy.add_gold(enemy.gold_reward)
-                if not self.sandbox:
-                    self._record_achievement("kills")
+                kills_this_frame += 1
                 # A small death poof, same spot the killing blow's own
                 # damage number is spawned from -- reads enemy.pos before
                 # this enemy is dropped from self.enemies just below.
@@ -1063,6 +1085,12 @@ class Game:
             else:
                 still_alive.append(enemy)
         self.enemies = still_alive
+        if kills_this_frame:
+            # One bump for however many enemies died this tick, not one
+            # per enemy -- a splash/chain hit that kills several at once
+            # would otherwise do that many separate load-mutate-save
+            # round trips through achievements.json in a single frame.
+            self._record_achievement("kills", kills_this_frame)
 
         # Compared before/after to detect a wave actually clearing this
         # tick (WaveManager._advance_after_clear bumping wave_index) --
@@ -1071,7 +1099,7 @@ class Game:
         # Game/persistence coupling into waves.py itself.
         wave_number_before_update = self.wave_manager.current_wave_number
         self.enemies.extend(self.wave_manager.update(dt, self.enemies))
-        if not self.sandbox and self.wave_manager.current_wave_number > wave_number_before_update:
+        if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
 
         if self.economy.is_out_of_lives:
@@ -1081,14 +1109,20 @@ class Game:
             self.state = GameState.VICTORY
             # A built-in level's progress is gated by real clears -- a
             # sandbox run (unlimited gold, invulnerable) trivializes
-            # winning, so it shouldn't count as one, same reasoning that
-            # already keeps an endless run's all_waves_complete from ever
-            # firing at all.
-            if isinstance(self.current_level_id, int) and not self.sandbox:
+            # winning, so it shouldn't count as one, same reasoning
+            # _record_achievement's own sandbox guard applies to every
+            # achievement counter below. isinstance() gates only the
+            # progress/distinct-levels tracking, which only makes sense
+            # for a real LEVELS registry entry -- levels_cleared itself
+            # (any level, built-in or custom) is still recorded either way.
+            if not self.sandbox and isinstance(self.current_level_id, int):
                 self.progress = progress.mark_level_cleared(
                     self.current_level_id, self.economy.lives, self.progress_path,
                 )
-                self._record_achievement("levels_cleared")
+                self._queue_achievement_toasts(achievements.set_counter(
+                    "distinct_levels_cleared", len(self.progress), self.achievements_path,
+                ))
+            self._record_achievement("levels_cleared")
             self._delete_save_if_this_run_was_resumed()
 
     # --- Render ---

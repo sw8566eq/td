@@ -84,7 +84,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
     # then never actually bump anywhere.
     known_counters = {
         "kills", "towers_built", "towers_maxed", "towers_specialized",
-        "levels_cleared", "waves_survived",
+        "levels_cleared", "distinct_levels_cleared", "waves_survived",
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key
@@ -93,3 +93,39 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
 def test_campaign_complete_goal_matches_the_live_levels_registry():
     from levels import LEVELS
     assert achievements.ACHIEVEMENTS["campaign_complete"].goal == len(LEVELS)
+
+
+def test_set_counter_sets_the_value_directly_not_additively(tmp_path):
+    path = tmp_path / "achievements.json"
+    achievements.set_counter("distinct_levels_cleared", 3, path=path)
+
+    assert achievements.load_achievements(path=path)["counters"]["distinct_levels_cleared"] == 3
+
+
+def test_set_counter_never_regresses_below_its_current_value(tmp_path):
+    path = tmp_path / "achievements.json"
+    achievements.set_counter("distinct_levels_cleared", 5, path=path)
+
+    achievements.set_counter("distinct_levels_cleared", 2, path=path)
+
+    assert achievements.load_achievements(path=path)["counters"]["distinct_levels_cleared"] == 5
+
+
+def test_set_counter_returns_newly_crossed_achievement_keys(tmp_path):
+    path = tmp_path / "achievements.json"
+    from levels import LEVELS
+
+    newly_unlocked = achievements.set_counter("distinct_levels_cleared", len(LEVELS), path=path)
+
+    assert newly_unlocked == ["campaign_complete"]
+
+
+def test_repeatedly_clearing_one_level_never_unlocks_campaign_complete(tmp_path):
+    # Regression guard: campaign_complete must require len(LEVELS) *distinct*
+    # levels, not len(LEVELS) total victories of any level.
+    path = tmp_path / "achievements.json"
+    for _ in range(20):
+        newly_unlocked = achievements.set_counter("distinct_levels_cleared", 1, path=path)
+
+    assert newly_unlocked == []
+    assert "campaign_complete" not in achievements.load_achievements(path=path)["unlocked"]

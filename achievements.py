@@ -61,9 +61,13 @@ ACHIEVEMENTS = {
     # Goal is computed off the live LEVELS registry rather than a hardcoded
     # number, so adding more built-in levels later doesn't silently make
     # this permanently unreachable (too high) or already-satisfied (too low).
+    # Keyed off distinct_levels_cleared (set via set_counter(), below), not
+    # levels_cleared -- that one is a naive +1-per-victory counter, which
+    # would let replaying one already-cleared level over and over reach
+    # this goal without ever touching most of the campaign.
     "campaign_complete": Achievement(
         "campaign_complete", "Campaign Complete", "Clear every built-in level.",
-        "levels_cleared", len(levels.LEVELS),
+        "distinct_levels_cleared", len(levels.LEVELS),
     ),
     "wave_finisher": Achievement(
         "wave_finisher", "Wave Finisher", "Clear 10 waves total.", "waves_survived", 10,
@@ -106,12 +110,12 @@ def save_achievements(state, path=ACHIEVEMENTS_PATH):
         json.dump(data, f, indent=2)
 
 
-def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
-    """Bump `counter_name` by `amount` and return the list of achievement
-    keys newly unlocked by this bump (in ACHIEVEMENT_ORDER)."""
-    state = load_achievements(path)
-    state["counters"][counter_name] = state["counters"].get(counter_name, 0) + amount
-
+def _unlock_crossed_thresholds(state, counter_name):
+    """Mutate state["unlocked"] with every not-yet-unlocked achievement
+    keyed off `counter_name` whose goal state["counters"][counter_name]
+    now meets or exceeds, and return the list of keys newly added (in
+    ACHIEVEMENT_ORDER) -- shared by bump() and set_counter() below, which
+    differ only in how they arrive at the counter's new value."""
     newly_unlocked = []
     for key, achievement in ACHIEVEMENTS.items():
         if key in state["unlocked"]:
@@ -119,6 +123,33 @@ def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
         if achievement.counter == counter_name and state["counters"][counter_name] >= achievement.goal:
             state["unlocked"].add(key)
             newly_unlocked.append(key)
+    return newly_unlocked
 
+
+def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
+    """Bump `counter_name` by `amount` and return the list of achievement
+    keys newly unlocked by this bump (in ACHIEVEMENT_ORDER). For a
+    counter that's a simple +1-(or more)-per-event tally -- kills, towers
+    built, waves survived, and so on."""
+    state = load_achievements(path)
+    state["counters"][counter_name] = state["counters"].get(counter_name, 0) + amount
+    newly_unlocked = _unlock_crossed_thresholds(state, counter_name)
+    save_achievements(state, path)
+    return newly_unlocked
+
+
+def set_counter(counter_name, value, path=ACHIEVEMENTS_PATH):
+    """Set `counter_name` to max(current value, `value`) and return the
+    list of achievement keys newly unlocked (same contract as bump()).
+    For a counter driven by an already-deduplicated external count --
+    e.g. distinct built-in levels cleared, from progress.py's own
+    {level_id: ...} tracking -- rather than a naive increment-per-event
+    tally, where replaying the same event repeatedly must never look like
+    additional progress. The max() keeps it monotonic (a lifetime
+    counter, like every other one here) even if called with a smaller
+    value than what's already recorded."""
+    state = load_achievements(path)
+    state["counters"][counter_name] = max(state["counters"].get(counter_name, 0), value)
+    newly_unlocked = _unlock_crossed_thresholds(state, counter_name)
     save_achievements(state, path)
     return newly_unlocked
