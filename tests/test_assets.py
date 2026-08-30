@@ -5,15 +5,24 @@ Deliberately points every fallback-path test at a nonexistent asset_root
 matter what real art has or hasn't been dropped into assets/ locally --
 these tests must not become flaky just because someone's mid-way through
 adding a sprite pack.
+
+A couple of tests below open a real pygame window, so this module forces
+the SDL dummy video driver before pygame ever gets touched -- same as
+test_game.py, and for the same reason: these must run headless in CI/
+sandboxes with no real display, regardless of test collection order (this
+file collects before test_game.py alphabetically, so it can't rely on that
+module's own os.environ.setdefault() having already run).
 """
 
 import os
 import tempfile
 
-import pygame
-import pytest
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
-from assets import SPRITE_MANIFEST, AssetManager
+import pygame  # noqa: E402
+import pytest  # noqa: E402
+
+from assets import SPRITE_MANIFEST, AssetManager  # noqa: E402
 
 MISSING_ASSET_ROOT = "/nonexistent/path/for/tests/xyz"
 
