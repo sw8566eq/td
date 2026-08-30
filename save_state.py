@@ -15,6 +15,7 @@ level, endless-appended waves included) rather than re-deriving that shape.
 import json
 import os
 
+from json_io import load_json_with_fallback
 from persistence import level_from_dict, level_to_dict
 from tower import TOWER_TYPES
 from waves import WaveState
@@ -92,22 +93,24 @@ def load_run(path=SAVE_PATH):
     persistence.list_custom_levels() skipping a bad file -- every field
     resume_saved_run() goes on to read is validated here first, so it
     never has to guard against a malformed save itself."""
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        data["level"] = level_from_dict(data["level"])
-        if data["wave_state"] not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
-            return None
-        if not 0 <= data["wave_index"] < len(data["level"].wave_specs):
-            return None
-        for tower_data in data["towers"] + data.get("sold_towers", []):
-            if tower_data["type"] not in TOWER_TYPES:
-                return None
-        return data
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return None
+    return load_json_with_fallback(path, _parse_and_validate_run, lambda: None)
+
+
+def _parse_and_validate_run(data):
+    """The `transform` half of load_run()'s load_json_with_fallback() call
+    -- converts the level blob to a live Level and raises ValueError (one
+    of json_io's own fallback-triggering exceptions, so an invalid save is
+    still just "nothing to resume") for anything semantically wrong that
+    well-formed JSON can't rule out on its own."""
+    data["level"] = level_from_dict(data["level"])
+    if data["wave_state"] not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
+        raise ValueError(f"saved run's wave_state {data['wave_state']!r} is not resumable")
+    if not 0 <= data["wave_index"] < len(data["level"].wave_specs):
+        raise ValueError("saved run's wave_index is out of range for its own level")
+    for tower_data in data["towers"] + data.get("sold_towers", []):
+        if tower_data["type"] not in TOWER_TYPES:
+            raise ValueError(f"saved run references an unrecognized tower type {tower_data['type']!r}")
+    return data
 
 
 def has_saved_run(path=SAVE_PATH):

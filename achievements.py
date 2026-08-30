@@ -19,6 +19,7 @@ import json
 import os
 
 import levels
+from json_io import load_json_with_fallback
 
 SCHEMA_VERSION = 1
 ACHIEVEMENTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "achievements.json")
@@ -87,17 +88,14 @@ def load_achievements(path=ACHIEVEMENTS_PATH):
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as progress.load_progress()."""
-    if not os.path.isfile(path):
-        return _empty_state()
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        return {
+    return load_json_with_fallback(
+        path,
+        lambda data: {
             "counters": {str(name): int(value) for name, value in data.get("counters", {}).items()},
             "unlocked": set(data.get("unlocked", [])),
-        }
-    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
-        return _empty_state()
+        },
+        _empty_state,
+    )
 
 
 def save_achievements(state, path=ACHIEVEMENTS_PATH):

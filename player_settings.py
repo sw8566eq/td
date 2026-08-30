@@ -11,27 +11,26 @@ constants module (imported everywhere as `import settings`).
 import json
 import os
 
+from json_io import load_json_with_fallback
+
 SCHEMA_VERSION = 1
 SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "player_settings.json")
 
 DEFAULTS = {"fullscreen": False, "difficulty": "normal"}
 
 
+def _merge_with_defaults(data):
+    merged = dict(DEFAULTS)
+    merged["fullscreen"] = bool(data.get("fullscreen", DEFAULTS["fullscreen"]))
+    merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
+    return merged
+
+
 def load_settings(path=SETTINGS_PATH):
     """The saved settings dict, or a fresh copy of DEFAULTS if the file
     doesn't exist yet or fails to parse -- a corrupt/hand-edited file
     shouldn't take the whole game down, same spirit as progress.py."""
-    if not os.path.isfile(path):
-        return dict(DEFAULTS)
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        merged = dict(DEFAULTS)
-        merged["fullscreen"] = bool(data.get("fullscreen", DEFAULTS["fullscreen"]))
-        merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
-        return merged
-    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
-        return dict(DEFAULTS)
+    return load_json_with_fallback(path, _merge_with_defaults, lambda: dict(DEFAULTS))
 
 
 def save_settings(settings_dict, path=SETTINGS_PATH):

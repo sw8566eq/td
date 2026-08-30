@@ -45,7 +45,7 @@ Run `pytest -q` after every commit before moving on.
       restores both via a shared `_tower_from_save_data()` helper.
 - [x] 12. `game.py:371` (dup line ref) -- `resume_saved_run` duplicates `try_place_tower`'s
       construct-and-register sequence. Fix: shared `_register_tower()` helper.
-- [ ] 13. `progress.py:20` -- the same "missing/corrupt JSON -> fallback" boilerplate hand-copied
+- [x] 13. `progress.py:20` -- the same "missing/corrupt JSON -> fallback" boilerplate hand-copied
       4x (progress.py, player_settings.py, achievements.py, save_state.py).
       Fix: new `json_io.load_json_with_fallback()` shared helper, all four delegate to it.
       Bundle with 10/11/12 since save_state.py is already being touched there.
@@ -62,7 +62,7 @@ Run `pytest -q` after every commit before moving on.
 3. [x] achievements/update() region: #3, #4, #5, #6, #7, #8 + tests (biggest chunk)
 4. [x] damage_dealt accounting fix (#9) + enemy.py/projectile.py + test doubles
 5. [x] save/resume fixes: #10, #11, #12 + tests
-6. [ ] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
+6. [x] json_io.py shared helper + #13 refactor (progress/player_settings/achievements/save_state)
 7. [ ] levels.py Level 6 -> _multi_lane_level (#14)
 8. [ ] has_saved_run caching (#15) + test
 

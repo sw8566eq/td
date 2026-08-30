@@ -13,6 +13,8 @@ by this at all -- is_unlocked() is only ever consulted for a LEVELS entry.
 import json
 import os
 
+from json_io import load_json_with_fallback
+
 SCHEMA_VERSION = 1
 PROGRESS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "progress.json")
 
@@ -22,14 +24,11 @@ def load_progress(path=PROGRESS_PATH):
     far, or {} if the file doesn't exist yet or fails to parse -- a
     corrupt/hand-edited file shouldn't take the whole game down, same
     spirit as list_custom_levels()."""
-    if not os.path.isfile(path):
-        return {}
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        return {int(level_id): lives for level_id, lives in data.get("cleared", {}).items()}
-    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
-        return {}
+    return load_json_with_fallback(
+        path,
+        lambda data: {int(level_id): lives for level_id, lives in data.get("cleared", {}).items()},
+        dict,
+    )
 
 
 def save_progress(cleared, path=PROGRESS_PATH):
