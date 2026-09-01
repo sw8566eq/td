@@ -467,18 +467,25 @@ class Game:
         if self.state == GameState.MENU:
             if key == pygame.K_ESCAPE:
                 self.running = False
-            elif key == pygame.K_e:
-                self.state = GameState.EDITOR
-            elif key == pygame.K_l:
-                self._enter_level_select()
-            elif key == pygame.K_s:
-                self.state = GameState.SETTINGS
-            elif key == pygame.K_a:
-                self._enter_achievements()
-            elif key == pygame.K_c and self.has_saved_run:
-                self._continue_saved_run()
             else:
-                self.state = GameState.PLAYING
+                # letter, not the raw pygame key constant, so this stays in
+                # lockstep with ui.MENU_KEY_HINTS/MENU_KEY_LETTERS -- the
+                # single source of truth for which keys the on-screen hint
+                # list promises do something (see ui.py for why).
+                letter = pygame.key.name(key)
+                if letter == "c" and self.has_saved_run:
+                    self._continue_saved_run()
+                elif letter in ui.MENU_KEY_LETTERS:
+                    if letter == "e":
+                        self.state = GameState.EDITOR
+                    elif letter == "l":
+                        self._enter_level_select()
+                    elif letter == "s":
+                        self.state = GameState.SETTINGS
+                    elif letter == "a":
+                        self._enter_achievements()
+                else:
+                    self.state = GameState.PLAYING
         elif self.state == GameState.SETTINGS:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU

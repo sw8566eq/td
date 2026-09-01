@@ -495,23 +495,37 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     return y
 
 
+# Single source of truth for every letter GameState.MENU routes to
+# something other than the default "start playing" catch-all -- paired
+# with its on-screen hint label, in the same order the README/CLAUDE.md
+# list them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
+# branch checks membership in MENU_KEY_LETTERS (derived below) before
+# dispatching a letter to its own behavior, so a key can never end up
+# routable there without also appearing in menu_options()'s hint list --
+# this is exactly the pair of facts that once drifted apart (missing
+# "L -- Level Browser" despite the L key itself always having worked);
+# now a letter added to only one side either shows a hint for a key that
+# does nothing, or does something with no hint promising it exists --
+# both loud, easy-to-notice bugs instead of the original silent one.
+# "C -- Continue" isn't listed here since it's conditional on
+# Game.has_saved_run, handled separately by both sides below.
+MENU_KEY_HINTS = [
+    ("e", "Map Editor"),
+    ("l", "Level Browser"),
+    ("s", "Settings"),
+    ("a", "Achievements"),
+]
+MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
+
+
 def menu_options(has_saved_run=False):
-    """The main menu's line-per-option hint list, in the same order the
-    keys are listed in the README/CLAUDE.md ("start / E / L / S / A / C").
-    Pulled out as its own pure function -- rather than inlined in
-    draw_menu_screen below -- so it's unit-testable directly against
-    Game._handle_keydown's own GameState.MENU key list (see test_ui.py's
-    test_menu_options_has_a_hint_for_every_key_the_menu_handles) without
-    reading back rendered pixels: this is exactly the list that went
-    stale (missing "L -- Level Browser") until a test actually pinned it
-    down, even though the L key itself was never broken."""
-    options = [
-        "Press any key to start",
-        "E -- Map Editor",
-        "L -- Level Browser",
-        "S -- Settings",
-        "A -- Achievements",
-    ]
+    """The main menu's line-per-option hint list -- pulled out as its own
+    pure function, rather than inlined in draw_menu_screen below, so it's
+    unit-testable directly (see test_ui.py) and so it can share
+    MENU_KEY_HINTS with Game._handle_keydown's own dispatch above rather
+    than hand-listing the same letters a second time."""
+    options = ["Press any key to start"]
+    options += [f"{letter.upper()} -- {label}" for letter, label in MENU_KEY_HINTS]
     if has_saved_run:
         options.append("C -- Continue")
     return options

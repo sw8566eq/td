@@ -21,6 +21,8 @@ import os
 
 import pygame
 
+from json_io import module_relative_path
+
 # Anchored to this file's own location, not the process's current working
 # directory -- a bare "assets" default would resolve against whatever
 # directory the game happened to be launched from, which is only ever
@@ -30,8 +32,9 @@ import pygame
 # symlink, etc. -- needs this to still find its own bundled assets/
 # folder, which PyInstaller's --onedir mode places right next to this very
 # module (see AssetManager's own docstring below for what happens if it
-# doesn't).
-DEFAULT_ASSET_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+# doesn't). See json_io.module_relative_path for why this same expression
+# lives in one place rather than six near-identical hand-copies.
+DEFAULT_ASSET_ROOT = module_relative_path(__file__, "assets")
 
 # logical_name -> (relative_path_under_assets/, fallback_color, fallback_shape)
 # fallback_shape is one of "rect" or "circle".

@@ -11,12 +11,11 @@ by this at all -- is_unlocked() is only ever consulted for a LEVELS entry.
 """
 
 import json
-import os
 
-from json_io import load_json_with_fallback
+from json_io import load_json_with_fallback, module_relative_path
 
 SCHEMA_VERSION = 1
-PROGRESS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "progress.json")
+PROGRESS_PATH = module_relative_path(__file__, "progress.json")
 
 
 def load_progress(path=PROGRESS_PATH):

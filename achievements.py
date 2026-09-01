@@ -16,13 +16,12 @@ across multiple Game instances sharing one file.
 """
 
 import json
-import os
 
 import levels
-from json_io import load_json_with_fallback
+from json_io import load_json_with_fallback, module_relative_path
 
 SCHEMA_VERSION = 1
-ACHIEVEMENTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "achievements.json")
+ACHIEVEMENTS_PATH = module_relative_path(__file__, "achievements.json")
 
 
 class Achievement:

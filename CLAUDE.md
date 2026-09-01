@@ -374,6 +374,12 @@ four `load_*()`s actually call: it does the file-exists check and `try`/`except`
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
 accidentally shared across calls) as the two places each module still supplies its own behavior.
+`json_io.module_relative_path(module_file, *parts)` factors out the other shape all six on-disk-state
+modules share (the four above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
+`DEFAULT_ASSET_ROOT`): a path anchored to the calling module's own `__file__`, not the process's
+current working directory -- see "Release binary" below for why that distinction matters for a
+packaged build. Before this was factored out, all six independently wrote the same
+`os.path.join(os.path.dirname(os.path.abspath(__file__)), ...)` expression.
 
 - `progress.py` tracks `{level_id: best_lives_remaining}` and gates sequential unlocking
   (`is_unlocked()`: the lowest id in a level registry is always unlocked, every other one needs its

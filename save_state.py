@@ -15,13 +15,13 @@ level, endless-appended waves included) rather than re-deriving that shape.
 import json
 import os
 
-from json_io import load_json_with_fallback
+from json_io import load_json_with_fallback, module_relative_path
 from persistence import level_from_dict, level_to_dict
 from tower import TOWER_TYPES
 from waves import WaveState
 
 SCHEMA_VERSION = 1
-SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "save_state.json")
+SAVE_PATH = module_relative_path(__file__, "save_state.json")
 
 
 def _tower_type_name(tower):

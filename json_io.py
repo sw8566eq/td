@@ -1,12 +1,24 @@
-"""Shared "one JSON file, defensive load" helper behind progress.py,
-player_settings.py, achievements.py, and save_state.py.
+"""Two small shared helpers behind every module that reads/writes its own
+local player data as a file next to itself: progress.py, player_settings.py,
+achievements.py, save_state.py, persistence.py, and assets.py.
 
-Each of those four modules persists its own kind of local player data as a
-single JSON file with its own schema and its own fallback value, but every
-one of their load_*() functions was the exact same shape: missing/corrupt/
-semantically-invalid file -> a caller-supplied fallback, never a crash --
-same spirit as persistence.list_custom_levels() skipping a bad file. This
-factors that shape out once instead of four hand-copies of it.
+`load_json_with_fallback` is the "one JSON file, defensive load" shape --
+progress/player_settings/achievements/save_state each persist their own kind
+of local player data as a single JSON file with its own schema and its own
+fallback value, but every one of their load_*() functions was the exact same
+shape: missing/corrupt/semantically-invalid file -> a caller-supplied
+fallback, never a crash -- same spirit as persistence.list_custom_levels()
+skipping a bad file. This factors that shape out once instead of four
+hand-copies of it.
+
+`module_relative_path` factors out the other shape all six of those modules
+share: a path anchored to their own module's location (`__file__`), not the
+process's current working directory, which is only ever guaranteed to be the
+repo root for `python main.py` run from there -- a packaged --onedir build
+(see CLAUDE.md's "Release binary" section) launched from anywhere else needs
+this to keep finding its own bundled data/assets. Before this was factored
+out, all six modules independently wrote the exact same
+`os.path.join(os.path.dirname(os.path.abspath(__file__)), ...)` expression.
 """
 
 import json
@@ -18,6 +30,14 @@ import os
 # "fall back to default"), and keeps this the one place that decides what
 # counts as "bad data" for all four.
 _FALLBACK_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError)
+
+
+def module_relative_path(module_file, *parts):
+    """Join `parts` onto the directory containing `module_file` (pass a
+    module's own `__file__`), rather than the process's current working
+    directory. Callers use this the same way every time:
+    `module_relative_path(__file__, "progress.json")`."""
+    return os.path.join(os.path.dirname(os.path.abspath(module_file)), *parts)
 
 
 def load_json_with_fallback(path, transform, default):
