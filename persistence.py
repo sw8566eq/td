@@ -17,6 +17,7 @@ import json
 import os
 import re
 
+from json_io import module_relative_path
 from levels import Level
 
 # Bumped from 1 -> 2 when wave_specs' per-wave dicts gained a spawn-cell
@@ -24,7 +25,7 @@ from levels import Level
 # custom_levels/ is local, gitignored player data with no released version
 # to stay compatible with yet.
 SCHEMA_VERSION = 2
-LEVELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_levels")
+LEVELS_DIR = module_relative_path(__file__, "custom_levels")
 
 
 def level_to_dict(level):

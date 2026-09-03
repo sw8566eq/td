@@ -35,6 +35,7 @@ class GameState(Enum):
     LEVEL_SELECT = auto()
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
+    HELP = auto()
 
 
 class Game:
@@ -67,6 +68,7 @@ class Game:
         self.achievements_path = achievements_path or achievements.ACHIEVEMENTS_PATH
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.achievements_back_rect = ui.build_achievements_back_rect()
+        self.help_back_rect = ui.build_help_back_rect()
         # Newly-unlocked-achievement toasts -- see _record_achievement().
         self.achievement_toasts = []
 
@@ -446,6 +448,8 @@ class Game:
                     self._handle_settings_click(event.pos)
                 elif self.state == GameState.ACHIEVEMENTS:
                     self._handle_achievements_click(event.pos)
+                elif self.state == GameState.HELP:
+                    self._handle_help_click(event.pos)
                 else:
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -467,22 +471,34 @@ class Game:
         if self.state == GameState.MENU:
             if key == pygame.K_ESCAPE:
                 self.running = False
-            elif key == pygame.K_e:
-                self.state = GameState.EDITOR
-            elif key == pygame.K_l:
-                self._enter_level_select()
-            elif key == pygame.K_s:
-                self.state = GameState.SETTINGS
-            elif key == pygame.K_a:
-                self._enter_achievements()
-            elif key == pygame.K_c and self.has_saved_run:
-                self._continue_saved_run()
             else:
-                self.state = GameState.PLAYING
+                # letter, not the raw pygame key constant, so this stays in
+                # lockstep with ui.MENU_KEY_HINTS/MENU_KEY_LETTERS -- the
+                # single source of truth for which keys the on-screen hint
+                # list promises do something (see ui.py for why).
+                letter = pygame.key.name(key)
+                if letter == "c" and self.has_saved_run:
+                    self._continue_saved_run()
+                elif letter in ui.MENU_KEY_LETTERS:
+                    if letter == "e":
+                        self.state = GameState.EDITOR
+                    elif letter == "l":
+                        self._enter_level_select()
+                    elif letter == "s":
+                        self.state = GameState.SETTINGS
+                    elif letter == "a":
+                        self._enter_achievements()
+                    elif letter == "h":
+                        self.state = GameState.HELP
+                else:
+                    self.state = GameState.PLAYING
         elif self.state == GameState.SETTINGS:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
         elif self.state == GameState.ACHIEVEMENTS:
+            if key == pygame.K_ESCAPE:
+                self.state = GameState.MENU
+        elif self.state == GameState.HELP:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
         elif self.state == GameState.EDITOR:
@@ -810,6 +826,12 @@ class Game:
         if self.achievements_back_rect.collidepoint(pos):
             self.state = GameState.MENU
 
+    # --- Help / How to Play ---
+
+    def _handle_help_click(self, pos):
+        if self.help_back_rect.collidepoint(pos):
+            self.state = GameState.MENU
+
     def _delete_save_if_this_run_was_resumed(self):
         """Called from both of update()'s win/loss branches -- a resumed
         run that's been played out to a real conclusion has nothing left to
@@ -1050,7 +1072,7 @@ class Game:
         dt = dt * self.time_scale
 
         for enemy in self.enemies:
-            enemy.update(dt)
+            enemy.update(dt, self.enemies)
 
         # Two passes: every tower's aura buff is reset before any tower
         # (support or attacking) does its own per-frame work, so which
@@ -1115,6 +1137,11 @@ class Game:
                 self.impact_effects.append(effects.ExpandingRing(
                     enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
                 ))
+                # SplitterEnemy is the only species that ever populates
+                # this -- empty for everything else, so extending
+                # unconditionally needs no per-species special-casing (see
+                # Enemy.pending_spawns).
+                still_alive.extend(enemy.pending_spawns)
             elif enemy.reached_goal:
                 self.economy.lose_life()
             else:
@@ -1184,6 +1211,11 @@ class Game:
                 self.achievements_state["unlocked"], self.achievements_state["counters"],
                 self.achievements_back_rect,
             )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.HELP:
+            ui.draw_help_screen(self.screen, self.font, self.small_font, self.help_back_rect)
             pygame.display.flip()
             return
 

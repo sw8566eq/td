@@ -9,12 +9,11 @@ constants module (imported everywhere as `import settings`).
 """
 
 import json
-import os
 
-from json_io import load_json_with_fallback
+from json_io import load_json_with_fallback, module_relative_path
 
 SCHEMA_VERSION = 1
-SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "player_settings.json")
+SETTINGS_PATH = module_relative_path(__file__, "player_settings.json")
 
 DEFAULTS = {"fullscreen": False, "difficulty": "normal"}
 

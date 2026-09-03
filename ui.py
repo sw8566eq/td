@@ -495,23 +495,38 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     return y
 
 
+# Single source of truth for every letter GameState.MENU routes to
+# something other than the default "start playing" catch-all -- paired
+# with its on-screen hint label, in the same order the README/CLAUDE.md
+# list them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
+# branch checks membership in MENU_KEY_LETTERS (derived below) before
+# dispatching a letter to its own behavior, so a key can never end up
+# routable there without also appearing in menu_options()'s hint list --
+# this is exactly the pair of facts that once drifted apart (missing
+# "L -- Level Browser" despite the L key itself always having worked);
+# now a letter added to only one side either shows a hint for a key that
+# does nothing, or does something with no hint promising it exists --
+# both loud, easy-to-notice bugs instead of the original silent one.
+# "C -- Continue" isn't listed here since it's conditional on
+# Game.has_saved_run, handled separately by both sides below.
+MENU_KEY_HINTS = [
+    ("e", "Map Editor"),
+    ("l", "Level Browser"),
+    ("s", "Settings"),
+    ("a", "Achievements"),
+    ("h", "How to Play"),
+]
+MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
+
+
 def menu_options(has_saved_run=False):
-    """The main menu's line-per-option hint list, in the same order the
-    keys are listed in the README/CLAUDE.md ("start / E / L / S / A / C").
-    Pulled out as its own pure function -- rather than inlined in
-    draw_menu_screen below -- so it's unit-testable directly against
-    Game._handle_keydown's own GameState.MENU key list (see test_ui.py's
-    test_menu_options_has_a_hint_for_every_key_the_menu_handles) without
-    reading back rendered pixels: this is exactly the list that went
-    stale (missing "L -- Level Browser") until a test actually pinned it
-    down, even though the L key itself was never broken."""
-    options = [
-        "Press any key to start",
-        "E -- Map Editor",
-        "L -- Level Browser",
-        "S -- Settings",
-        "A -- Achievements",
-    ]
+    """The main menu's line-per-option hint list -- pulled out as its own
+    pure function, rather than inlined in draw_menu_screen below, so it's
+    unit-testable directly (see test_ui.py) and so it can share
+    MENU_KEY_HINTS with Game._handle_keydown's own dispatch above rather
+    than hand-listing the same letters a second time."""
+    options = ["Press any key to start"]
+    options += [f"{letter.upper()} -- {label}" for letter, label in MENU_KEY_HINTS]
     if has_saved_run:
         options.append("C -- Continue")
     return options
@@ -622,6 +637,64 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
         text = small_font.render(line, True, color)
         surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += ACHIEVEMENT_ROW_HEIGHT
+
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
+    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=back_rect.center))
+
+    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+# --- Help / How to Play screen ---
+
+HELP_TOP = 100
+HELP_LINE_HEIGHT = 34
+HELP_BACK_BUTTON_WIDTH = 240
+HELP_BACK_BUTTON_HEIGHT = 40
+HELP_BACK_BUTTON_GAP = 24
+
+# A hand-written condensation of README.md's own "Controls" section -- kept
+# in sync with it by hand (there's no test enforcing that, same as nothing
+# enforces menu_options()/README.md staying in sync either) so a player
+# never has to leave the game to learn what that section documents in full.
+HELP_LINES = [
+    "Menu: press any key to play -- E Editor, L Levels, S Settings, A Achievements",
+    "Build: click a tower button, then click a buildable tile to place it",
+    "Right-click clears your current selection without placing anything",
+    "Click a tower to pin its stats -- Targeting / Upgrade / Sell in the sidebar",
+    "Targeting cycles first / last / strongest / closest -- who gets shot",
+    "At max level, Upgrade becomes two permanent Specialize choices",
+    "Space (or the HUD button) starts the next wave or skips its countdown",
+    "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
+    "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
+    "Level browser: V arms Endless mode, B arms Sandbox mode",
+]
+
+
+def build_help_back_rect(line_count=len(HELP_LINES)):
+    """Rect for the Help screen's single 'Back to Menu' button, stacked
+    below the last line -- same layout idea as build_achievements_back_rect,
+    since HELP_LINES is likewise a short, fixed list."""
+    x = (settings.SCREEN_WIDTH - HELP_BACK_BUTTON_WIDTH) // 2
+    y = HELP_TOP + line_count * HELP_LINE_HEIGHT + HELP_BACK_BUTTON_GAP
+    return pygame.Rect(x, y, HELP_BACK_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT)
+
+
+def draw_help_screen(surface, font, small_font, back_rect):
+    """Static how-to-play screen -- HELP_LINES is a fixed, hand-written
+    summary, not derived from any in-game state, so unlike Settings/
+    Achievements there's nothing to read or re-read on entry (see
+    Game._handle_keydown's HELP branch -- no _enter_help() needed)."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render("How to Play", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    y = HELP_TOP
+    for line in HELP_LINES:
+        text = small_font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += HELP_LINE_HEIGHT
 
     pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
     label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
@@ -915,7 +988,15 @@ WAVE_TAB_Y = (settings.SCREEN_HEIGHT - HUD_BUTTON_ROW_HEIGHT
               + (HUD_BUTTON_ROW_HEIGHT - WAVE_TAB_SIZE) // 2)
 
 WAVE_UNIT_ROWS_TOP = 100
-WAVE_UNIT_ROW_HEIGHT = 32
+# Equal to WAVE_UNIT_STEP_BUTTON_SIZE (rows touch with no gap between them)
+# -- the tightest spacing that still keeps adjacent rows' own buttons from
+# overlapping each other, needed to fit one row per ENEMY_ORDER entry
+# (currently 8) inside the fixed budget between WAVE_UNIT_ROWS_TOP and
+# ACTION_AREA_TOP below without the last row encroaching on the action
+# buttons -- see test_wave_unit_rects_do_not_overlap_the_wave_editor_
+# action_rects. A registry that grows further than this will need a
+# scrolling list here instead of more retuning of these two constants.
+WAVE_UNIT_ROW_HEIGHT = 24
 WAVE_UNIT_STEP_BUTTON_SIZE = 24
 
 WAVE_EDITOR_ACTION_LABELS = {

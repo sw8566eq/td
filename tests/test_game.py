@@ -1810,6 +1810,42 @@ def test_render_achievements_screen_does_not_crash(game):
     game.render()
 
 
+# --- Help / How to Play screen ---
+
+def test_menu_h_key_enters_help(game):
+    game._handle_keydown(pygame.K_h)
+    assert game.state == GameState.HELP
+
+
+def test_help_escape_returns_to_menu(game):
+    game.state = GameState.HELP
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_help_unbound_key_is_a_no_op(game):
+    game.state = GameState.HELP
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.HELP
+
+
+def test_help_click_on_back_returns_to_menu(game):
+    game.state = GameState.HELP
+    game._handle_help_click(game.help_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_help_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.HELP
+    game._handle_help_click((0, 0))
+    assert game.state == GameState.HELP
+
+
+def test_render_help_screen_does_not_crash(game):
+    game.state = GameState.HELP
+    game.render()
+
+
 def test_fullscreen_setting_persists_to_the_settings_file(game):
     game.set_fullscreen(True)
     reloaded = player_settings.load_settings(game.settings_path)
