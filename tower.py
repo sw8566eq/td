@@ -722,17 +722,28 @@ class BeamTower(Tower):
     update() needs -- so the "beam" reads as a fast, sustained stream of
     hits (high fire_rate, near-instant projectile_speed) rather than a
     literal continuous-damage line, with no changes needed anywhere else
-    (Tower.update(), Economy, rendering)."""
+    (Tower.update(), Economy, rendering).
+
+    damage/fire_rate/max_ramp_multiplier were retuned down from their
+    original launch values (8 / 5.0 / 2.5) after a real playtest's results
+    table showed this tower dramatically outdamaging every other tower --
+    its raw DPS/gold was already the roster's highest *before* the ramp
+    stacked, then peaked at roughly 2.5-9x every other tower's sustained
+    figure once fully ramped. The new numbers put unramped DPS/gold (0.16)
+    below BasicTower's (0.24) -- weaker until a target is committed to --
+    while the fully-ramped ceiling (0.32) stays the roster's best sustained
+    single-target option without dwarfing it, still rewarding the same
+    stay-locked-on-one-target playstyle the mechanic is built around."""
     cost = 150
     range = 130
-    damage = 8
-    fire_rate = 5.0
+    damage = 6
+    fire_rate = 4.0
     projectile_speed = 900.0
     sprite_name = "tower_beam"
     display_name = "Beam"
 
     ramp_per_hit = 0.15
-    max_ramp_multiplier = 2.5
+    max_ramp_multiplier = 2.0
     EXTRA_STATS = (
         ("Ramp per hit", "ramp_per_hit", _format_ramp_per_hit),
         ("Max ramp", "max_ramp_multiplier", _format_buff_percent),

@@ -515,6 +515,7 @@ MENU_KEY_HINTS = [
     ("s", "Settings"),
     ("a", "Achievements"),
     ("h", "How to Play"),
+    ("d", "Daily Challenge"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -821,6 +822,7 @@ EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
 
 EDITOR_ACTION_LABELS = {
     "load": "Load Map...",
+    "import": "Import Level...",
     "waves": "Edit Waves ->",
     "back": "Back to Menu",
     "undo": "Undo",
@@ -863,11 +865,14 @@ def get_clicked_editor_action(pos, action_rects):
     return _key_of_rect_containing(pos, action_rects)
 
 
-def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects):
+def draw_editor_screen(surface, assets, font, small_font, editor, tool_rects, action_rects,
+                        import_status_message=None, import_status_is_error=False):
     surface.fill(settings.COLOR_BG)
     _draw_editor_grid(surface, assets, small_font, editor, pending_shape_cells=editor.pending_shape_cells())
     _draw_editor_toolbar(surface, small_font, editor, tool_rects)
-    _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects)
+    _draw_editor_path_sidebar(
+        surface, font, small_font, editor, action_rects, import_status_message, import_status_is_error,
+    )
 
 
 def _cell_center(editor, cell):
@@ -936,7 +941,8 @@ def _draw_editor_toolbar(surface, small_font, editor, tool_rects):
         surface.blit(label, label.get_rect(center=rect.center))
 
 
-def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
+def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects,
+                               import_status_message=None, import_status_is_error=False):
     panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
     pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
@@ -966,12 +972,25 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects):
             y += PANEL_ROW_HEIGHT
 
     for name, rect in action_rects.items():
-        # "load"/"back" always work; moving on to wave editing needs a valid path first.
+        # "load"/"import"/"back" always work; moving on to wave editing needs a valid path first.
         enabled = path_ok if name == "waves" else True
         color = settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED
         pygame.draw.rect(surface, color, rect, border_radius=6)
         label = small_font.render(EDITOR_ACTION_LABELS[name], True, settings.COLOR_TEXT)
         surface.blit(label, label.get_rect(center=rect.center))
+
+    if import_status_message is not None:
+        # Same "result of the last action, shown below the action buttons"
+        # spirit as the wave editor sidebar's "Saved to:" status (see
+        # _draw_wave_editor_sidebar) -- success in gold, failure in the
+        # same red the HUD's lives counter uses for "something's wrong."
+        status_color = settings.COLOR_LIVES if import_status_is_error else settings.COLOR_GOLD
+        status_y = max(rect.bottom for rect in action_rects.values()) + 16
+        for line_index, line in enumerate(
+            _wrap_text(import_status_message, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING)
+        ):
+            text = small_font.render(line, True, status_color)
+            surface.blit(text, (x, status_y + PANEL_ROW_HEIGHT * line_index))
 
 
 # --- Wave editor ---
@@ -988,16 +1007,23 @@ WAVE_TAB_Y = (settings.SCREEN_HEIGHT - HUD_BUTTON_ROW_HEIGHT
               + (HUD_BUTTON_ROW_HEIGHT - WAVE_TAB_SIZE) // 2)
 
 WAVE_UNIT_ROWS_TOP = 100
-# Equal to WAVE_UNIT_STEP_BUTTON_SIZE (rows touch with no gap between them)
-# -- the tightest spacing that still keeps adjacent rows' own buttons from
-# overlapping each other, needed to fit one row per ENEMY_ORDER entry
-# (currently 8) inside the fixed budget between WAVE_UNIT_ROWS_TOP and
-# ACTION_AREA_TOP below without the last row encroaching on the action
-# buttons -- see test_wave_unit_rects_do_not_overlap_the_wave_editor_
-# action_rects. A registry that grows further than this will need a
-# scrolling list here instead of more retuning of these two constants.
-WAVE_UNIT_ROW_HEIGHT = 24
+# Leaves room below the last visible row for the fixed Playtest/Save/Back
+# action-button slot (ACTION_AREA_TOP) -- the scrollable viewport is
+# everything between this and WAVE_UNIT_ROWS_TOP, same LEVEL_SELECT_TOP/
+# LEVEL_SELECT_BOTTOM shape the level-select screen already uses for the
+# identical "more entries than fit a fixed panel" problem (see
+# level_select_max_scroll/build_level_select_rects/draw_level_select_screen,
+# the exact template build_wave_unit_rects/_draw_wave_editor_sidebar below
+# mirror). A previous version of this made WAVE_UNIT_ROW_HEIGHT hug the
+# registry's size exactly (touching rows, no gap) to avoid ever needing to
+# scroll -- but that's a fixed budget for what's fundamentally an
+# unbounded-by-registry-size list (ENEMY_ORDER), and broke again the very
+# next time a species was added. Scrolling is the actual fix; row spacing
+# is back to a comfortable, fixed size regardless of how many species exist.
+WAVE_UNIT_ROWS_BOTTOM = ACTION_AREA_TOP - 10
+WAVE_UNIT_ROW_HEIGHT = 32
 WAVE_UNIT_STEP_BUTTON_SIZE = 24
+WAVE_UNIT_SCROLL_STEP = WAVE_UNIT_ROW_HEIGHT  # one row per wheel click
 
 WAVE_EDITOR_ACTION_LABELS = {
     "playtest": "Playtest",
@@ -1031,13 +1057,35 @@ def get_clicked_wave_tab(pos, tab_rects):
     return _key_of_rect_containing(pos, tab_rects)
 
 
-def build_wave_unit_rects():
-    """Two small +/- rects per registered enemy type (ENEMY_ORDER),
-    stacked in the wave editor's sidebar, keyed (enemy_name, "minus"/"plus")."""
+def wave_unit_content_height(entry_count):
+    """Total stacked height of `entry_count` rows -- unlike
+    level_select_content_height, there's no separate inter-row gap constant
+    to subtract a trailing copy of (WAVE_UNIT_ROW_HEIGHT already is each
+    row's full stride)."""
+    return entry_count * WAVE_UNIT_ROW_HEIGHT
+
+
+def wave_unit_max_scroll(entry_count):
+    """How far the list can scroll before its last row reaches the bottom
+    of the viewport -- 0 once every registered species already fits without
+    scrolling. Mirrors level_select_max_scroll exactly."""
+    overflow = wave_unit_content_height(entry_count) - (WAVE_UNIT_ROWS_BOTTOM - WAVE_UNIT_ROWS_TOP)
+    return max(0, overflow)
+
+
+def build_wave_unit_rects(scroll_offset=0):
+    """Two small +/- rects per registered enemy type (ENEMY_ORDER), stacked
+    in the wave editor's sidebar and shifted up by `scroll_offset` pixels,
+    keyed (enemy_name, "minus"/"plus"). A row scrolled above
+    WAVE_UNIT_ROWS_TOP or below WAVE_UNIT_ROWS_BOTTOM still gets a real (if
+    useless) Rect here -- callers doing hit-testing against a scrolled list
+    should fence `pos` to that viewport themselves first, same as
+    build_level_select_rects' own docstring requires of its callers; see
+    Game._handle_wave_editor_click."""
     rects = {}
     minus_x = settings.PLAY_WIDTH + settings.PANEL_WIDTH - 2 * PANEL_PADDING - 2 * WAVE_UNIT_STEP_BUTTON_SIZE - 6
     plus_x = minus_x + WAVE_UNIT_STEP_BUTTON_SIZE + 6
-    y = WAVE_UNIT_ROWS_TOP
+    y = WAVE_UNIT_ROWS_TOP - scroll_offset
     for name in ENEMY_ORDER:
         rects[(name, "minus")] = pygame.Rect(minus_x, y, WAVE_UNIT_STEP_BUTTON_SIZE, WAVE_UNIT_STEP_BUTTON_SIZE)
         rects[(name, "plus")] = pygame.Rect(plus_x, y, WAVE_UNIT_STEP_BUTTON_SIZE, WAVE_UNIT_STEP_BUTTON_SIZE)
@@ -1068,14 +1116,16 @@ def get_clicked_wave_editor_action(pos, action_rects):
 
 
 def draw_wave_editor_screen(surface, assets, font, small_font, editor, tab_rects, unit_rects,
-                             action_rects, last_saved_path=None):
+                             action_rects, last_saved_path=None, scroll_offset=0):
     surface.fill(settings.COLOR_BG)
     # Read-only path preview, for context -- clicking a spawn marker in it
     # is exactly what changes which spawn's counts the sidebar below
     # shows/edits (see Game._handle_wave_editor_click).
     _draw_editor_grid(surface, assets, small_font, editor, active_spawn=editor.active_spawn_cell)
     _draw_wave_tabs(surface, small_font, editor, tab_rects)
-    _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects, last_saved_path)
+    _draw_wave_editor_sidebar(
+        surface, font, small_font, editor, unit_rects, action_rects, last_saved_path, scroll_offset,
+    )
 
 
 def _draw_wave_tabs(surface, small_font, editor, tab_rects):
@@ -1097,7 +1147,8 @@ def _draw_wave_tabs(surface, small_font, editor, tab_rects):
         surface.blit(label, label.get_rect(center=rect.center))
 
 
-def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects, last_saved_path=None):
+def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, action_rects,
+                               last_saved_path=None, scroll_offset=0):
     panel_rect = pygame.Rect(settings.PLAY_WIDTH, 0, settings.PANEL_WIDTH, settings.SCREEN_HEIGHT)
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, panel_rect)
     pygame.draw.line(surface, settings.COLOR_BUTTON, (panel_rect.left, 0), (panel_rect.left, panel_rect.height), width=2)
@@ -1125,17 +1176,35 @@ def _draw_wave_editor_sidebar(surface, font, small_font, editor, unit_rects, act
     surface.blit(spawn_label, (x, PANEL_PADDING + 58))
 
     composition = editor.wave_specs[editor.active_wave_index].get(editor.active_spawn_cell, {})
-    y = WAVE_UNIT_ROWS_TOP
+
+    viewport = pygame.Rect(0, WAVE_UNIT_ROWS_TOP, settings.SCREEN_WIDTH, WAVE_UNIT_ROWS_BOTTOM - WAVE_UNIT_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+
+    y = WAVE_UNIT_ROWS_TOP - scroll_offset
     for name in ENEMY_ORDER:
-        count = composition.get(name, 0)
-        label = small_font.render(f"{name.capitalize()}: {count}", True, settings.COLOR_TEXT)
-        surface.blit(label, (x, y + 4))
-        for suffix, symbol in (("minus", "-"), ("plus", "+")):
-            rect = unit_rects[(name, suffix)]
-            pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=4)
-            sym_text = small_font.render(symbol, True, settings.COLOR_TEXT)
-            surface.blit(sym_text, sym_text.get_rect(center=rect.center))
+        row_rect = pygame.Rect(x, y, settings.PANEL_WIDTH - 2 * PANEL_PADDING, WAVE_UNIT_ROW_HEIGHT)
+        if row_rect.colliderect(viewport):
+            count = composition.get(name, 0)
+            label = small_font.render(f"{name.capitalize()}: {count}", True, settings.COLOR_TEXT)
+            surface.blit(label, (x, y + 4))
+            for suffix, symbol in (("minus", "-"), ("plus", "+")):
+                rect = unit_rects[(name, suffix)]
+                pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=4)
+                sym_text = small_font.render(symbol, True, settings.COLOR_TEXT)
+                surface.blit(sym_text, sym_text.get_rect(center=rect.center))
         y += WAVE_UNIT_ROW_HEIGHT
+
+    surface.set_clip(previous_clip)
+
+    max_scroll = wave_unit_max_scroll(len(ENEMY_ORDER))
+    if max_scroll > 0:
+        if scroll_offset > 0:
+            more_above = small_font.render("^ more", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_above, more_above.get_rect(midtop=(panel_rect.centerx, WAVE_UNIT_ROWS_TOP + 2)))
+        if scroll_offset < max_scroll:
+            more_below = small_font.render("v more -- scroll", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_below, more_below.get_rect(midbottom=(panel_rect.centerx, WAVE_UNIT_ROWS_BOTTOM - 2)))
 
     for name, rect in action_rects.items():
         # "back" always works; Playtest/Save need every wave to have units.

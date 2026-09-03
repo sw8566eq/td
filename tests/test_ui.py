@@ -21,6 +21,9 @@ from ui import (
     LEVEL_THUMBNAIL_WIDTH,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
+    WAVE_UNIT_ROWS_BOTTOM,
+    WAVE_UNIT_ROWS_TOP,
+    WAVE_UNIT_ROW_HEIGHT,
     _draw_centered_overlay,
     _wrap_text,
     build_achievements_back_rect,
@@ -58,6 +61,8 @@ from ui import (
     level_select_content_height,
     level_select_max_scroll,
     menu_options,
+    wave_unit_content_height,
+    wave_unit_max_scroll,
     _format_wave_label,
     _format_wave_preview,
 )
@@ -85,6 +90,7 @@ def test_menu_options_lists_every_key_in_documented_order():
         "S -- Settings",
         "A -- Achievements",
         "H -- How to Play",
+        "D -- Daily Challenge",
     ]
 
 
@@ -701,12 +707,44 @@ def test_get_clicked_wave_editor_action_returns_matching_name():
     assert get_clicked_wave_editor_action((-1000, -1000), rects) is None
 
 
-def test_wave_unit_rects_do_not_overlap_the_wave_editor_action_rects():
-    unit_rects = list(build_wave_unit_rects().values())
-    action_rects = list(build_wave_editor_action_rects().values())
-    for unit_rect in unit_rects:
-        for action_rect in action_rects:
-            assert not unit_rect.colliderect(action_rect)
+# --- Wave editor sidebar scrolling ---
+#
+# ENEMY_ORDER (8 species today) no longer needs to fit inside a fixed pixel
+# budget between WAVE_UNIT_ROWS_TOP and the action buttons below (see
+# ui.py's WAVE_UNIT_ROWS_TOP comment for why the previous cramped-fit
+# approach broke again the moment a species was added) -- it scrolls
+# instead, mirroring the level browser's own scroll mechanism exactly (see
+# the "Level select scrolling" tests above this module for the template
+# these follow).
+
+def test_wave_unit_content_height_has_no_trailing_gap():
+    one_row = wave_unit_content_height(1)
+    two_rows = wave_unit_content_height(2)
+    assert one_row == WAVE_UNIT_ROW_HEIGHT
+    assert two_rows == 2 * WAVE_UNIT_ROW_HEIGHT
+
+
+def test_wave_unit_max_scroll_is_zero_when_everything_fits():
+    assert wave_unit_max_scroll(0) == 0
+    assert wave_unit_max_scroll(1) == 0
+
+
+def test_wave_unit_max_scroll_is_positive_once_the_registry_overflows_the_viewport():
+    viewport_height = WAVE_UNIT_ROWS_BOTTOM - WAVE_UNIT_ROWS_TOP
+    overflowing_count = viewport_height // WAVE_UNIT_ROW_HEIGHT + 5
+    max_scroll = wave_unit_max_scroll(overflowing_count)
+    assert max_scroll > 0
+    assert max_scroll == wave_unit_content_height(overflowing_count) - viewport_height
+
+
+def test_build_wave_unit_rects_shifts_rows_up_by_the_scroll_offset():
+    unscrolled = build_wave_unit_rects(scroll_offset=0)
+    scrolled = build_wave_unit_rects(scroll_offset=50)
+    for name in ENEMY_TYPES:
+        for suffix in ("minus", "plus"):
+            key = (name, suffix)
+            assert scrolled[key].y == unscrolled[key].y - 50
+            assert scrolled[key].x == unscrolled[key].x  # only y moves
 
 
 # --- _draw_centered_overlay ---

@@ -33,6 +33,10 @@ achievements.json
 # game data, same spirit as progress.json.
 save_state.json
 
+# Best score per Daily Challenge seed (see daily_challenge.py) -- local game
+# data, same spirit as progress.json.
+daily_challenge.json
+
 # Claude Code local settings (machine/user-specific, not meant to be shared)
 .claude/
 CLAUDE.local.md

@@ -383,3 +383,87 @@ LEVELS[9] = _multi_lane_level(
     starting_gold=200,
     starting_lives=20,
 )
+
+# Level 10: "Hairpin Gauntlet" -- the densest single-spawn corridor yet:
+# seven full-height hairpins (Level 5, the previous record-holder, has
+# five), each one a fresh column so no two switchbacks ever run parallel
+# through the same rows. A single-spawn corridor via _corridor_level(), same
+# shape as Levels 1-5.
+LEVEL_10_CORNERS = [
+    (0, 4), (2, 4), (2, 1), (4, 1), (4, 7), (6, 7), (6, 1), (8, 1),
+    (8, 7), (10, 7), (10, 1), (12, 1), (12, 7), (14, 7),
+]
+
+# One more wave than any single-spawn level except Twin Peaks (which this
+# surpasses in raw counts), ramping through every species -- splitter and
+# healer join partway through, same "introduce them mid-level" pacing
+# Level 1 established -- and closing on a double-boss finale like Twin
+# Peaks' own.
+LEVEL_10_WAVE_SPECS = [
+    {"grunt": 12, "scout": 6},
+    {"grunt": 12, "scout": 10, "tank": 5},
+    {"grunt": 14, "scout": 11, "tank": 7, "splitter": 4},
+    {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "healer": 3},
+    {"grunt": 16, "scout": 14, "tank": 9, "flying": 9, "shielded": 7},
+    {"grunt": 14, "scout": 12, "tank": 9, "shielded": 7, "flying": 7,
+     "splitter": 4, "healer": 3, "boss": 2},
+]
+
+LEVELS[10] = _corridor_level(
+    10, "Hairpin Gauntlet", LEVEL_10_CORNERS,
+    _single_spawn_waves(LEVEL_10_CORNERS[0], LEVEL_10_WAVE_SPECS),
+    starting_gold=170,
+    starting_lives=20,
+)
+
+# Level 11: "Grand Delta" -- the campaign's hardest and most complex
+# topology: Triple Crossing's three-spawn single-point merge (the same
+# junction shape as Level 9) feeding straight into Twin Confluence's
+# merge-then-branch shape (the same two-goal fan-out as Levels 7/8) --
+# composing two already-proven junction patterns rather than inventing a
+# new one. Still a forest: every leaf (the 3 spawns, the 2 goals) is
+# exactly where pathing.validate_topology requires one.
+LEVEL_11_SPAWN_TOP = (0, 1)
+LEVEL_11_SPAWN_MID = (0, 4)
+LEVEL_11_SPAWN_BOTTOM = (0, 7)
+LEVEL_11_MERGE_JUNCTION = (6, 4)
+LEVEL_11_BRANCH_JUNCTION = (10, 4)
+LEVEL_11_GOAL_TOP = (14, 1)
+LEVEL_11_GOAL_BOTTOM = (14, 7)
+
+# Per-spawn composition, same split-by-lane style as Triple Crossing: the
+# top/bottom lanes share a grunt/tank mix, the middle lane runs
+# scout/flying/shielded plus this level's showcase of splitter (wave 3) and
+# healer (wave 4) -- the first multi-lane level to feature either.
+LEVEL_11_WAVE_SPECS = [
+    {LEVEL_11_SPAWN_TOP: {"grunt": 6}, LEVEL_11_SPAWN_MID: {"scout": 6},
+     LEVEL_11_SPAWN_BOTTOM: {"grunt": 6}},
+    {LEVEL_11_SPAWN_TOP: {"grunt": 7, "tank": 3}, LEVEL_11_SPAWN_MID: {"scout": 8, "flying": 3},
+     LEVEL_11_SPAWN_BOTTOM: {"grunt": 7, "tank": 3}},
+    {LEVEL_11_SPAWN_TOP: {"grunt": 8, "tank": 5, "splitter": 3},
+     LEVEL_11_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
+     LEVEL_11_SPAWN_BOTTOM: {"grunt": 8, "tank": 5, "splitter": 3}},
+    {LEVEL_11_SPAWN_TOP: {"grunt": 9, "tank": 6},
+     LEVEL_11_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 4, "healer": 3},
+     LEVEL_11_SPAWN_BOTTOM: {"grunt": 9, "tank": 6}},
+    {LEVEL_11_SPAWN_TOP: {"grunt": 9, "tank": 7, "boss": 1},
+     LEVEL_11_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5, "healer": 3},
+     LEVEL_11_SPAWN_BOTTOM: {"grunt": 9, "tank": 7}},
+]
+
+LEVELS[11] = _multi_lane_level(
+    11, "Grand Delta",
+    lane_corner_lists=[
+        [LEVEL_11_SPAWN_TOP, (6, 1), LEVEL_11_MERGE_JUNCTION],
+        [LEVEL_11_SPAWN_MID, LEVEL_11_MERGE_JUNCTION],
+        [LEVEL_11_SPAWN_BOTTOM, (6, 7), LEVEL_11_MERGE_JUNCTION],
+        [LEVEL_11_MERGE_JUNCTION, LEVEL_11_BRANCH_JUNCTION],
+        [LEVEL_11_BRANCH_JUNCTION, (10, 1), LEVEL_11_GOAL_TOP],
+        [LEVEL_11_BRANCH_JUNCTION, (10, 7), LEVEL_11_GOAL_BOTTOM],
+    ],
+    spawn_cells=(LEVEL_11_SPAWN_TOP, LEVEL_11_SPAWN_MID, LEVEL_11_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_11_GOAL_TOP, LEVEL_11_GOAL_BOTTOM),
+    wave_specs=LEVEL_11_WAVE_SPECS,
+    starting_gold=210,
+    starting_lives=20,
+)
