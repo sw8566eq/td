@@ -19,6 +19,7 @@ import json
 
 import levels
 from json_io import load_json_with_fallback, module_relative_path
+from threshold_unlocks import empty_counters_state, parse_counters_state, unlock_crossed_thresholds
 
 SCHEMA_VERSION = 1
 ACHIEVEMENTS_PATH = module_relative_path(__file__, "achievements.json")
@@ -79,22 +80,11 @@ ACHIEVEMENTS = {
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 
 
-def _empty_state():
-    return {"counters": {}, "unlocked": set()}
-
-
 def load_achievements(path=ACHIEVEMENTS_PATH):
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as progress.load_progress()."""
-    return load_json_with_fallback(
-        path,
-        lambda data: {
-            "counters": {str(name): int(value) for name, value in data.get("counters", {}).items()},
-            "unlocked": set(data.get("unlocked", [])),
-        },
-        _empty_state,
-    )
+    return load_json_with_fallback(path, parse_counters_state, empty_counters_state)
 
 
 def save_achievements(state, path=ACHIEVEMENTS_PATH):
@@ -107,22 +97,6 @@ def save_achievements(state, path=ACHIEVEMENTS_PATH):
         json.dump(data, f, indent=2)
 
 
-def _unlock_crossed_thresholds(state, counter_name):
-    """Mutate state["unlocked"] with every not-yet-unlocked achievement
-    keyed off `counter_name` whose goal state["counters"][counter_name]
-    now meets or exceeds, and return the list of keys newly added (in
-    ACHIEVEMENT_ORDER) -- shared by bump() and set_counter() below, which
-    differ only in how they arrive at the counter's new value."""
-    newly_unlocked = []
-    for key, achievement in ACHIEVEMENTS.items():
-        if key in state["unlocked"]:
-            continue
-        if achievement.counter == counter_name and state["counters"][counter_name] >= achievement.goal:
-            state["unlocked"].add(key)
-            newly_unlocked.append(key)
-    return newly_unlocked
-
-
 def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
     """Bump `counter_name` by `amount` and return the list of achievement
     keys newly unlocked by this bump (in ACHIEVEMENT_ORDER). For a
@@ -130,7 +104,7 @@ def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
     built, waves survived, and so on."""
     state = load_achievements(path)
     state["counters"][counter_name] = state["counters"].get(counter_name, 0) + amount
-    newly_unlocked = _unlock_crossed_thresholds(state, counter_name)
+    newly_unlocked = unlock_crossed_thresholds(ACHIEVEMENTS, state, counter_name)
     save_achievements(state, path)
     return newly_unlocked
 
@@ -147,6 +121,6 @@ def set_counter(counter_name, value, path=ACHIEVEMENTS_PATH):
     value than what's already recorded."""
     state = load_achievements(path)
     state["counters"][counter_name] = max(state["counters"].get(counter_name, 0), value)
-    newly_unlocked = _unlock_crossed_thresholds(state, counter_name)
+    newly_unlocked = unlock_crossed_thresholds(ACHIEVEMENTS, state, counter_name)
     save_achievements(state, path)
     return newly_unlocked
