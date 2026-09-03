@@ -2,7 +2,7 @@ import pygame
 import pytest
 
 from projectile import Projectile
-from tower import TOWER_TYPES, BasicTower, KnockbackTower, LightningTower, PoisonTower, SniperTower, SupportTower, Tower
+from tower import TOWER_TYPES, BasicTower, BeamTower, KnockbackTower, LightningTower, PoisonTower, SniperTower, SupportTower, Tower
 
 
 class FakeEnemy:
@@ -210,6 +210,68 @@ def test_other_towers_have_no_poison_effect():
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.poison_effect is None, name
+
+
+# --- Beam tower (ramps damage against a locked, uninterrupted target) ---
+
+def test_beam_tower_is_registered():
+    assert TOWER_TYPES["beam"] is BeamTower
+
+
+def test_beam_tower_first_shot_at_a_target_has_no_ramp():
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == tower.damage
+
+
+def test_beam_tower_ramps_damage_on_consecutive_hits_against_the_same_target():
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    target = FakeEnemy()
+    first = tower.create_projectile(target)
+    second = tower.create_projectile(target)
+    third = tower.create_projectile(target)
+    assert first.damage == tower.damage
+    assert second.damage == pytest.approx(tower.damage * (1 + tower.ramp_per_hit))
+    assert third.damage == pytest.approx(tower.damage * (1 + 2 * tower.ramp_per_hit))
+
+
+def test_beam_tower_ramp_resets_when_the_target_changes():
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    first_target, second_target = FakeEnemy(), FakeEnemy()
+    tower.create_projectile(first_target)
+    tower.create_projectile(first_target)  # ramp has now built up
+
+    switched = tower.create_projectile(second_target)
+
+    assert switched.damage == tower.damage  # back to the un-ramped base
+
+
+def test_beam_tower_ramp_is_capped_at_max_ramp_multiplier():
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    target = FakeEnemy()
+    shots_needed_to_exceed_cap = int(tower.max_ramp_multiplier / tower.ramp_per_hit) + 5
+    projectile = None
+    for _ in range(shots_needed_to_exceed_cap):
+        projectile = tower.create_projectile(target)
+    assert projectile.damage == pytest.approx(tower.damage * tower.max_ramp_multiplier)
+
+
+def test_beam_tower_specialization_boosts_carry_through_to_the_projectile():
+    overcharge_tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BeamTower.MAX_LEVEL - 1):
+        overcharge_tower.upgrade()
+    base_ramp_per_hit = overcharge_tower.ramp_per_hit
+    overcharge_tower.specialize("overcharge")
+    assert overcharge_tower.ramp_per_hit > base_ramp_per_hit
+
+    discharge_tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BeamTower.MAX_LEVEL - 1):
+        discharge_tower.upgrade()
+    base_damage = discharge_tower.damage
+    discharge_tower.specialize("discharge")
+    projectile = discharge_tower.create_projectile(FakeEnemy())
+    assert projectile.damage == discharge_tower.damage
+    assert projectile.damage > base_damage
 
 
 # --- Support/Aura tower ---

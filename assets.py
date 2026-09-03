@@ -50,12 +50,16 @@ SPRITE_MANIFEST = {
     "tower_sniper": ("towers/sniper.png", (60, 60, 60), "rect"),
     "tower_poison": ("towers/poison.png", (100, 160, 60), "rect"),
     "tower_support": ("towers/support.png", (200, 180, 80), "rect"),
+    "tower_beam": ("towers/beam.png", (200, 60, 220), "rect"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),
     "enemy_scout": ("enemies/scout.png", (255, 205, 60), "circle"),
     "enemy_tank": ("enemies/tank.png", (90, 45, 45), "circle"),
     "enemy_boss": ("enemies/boss.png", (130, 30, 150), "circle"),
     "enemy_shielded": ("enemies/shielded.png", (80, 120, 200), "circle"),
     "enemy_flying": ("enemies/flying.png", (200, 220, 255), "circle"),
+    "enemy_splitter": ("enemies/splitter.png", (220, 140, 40), "circle"),
+    "enemy_splitter_child": ("enemies/splitter_child.png", (235, 175, 100), "circle"),
+    "enemy_healer": ("enemies/healer.png", (120, 230, 160), "circle"),
     "projectile_basic": ("projectiles/bullet.png", (255, 255, 0), "circle"),
     "projectile_cannon": ("projectiles/ball.png", (90, 90, 90), "circle"),
     "projectile_frost": ("projectiles/shard.png", (150, 220, 255), "circle"),
@@ -63,6 +67,7 @@ SPRITE_MANIFEST = {
     "projectile_lightning": ("projectiles/bolt.png", (255, 255, 170), "circle"),
     "projectile_sniper": ("projectiles/sniper_round.png", (220, 220, 220), "circle"),
     "projectile_poison": ("projectiles/poison_dart.png", (140, 200, 80), "circle"),
+    "projectile_beam": ("projectiles/beam.png", (255, 140, 255), "circle"),
 }
 
 

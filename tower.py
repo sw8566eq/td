@@ -38,6 +38,10 @@ def _format_buff_percent(value):
     return f"+{round((value - 1) * 100)}%"
 
 
+def _format_ramp_per_hit(value):
+    return f"+{round(value * 100)}%/hit"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -707,6 +711,70 @@ class PoisonTower(Tower):
         )
 
 
+class BeamTower(Tower):
+    """Fires rapidly at a single target and rewards staying locked onto it:
+    each consecutive hit landed on the same, uninterrupted target ramps its
+    damage by ramp_per_hit, capped at max_ramp_multiplier -- switching
+    targets (a different enemy wandering into range, or targeting_mode
+    itself picking someone new) resets the ramp back to 1.0x on the very
+    next shot. Reuses the entire existing Projectile/cooldown pipeline
+    unchanged -- create_projectile() is still the only override Tower.
+    update() needs -- so the "beam" reads as a fast, sustained stream of
+    hits (high fire_rate, near-instant projectile_speed) rather than a
+    literal continuous-damage line, with no changes needed anywhere else
+    (Tower.update(), Economy, rendering)."""
+    cost = 150
+    range = 130
+    damage = 8
+    fire_rate = 5.0
+    projectile_speed = 900.0
+    sprite_name = "tower_beam"
+    display_name = "Beam"
+
+    ramp_per_hit = 0.15
+    max_ramp_multiplier = 2.5
+    EXTRA_STATS = (
+        ("Ramp per hit", "ramp_per_hit", _format_ramp_per_hit),
+        ("Max ramp", "max_ramp_multiplier", _format_buff_percent),
+    )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off this tower's own ramp mechanic instead, same spirit as every
+    # other concrete tower's SPECIALIZATIONS.
+    SPECIALIZATIONS = {
+        "overcharge": {
+            "display_name": "Overcharge",
+            "description": "Ramps damage faster.",
+            "stat_multipliers": {"ramp_per_hit": 1.6, "max_ramp_multiplier": 1.3},
+        },
+        "discharge": {
+            "display_name": "Rapid Discharge",
+            "description": "Fires faster and hits harder.",
+            "stat_multipliers": {"damage": 1.35, "fire_rate": 1.25},
+        },
+    }
+
+    def __init__(self, anchor_col, anchor_row, pixel_pos):
+        super().__init__(anchor_col, anchor_row, pixel_pos)
+        # Which enemy the ramp is currently built up against, and how many
+        # consecutive shots have landed on it uninterrupted -- reset the
+        # instant create_projectile() is asked to fire at anyone else.
+        self._locked_target = None
+        self._consecutive_hits = 0
+
+    def create_projectile(self, target):
+        if target is self._locked_target:
+            self._consecutive_hits += 1
+        else:
+            self._locked_target = target
+            self._consecutive_hits = 0
+        ramp = min(1.0 + self._consecutive_hits * self.ramp_per_hit, self.max_ramp_multiplier)
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage() * ramp,
+            sprite_name="projectile_beam", source=self,
+        )
+
+
 class SupportTower(Tower):
     """Never attacks -- buffs every other tower within range instead (see
     Tower.reset_aura()/receive_aura(), and Game.update()'s two-pass tower
@@ -767,4 +835,5 @@ TOWER_TYPES = {
     "sniper": SniperTower,
     "poison": PoisonTower,
     "support": SupportTower,
+    "beam": BeamTower,
 }

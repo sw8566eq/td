@@ -9,6 +9,9 @@ from ui import (
     ACHIEVEMENTS_TOP,
     ACHIEVEMENT_ROW_HEIGHT,
     EDITOR_ACTION_ORDER,
+    HELP_LINE_HEIGHT,
+    HELP_LINES,
+    HELP_TOP,
     HUD_TOP_STRIP_HEIGHT,
     LEVEL_SELECT_BOTTOM,
     LEVEL_SELECT_ROW_GAP,
@@ -22,6 +25,7 @@ from ui import (
     _wrap_text,
     build_achievements_back_rect,
     build_button_rects,
+    build_help_back_rect,
     build_editor_action_rects,
     build_editor_tool_rects,
     build_level_select_rects,
@@ -39,6 +43,7 @@ from ui import (
     compute_tower_results,
     draw_achievements_screen,
     draw_game_over_screen,
+    draw_help_screen,
     draw_level_select_screen,
     draw_results_table,
     draw_victory_screen,
@@ -79,6 +84,7 @@ def test_menu_options_lists_every_key_in_documented_order():
         "L -- Level Browser",
         "S -- Settings",
         "A -- Achievements",
+        "H -- How to Play",
     ]
 
 
@@ -196,6 +202,24 @@ def test_draw_achievements_screen_shows_unlocked_and_in_progress_entries():
         unlocked_keys={"first_blood"}, counters={"kills": 1, "towers_built": 0},
         back_rect=back_rect,
     )
+
+
+# --- Help / How to Play screen ---
+
+def test_build_help_back_rect_sits_below_the_last_help_line():
+    rect = build_help_back_rect()
+    last_line_bottom = HELP_TOP + len(HELP_LINES) * HELP_LINE_HEIGHT
+    assert rect.top >= last_line_bottom
+
+
+def test_draw_help_screen_does_not_crash():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_help_back_rect()
+
+    draw_help_screen(surface, font, small_font, back_rect)
 
 
 class _FakeWaveManager:
