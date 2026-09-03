@@ -20,9 +20,11 @@ import pytest  # noqa: E402
 import achievements  # noqa: E402
 import daily_challenge  # noqa: E402
 import difficulty  # noqa: E402
+import meta_progression  # noqa: E402
 import persistence  # noqa: E402
 import player_settings  # noqa: E402
 import progress  # noqa: E402
+import run_history  # noqa: E402
 import save_state  # noqa: E402
 import settings  # noqa: E402
 import ui  # noqa: E402
@@ -37,18 +39,22 @@ from waves import WaveState  # noqa: E402
 @pytest.fixture
 def game(tmp_path):
     # progress_path/settings_path/achievements_path/save_path/
-    # daily_challenge_path all pinned to throwaway files -- Game writes real
-    # progress on VICTORY (see progress.py), real settings on set_fullscreen()/
-    # set_difficulty() (see player_settings.py), real achievement counters on
-    # nearly every tower/kill/wave/level event (see achievements.py), a real
-    # in-progress save on save_run() (see save_state.py), and a real Daily
-    # Challenge score on a Daily Challenge run's game-over (see
-    # daily_challenge.py), and this must never touch (or leave behind) any of
+    # daily_challenge_path/meta_progression_path/run_history_path all pinned
+    # to throwaway files -- Game writes real progress on VICTORY (see
+    # progress.py), real settings on set_fullscreen()/set_difficulty() (see
+    # player_settings.py), real achievement counters on nearly every tower/
+    # kill/wave/level event (see achievements.py), a real in-progress save on
+    # save_run() (see save_state.py), a real Daily Challenge score on a
+    # Daily Challenge run's game-over (see daily_challenge.py), real
+    # meta-progression counters on nearly every roguelike-run event (see
+    # meta_progression.py), and a real run outcome on a run's game-over (see
+    # run_history.py) -- and this must never touch (or leave behind) any of
     # those real repo-root files.
     g = Game(
         progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json",
         achievements_path=tmp_path / "achievements.json", save_path=tmp_path / "save_state.json",
         daily_challenge_path=tmp_path / "daily_challenge.json",
+        meta_progression_path=tmp_path / "meta_progression.json", run_history_path=tmp_path / "run_history.json",
     )
     yield g
     pygame.quit()
@@ -4109,3 +4115,97 @@ def test_render_draft_does_not_crash(game):
         game.render()
     finally:
         clear_mouse_mock()
+
+
+# --- Roguelike Run: Milestone 3 meta-progression persistence ---
+
+def test_floor_clear_bumps_total_floors_cleared(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+
+    game.update(dt=0.01)
+
+    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    assert counters["total_floors_cleared"] == 1
+
+
+def test_first_floor_clear_unlocks_a_tower_and_it_appears_in_the_draft(game):
+    # Regression guard: unlock_knockback's goal is 1 specifically so a
+    # brand new player's very first floor clear already has something to
+    # draft -- see meta_progression.py's own comment on why.
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert "knockback" in game.draft_choices
+
+
+def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+
+    game.update(dt=0.01)
+
+    assert any("New tower unlocked" in toast.text for toast in game.achievement_toasts)
+
+
+def test_permadeath_bumps_runs_played_and_records_run_history(game):
+    game.start_new_run(seed=1)
+    seed = game.active_run.seed
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert meta_progression.load_meta_progression(game.meta_progression_path)["counters"]["runs_played"] == 1
+    assert run_history.load_run_history(game.run_history_path) == {seed: 0}
+
+
+def test_permadeath_on_a_non_final_floor_does_not_bump_runs_reached_endless(game):
+    game.start_new_run(seed=1)
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    assert counters.get("runs_reached_endless", 0) == 0
+
+
+def test_permadeath_on_the_final_floor_bumps_runs_reached_endless(game):
+    game.start_new_run(seed=1)
+    last_index = len(game.active_run.floor_sequence) - 1
+    game._load_floor(last_index)
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    assert counters["runs_reached_endless"] == 1
+
+
+def test_run_history_records_floors_cleared_at_time_of_death(game):
+    game.start_new_run(seed=1)
+    seed = game.active_run.seed
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)  # clears floor 0 -> FLOOR_CLEARED
+    game._enter_draft()
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 1, PLAYING
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert run_history.load_run_history(game.run_history_path) == {seed: 1}

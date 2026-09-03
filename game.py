@@ -12,10 +12,12 @@ import card_pool
 import daily_challenge
 import difficulty
 import effects
+import meta_progression
 import persistence
 import player_settings
 import progress
 import run_floors
+import run_history
 import save_state
 import settings
 import ui
@@ -64,7 +66,8 @@ class Game:
     TIME_SCALES = (1.0, 2.0, 3.0)
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
-                 achievements_path=None, save_path=None, daily_challenge_path=None):
+                 achievements_path=None, save_path=None, daily_challenge_path=None,
+                 meta_progression_path=None, run_history_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -118,6 +121,14 @@ class Game:
         # afterward.
         self.daily_challenge_path = daily_challenge_path or daily_challenge.DAILY_CHALLENGE_PATH
         self._daily_challenge_seed = None
+        # Same injectable-path convention as the paths above. Neither needs
+        # an eagerly-loaded cached copy on Game the way achievements_state
+        # does -- there's no browse screen for either yet, only the read/
+        # write call sites in _record_meta_progress/_advance_run_floor/
+        # update()'s permadeath branch and card_pool.draft_offer's own
+        # default pool, each of which reads fresh at the point it matters.
+        self.meta_progression_path = meta_progression_path or meta_progression.META_PROGRESSION_PATH
+        self.run_history_path = run_history_path or run_history.RUN_HISTORY_PATH
         # The active roguelike run, or None outside of one (classic/Practice
         # play, Daily Challenge, a map-editor playtest). Same reset-inside-
         # _load_level_object shape as _resumed_from_save/_daily_challenge_
@@ -348,7 +359,23 @@ class Game:
         run = self.active_run
         run.gold = self.economy.gold
         run.lives = self.economy.lives
+        self._record_meta_progress("total_floors_cleared")
         self.state = GameState.FLOOR_CLEARED
+
+    def _record_run_permadeath(self):
+        """self.active_run just ended by permadeath -- the only way a run
+        ever ends (its last floor always loads endless=True, so
+        all_waves_complete structurally can't fire for it either -- see
+        _load_floor's docstring). Same shape as _advance_run_floor: one
+        helper update()'s win/loss branches each delegate a run-specific
+        multi-step side effect to, rather than growing update() itself.
+        floors_cleared doubles as the run's own score, same "simple,
+        monotonic" spirit as the Daily Challenge branch above this one in
+        update()."""
+        run_history.record_run_result(self.active_run.seed, self.active_run.floors_cleared, self.run_history_path)
+        self._record_meta_progress("runs_played")
+        if self.active_run.is_final_floor:
+            self._record_meta_progress("runs_reached_endless")
 
     def _enter_draft(self):
         """Advance from FLOOR_CLEARED into the draft screen -- computes
@@ -356,7 +383,10 @@ class Game:
         skips straight to the next floor if there's nothing left to draft
         (every registered tower already unlocked into this run)."""
         next_floor = self.active_run.floor_index + 1
-        self.draft_choices = card_pool.draft_offer(self._run_rng(_DRAFT_RNG_STREAM, next_floor), self.active_run)
+        self.draft_choices = card_pool.draft_offer(
+            self._run_rng(_DRAFT_RNG_STREAM, next_floor), self.active_run,
+            meta_progression_path=self.meta_progression_path,
+        )
         if not self.draft_choices:
             self._load_floor(next_floor)
             return
@@ -1196,15 +1226,41 @@ class Game:
         presentation without going through bump()'s +1-per-event shape."""
         for key in newly_unlocked_keys:
             achievement = achievements.ACHIEVEMENTS[key]
-            # Stacked toasts offset by however many are already queued, so
-            # several unlocks landing the same frame (e.g. crossing two
-            # kill thresholds on one death) read as distinct lines rather
-            # than overlapping illegibly.
-            y = 40 + 24 * len(self.achievement_toasts)
-            self.achievement_toasts.append(effects.FloatingText(
-                (settings.PLAY_WIDTH // 2, y), f"Achievement unlocked: {achievement.display_name}",
-                lifetime=3.0, rise_speed=8.0, color=settings.COLOR_GOLD,
-            ))
+            self._queue_toast(f"Achievement unlocked: {achievement.display_name}")
+
+    def _record_meta_progress(self, counter_name, amount=1):
+        """Same shape as _record_achievement, for meta_progression.py's own
+        counters instead of achievements.py's -- bump `counter_name` and
+        queue a toast for any tower newly unlocked into the account-wide
+        draft pool. Sandbox-gated for the same reason: a trivial sandbox
+        run shouldn't expand what a future real run can draft."""
+        if self.sandbox:
+            return
+        self._queue_meta_unlock_toasts(meta_progression.bump(counter_name, amount, self.meta_progression_path))
+
+    def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
+        """Same toast presentation _queue_achievement_toasts uses, for
+        meta_progression.META_UNLOCKS keys instead of achievements.
+        ACHIEVEMENTS -- names the tower a card unlock actually grants
+        (read off TOWER_TYPES, since a MetaUnlock has no display_name of
+        its own -- see meta_progression.py's own docstring) rather than
+        the registry entry's own key."""
+        for key in newly_unlocked_keys:
+            unlock = meta_progression.META_UNLOCKS[key]
+            tower_display_name = TOWER_TYPES[unlock.tower_name].display_name
+            self._queue_toast(f"New tower unlocked: {tower_display_name}!")
+
+    def _queue_toast(self, text):
+        """Queue one rising/fading toast, stacked below however many are
+        already queued this frame so several landing at once (e.g. an
+        achievement and a meta-progression unlock on the same event) read
+        as distinct lines rather than overlapping illegibly. Shared by
+        _queue_achievement_toasts/_queue_meta_unlock_toasts above -- both
+        just name what got unlocked, the presentation is identical."""
+        y = 40 + 24 * len(self.achievement_toasts)
+        self.achievement_toasts.append(effects.FloatingText(
+            (settings.PLAY_WIDTH // 2, y), text, lifetime=3.0, rise_speed=8.0, color=settings.COLOR_GOLD,
+        ))
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -1514,6 +1570,8 @@ class Game:
                     self._daily_challenge_seed, self.wave_manager.current_wave_number,
                     self.daily_challenge_path,
                 )
+            elif self.active_run is not None:
+                self._record_run_permadeath()
         elif self.wave_manager.all_waves_complete and not self.enemies:
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
