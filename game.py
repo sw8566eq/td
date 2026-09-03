@@ -16,6 +16,7 @@ import meta_progression
 import persistence
 import player_settings
 import progress
+import run_escalation
 import run_floors
 import run_history
 import save_state
@@ -336,6 +337,7 @@ class Game:
         self._load_level_object(
             LEVELS[level_id], endless=run.is_final_floor,
             difficulty_override=run.difficulty, rng=self._run_rng(_FLOOR_RNG_STREAM, floor_index),
+            escalation=run_escalation.escalation_for_floor(floor_index),
         )
         self.active_run = run
         self.current_level_id = level_id
@@ -401,7 +403,8 @@ class Game:
         self.active_run.unlocked_towers.append(self.draft_choices[index])
         self._load_floor(next_floor)
 
-    def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None):
+    def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
+                            escalation=run_escalation.FloorEscalation()):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
         # out of an endless run doesn't silently drop back into a normal,
@@ -456,6 +459,13 @@ class Game:
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
         )
+        # Defaults to a no-op (every multiplier 1.0, safe as a literal
+        # default since FloorEscalation is frozen/immutable) unless a
+        # caller passes a real one -- only _load_floor does, since only it
+        # knows which floor of a run this is. Composed into the same three
+        # WaveManager kwargs `mode`'s own multipliers already occupy, same
+        # "extra factor, never replacing" rule difficulty.py's own
+        # docstring states.
         mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
             round(level.starting_gold * mode.starting_gold_multiplier),
@@ -465,9 +475,9 @@ class Game:
         )
         self.wave_manager = WaveManager(
             level, self.grid.tile_to_pixel_center,
-            enemy_hp_multiplier=mode.enemy_hp_multiplier,
-            enemy_speed_multiplier=mode.enemy_speed_multiplier,
-            enemy_gold_multiplier=mode.enemy_gold_multiplier,
+            enemy_hp_multiplier=mode.enemy_hp_multiplier * escalation.enemy_hp_multiplier,
+            enemy_speed_multiplier=mode.enemy_speed_multiplier * escalation.enemy_speed_multiplier,
+            enemy_gold_multiplier=mode.enemy_gold_multiplier * escalation.enemy_gold_multiplier,
             endless=endless,
             rng=rng,
         )

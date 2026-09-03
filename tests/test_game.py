@@ -4049,6 +4049,27 @@ def test_last_floor_of_a_run_loads_endless(game):
     assert game.wave_manager.endless is True
 
 
+def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
+    # Milestone 4's own equivalent of test_hard_difficulty_yields_fewer_
+    # starting_lives_and_tougher_enemies_than_easy above -- one integration
+    # test proving the wiring multiplies mode.X * escalation.X rather than
+    # one replacing the other; escalation_for_floor's own formula (no-op
+    # at floor 0, strictly increasing after) is already exhaustively
+    # covered by tests/test_run_escalation.py, so it isn't re-proven here.
+    game.difficulty = "hard"
+    game.start_new_run(seed=1)
+    game._load_floor(3)
+
+    from difficulty import DIFFICULTY_MODES
+    from run_escalation import escalation_for_floor
+
+    hard = DIFFICULTY_MODES["hard"]
+    escalation = escalation_for_floor(3)
+    assert game.wave_manager.enemy_hp_multiplier == hard.enemy_hp_multiplier * escalation.enemy_hp_multiplier
+    assert game.wave_manager.enemy_speed_multiplier == hard.enemy_speed_multiplier * escalation.enemy_speed_multiplier
+    assert game.wave_manager.enemy_gold_multiplier == hard.enemy_gold_multiplier * escalation.enemy_gold_multiplier
+
+
 def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
     game.start_new_run(seed=1)
     seed = game.active_run.seed
