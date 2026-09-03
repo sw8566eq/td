@@ -1,12 +1,14 @@
 """Game state machine and main loop."""
 
 import dataclasses
+import random
 import sys
 from enum import Enum, auto
 
 import pygame
 
 import achievements
+import daily_challenge
 import difficulty
 import effects
 import persistence
@@ -44,7 +46,7 @@ class Game:
     TIME_SCALES = (1.0, 2.0, 3.0)
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
-                 achievements_path=None, save_path=None):
+                 achievements_path=None, save_path=None, daily_challenge_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -83,6 +85,21 @@ class Game:
         # True afterward.
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
+
+        # Same injectable-path convention as the paths above. True only
+        # between _start_daily_challenge() and that run's own eventual
+        # GAME_OVER (a Daily Challenge is always Endless, so VICTORY never
+        # fires -- see update()'s loss branch) -- gates recording a score,
+        # mirroring _resumed_from_save's exact reset-then-set-True-by-the-
+        # one-special-caller shape (None doubles as the "not active" flag,
+        # so there's no separate boolean to keep in sync with it) so an
+        # unrelated normal level load never mis-attributes a score to
+        # whatever seed happened to be active last. Every
+        # _load_level_object() call resets this to None first;
+        # _start_daily_challenge() is the one caller that sets it
+        # afterward.
+        self.daily_challenge_path = daily_challenge_path or daily_challenge.DAILY_CHALLENGE_PATH
+        self._daily_challenge_seed = None
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -136,10 +153,21 @@ class Game:
         # the player knows where the file landed (custom_levels/), e.g. to
         # go find and share it with someone else.
         self.last_saved_path = None
+        # Set by the path editor's Import Level... action (see
+        # _import_level_from_path()) -- shown in its own sidebar the same
+        # spirit as last_saved_path above, just success/failure instead of
+        # always-success.
+        self.import_status_message = None
+        self.import_status_is_error = False
         # Unlike the rect sets above, wave tabs depend on how many waves
         # currently exist, so they're rebuilt on demand (see
-        # _wave_tab_rects()) rather than cached once here.
-        self.wave_unit_rects = ui.build_wave_unit_rects()
+        # _wave_tab_rects()) rather than cached once here. wave_unit_rects
+        # also gets rebuilt on scroll (see _scroll_wave_unit_list) -- same
+        # "row positions depend on scroll_offset too" shape as
+        # level_select_rects below, since ENEMY_ORDER can outgrow the
+        # sidebar's fixed vertical budget.
+        self.wave_unit_scroll_offset = 0
+        self._rebuild_wave_unit_rects()
         self.wave_editor_action_rects = ui.build_wave_editor_action_rects()
 
         # Rebuilt each time _enter_level_select() runs -- see there for why
@@ -185,7 +213,7 @@ class Game:
         self._load_level_object(level, endless=endless, sandbox=sandbox)
         self.current_level_id = None
 
-    def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None):
+    def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
         # out of an endless run doesn't silently drop back into a normal,
@@ -201,6 +229,10 @@ class Game:
         # abandoned run still sits on disk) from later deleting that
         # unrelated save on its own eventual victory/game-over.
         self._resumed_from_save = False
+        # Same reset-first shape as _resumed_from_save above --
+        # _start_daily_challenge() is the one caller that sets this back
+        # afterward.
+        self._daily_challenge_seed = None
         if endless:
             # Endless mode appends newly-generated waves straight onto
             # wave_specs as the run continues (see WaveManager.
@@ -232,6 +264,7 @@ class Game:
             enemy_speed_multiplier=mode.enemy_speed_multiplier,
             enemy_gold_multiplier=mode.enemy_gold_multiplier,
             endless=endless,
+            rng=rng,
         )
 
         self.enemies = []
@@ -388,6 +421,25 @@ class Game:
         self._resumed_from_save = True  # see __init__'s comment on this flag
         self.state = GameState.PLAYING
 
+    def _start_daily_challenge(self, seed=None):
+        """Start today's Daily Challenge -- a seeded, deterministic Endless
+        run (see daily_challenge.py for why Endless + a seeded rng is all
+        this needs, no new simulation logic). Calls _load_level_object()
+        directly rather than through load_level(), same precedent as
+        resume_saved_run() above, since it needs to pass rng= (and pin
+        difficulty to "normal" so every player's score is comparable
+        regardless of their own live difficulty setting, mirroring how a
+        resumed run snapshots a fixed difficulty rather than reapplying
+        whatever's currently active)."""
+        seed = seed if seed is not None else daily_challenge.todays_seed()
+        level_id = daily_challenge.level_id_for_seed(seed)
+        self._load_level_object(
+            LEVELS[level_id], endless=True, rng=random.Random(seed), difficulty_override="normal",
+        )
+        self.current_level_id = level_id
+        self._daily_challenge_seed = seed  # see __init__'s comment on this field
+        self.state = GameState.PLAYING
+
     def _tower_from_save_data(self, tower_data):
         """Reconstruct one Tower from save_state.py's per-tower dict --
         level/specialization/targeting mode and lifetime stat counters
@@ -460,6 +512,8 @@ class Game:
                 self._handle_editor_motion(event.pos, event.buttons)
             elif event.type == pygame.MOUSEWHEEL and self.state == GameState.LEVEL_SELECT:
                 self._scroll_level_select(event.y)
+            elif event.type == pygame.MOUSEWHEEL and self.state == GameState.WAVE_EDITOR:
+                self._scroll_wave_unit_list(event.y)
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 # Only while windowed -- a fullscreen window resizing away
                 # from the desktop resolution isn't something the player
@@ -490,6 +544,8 @@ class Game:
                         self._enter_achievements()
                     elif letter == "h":
                         self.state = GameState.HELP
+                    elif letter == "d":
+                        self._start_daily_challenge()
                 else:
                     self.state = GameState.PLAYING
         elif self.state == GameState.SETTINGS:
@@ -650,15 +706,69 @@ class Game:
         if action == "back":
             self.state = GameState.MENU
         elif action == "waves" and self.editor.path_is_valid():
+            self.wave_unit_scroll_offset = 0  # always open scrolled to the top
+            self._rebuild_wave_unit_rects()
             self.state = GameState.WAVE_EDITOR
         elif action == "load":
             self._enter_level_select(purpose="edit")
+        elif action == "import":
+            self._import_level()
         elif action == "copy":
             self.editor.copy_selection()
         elif action == "paste":
             self.editor.paste_pending = True
         else:
             self._handle_editor_undo_redo_action(action)
+
+    def _import_level(self):
+        """OS-dialog wrapper around _import_level_from_path() below --
+        imports tkinter lazily, inside this method rather than at module
+        top, so headless test/CI environments never need a working Tk
+        install just to import game.py at all (this method itself has no
+        test coverage for the same reason; only _import_level_from_path()
+        does -- see tests). Cancelling the dialog (an empty path) is a
+        silent no-op, same as any other cancelled OS file picker."""
+        import tkinter
+        from tkinter import filedialog
+
+        root = tkinter.Tk()
+        root.withdraw()  # no blank Tk window behind the picker
+        path = filedialog.askopenfilename(filetypes=[("Level JSON", "*.json")])
+        root.destroy()
+        if not path:
+            return
+        if self._import_level_from_path(path):
+            # Re-reads custom_levels/ fresh (see _enter_level_select's own
+            # docstring), so the just-imported file shows up immediately.
+            self._enter_level_select(purpose="edit")
+
+    def _import_level_from_path(self, path, directory=None):
+        """Testable core of Import Level...: validate `path` as a level
+        file and copy it into custom_levels/ (or `directory`, injectable
+        the same way persistence.save_level's own `directory` param is --
+        lets tests point this at a tmp_path instead of ever touching the
+        real repo-root custom_levels/). Reuses the exact same validation
+        persistence.list_custom_levels() already relies on
+        (Level.__post_init__, triggered via persistence.load_level_file())
+        rather than re-deriving it, and persistence.save_level() for the
+        copy itself, which re-slugifies the filename and handles collisions
+        the same way Save already does for an editor-authored level.
+        Returns True on success; sets import_status_message/
+        import_status_is_error either way for the editor sidebar to show."""
+        try:
+            level = persistence.load_level_file(path)
+        except (OSError, ValueError, KeyError, TypeError):
+            # Short and fixed-length by design -- the sidebar has very
+            # little vertical room this low in the panel (see
+            # ui._draw_editor_path_sidebar), and an arbitrary level name or
+            # error detail could wrap far enough to run off the bottom.
+            self.import_status_message = "Import failed."
+            self.import_status_is_error = True
+            return False
+        persistence.save_level(level, directory=directory or persistence.LEVELS_DIR)
+        self.import_status_message = "Level imported."
+        self.import_status_is_error = False
+        return True
 
     # --- Wave editor ---
 
@@ -667,6 +777,23 @@ class Game:
         set in Game, this one's shape depends on how many waves currently
         exist, which changes as the player adds/removes them."""
         return ui.build_wave_tab_rects(len(self.editor.wave_specs))
+
+    def _rebuild_wave_unit_rects(self):
+        """wave_unit_rects depends on scroll position, not just on
+        ENEMY_ORDER -- called both here (from __init__/entering the wave
+        editor) and after every scroll (_scroll_wave_unit_list) so it's
+        never stale for the click handler or render() to read. Mirrors
+        _rebuild_level_select_rects exactly."""
+        self.wave_unit_rects = ui.build_wave_unit_rects(self.wave_unit_scroll_offset)
+
+    def _scroll_wave_unit_list(self, wheel_y):
+        # Same sign flip as _scroll_level_select -- pygame's MOUSEWHEEL.y is
+        # positive scrolling away from the player (up the list -> less
+        # scroll_offset) and negative toward them (down the list -> more).
+        max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
+        self.wave_unit_scroll_offset -= wheel_y * ui.WAVE_UNIT_SCROLL_STEP
+        self.wave_unit_scroll_offset = max(0, min(self.wave_unit_scroll_offset, max_scroll))
+        self._rebuild_wave_unit_rects()
 
     def _handle_wave_editor_click(self, pos):
         tab = ui.get_clicked_wave_tab(pos, self._wave_tab_rects())
@@ -680,7 +807,13 @@ class Game:
             self.editor.set_active_wave(tab)
             return
 
-        unit_key = ui.get_clicked_wave_unit_button(pos, self.wave_unit_rects)
+        # A row scrolled above/below the visible list still has a real
+        # (just off-viewport) Rect -- see build_wave_unit_rects -- so a
+        # click outside the scrollable viewport must never match one, same
+        # fence _handle_level_select_click applies to its own rows.
+        unit_key = None
+        if ui.WAVE_UNIT_ROWS_TOP <= pos[1] <= ui.WAVE_UNIT_ROWS_BOTTOM:
+            unit_key = ui.get_clicked_wave_unit_button(pos, self.wave_unit_rects)
         if unit_key is not None:
             enemy_name, sign = unit_key
             self.editor.adjust_unit_count(enemy_name, +1 if sign == "plus" else -1)
@@ -1167,6 +1300,15 @@ class Game:
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
             self._delete_save_if_this_run_was_resumed()
+            if self._daily_challenge_seed is not None:
+                # A Daily Challenge is always Endless -- all_waves_complete
+                # never fires (see waves.py), so is_out_of_lives is the
+                # only way one ever ends. current_wave_number is "how many
+                # waves this run reached," a simple, monotonic score.
+                daily_challenge.record_result(
+                    self._daily_challenge_seed, self.wave_manager.current_wave_number,
+                    self.daily_challenge_path,
+                )
         elif self.wave_manager.all_waves_complete and not self.enemies:
             self.state = GameState.VICTORY
             # A built-in level's progress is gated by real clears -- a
@@ -1223,6 +1365,7 @@ class Game:
             ui.draw_editor_screen(
                 self.screen, self.assets, self.font, self.small_font,
                 self.editor, self.editor_tool_rects, self.editor_action_rects,
+                self.import_status_message, self.import_status_is_error,
             )
             pygame.display.flip()
             return
@@ -1231,7 +1374,7 @@ class Game:
             ui.draw_wave_editor_screen(
                 self.screen, self.assets, self.font, self.small_font,
                 self.editor, self._wave_tab_rects(), self.wave_unit_rects, self.wave_editor_action_rects,
-                self.last_saved_path,
+                self.last_saved_path, self.wave_unit_scroll_offset,
             )
             pygame.display.flip()
             return

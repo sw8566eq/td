@@ -8,6 +8,7 @@ smoke tests this project has been relying on during development.
 
 import json
 import os
+import random
 import string
 import sys
 
@@ -17,7 +18,9 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import achievements  # noqa: E402
+import daily_challenge  # noqa: E402
 import difficulty  # noqa: E402
+import persistence  # noqa: E402
 import player_settings  # noqa: E402
 import progress  # noqa: E402
 import save_state  # noqa: E402
@@ -32,16 +35,19 @@ from waves import WaveState  # noqa: E402
 
 @pytest.fixture
 def game(tmp_path):
-    # progress_path/settings_path/achievements_path/save_path all pinned to
-    # throwaway files -- Game writes real progress on VICTORY (see
-    # progress.py), real settings on set_fullscreen()/set_difficulty() (see
-    # player_settings.py), real achievement counters on nearly every tower/
-    # kill/wave/level event (see achievements.py), and a real in-progress
-    # save on save_run() (see save_state.py), and this must never touch (or
-    # leave behind) any of those real repo-root files.
+    # progress_path/settings_path/achievements_path/save_path/
+    # daily_challenge_path all pinned to throwaway files -- Game writes real
+    # progress on VICTORY (see progress.py), real settings on set_fullscreen()/
+    # set_difficulty() (see player_settings.py), real achievement counters on
+    # nearly every tower/kill/wave/level event (see achievements.py), a real
+    # in-progress save on save_run() (see save_state.py), and a real Daily
+    # Challenge score on a Daily Challenge run's game-over (see
+    # daily_challenge.py), and this must never touch (or leave behind) any of
+    # those real repo-root files.
     g = Game(
         progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json",
         achievements_path=tmp_path / "achievements.json", save_path=tmp_path / "save_state.json",
+        daily_challenge_path=tmp_path / "daily_challenge.json",
     )
     yield g
     pygame.quit()
@@ -3228,6 +3234,102 @@ def test_render_editor_with_the_rect_tool_active_shows_the_loop_hint(game):
     game.render()
 
 
+# --- Wave editor scrolling ---
+#
+# The per-species row list (unit_rects) has grown past what a fixed sidebar
+# budget can show all at once -- see ui.WAVE_UNIT_ROWS_TOP/_BOTTOM -- so it
+# scrolls, mirroring the level browser's own scroll mechanism (see the
+# "Level select scrolling" tests above this module for the template these
+# follow).
+
+def test_scrolling_down_moves_the_wave_unit_rows_up(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    first_name = ui.ENEMY_ORDER[0]
+    first_row_y_before = game.wave_unit_rects[(first_name, "minus")].y
+
+    game._scroll_wave_unit_list(-1)  # wheel "down" gesture
+    first_row_y_after = game.wave_unit_rects[(first_name, "minus")].y
+
+    assert game.wave_unit_scroll_offset > 0
+    assert first_row_y_after < first_row_y_before
+
+
+def test_wave_unit_scroll_offset_clamps_at_zero_and_at_max(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+
+    game._scroll_wave_unit_list(1)  # can't scroll up past the top
+    assert game.wave_unit_scroll_offset == 0
+
+    max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
+    assert max_scroll > 0  # sanity: today's real registry actually overflows
+    for _ in range(50):
+        game._scroll_wave_unit_list(-1)
+    assert game.wave_unit_scroll_offset == max_scroll
+
+
+def test_entering_wave_editor_resets_scroll_to_the_top(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game._handle_editor_action("waves")
+    game._scroll_wave_unit_list(-3)
+    assert game.wave_unit_scroll_offset > 0
+
+    game._handle_editor_action("waves")  # re-entering (e.g. via the button again) starts back at the top
+    assert game.wave_unit_scroll_offset == 0
+
+
+def test_clicking_a_scrolled_wave_unit_row_still_adjusts_the_right_species(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
+    for _ in range(50):
+        game._scroll_wave_unit_list(-1)
+    assert game.wave_unit_scroll_offset == max_scroll
+
+    last_name = ui.ENEMY_ORDER[-1]
+    rect = game.wave_unit_rects[(last_name, "plus")]
+    assert ui.WAVE_UNIT_ROWS_TOP <= rect.centery <= ui.WAVE_UNIT_ROWS_BOTTOM  # sanity: actually visible now
+
+    game._handle_wave_editor_click(rect.center)
+
+    composition = game.editor.wave_specs[game.editor.active_wave_index][game.editor.active_spawn_cell]
+    assert composition.get(last_name, 0) == 1
+
+
+def test_clicking_an_action_button_is_not_intercepted_by_an_overflowing_wave_unit_row(game):
+    # Regression guard for the exact bug class CLAUDE.md documents for the
+    # level browser: even unscrolled, today's real ENEMY_ORDER registry (8
+    # species) overflows the sidebar's fixed vertical budget, so the last
+    # row's raw Rect spills past WAVE_UNIT_ROWS_BOTTOM into the action-
+    # button area (clipped from view when drawn, but a real Rect there
+    # regardless -- see build_wave_unit_rects' docstring). Without the
+    # pos-fence in _handle_wave_editor_click, a click on a real action
+    # button could be intercepted by that spilled-over row instead.
+    assert ui.wave_unit_content_height(len(ui.ENEMY_ORDER)) > ui.WAVE_UNIT_ROWS_BOTTOM - ui.WAVE_UNIT_ROWS_TOP
+
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+
+    back_rect = game.wave_editor_action_rects["back"]
+    game._handle_wave_editor_click(back_rect.center)
+    assert game.state == GameState.EDITOR
+
+
+def test_render_wave_editor_while_scrolled_does_not_crash(game):
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.state = GameState.WAVE_EDITOR
+    game._scroll_wave_unit_list(-1)
+
+    game.render()
+
+
 def test_render_wave_editor_with_units_added_does_not_crash(game):
     game.state = GameState.EDITOR
     _paint_valid_path(game)
@@ -3487,3 +3589,213 @@ def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game,
     game.run()
 
     assert calls == ["handle_events", "update", "render", "pygame.quit", "sys.exit"]
+
+
+# --- Daily Challenge ---
+
+def test_menu_d_key_starts_daily_challenge(game):
+    game._handle_keydown(pygame.K_d)
+    assert game.state == GameState.PLAYING
+    assert game.wave_manager.endless is True
+    assert game._daily_challenge_seed is not None
+
+
+def test_daily_challenge_picks_a_multi_lane_level(game):
+    for seed in range(20260101, 20260101 + 10):
+        game._start_daily_challenge(seed=seed)
+        assert game.current_level_id in daily_challenge.MULTI_LANE_LEVEL_IDS
+
+
+def test_daily_challenge_level_choice_is_deterministic(game):
+    game._start_daily_challenge(seed=20260903)
+    first_level_id = game.current_level_id
+
+    game._start_daily_challenge(seed=20260903)
+    assert game.current_level_id == first_level_id
+
+
+def test_daily_challenge_seeds_the_wave_manager_rng_deterministically(game):
+    game._start_daily_challenge(seed=20260903)
+    # Nothing has drawn from the rng yet at this point (no enemy spawned) --
+    # a fresh random.Random(seed) must produce the identical next value.
+    assert game.wave_manager.rng.random() == random.Random(20260903).random()
+
+
+def test_daily_challenge_pins_difficulty_to_normal_regardless_of_player_setting(game):
+    game.set_difficulty("hard")  # starting_gold_multiplier=0.85, see difficulty.py
+
+    game._start_daily_challenge(seed=20260903)
+
+    level = LEVELS[game.current_level_id]
+    assert game.economy.gold == level.starting_gold  # normal's 1.0x, not hard's 0.85x
+
+
+def test_daily_challenge_records_best_waves_survived_on_game_over(game):
+    game._start_daily_challenge(seed=20260903)
+    game.wave_manager.all_waves_complete = False
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+
+    game.update(dt=0.01)
+
+    assert game.state == GameState.GAME_OVER
+    recorded = daily_challenge.load_daily_challenge(game.daily_challenge_path)
+    assert recorded[20260903] == game.wave_manager.current_wave_number
+
+
+def test_daily_challenge_keeps_the_best_score_across_repeat_attempts(game):
+    game._start_daily_challenge(seed=20260903)
+    game.wave_manager.wave_index = 5  # simulate having survived several waves
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+    game.update(dt=0.01)
+    first_score = daily_challenge.load_daily_challenge(game.daily_challenge_path)[20260903]
+    assert first_score > 1
+
+    # A second, worse attempt (loses immediately, on wave 1) must not
+    # overwrite the better score already recorded.
+    game._start_daily_challenge(seed=20260903)
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert daily_challenge.load_daily_challenge(game.daily_challenge_path)[20260903] == first_score
+
+
+def test_a_normal_game_over_does_not_record_a_daily_score(game):
+    game.load_level(1)
+    game.state = GameState.PLAYING
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+
+    game.update(dt=0.01)
+
+    assert game.state == GameState.GAME_OVER
+    assert daily_challenge.load_daily_challenge(game.daily_challenge_path) == {}
+
+
+def test_daily_challenge_seed_resets_on_a_normal_level_load(game):
+    game._start_daily_challenge(seed=20260903)
+    assert game._daily_challenge_seed is not None
+
+    game.load_level(1)
+
+    assert game._daily_challenge_seed is None
+
+
+# --- Import Level ---
+
+def _write_external_level_file(tmp_path, name="Imported Level"):
+    """A small, valid, standalone level JSON file sitting somewhere other
+    than custom_levels/ -- standing in for "a file someone else handed
+    you," the way sharing a level actually works today (see CLAUDE.md)."""
+    level = Level(
+        id="external",
+        name=name,
+        path_cells=frozenset({(0, 0), (0, 1), (0, 2)}),
+        spawn_cells=((0, 0),),
+        goal_cells=((0, 2),),
+        wave_specs=[{(0, 0): {"grunt": 3}}],
+    )
+    return persistence.save_level(level, directory=tmp_path / "source")
+
+
+def test_import_level_from_path_copies_a_valid_level_into_the_target_directory(game, tmp_path):
+    source_path = _write_external_level_file(tmp_path, name="Imported Level")
+    target_dir = tmp_path / "custom_levels"
+
+    result = game._import_level_from_path(source_path, directory=target_dir)
+
+    assert result is True
+    assert game.import_status_is_error is False
+    imported = persistence.list_custom_levels(target_dir)
+    assert len(imported) == 1
+    assert imported[0].name == "Imported Level"
+
+
+def test_import_level_from_path_sets_a_success_status_message(game, tmp_path):
+    source_path = _write_external_level_file(tmp_path)
+
+    game._import_level_from_path(source_path, directory=tmp_path / "custom_levels")
+
+    assert game.import_status_message is not None
+    assert game.import_status_is_error is False
+
+
+def test_import_level_from_path_rejects_a_corrupt_file(game, tmp_path):
+    bad_path = tmp_path / "bad.json"
+    bad_path.write_text("{not valid json")
+    target_dir = tmp_path / "custom_levels"
+
+    result = game._import_level_from_path(str(bad_path), directory=target_dir)
+
+    assert result is False
+    assert game.import_status_message is not None
+    assert game.import_status_is_error is True
+    assert persistence.list_custom_levels(target_dir) == []
+
+
+def test_import_level_from_path_rejects_a_file_with_an_invalid_topology(game, tmp_path):
+    # Well-formed JSON, but semantically invalid (Level.__post_init__
+    # rejects it -- here, a wave referencing a spawn cell that isn't one of
+    # spawn_cells). Confirms the exact same validation
+    # persistence.list_custom_levels() already relies on actually runs
+    # during import, not just a JSON-parses-at-all check.
+    bad_path = tmp_path / "bad_topology.json"
+    bad_path.write_text(json.dumps({
+        "schema_version": persistence.SCHEMA_VERSION,
+        "id": "bad",
+        "name": "Bad Level",
+        "path_cells": [[0, 0], [0, 1]],
+        "spawn_cells": [[0, 0]],
+        "goal_cells": [[0, 1]],
+        "blocked_cells": [],
+        "branch_weights": [],
+        "wave_specs": [[[[9, 9], {"grunt": 1}]]],
+        "starting_gold": 150,
+        "starting_lives": 20,
+    }))
+    target_dir = tmp_path / "custom_levels"
+
+    result = game._import_level_from_path(str(bad_path), directory=target_dir)
+
+    assert result is False
+    assert persistence.list_custom_levels(target_dir) == []
+
+
+def test_import_level_from_path_leaves_other_saved_levels_alone_on_failure(game, tmp_path):
+    target_dir = tmp_path / "custom_levels"
+    good_source = _write_external_level_file(tmp_path, name="Already There")
+    game._import_level_from_path(good_source, directory=target_dir)
+    assert len(persistence.list_custom_levels(target_dir)) == 1
+
+    bad_path = tmp_path / "bad.json"
+    bad_path.write_text("{not valid json")
+    game._import_level_from_path(str(bad_path), directory=target_dir)
+
+    assert len(persistence.list_custom_levels(target_dir)) == 1
+
+
+def test_editor_import_action_calls_import_level(game, monkeypatch):
+    called = []
+    monkeypatch.setattr(game, "_import_level", lambda: called.append(True))
+    game.state = GameState.EDITOR
+
+    game._handle_editor_action("import")
+
+    assert called == [True]
+
+
+def test_render_editor_with_an_import_status_message_does_not_crash(game):
+    game.state = GameState.EDITOR
+    game.import_status_message = "Level imported."
+    game.import_status_is_error = False
+    game.render()
+
+    game.import_status_message = "Import failed."
+    game.import_status_is_error = True
+    game.render()
