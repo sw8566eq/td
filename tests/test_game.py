@@ -26,6 +26,7 @@ import progress  # noqa: E402
 import save_state  # noqa: E402
 import settings  # noqa: E402
 import ui  # noqa: E402
+from card_pool import STARTER_TOWERS  # noqa: E402
 from editor import EditorTool  # noqa: E402
 from game import Game, GameState  # noqa: E402
 from levels import LEVELS, Level  # noqa: E402
@@ -3799,3 +3800,158 @@ def test_render_editor_with_an_import_status_message_does_not_crash(game):
     game.import_status_message = "Import failed."
     game.import_status_is_error = True
     game.render()
+
+
+# --- Roguelike Run (Milestone 1: floor mechanic, no draft/floor-cleared UI yet) ---
+
+def test_start_new_run_populates_active_run_and_loads_floor_zero(game):
+    game.start_new_run(seed=1)
+
+    assert game.active_run is not None
+    assert game.active_run.floor_index == 0
+    assert game.active_run.unlocked_towers == list(STARTER_TOWERS)
+    assert game.current_level_id == game.active_run.floor_sequence[0]
+    assert game.state == GameState.PLAYING
+
+
+def test_start_new_run_captures_floor_zeros_starting_economy(game):
+    game.start_new_run(seed=1)
+
+    assert game.active_run.lives == game.economy.lives
+    assert game.active_run.gold == game.economy.gold
+
+
+def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
+    game.start_new_run(seed=1234)
+    first_sequence = game.active_run.floor_sequence
+
+    game.start_new_run(seed=1234)
+    second_sequence = game.active_run.floor_sequence
+
+    assert first_sequence == second_sequence
+
+
+def test_start_new_run_without_a_seed_still_produces_a_playable_run(game):
+    game.start_new_run()
+
+    assert game.active_run.seed is not None
+    assert game.state == GameState.PLAYING
+
+
+def test_a_classic_level_load_clears_any_active_run(game):
+    game.start_new_run(seed=1)
+    assert game.active_run is not None
+
+    game.load_level(1)
+
+    assert game.active_run is None
+
+
+def test_a_custom_level_load_clears_any_active_run(game):
+    game.start_new_run(seed=1)
+    game.load_custom_level(LEVELS[1])
+    assert game.active_run is None
+
+
+def test_starting_a_daily_challenge_clears_any_active_run(game):
+    game.start_new_run(seed=1)
+    game._start_daily_challenge(seed=20260101)
+    assert game.active_run is None
+
+
+def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
+    # Regression guard: active_run is reset inside _load_level_object
+    # itself (the one choke point every loader funnels through) precisely
+    # so a caller like resume_saved_run -- which never mentions active_run
+    # at all -- can't leak a stale RunState from an unrelated earlier run
+    # into a resumed classic save.
+    playing_game.save_run()
+    save_data = save_state.load_run(playing_game.save_path)
+    playing_game.start_new_run(seed=1)
+
+    playing_game.resume_saved_run(save_data)
+
+    assert playing_game.active_run is None
+
+
+def test_floor_clear_carries_gold_and_lives_into_the_next_floor(game):
+    game.start_new_run(seed=1)
+    # Distinct from whatever floor 1's own authored starting_gold/
+    # starting_lives happen to be -- proves these came from the run, not
+    # from _load_level_object's usual per-level defaults.
+    game.economy.gold = 9999
+    game.economy.lives = 3
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+
+    game.update(dt=0.01)
+
+    assert game.active_run.floor_index == 1
+    assert game.economy.gold == 9999
+    assert game.economy.lives == 3
+
+
+def test_floor_clear_drafts_a_new_tower_into_the_run_and_advances_floors_cleared(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+
+    game.update(dt=0.01)
+
+    assert game.active_run.floors_cleared == 1
+    assert len(game.active_run.unlocked_towers) == len(STARTER_TOWERS) + 1
+    assert set(STARTER_TOWERS).issubset(game.active_run.unlocked_towers)
+
+
+def test_floor_clear_never_reaches_classic_victory(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+
+    game.update(dt=0.01)
+
+    assert game.state != GameState.VICTORY
+    assert game.state == GameState.PLAYING
+
+
+def test_last_floor_of_a_run_loads_endless(game):
+    game.start_new_run(seed=1)
+    last_index = len(game.active_run.floor_sequence) - 1
+
+    game._load_floor(last_index)
+
+    assert game.wave_manager.endless is True
+
+
+def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
+    game.start_new_run(seed=1)
+    seed = game.active_run.seed
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert game.state == GameState.GAME_OVER
+    assert game.active_run is not None
+    assert game.active_run.seed == seed
+
+
+def test_run_seed_reproduces_the_same_first_draft_pick(game):
+    # Floor-sequence reproducibility for a fixed seed is already covered by
+    # test_start_new_run_is_deterministic_for_a_fixed_seed above -- this
+    # covers the one additional fact that test can't: the draft pick
+    # (derived via _run_rng, only reachable through Game) reproduces too.
+    game.start_new_run(seed=99)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    first_pool_after_draft = list(game.active_run.unlocked_towers)
+
+    game.start_new_run(seed=99)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    second_pool_after_draft = list(game.active_run.unlocked_towers)
+
+    assert first_pool_after_draft == second_pool_after_draft

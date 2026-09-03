@@ -8,12 +8,14 @@ from enum import Enum, auto
 import pygame
 
 import achievements
+import card_pool
 import daily_challenge
 import difficulty
 import effects
 import persistence
 import player_settings
 import progress
+import run_floors
 import save_state
 import settings
 import ui
@@ -22,8 +24,16 @@ from economy import Economy
 from editor import SHAPE_TOOLS, Editor, EditorTool
 from grid import Grid
 from levels import LEVELS
+from run_state import RunState
 from tower import TOWER_TYPES
 from waves import WaveManager, WaveState
+
+# Two independently-derived rng streams within one roguelike run (see
+# Game._run_rng) -- large, distinct multipliers so a floor's own routing rng
+# and that floor's draft-pick rng never collide despite both being derived
+# from the same (run.seed, floor_index) pair.
+_FLOOR_RNG_STREAM = 1_000_003
+_DRAFT_RNG_STREAM = 2_000_003
 
 
 class GameState(Enum):
@@ -100,6 +110,13 @@ class Game:
         # afterward.
         self.daily_challenge_path = daily_challenge_path or daily_challenge.DAILY_CHALLENGE_PATH
         self._daily_challenge_seed = None
+        # The active roguelike run, or None outside of one (classic/Practice
+        # play, Daily Challenge, a map-editor playtest). Same reset-inside-
+        # _load_level_object shape as _resumed_from_save/_daily_challenge_
+        # seed above -- _load_floor() is the one caller that sets it back
+        # afterward, once per floor, so a run's own lives/gold survive
+        # across each floor's fresh _load_level_object() call.
+        self.active_run = None
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -213,6 +230,89 @@ class Game:
         self._load_level_object(level, endless=endless, sandbox=sandbox)
         self.current_level_id = None
 
+    def start_new_run(self, seed=None):
+        """Start a new roguelike run: a seeded, ordered floor_sequence
+        sampled from LEVELS, a starter tower pool (card_pool.STARTER_
+        TOWERS), and floor 0's own starting gold/lives -- floor 0 behaves
+        exactly like loading that level normally does today; _load_floor()
+        just also captures its outcome into self.active_run for floor 1
+        onward to build on. `seed` is overridable (Daily Challenge/Daily
+        Run passes one; tests want determinism) the same way
+        daily_challenge.todays_seed()'s own `today` param is."""
+        seed = seed if seed is not None else random.Random().getrandbits(32)
+        floor_sequence = run_floors.sample_floor_sequence(random.Random(seed))
+        self.active_run = RunState(
+            seed=seed, floor_sequence=floor_sequence, difficulty=self.difficulty,
+            unlocked_towers=list(card_pool.STARTER_TOWERS),
+        )
+        self._load_floor(0)
+
+    def _run_rng(self, stream, floor_index):
+        # A floor's own routing rng and that floor's draft-pick rng are
+        # both deterministically re-derived from (run.seed, floor_index)
+        # rather than carried as one continuously-consumed random.Random
+        # across floors, so a resumed run (see save_state.py, a future
+        # milestone) needs no RNG state serialized -- just re-derive the
+        # same object the same way on load. `stream` (one of the
+        # _*_RNG_STREAM constants above) keeps the two derived streams
+        # from colliding despite being seeded off the same (seed,
+        # floor_index) pair.
+        return random.Random(self.active_run.seed * stream + floor_index)
+
+    def _load_floor(self, floor_index):
+        """Load floor `floor_index` of self.active_run. Resets everything
+        via _load_level_object exactly like any other level load -- towers,
+        the grid, and wave state are always rebuilt fresh per floor, the
+        same way a deckbuilder run doesn't carry board state between
+        combats. Only the run's own lives/gold carry across floor loads
+        (floor 0 is the one exception: RunState starts with lives=gold=0
+        as a placeholder, captured for real from floor 0's own
+        freshly-loaded Economy just below -- the same starting_gold/
+        starting_lives every other level load already uses, just also
+        saved off for floor 1 onward to carry forward). The sequence's last
+        floor always loads endless=True (see WaveManager's own endless
+        tail) -- a run only ever ends by permadeath, never by "finishing"
+        the last floor; see update()'s win-check for the other half of
+        that.
+
+        _load_level_object() unconditionally resets self.active_run to
+        None (same reset-at-the-one-choke-point shape _resumed_from_save/
+        _daily_challenge_seed already use) -- run is kept as a local
+        across that call and restored onto self.active_run right after,
+        the same "set back afterward" shape resume_saved_run()/
+        _start_daily_challenge() already use for their own sentinel
+        fields."""
+        run = self.active_run
+        run.floor_index = floor_index
+        level_id = run.current_level_id
+        self._load_level_object(
+            LEVELS[level_id], endless=run.is_final_floor,
+            difficulty_override=run.difficulty, rng=self._run_rng(_FLOOR_RNG_STREAM, floor_index),
+        )
+        self.active_run = run
+        self.current_level_id = level_id
+        if floor_index == 0:
+            run.lives = self.economy.lives
+            run.gold = self.economy.gold
+        else:
+            self.economy.lives = run.lives
+            self.economy.gold = run.gold
+        self.state = GameState.PLAYING
+
+    def _advance_run_floor(self):
+        """One floor of self.active_run just cleared (see update()'s
+        win-check) -- carry gold/lives forward, auto-pick a card into the
+        run's drafted pool (a real draft screen replaces auto_pick's call
+        here in Milestone 2), and load the next floor."""
+        run = self.active_run
+        run.gold = self.economy.gold
+        run.lives = self.economy.lives
+        next_floor = run.floor_index + 1
+        picked = card_pool.auto_pick(self._run_rng(_DRAFT_RNG_STREAM, next_floor), run)
+        if picked is not None:
+            run.unlocked_towers.append(picked)
+        self._load_floor(next_floor)
+
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
@@ -233,6 +333,13 @@ class Game:
         # _start_daily_challenge() is the one caller that sets this back
         # afterward.
         self._daily_challenge_seed = None
+        # Same reset-first shape again -- _load_floor() is the one caller
+        # that sets this back afterward (see its own docstring). This is
+        # what keeps a stale RunState from leaking into an unrelated fresh
+        # load -- resume_saved_run() included, even though it doesn't
+        # mention active_run explicitly, since every loader funnels
+        # through this one method.
+        self.active_run = None
         if endless:
             # Endless mode appends newly-generated waves straight onto
             # wave_specs as the run continues (see WaveManager.
@@ -1310,24 +1417,33 @@ class Game:
                     self.daily_challenge_path,
                 )
         elif self.wave_manager.all_waves_complete and not self.enemies:
-            self.state = GameState.VICTORY
-            # A built-in level's progress is gated by real clears -- a
-            # sandbox run (unlimited gold, invulnerable) trivializes
-            # winning, so it shouldn't count as one, same reasoning
-            # _record_achievement's own sandbox guard applies to every
-            # achievement counter below. isinstance() gates only the
-            # progress/distinct-levels tracking, which only makes sense
-            # for a real LEVELS registry entry -- levels_cleared itself
-            # (any level, built-in or custom) is still recorded either way.
-            if not self.sandbox and isinstance(self.current_level_id, int):
-                self.progress = progress.mark_level_cleared(
-                    self.current_level_id, self.economy.lives, self.progress_path,
-                )
-                self._queue_achievement_toasts(achievements.set_counter(
-                    "distinct_levels_cleared", len(self.progress), self.achievements_path,
-                ))
-            self._record_achievement("levels_cleared")
-            self._delete_save_if_this_run_was_resumed()
+            if self.active_run is not None:
+                # A run's own floor-clear, not a classic-play VICTORY --
+                # the run's last floor is always loaded endless=True (see
+                # _load_floor), so all_waves_complete structurally can
+                # never fire for it; this branch is only ever reached by a
+                # non-final floor clearing.
+                self._advance_run_floor()
+            else:
+                self.state = GameState.VICTORY
+                # A built-in level's progress is gated by real clears -- a
+                # sandbox run (unlimited gold, invulnerable) trivializes
+                # winning, so it shouldn't count as one, same reasoning
+                # _record_achievement's own sandbox guard applies to every
+                # achievement counter below. isinstance() gates only the
+                # progress/distinct-levels tracking, which only makes sense
+                # for a real LEVELS registry entry -- levels_cleared itself
+                # (any level, built-in or custom) is still recorded either
+                # way.
+                if not self.sandbox and isinstance(self.current_level_id, int):
+                    self.progress = progress.mark_level_cleared(
+                        self.current_level_id, self.economy.lives, self.progress_path,
+                    )
+                    self._queue_achievement_toasts(achievements.set_counter(
+                        "distinct_levels_cleared", len(self.progress), self.achievements_path,
+                    ))
+                self._record_achievement("levels_cleared")
+                self._delete_save_if_this_run_was_resumed()
 
     # --- Render ---
 
