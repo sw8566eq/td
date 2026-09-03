@@ -8,15 +8,9 @@ def test_floor_zero_is_a_no_op():
     assert escalation.enemy_gold_multiplier == 1.0
 
 
-def test_later_floors_escalate_every_multiplier_upward():
-    floor_0 = escalation_for_floor(0)
-    floor_5 = escalation_for_floor(5)
-    assert floor_5.enemy_hp_multiplier > floor_0.enemy_hp_multiplier
-    assert floor_5.enemy_speed_multiplier > floor_0.enemy_speed_multiplier
-    assert floor_5.enemy_gold_multiplier > floor_0.enemy_gold_multiplier
-
-
 def test_escalation_grows_monotonically_with_floor_index():
+    # Subsumes "floor 5 > floor 0" as one step of this same chain -- no
+    # separate test needed for that special case.
     previous = escalation_for_floor(0)
     for floor_index in range(1, 20):
         current = escalation_for_floor(floor_index)
