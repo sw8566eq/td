@@ -1,7 +1,18 @@
 import pygame
 import pytest
 
-from enemy import ENEMY_TYPES, BossEnemy, Enemy, FlyingEnemy, GruntEnemy, ScoutEnemy, ShieldedEnemy, TankEnemy
+from enemy import (
+    ENEMY_TYPES,
+    BossEnemy,
+    Enemy,
+    FlyingEnemy,
+    GruntEnemy,
+    HealerEnemy,
+    ScoutEnemy,
+    ShieldedEnemy,
+    SplitterEnemy,
+    TankEnemy,
+)
 
 WAYPOINTS = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
 # A path far too long for any test's dt to actually finish crossing -- for
@@ -750,3 +761,153 @@ def test_apply_knockback_is_a_no_op_for_dead_or_finished_enemies():
     assert finished.knockback_remaining == 0.0
     finished.update(dt=1.0)
     assert finished.pos.x == 100.0  # unchanged, still at the goal
+
+
+# --- Splitter enemy ---
+
+def test_splitter_is_registered():
+    assert ENEMY_TYPES["splitter"] is SplitterEnemy
+
+
+def test_splitter_starts_with_no_pending_spawns():
+    splitter = SplitterEnemy(WAYPOINTS, wave_number=1)
+    assert splitter.pending_spawns == []
+
+
+def test_splitter_death_queues_its_children_as_pending_spawns():
+    splitter = SplitterEnemy(WAYPOINTS, wave_number=1)
+    splitter.take_damage(splitter.max_hp)  # a killing blow
+    assert splitter.is_dead
+    assert len(splitter.pending_spawns) == SplitterEnemy.SPLIT_COUNT
+    for child in splitter.pending_spawns:
+        assert not isinstance(child, SplitterEnemy)  # no further splitting
+        assert not child.is_dead
+
+
+def test_splitter_children_continue_from_the_same_point_along_the_route():
+    splitter = SplitterEnemy(LONG_WAYPOINTS, wave_number=1)
+    splitter.update(dt=1.0)  # walk partway down the route first
+    distance_at_death = splitter.distance_traveled
+    splitter.take_damage(splitter.max_hp)
+
+    for child in splitter.pending_spawns:
+        assert child.distance_traveled == pytest.approx(distance_at_death)
+        assert tuple(child.pos) == pytest.approx(tuple(splitter.pos))
+
+
+def test_splitter_does_not_split_twice_from_a_multi_hit_killing_blow():
+    # A splash/chain hit can call take_damage() again on an enemy that's
+    # already dead but not yet pruned from Game.enemies within the same
+    # frame -- must not queue a second batch of children.
+    splitter = SplitterEnemy(WAYPOINTS, wave_number=1)
+    splitter.take_damage(splitter.max_hp)
+    splitter.take_damage(10)  # already dead -- take_damage() itself is a no-op
+    assert len(splitter.pending_spawns) == SplitterEnemy.SPLIT_COUNT
+
+
+def test_non_splitter_enemies_never_queue_pending_spawns():
+    for name, enemy_cls in ENEMY_TYPES.items():
+        if name == "splitter":
+            continue
+        enemy = enemy_cls(WAYPOINTS, wave_number=1)
+        enemy.take_damage(enemy.max_hp + getattr(enemy, "max_shield", 0))
+        assert enemy.pending_spawns == [], name
+
+
+# --- Healer enemy ---
+
+def test_healer_is_registered():
+    assert ENEMY_TYPES["healer"] is HealerEnemy
+
+
+def test_healer_heals_a_damaged_ally_in_range():
+    healer = HealerEnemy(WAYPOINTS, wave_number=1)
+    ally = GruntEnemy(WAYPOINTS, wave_number=1)
+    ally.hp = ally.max_hp - 20
+    ally.pos = pygame.Vector2(healer.pos)  # well within heal_range
+
+    healer.update(dt=1.0, enemies=[healer, ally])
+
+    assert ally.hp == pytest.approx(ally.max_hp - 20 + HealerEnemy.heal_rate * 1.0)
+
+
+def test_healer_never_heals_past_max_hp():
+    # LONG_WAYPOINTS, not WAYPOINTS: super().update() moves the healer
+    # itself before the heal loop runs, both because a large dt on a short
+    # path would walk it off the end into reached_goal (short-circuiting
+    # the heal loop before it runs at all) and because moving too far from
+    # where ally.pos was fixed beforehand would carry it out of heal_range.
+    # dt=1.0 keeps that movement (speed * dt = 50px) well inside
+    # heal_range (90px) while still granting far more healing (heal_rate *
+    # dt = 6hp) than ally's 1hp deficit, so the cap is what's under test.
+    healer = HealerEnemy(LONG_WAYPOINTS, wave_number=1)
+    ally = GruntEnemy(WAYPOINTS, wave_number=1)
+    ally.hp = ally.max_hp - 1
+    ally.pos = pygame.Vector2(healer.pos)
+
+    healer.update(dt=1.0, enemies=[healer, ally])
+
+    assert ally.hp == ally.max_hp
+
+
+def test_healer_does_not_heal_an_ally_out_of_range():
+    healer = HealerEnemy(WAYPOINTS, wave_number=1)
+    ally = GruntEnemy(WAYPOINTS, wave_number=1)
+    ally.hp = ally.max_hp - 20
+    ally.pos = pygame.Vector2(healer.pos.x + HealerEnemy.heal_range * 10, healer.pos.y)
+
+    healer.update(dt=1.0, enemies=[healer, ally])
+
+    assert ally.hp == ally.max_hp - 20
+
+
+def test_healer_never_heals_itself_via_the_aura_loop():
+    healer = HealerEnemy(WAYPOINTS, wave_number=1)
+    healer.hp = healer.max_hp - 20
+
+    healer.update(dt=1.0, enemies=[healer])
+
+    assert healer.hp == healer.max_hp - 20  # its own update() only moves/ages it, never heals it
+
+
+def test_healer_does_not_heal_dead_or_escaped_allies():
+    healer = HealerEnemy(WAYPOINTS, wave_number=1)
+    dead_ally = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead_ally.pos = pygame.Vector2(healer.pos)
+    dead_ally.take_damage(dead_ally.max_hp)  # is_dead, hp already 0
+
+    escaped_ally = GruntEnemy(WAYPOINTS, wave_number=1)
+    escaped_ally.speed = 1000.0
+    escaped_ally.update(dt=1.0)
+    assert escaped_ally.reached_goal
+    escaped_ally.pos = pygame.Vector2(healer.pos)
+    escaped_ally.hp = escaped_ally.max_hp - 20
+
+    healer.update(dt=1.0, enemies=[healer, dead_ally, escaped_ally])
+
+    assert dead_ally.hp == 0
+    assert escaped_ally.hp == escaped_ally.max_hp - 20
+
+
+def test_receive_heal_is_a_no_op_for_dead_or_finished_enemies():
+    dead = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(dead.max_hp)
+    dead.receive_heal(1000)
+    assert dead.hp == 0
+
+    finished = GruntEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    hp_before = finished.hp
+    finished.receive_heal(1000)
+    assert finished.hp == hp_before
+
+
+def test_enemy_update_still_works_with_no_enemies_argument():
+    # Every direct enemy.update(dt) call elsewhere in this suite (and in
+    # game code outside Game.update()'s own two-pass loop) relies on
+    # enemies defaulting to None rather than being required.
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.update(dt=0.1)
+    assert enemy.distance_traveled > 0

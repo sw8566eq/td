@@ -28,8 +28,9 @@ moving just the `td` binary out on its own would leave those behind.
 ## Controls
 
 From the main **menu**: press any other key to start playing the currently loaded level, `E` opens
-the map editor, `L` opens the level browser, `S` opens Settings, `A` opens your Achievements, and
-`C` (shown only when one exists) continues a saved in-progress run.
+the map editor, `L` opens the level browser, `S` opens Settings, `A` opens your Achievements, `H`
+opens an in-game How to Play screen (a condensed version of this section), and `C` (shown only when
+one exists) continues a saved in-progress run.
 
 While **playing**: click a tower button in the bottom bar, then click a buildable tile to place it
 -- the sidebar on the right shows that tower type's stats while it's selected; right-click at any

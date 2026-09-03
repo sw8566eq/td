@@ -1,15 +1,17 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. Ships with six species -- GruntEnemy
+as overridable class attributes. Ships with eight species -- GruntEnemy
 (baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP), BossEnemy
 (a level's one-off final-wave heavyweight), ShieldedEnemy (a regenerating
 shield absorbs damage before HP does), FlyingEnemy (only a tower with
-can_target_flying -- see tower.py -- can hit it) -- and a new one is
-written the same way towers are: subclass Enemy, override stats (and
-update()/take_damage() too, if it needs genuinely different behavior like a
-shield), then add one line to ENEMY_TYPES. Levels reference enemies by
-their registry name string in wave_specs (see levels.py), so WaveManager
+can_target_flying -- see tower.py -- can hit it), SplitterEnemy (splits
+into weaker children on death -- see Enemy.pending_spawns), HealerEnemy
+(passively heals nearby enemies -- see Enemy.receive_heal()) -- and a new
+one is written the same way towers are: subclass Enemy, override stats
+(and update()/take_damage() too, if it needs genuinely different behavior
+like a shield), then add one line to ENEMY_TYPES. Levels reference enemies
+by their registry name string in wave_specs (see levels.py), so WaveManager
 never needs to know about concrete Enemy subclasses directly.
 """
 
@@ -78,11 +80,20 @@ class Enemy:
         # hit, or several links of a chain) each get their own popup.
         self.damage_events = []
 
+        # Enemies this one wants added to the live Game.enemies list once
+        # it dies -- same drain-a-per-frame-event-list idiom as
+        # damage_events above (see CLAUDE.md's "Visual effects" section),
+        # just applied to spawning entities instead of floating text.
+        # Empty for every species except SplitterEnemy; Game.update()'s
+        # dead-enemy loop drains it unconditionally, so no per-species
+        # special-casing is needed there.
+        self.pending_spawns = []
+
     @staticmethod
     def _scale(base, per_wave, wave_number):
         return base + per_wave * (wave_number - 1)
 
-    def update(self, dt):
+    def update(self, dt, enemies=None):
         if self.is_dead or self.reached_goal:
             return
 
@@ -156,6 +167,18 @@ class Enemy:
         # this return value, not the raw shot damage, to the firing
         # tower's lifetime damage_dealt stat.
         return amount
+
+    def receive_heal(self, amount):
+        """Called by a HealerEnemy in range, once per frame, for every
+        other living enemy it heals -- plain additive hp regen, capped at
+        max_hp. Unlike SupportTower's receive_aura(), this needs no
+        reset-before-update two-pass ordering: a multiplier overwritten
+        each frame can depend on iteration order, but adding hp does not --
+        whichever healer processes first, the total gained this frame is
+        the same either way."""
+        if self.is_dead or self.reached_goal:
+            return
+        self.hp = min(self.max_hp, self.hp + amount)
 
     def apply_slow(self, factor, duration):
         # Guards like take_damage/apply_knockback do -- a hit that kills
@@ -366,8 +389,8 @@ class BossEnemy(Enemy):
             self.armor_timer = self.ARMOR_DURATION
         return applied
 
-    def update(self, dt):
-        super().update(dt)
+    def update(self, dt, enemies=None):
+        super().update(dt, enemies)
         if self.is_dead or self.reached_goal:
             return
         if self.armor_timer > 0:
@@ -425,8 +448,8 @@ class ShieldedEnemy(Enemy):
             return super().take_damage(amount)
         return 0.0  # fully absorbed by the shield -- no real hp damage dealt
 
-    def update(self, dt):
-        super().update(dt)
+    def update(self, dt, enemies=None):
+        super().update(dt, enemies)
         if self.is_dead or self.reached_goal:
             return
         if self.shield < self.max_shield:
@@ -470,6 +493,95 @@ class FlyingEnemy(Enemy):
     radius = 14
 
 
+class SplitterEnemy(Enemy):
+    """On death, splits into SPLIT_COUNT weaker children that continue from
+    the same point along the route -- take_damage() populates
+    pending_spawns (see Enemy.__init__) with fresh SplitterChildEnemy
+    instances positioned via _seek_to_distance(), and Game.update()'s
+    dead-enemy loop drains that list into the live enemies list right
+    where gold/kills/impact-ring already happen per dead enemy. Children
+    get their own gold/kill credit normally whenever *they* eventually
+    die -- no special accounting needed. Guarding on `not pending_spawns`
+    (rather than a separate flag) is enough to stop this from spawning
+    twice if take_damage() is called again after it's already dead but not
+    yet pruned (e.g. a splash/chain hit touching it more than once in the
+    same frame): pending_spawns is only ever populated here, and a dead
+    enemy's own take_damage() already no-ops before reaching this check."""
+    base_hp = 55
+    hp_per_wave = 10
+    base_speed = 70.0
+    speed_per_wave = 3.0
+    max_speed = 130.0
+    base_reward = 9
+    reward_per_wave = 2
+    sprite_name = "enemy_splitter"
+    radius = 17
+
+    SPLIT_COUNT = 2
+
+    def take_damage(self, amount):
+        applied = super().take_damage(amount)
+        if self.is_dead and not self.pending_spawns:
+            for _ in range(self.SPLIT_COUNT):
+                child = SplitterChildEnemy(self.waypoints, self.wave_number)
+                child._seek_to_distance(self.distance_traveled)
+                self.pending_spawns.append(child)
+        return applied
+
+
+class SplitterChildEnemy(Enemy):
+    """The split product of SplitterEnemy -- weaker, and not itself a
+    splitter (no further splitting). Deliberately left out of ENEMY_TYPES:
+    WaveManager never spawns one directly, it only ever enters play via
+    SplitterEnemy.pending_spawns."""
+    base_hp = 20
+    hp_per_wave = 4
+    base_speed = 90.0
+    speed_per_wave = 3.5
+    max_speed = 160.0
+    base_reward = 4
+    reward_per_wave = 1
+    sprite_name = "enemy_splitter_child"
+    radius = 11
+
+
+class HealerEnemy(Enemy):
+    """Never fights -- every frame, heals every other living, still-on-
+    the-path enemy within heal_range (see Enemy.receive_heal()), rewarding
+    towers that focus it down first rather than letting a group's damage
+    passively wash away. Mirrors SupportTower's aura on the tower side, but
+    without a reset-before-update two-pass: see receive_heal()'s docstring
+    for why plain additive healing doesn't need one."""
+    base_hp = 45
+    hp_per_wave = 8
+    base_speed = 50.0
+    speed_per_wave = 2.0
+    max_speed = 90.0
+    base_reward = 15
+    reward_per_wave = 3
+    sprite_name = "enemy_healer"
+    radius = 15
+
+    heal_range = 90
+    heal_rate = 6.0  # hp/sec granted to each enemy in range
+
+    def update(self, dt, enemies=None):
+        super().update(dt, enemies)
+        if self.is_dead or self.reached_goal:
+            return
+        # No is_dead/reached_goal check on `other` here -- receive_heal()
+        # already no-ops for those, same as apply_slow/apply_poison/
+        # apply_knockback are already trusted to self-guard everywhere
+        # else in this file. Mirrors SupportTower.update()'s aura loop
+        # (tower.py), which likewise only filters "is this me".
+        heal_amount = self.heal_rate * dt
+        for other in (enemies or ()):
+            if other is self:
+                continue
+            if self.pos.distance_to(other.pos) <= self.heal_range:
+                other.receive_heal(heal_amount)
+
+
 ENEMY_TYPES = {
     "grunt": GruntEnemy,
     "scout": ScoutEnemy,
@@ -477,4 +589,6 @@ ENEMY_TYPES = {
     "boss": BossEnemy,
     "shielded": ShieldedEnemy,
     "flying": FlyingEnemy,
+    "splitter": SplitterEnemy,
+    "healer": HealerEnemy,
 }
