@@ -48,6 +48,14 @@ class GameState(Enum):
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
     HELP = auto()
+    # A roguelike run's own two extra states -- VICTORY stays reserved for
+    # classic/Practice play and editor playtests (self.active_run is None
+    # there), since a run structurally never "wins": FLOOR_CLEARED shows a
+    # non-final floor's results (same board frozen behind it VICTORY/GAME_
+    # OVER already do), DRAFT offers the next floor's tower choice. See
+    # Game._advance_run_floor/_enter_draft.
+    FLOOR_CLEARED = auto()
+    DRAFT = auto()
 
 
 class Game:
@@ -117,6 +125,12 @@ class Game:
         # afterward, once per floor, so a run's own lives/gold survive
         # across each floor's fresh _load_level_object() call.
         self.active_run = None
+        # This floor-clear's draft choices/rects (see _enter_draft) --
+        # only meaningful while self.state == GameState.DRAFT, rebuilt from
+        # scratch every time that screen is (re-)entered, same "computed
+        # fresh, not a persistent cache" spirit as level_select_entries.
+        self.draft_choices = []
+        self.draft_choice_rects = []
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -230,6 +244,29 @@ class Game:
         self._load_level_object(level, endless=endless, sandbox=sandbox)
         self.current_level_id = None
 
+    def _active_tower_names(self):
+        """Which TOWER_TYPES names the build menu should currently offer --
+        a run's own drafted pool while one is active, every registered
+        tower otherwise (classic/Practice play, Daily Challenge, a
+        map-editor playtest)."""
+        return self.active_run.unlocked_towers if self.active_run is not None else ui.TOWER_ORDER
+
+    def _rebuild_button_rects(self):
+        """Rebuilds self.button_rects off _active_tower_names() -- same
+        "rebuilt on demand when the underlying data changes" precedent
+        level_select_rects/wave_unit_rects already establish, rather than a
+        one-time __init__ cache. _load_level_object() itself calls this
+        unconditionally right after resetting active_run to None (see its
+        own comment) -- the correct, all-towers default for every loader
+        that funnels through it (load_level/load_custom_level/
+        resume_saved_run/_start_daily_challenge, and reset()/
+        advance_or_replay_level()'s own direct calls for a custom/
+        playtested level, never part of a run). _load_floor is the one
+        caller that calls this a *second* time, after restoring the real
+        RunState onto self.active_run, to narrow the menu back down to
+        that run's own drafted pool."""
+        self.button_rects = ui.build_button_rects(self._active_tower_names())
+
     def start_new_run(self, seed=None):
         """Start a new roguelike run: a seeded, ordered floor_sequence
         sampled from LEVELS, a starter tower pool (card_pool.STARTER_
@@ -291,6 +328,7 @@ class Game:
         )
         self.active_run = run
         self.current_level_id = level_id
+        self._rebuild_button_rects()
         if floor_index == 0:
             run.lives = self.economy.lives
             run.gold = self.economy.gold
@@ -301,16 +339,36 @@ class Game:
 
     def _advance_run_floor(self):
         """One floor of self.active_run just cleared (see update()'s
-        win-check) -- carry gold/lives forward, auto-pick a card into the
-        run's drafted pool (a real draft screen replaces auto_pick's call
-        here in Milestone 2), and load the next floor."""
+        win-check) -- carry gold/lives forward and show the floor-cleared
+        results screen. self.towers/self.economy are still this just-
+        cleared floor's own live state at this point (the next floor isn't
+        loaded until the player picks a card -- see _enter_draft/
+        _handle_draft_click), so _tower_results() still has something real
+        to show."""
         run = self.active_run
         run.gold = self.economy.gold
         run.lives = self.economy.lives
-        next_floor = run.floor_index + 1
-        picked = card_pool.auto_pick(self._run_rng(_DRAFT_RNG_STREAM, next_floor), run)
-        if picked is not None:
-            run.unlocked_towers.append(picked)
+        self.state = GameState.FLOOR_CLEARED
+
+    def _enter_draft(self):
+        """Advance from FLOOR_CLEARED into the draft screen -- computes
+        this floor-clear's card choices and switches to GameState.DRAFT, or
+        skips straight to the next floor if there's nothing left to draft
+        (every registered tower already unlocked into this run)."""
+        next_floor = self.active_run.floor_index + 1
+        self.draft_choices = card_pool.draft_offer(self._run_rng(_DRAFT_RNG_STREAM, next_floor), self.active_run)
+        if not self.draft_choices:
+            self._load_floor(next_floor)
+            return
+        self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
+        self.state = GameState.DRAFT
+
+    def _handle_draft_click(self, pos):
+        index = ui.get_clicked_draft_choice(pos, self.draft_choice_rects)
+        if index is None:
+            return
+        next_floor = self.active_run.floor_index + 1
+        self.active_run.unlocked_towers.append(self.draft_choices[index])
         self._load_floor(next_floor)
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None):
@@ -340,6 +398,16 @@ class Game:
         # mention active_run explicitly, since every loader funnels
         # through this one method.
         self.active_run = None
+        # Resets the build menu to every registered tower -- correct for
+        # every caller of this method except _load_floor, which restores
+        # active_run to a real RunState right after this method returns
+        # and calls this again itself to narrow the menu back down (see
+        # _rebuild_button_rects's own docstring). Centralizing the default
+        # reset here, rather than requiring every individual loader to
+        # remember its own call, is what covers reset()/
+        # advance_or_replay_level()'s own direct _load_level_object() calls
+        # (a custom/editor-playtested level, never part of a run) for free.
+        self._rebuild_button_rects()
         if endless:
             # Endless mode appends newly-generated waves straight onto
             # wave_specs as the run continues (see WaveManager.
@@ -609,6 +677,8 @@ class Game:
                     self._handle_achievements_click(event.pos)
                 elif self.state == GameState.HELP:
                     self._handle_help_click(event.pos)
+                elif self.state == GameState.DRAFT:
+                    self._handle_draft_click(event.pos)
                 else:
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -654,7 +724,7 @@ class Game:
                     elif letter == "d":
                         self._start_daily_challenge()
                 else:
-                    self.state = GameState.PLAYING
+                    self.start_new_run()
         elif self.state == GameState.SETTINGS:
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
@@ -728,6 +798,23 @@ class Game:
             elif key == pygame.K_r:
                 self.advance_or_replay_level()
                 self.state = GameState.PLAYING
+        elif self.state == GameState.FLOOR_CLEARED:
+            # Escape quits, same as every other post-battle results screen
+            # (VICTORY/GAME_OVER just above) -- any other key advances,
+            # same "press any key to continue" spirit as the menu's own
+            # catch-all, since there's nothing to choose between here
+            # (that's the draft screen's job, entered next).
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            else:
+                self._enter_draft()
+        elif self.state == GameState.DRAFT:
+            # No keyboard equivalent for picking a card, same as the build
+            # menu's own tower buttons -- but Escape should still quit, the
+            # same as every other non-PLAYING screen offers, rather than
+            # leaving this the one screen with no keyboard way out at all.
+            if key == pygame.K_ESCAPE:
+                self.running = False
 
     def _handle_right_click(self):
         if self.state != GameState.PLAYING:
@@ -1221,6 +1308,17 @@ class Game:
     def try_place_tower(self, anchor_col, anchor_row):
         if self.selected_tower_name is None:
             return False
+        # Same authoritative-gate spirit as every other check in this
+        # method (and as try_upgrade_tower/try_specialize_tower's own
+        # independent re-validation of their business rules) -- a run's
+        # drafted pool is real game state to enforce here, not just
+        # something to trust the build menu already filtered. The build
+        # menu's own click handler can in practice only ever set
+        # selected_tower_name to a name ui.build_button_rects(
+        # _active_tower_names()) actually drew a button for, so this
+        # mainly guards against a future path setting it some other way.
+        if self.selected_tower_name not in self._active_tower_names():
+            return False
         if not self.grid.is_buildable(anchor_col, anchor_row):
             return False
 
@@ -1549,6 +1647,23 @@ class Game:
         elif self.state == GameState.VICTORY:
             ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level(),
                                     self._tower_results())
+        elif self.state == GameState.FLOOR_CLEARED and self.active_run is not None:
+            # active_run is None only ever happens by force-setting state
+            # directly (e.g. the render() smoke test's blanket sweep across
+            # every GameState) -- real gameplay only ever reaches
+            # FLOOR_CLEARED via _advance_run_floor, which requires one.
+            # Drawing nothing for that otherwise-unreachable combination is
+            # fine; crashing on it wouldn't be.
+            ui.draw_floor_cleared_screen(
+                self.screen, self.font, self.small_font,
+                self.active_run.floor_index + 1, len(self.active_run.floor_sequence),
+                self._tower_results(),
+            )
+        elif self.state == GameState.DRAFT:
+            ui.draw_draft_screen(
+                self.screen, self.font, self.small_font,
+                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
+            )
 
         pygame.display.flip()
 
@@ -1593,6 +1708,13 @@ class Game:
             if index < len(keys) and rect.collidepoint(mouse_pos):
                 return keys[index]
         return None
+
+    def _hovered_draft_choice(self):
+        """Index into self.draft_choices/draft_choice_rects the mouse is
+        currently over, or None -- lets the draft screen highlight a card
+        before it's clicked, same purpose _hovered_specialize_key serves
+        for the stats panel's own choice buttons."""
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.draft_choice_rects)
 
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered

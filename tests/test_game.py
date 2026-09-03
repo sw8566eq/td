@@ -206,9 +206,10 @@ def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_ea
 
 # --- State machine: keydown handling ---
 
-def test_menu_any_key_starts_playing(game):
+def test_menu_any_key_starts_a_new_run(game):
     game._handle_keydown(pygame.K_SPACE)  # not one of the menu's own bound keys (E/L/S/A)
     assert game.state == GameState.PLAYING
+    assert game.active_run is not None
 
 
 def test_menu_escape_quits_without_starting(game):
@@ -3802,7 +3803,7 @@ def test_render_editor_with_an_import_status_message_does_not_crash(game):
     game.render()
 
 
-# --- Roguelike Run (Milestone 1: floor mechanic, no draft/floor-cleared UI yet) ---
+# --- Roguelike Run (Milestone 1 floor mechanic + Milestone 2 draft UI) ---
 
 def test_start_new_run_populates_active_run_and_loads_floor_zero(game):
     game.start_new_run(seed=1)
@@ -3819,6 +3820,43 @@ def test_start_new_run_captures_floor_zeros_starting_economy(game):
 
     assert game.active_run.lives == game.economy.lives
     assert game.active_run.gold == game.economy.gold
+
+
+def test_starting_a_run_restricts_the_build_menu_to_the_starter_towers(game):
+    game.start_new_run(seed=1)
+    assert set(game.button_rects.keys()) == set(STARTER_TOWERS)
+
+
+def test_a_classic_level_load_restores_the_full_build_menu(game):
+    game.start_new_run(seed=1)
+    game.load_level(1)
+    assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
+
+
+def test_any_direct_load_level_object_call_restores_the_full_build_menu(game):
+    # Regression guard: the build-menu reset lives inside _load_level_object
+    # itself (see its own comment), not hand-repeated at every wrapper that
+    # calls it -- so this holds even for reset()/advance_or_replay_level()'s
+    # own direct _load_level_object() calls for a custom/playtested level,
+    # not just the load_level/load_custom_level/resume_saved_run/
+    # _start_daily_challenge/_load_floor call sites that have their own
+    # test coverage above.
+    game.start_new_run(seed=1)
+    game._load_level_object(LEVELS[1])
+    assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
+
+
+def test_try_place_tower_rejects_a_tower_not_in_the_active_runs_pool(game):
+    game.start_new_run(seed=1)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    # Bypasses the build menu entirely -- selected_tower_name would never
+    # actually reach this value through a real click, since button_rects
+    # only ever offers _active_tower_names() (see try_place_tower's own
+    # defense-in-depth comment).
+    game.selected_tower_name = "sniper"  # not in STARTER_TOWERS
+
+    assert game.try_place_tower(anchor_col, anchor_row) is False
+    assert game.grid.get_tower(anchor_col, anchor_row) is None
 
 
 def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
@@ -3874,7 +3912,7 @@ def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
     assert playing_game.active_run is None
 
 
-def test_floor_clear_carries_gold_and_lives_into_the_next_floor(game):
+def test_floor_clear_enters_floor_cleared_and_captures_gold_lives(game):
     game.start_new_run(seed=1)
     # Distinct from whatever floor 1's own authored starting_gold/
     # starting_lives happen to be -- proves these came from the run, not
@@ -3886,21 +3924,13 @@ def test_floor_clear_carries_gold_and_lives_into_the_next_floor(game):
 
     game.update(dt=0.01)
 
-    assert game.active_run.floor_index == 1
-    assert game.economy.gold == 9999
-    assert game.economy.lives == 3
-
-
-def test_floor_clear_drafts_a_new_tower_into_the_run_and_advances_floors_cleared(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-
-    game.update(dt=0.01)
-
-    assert game.active_run.floors_cleared == 1
-    assert len(game.active_run.unlocked_towers) == len(STARTER_TOWERS) + 1
-    assert set(STARTER_TOWERS).issubset(game.active_run.unlocked_towers)
+    # The next floor isn't loaded yet -- that only happens once the player
+    # advances through FLOOR_CLEARED and picks a draft choice (see below) --
+    # so floor_index/self.economy still reflect the floor just cleared.
+    assert game.state == GameState.FLOOR_CLEARED
+    assert game.active_run.floor_index == 0
+    assert game.active_run.gold == 9999
+    assert game.active_run.lives == 3
 
 
 def test_floor_clear_never_reaches_classic_victory(game):
@@ -3911,7 +3941,97 @@ def test_floor_clear_never_reaches_classic_victory(game):
     game.update(dt=0.01)
 
     assert game.state != GameState.VICTORY
+    assert game.state == GameState.FLOOR_CLEARED
+
+
+def test_floor_cleared_any_key_enters_draft(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+
+    game._handle_keydown(pygame.K_SPACE)
+
+    assert game.state == GameState.DRAFT
+    assert len(game.draft_choices) == len(game.draft_choice_rects)
+    assert game.draft_choices  # STARTER_TOWERS isn't the whole registry yet
+
+
+def test_floor_cleared_escape_quits(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    assert game.state == GameState.FLOOR_CLEARED
+
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    assert game.running is False
+
+
+def test_draft_escape_quits(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    game._enter_draft()
+    assert game.state == GameState.DRAFT
+
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    assert game.running is False
+
+
+def test_enter_draft_skips_the_draft_screen_once_the_pool_is_exhausted(game):
+    game.start_new_run(seed=1)
+    game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already drafted
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+
+    game._enter_draft()
+
     assert game.state == GameState.PLAYING
+    assert game.active_run.floor_index == 1
+
+
+def test_picking_a_draft_choice_advances_to_the_next_floor(game):
+    game.start_new_run(seed=1)
+    game.economy.gold = 9999
+    game.economy.lives = 3
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    game._enter_draft()
+    picked = game.draft_choices[0]
+    rect = game.draft_choice_rects[0]
+
+    game._handle_draft_click(rect.center)
+
+    assert game.state == GameState.PLAYING
+    assert game.active_run.floor_index == 1
+    assert picked in game.active_run.unlocked_towers
+    # Carried from the just-cleared floor, not floor 1's own authored
+    # starting_gold/starting_lives -- same proof test_floor_clear_enters_
+    # floor_cleared_and_captures_gold_lives makes for the FLOOR_CLEARED
+    # step, extended through the rest of the flow.
+    assert game.economy.gold == 9999
+    assert game.economy.lives == 3
+    assert picked in game.button_rects  # menu reflects the newly-drafted tower too
+
+
+def test_clicking_off_a_draft_card_does_nothing(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    game._enter_draft()
+    unlocked_before = list(game.active_run.unlocked_towers)
+
+    game._handle_draft_click((0, 0))  # nowhere near any card
+
+    assert game.state == GameState.DRAFT
+    assert game.active_run.unlocked_towers == unlocked_before
 
 
 def test_last_floor_of_a_run_loads_endless(game):
@@ -3937,21 +4057,55 @@ def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
     assert game.active_run.seed == seed
 
 
-def test_run_seed_reproduces_the_same_first_draft_pick(game):
+def test_run_seed_reproduces_the_same_draft_offer(game):
     # Floor-sequence reproducibility for a fixed seed is already covered by
     # test_start_new_run_is_deterministic_for_a_fixed_seed above -- this
-    # covers the one additional fact that test can't: the draft pick
-    # (derived via _run_rng, only reachable through Game) reproduces too.
+    # covers the one additional fact that test can't: the draft offer
+    # itself (derived via _run_rng, only reachable through Game)
+    # reproduces too, so two players on the same seed see the same cards.
     game.start_new_run(seed=99)
     game.wave_manager.all_waves_complete = True
     game.enemies = []
     game.update(dt=0.01)
-    first_pool_after_draft = list(game.active_run.unlocked_towers)
+    game._enter_draft()
+    first_offer = list(game.draft_choices)
 
     game.start_new_run(seed=99)
     game.wave_manager.all_waves_complete = True
     game.enemies = []
     game.update(dt=0.01)
-    second_pool_after_draft = list(game.active_run.unlocked_towers)
+    game._enter_draft()
+    second_offer = list(game.draft_choices)
 
-    assert first_pool_after_draft == second_pool_after_draft
+    assert first_offer == second_offer
+
+
+def test_render_floor_cleared_does_not_crash(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    assert game.state == GameState.FLOOR_CLEARED
+
+    game.render()
+
+
+def test_render_draft_does_not_crash(game):
+    game.start_new_run(seed=1)
+    game.wave_manager.all_waves_complete = True
+    game.enemies = []
+    game.update(dt=0.01)
+    game._enter_draft()
+    assert game.state == GameState.DRAFT
+
+    mock_mouse_pos((0, 0))  # exercises _hovered_draft_choice's "over nothing" path
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
+
+    mock_mouse_pos(game.draft_choice_rects[0].center)  # and its "over a card" path
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
