@@ -66,11 +66,17 @@ ACTION_AREA_TOP = TARGETING_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GA
 SELL_BUTTON_TOP = ACTION_AREA_TOP + 2 * (ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP)
 
 
-def build_button_rects():
-    """Rects for each tower's build-menu button, keyed by registry name."""
+def build_button_rects(tower_names=TOWER_ORDER):
+    """Rects for each tower's build-menu button, keyed by registry name.
+    `tower_names` defaults to every registered tower (classic/Practice
+    play); a roguelike run passes its own RunState.unlocked_towers instead
+    (see Game._active_tower_names/_rebuild_button_rects), restricting the
+    menu to only the towers that run has drafted so far -- everything else
+    about a button (its Rect shape, hit-testing, drawing) is unchanged
+    regardless of which names it's built from."""
     rects = {}
     x = BUTTON_MARGIN
-    for name in TOWER_ORDER:
+    for name in tower_names:
         rects[name] = pygame.Rect(x, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE)
         x += BUTTON_SIZE + BUTTON_MARGIN
     return rects
@@ -197,7 +203,11 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         cost_rect = cost_text.get_rect(center=(rect.centerx, rect.bottom - 10))
         surface.blit(cost_text, cost_rect)
 
-    info_x = BUTTON_MARGIN + len(TOWER_ORDER) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
+    # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
+    # menu shows only its own drafted subset (see build_button_rects), and
+    # the gold/lives/wave text needs to sit right after however many
+    # buttons are actually drawn, not always past all 9 registered towers.
+    info_x = BUTTON_MARGIN + len(button_rects) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
     gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
     gold_text = font.render(f"Gold: {gold_display}", True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
@@ -342,7 +352,8 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
     is_placed = not inspect.isclass(subject)
     tower_cls = type(subject) if is_placed else subject
 
-    y = _draw_panel_header(surface, font, small_font, x, subject, is_placed, tower_cls, hovered_specialize_key)
+    y = _draw_panel_header(surface, font, small_font, x, PANEL_PADDING, subject, is_placed,
+                            tower_cls, hovered_specialize_key)
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
 
     if is_placed:
@@ -370,12 +381,15 @@ def _draw_panel_hint(surface, small_font, x):
         y += PANEL_ROW_HEIGHT
 
 
-def _draw_panel_header(surface, font, small_font, x, subject, is_placed, tower_cls, hovered_specialize_key):
+def _draw_panel_header(surface, font, small_font, x, y, subject, is_placed, tower_cls, hovered_specialize_key):
     """Title, then either a placed tower's level/specialization line (plus
     a "choose a specialization" hint and the hovered option's description
     while eligible to) or a build-menu class's base cost. Returns the y
-    position the stat rows should start at."""
-    y = PANEL_PADDING
+    position the stat rows should start at. `y` is the starting position
+    (the sidebar panel always passes PANEL_PADDING; the draft screen's
+    cards -- see _draw_draft_card -- pass their own rect's own top instead,
+    which is the only reason this takes y as a parameter rather than
+    hardcoding PANEL_PADDING itself like it used to)."""
     title = font.render(tower_cls.display_name, True, settings.COLOR_TEXT)
     surface.blit(title, (x, y))
     y += 34
@@ -443,6 +457,91 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         y += PANEL_ROW_HEIGHT
 
 
+# --- Draft screen (a roguelike run's between-floors tower choice) ---
+
+DRAFT_CARD_WIDTH = settings.PANEL_WIDTH  # matches the sidebar's own visual width
+DRAFT_CARD_HEIGHT = 260
+DRAFT_CARD_GAP = 24
+DRAFT_CARDS_TOP = 200
+
+
+def build_draft_choice_rects(count):
+    """`count` rects for the draft screen's card choices, laid out as a
+    centered horizontal row -- generalizes build_specialize_button_rects's
+    fixed-2-rect pattern to however many candidates card_pool.draft_offer
+    actually returned (usually its own default count, but fewer once a
+    run's pool is nearly exhausted). Empty for count == 0 (nothing left to
+    draft -- see Game._enter_draft, which skips this screen entirely in
+    that case) since range(0) below already yields nothing."""
+    total_width = count * DRAFT_CARD_WIDTH + (count - 1) * DRAFT_CARD_GAP
+    start_x = (settings.SCREEN_WIDTH - total_width) // 2
+    return [
+        pygame.Rect(start_x + i * (DRAFT_CARD_WIDTH + DRAFT_CARD_GAP), DRAFT_CARDS_TOP,
+                    DRAFT_CARD_WIDTH, DRAFT_CARD_HEIGHT)
+        for i in range(count)
+    ]
+
+
+def get_clicked_draft_choice(pos, draft_choice_rects):
+    """Index into `choices`/`draft_choice_rects` (see draw_draft_screen)
+    the click landed on, or None -- draft_choice_rects is a list, not a
+    dict keyed by name, since card_pool.draft_offer can offer the same
+    tower name at most once but nothing stops a future draft variant
+    (relics, Milestone 4) from wanting duplicate entries; index is the
+    only identifier guaranteed unique."""
+    for index, rect in enumerate(draft_choice_rects):
+        if rect.collidepoint(pos):
+            return index
+    return None
+
+
+def _draw_draft_card(surface, font, small_font, rect, name, hovered):
+    tower_cls = TOWER_TYPES[name]
+    fill_color = settings.COLOR_BUTTON_SELECTED if hovered else settings.COLOR_HUD_BG
+    pygame.draw.rect(surface, fill_color, rect, border_radius=8)
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+
+    x = rect.x + PANEL_PADDING
+    # Reuses the sidebar's own class-subject header+stats rendering
+    # verbatim (a draft card is exactly a build-menu selection's
+    # not-yet-built display, just laid out in its own rect instead of the
+    # fixed sidebar slot) -- see _draw_panel_header's own docstring for why
+    # it takes y as a parameter rather than hardcoding PANEL_PADDING.
+    y = _draw_panel_header(surface, font, small_font, x, rect.y + PANEL_PADDING,
+                            tower_cls, False, tower_cls, None)
+    _draw_panel_stats(surface, small_font, x, y, tower_cls, tower_cls, False)
+
+
+def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, hovered_index=None):
+    """`choices` is a list of TOWER_TYPES names (see card_pool.draft_offer),
+    `draft_choice_rects` one Rect per choice, same length/order (see
+    build_draft_choice_rects). The board underneath (grid/towers/HUD) is
+    left drawn by the caller -- same "frozen board behind a dark overlay"
+    look draw_victory_screen/draw_game_over_screen already use, for visual
+    continuity between the floor that was just cleared and the choice
+    that's about to shape the next one."""
+    _draw_dim_overlay(surface)
+
+    title = font.render("Choose a new tower", True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 40)))
+
+    for index, name in enumerate(choices):
+        _draw_draft_card(surface, font, small_font, draft_choice_rects[index], name, index == hovered_index)
+
+
+# --- Floor Cleared screen (a roguelike run's own per-floor results) ---
+
+def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_count, results=None):
+    """floor_number/floor_count are 1-based ("Floor 2/6 cleared!") -- the
+    run's own equivalent of draw_victory_screen, just without "next
+    level"/"play again" framing since advancing goes to the draft screen
+    (see draw_draft_screen above) instead of straight back into play."""
+    _draw_overlay_with_results(
+        surface, font, small_font, f"Floor {floor_number}/{floor_count} cleared!",
+        "Press any key to continue", settings.COLOR_GOLD, results,
+    )
+
+
 def _draw_panel_action_buttons(surface, small_font, subject, economy,
                                 upgrade_button_rect, specialize_button_rects, sell_button_rect):
     """Upgrade (below MAX_LEVEL) or two Specialize choices (at MAX_LEVEL,
@@ -465,6 +564,19 @@ def _draw_panel_action_buttons(surface, small_font, subject, economy,
     action_button(sell_button_rect, f"Sell (+{subject.sell_value()}g)", True)
 
 
+def _draw_dim_overlay(surface, width=None):
+    """The full-height, semi-transparent black backdrop every full-screen
+    overlay in this module draws before its own content -- shared by
+    _draw_centered_overlay below (menu/pause/victory/game-over/floor-
+    cleared) and draw_draft_screen, so the two don't silently drift apart
+    on how dim "dim" is."""
+    if width is None:
+        width = settings.SCREEN_WIDTH
+    overlay = pygame.Surface((width, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 170))
+    surface.blit(overlay, (0, 0))
+
+
 def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_color, width=None):
     """`subtitle` is a single string, or a list of strings each rendered
     on its own line below the title (used by the pause menu's option
@@ -475,9 +587,7 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
     guess at how tall the title+subtitle block turned out to be."""
     if width is None:
         width = settings.SCREEN_WIDTH
-    overlay = pygame.Surface((width, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 170))
-    surface.blit(overlay, (0, 0))
+    _draw_dim_overlay(surface, width=width)
 
     title_text = font.render(title, True, title_color)
     title_rect = title_text.get_rect(center=(width // 2, settings.SCREEN_HEIGHT // 2 - 20))
@@ -526,7 +636,7 @@ def menu_options(has_saved_run=False):
     unit-testable directly (see test_ui.py) and so it can share
     MENU_KEY_HINTS with Game._handle_keydown's own dispatch above rather
     than hand-listing the same letters a second time."""
-    options = ["Press any key to start"]
+    options = ["Press any key to start a run"]
     options += [f"{letter.upper()} -- {label}" for letter, label in MENU_KEY_HINTS]
     if has_saved_run:
         options.append("C -- Continue")

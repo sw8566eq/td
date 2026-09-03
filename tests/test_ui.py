@@ -28,6 +28,7 @@ from ui import (
     _wrap_text,
     build_achievements_back_rect,
     build_button_rects,
+    build_draft_choice_rects,
     build_help_back_rect,
     build_editor_action_rects,
     build_editor_tool_rects,
@@ -45,11 +46,14 @@ from ui import (
     build_wave_unit_rects,
     compute_tower_results,
     draw_achievements_screen,
+    draw_draft_screen,
+    draw_floor_cleared_screen,
     draw_game_over_screen,
     draw_help_screen,
     draw_level_select_screen,
     draw_results_table,
     draw_victory_screen,
+    get_clicked_draft_choice,
     get_clicked_editor_action,
     get_clicked_editor_tool,
     get_clicked_level_select_entry,
@@ -84,7 +88,7 @@ from ui import (
 
 def test_menu_options_lists_every_key_in_documented_order():
     assert menu_options(has_saved_run=False) == [
-        "Press any key to start",
+        "Press any key to start a run",
         "E -- Map Editor",
         "L -- Level Browser",
         "S -- Settings",
@@ -105,6 +109,13 @@ def test_build_button_rects_has_one_entry_per_registered_tower():
 
     rects = build_button_rects()
     assert set(rects.keys()) == set(TOWER_TYPES.keys())
+
+
+def test_build_button_rects_respects_a_custom_tower_names_list():
+    # A roguelike run's own restricted pool (see Game._active_tower_names) --
+    # the whole point of the tower_names param.
+    rects = build_button_rects(tower_names=("basic", "cannon"))
+    assert set(rects.keys()) == {"basic", "cannon"}
 
 
 def test_get_clicked_tower_button_returns_matching_name():
@@ -342,6 +353,53 @@ def test_draw_game_over_screen_with_results_does_not_raise():
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     results = compute_tower_results([_FakeTowerResult("Basic", 4, 3, 30, 1)])
     draw_game_over_screen(surface, font, small_font, results=results)
+
+
+def test_draw_floor_cleared_screen_with_results_does_not_raise():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    results = compute_tower_results([_FakeTowerResult("Basic", 4, 3, 30, 1)])
+    draw_floor_cleared_screen(surface, font, small_font, 2, 6, results=results)
+
+
+# --- Draft screen ---
+
+def test_build_draft_choice_rects_returns_one_rect_per_choice():
+    rects = build_draft_choice_rects(3)
+    assert len(rects) == 3
+
+
+def test_build_draft_choice_rects_is_empty_for_zero_choices():
+    assert build_draft_choice_rects(0) == []
+
+
+def test_build_draft_choice_rects_does_not_overlap():
+    rects = build_draft_choice_rects(3)
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_draft_choice_returns_matching_index():
+    rects = build_draft_choice_rects(3)
+    assert get_clicked_draft_choice(rects[1].center, rects) == 1
+
+
+def test_get_clicked_draft_choice_returns_none_outside_all_cards():
+    rects = build_draft_choice_rects(3)
+    assert get_clicked_draft_choice((0, 0), rects) is None
+
+
+def test_draw_draft_screen_does_not_raise():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    choices = ["basic", "cannon", "support"]  # support exercises the IS_SUPPORT branch too
+    rects = build_draft_choice_rects(len(choices))
+    draw_draft_screen(surface, font, small_font, choices, rects, hovered_index=1)
 
 
 def test_format_wave_preview_orders_by_registry_order_not_dict_order():

@@ -1,6 +1,6 @@
 import random
 
-from card_pool import STARTER_TOWERS, auto_pick, draft_offer
+from card_pool import STARTER_TOWERS, draft_offer
 from run_state import RunState
 from tower import TOWER_TYPES
 
@@ -46,16 +46,3 @@ def test_draft_offer_respects_a_custom_unlocked_pool():
     run = _run([])
     offer = draft_offer(random.Random(1), run, count=5, unlocked_pool=("basic", "cannon"))
     assert set(offer) == {"basic", "cannon"}
-
-
-def test_auto_pick_returns_one_of_the_offered_candidates():
-    run = _run(STARTER_TOWERS)
-    rng = random.Random(3)
-    expected_offer = draft_offer(random.Random(3), run, count=3)
-    picked = auto_pick(rng, run)
-    assert picked == expected_offer[0]
-
-
-def test_auto_pick_returns_none_once_the_pool_is_exhausted():
-    run = _run(TOWER_TYPES.keys())
-    assert auto_pick(random.Random(1), run) is None
