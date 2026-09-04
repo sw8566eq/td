@@ -11,12 +11,7 @@ run_floors.py for how floor_sequence is sampled and card_pool.py for the
 starter tower pool a run begins with.
 """
 
-from dataclasses import dataclass
-
-# Milestone 4 adds `relics: list` (run-wide passive modifier cards) and
-# `is_daily: bool` (Daily Run) to this dataclass -- left out for now rather
-# than added unused, since nothing reads either until that milestone gives
-# them real behavior.
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -31,6 +26,22 @@ class RunState:
     # exception to "the run's own lives/gold carry into a floor load."
     lives: int = 0
     gold: int = 0
+    # Run-wide passive modifier cards -- see relics.py. Grows via a
+    # relic-flavored draft offered instead of a tower draft on alternating
+    # floors (see Game._is_relic_floor), the same "drafted into a list"
+    # shape unlocked_towers already has -- though unlike unlocked_towers
+    # (a required field, no default of its own to get wrong), this one
+    # does need field(default_factory=list) rather than a bare `= []`, the
+    # same mutable-default-arg precedent levels.py's own Level.
+    # blocked_cells/branch_weights already establish, so this default is
+    # never shared/aliased across RunState instances.
+    relics: list = field(default_factory=list)
+    # Whether this is a Daily Run (see Game.start_new_run/daily_challenge.
+    # todays_seed) -- read by run_history.py-adjacent code that wants to
+    # distinguish a Daily Run's outcome from an ordinary one; nothing
+    # branches game logic on it (a Daily Run plays by the exact same rules,
+    # just with a seed everyone shares that day).
+    is_daily: bool = False
 
     @property
     def current_level_id(self):

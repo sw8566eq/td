@@ -399,7 +399,18 @@ def test_draw_draft_screen_does_not_raise():
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     choices = ["basic", "cannon", "support"]  # support exercises the IS_SUPPORT branch too
     rects = build_draft_choice_rects(len(choices))
-    draw_draft_screen(surface, font, small_font, choices, rects, hovered_index=1)
+    draw_draft_screen(surface, font, small_font, choices, rects, "tower", hovered_index=1)
+
+
+def test_draw_draft_screen_with_relics_does_not_raise():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    from relics import RELICS
+    choices = list(RELICS.keys())[:2]
+    rects = build_draft_choice_rects(len(choices))
+    draw_draft_screen(surface, font, small_font, choices, rects, "relic", hovered_index=0)
 
 
 def test_format_wave_preview_orders_by_registry_order_not_dict_order():
