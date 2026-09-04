@@ -14,7 +14,7 @@ python main.py --unlimited-gold    # debug flag -- every purchase always succeed
 python main.py --editor            # launch straight into the map editor (also reachable via E from the menu)
 
 pytest                             # full suite
-pytest tests/test_grid.py          # one file
+pytest tests/test_run.py           # one file
 pytest tests/test_grid.py::test_non_path_cell_is_buildable   # one test
 pytest -v                          # what CI runs (.github/workflows/tests.yml)
 
@@ -23,18 +23,99 @@ pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Li
 
 No linter/formatter is configured. `pyproject.toml` only sets pytest's `pythonpath`.
 
-`Game()` and some `AssetManager` tests open a real pygame window; `tests/test_game.py` and
-`tests/test_assets.py` force the SDL dummy video driver themselves
-(`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")` before pygame is imported), so `pytest` runs
-headless with no extra setup anywhere, including CI.
+`Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
+forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
+once in `tests/conftest.py` for every `Game`-level module, and again in `tests/test_assets.py`,
+which stands alone. `pytest` runs headless with no extra setup anywhere, including CI.
+
+The `Game`-level tests are split three ways by concern, all drawing fixtures (`game`/
+`playing_game`) and helpers (`find_buildable_anchor`, `cell_center_px`, `make_custom_level`, the
+`mock_mouse_pos`/`mock_key_mods` pairs) from `tests/conftest.py`: `tests/test_game.py` (state
+machine, input handling, the update loop, rendering), `tests/test_run.py` (the roguelike run
+lifecycle end to end), and `tests/test_game_editor.py` (the map editor, wave editor, and level
+browser screens as `Game` drives them). `Editor` itself is still tested directly in
+`tests/test_editor.py`.
 
 ## Architecture
 
 `Game` (`game.py`) is the state machine and frame loop: it owns `Grid`, `Economy`, `WaveManager`,
 and the live `enemies`/`towers`/`projectiles` lists, and drives `handle_events()` ->
-`update(dt)` -> `render()` each frame. `load_level()` rebuilds all of that from a `Level` in one
-call, so `reset()` / `advance_or_replay_level()` (win -> next level, or replay the last one) are
-just "call `load_level` again."
+`update(dt)` -> `render()` each frame. `_load_level_object()` rebuilds all of that from a `Level`
+in one call -- it's the single choke point every way of starting a level funnels through
+(`load_level()` for a `LEVELS` id, `load_custom_level()` for an editor-authored one,
+`_load_floor()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
+`advance_or_replay_level()` are just "call it again."
+
+**The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
+played on its own still works exactly as it always did, but that's now Practice, a side path; the
+main path is a run. Read the next section before anything else here.
+
+### The roguelike run loop is the primary loop
+
+A **run** is a seeded, ordered sequence of floors, each floor one full `_load_level_object()` pass
+on one `Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load
+always did. What's new is `RunState` (`run_state.py`), the small bundle that survives *across* those
+resets: seed, `floor_sequence`, `floor_index`, `difficulty`, lives, gold, `unlocked_towers`, and
+`relics`. Placed towers and the grid stay floor-scoped, deliberately -- a deckbuilder doesn't carry
+board state between combats, only your deck and your HP. `Game.active_run` holds it, and is reset to
+`None` inside `_load_level_object()` itself (not at each call site), so any loader that doesn't know
+about runs -- `resume_saved_run()` for a classic save, say -- structurally can't leak a stale
+`RunState` into a non-run level.
+
+The pieces, each a small module in this codebase's registry-or-bare-function style:
+
+- `run_floors.py` -- `sample_floor_sequence(rng, count=6)`: ids sampled from `LEVELS` *without*
+  reordering. Deliberately not a shuffle: `LEVELS`' ids already read as an authored difficulty ramp,
+  so ascending order is what makes a run escalate rather than occasionally front-loading a hard map.
+- `card_pool.py` -- a "card" is, for v1, exactly a `TOWER_TYPES` key. `STARTER_TOWERS` is what every
+  run begins with; `draft_offer(rng, run, ...)` samples `count` names from the account-wide unlocked
+  pool minus what the run already holds, returning *fewer* than `count` once exhausted rather than
+  raising. `_default_unlocked_pool` reorders into `TOWER_TYPES`' own registry order before sampling
+  -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
+  break "the same seed offers the same cards" across two process launches.
+- `relics.py` -- `RELICS`, a registry of run-wide passive modifiers (`gold_per_floor_bonus`/
+  `starting_gold_multiplier`/`starting_lives_bonus`/`enemy_gold_multiplier`), plus `relic_offer()`
+  (mirroring `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards.
+- `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
+  precisely because `floor_index` is unbounded once the final floor's endless tail runs.
+- `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.
+
+`Game.start_new_run(seed=None, is_daily=False)` builds the `RunState` and calls `_load_floor(0)`.
+`_load_floor` composes *three* independent extra factors into the one `_load_level_object()` call --
+the run's snapshotted `difficulty`, `escalation_for_floor(floor_index)`, and
+`compose_relic_modifiers(run.relics)` -- each an extra multiplier on top of what's already there,
+never a replacement, per `difficulty.py`'s own rule. Floor 0 is the one asymmetric case: `RunState`
+starts with `lives=gold=0` as a placeholder and *captures* floor 0's freshly-loaded `Economy`,
+while floor 1 onward *restores* into it instead.
+
+Clearing a floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameState.FLOOR_CLEARED`
+-> (any key) `_enter_draft()` -> `GameState.DRAFT` -> (click) `_handle_draft_click()` ->
+`_load_floor(next)`. Two details worth knowing:
+
+- `_enter_draft` picks the draft's *kind* by floor (`_is_relic_floor`: every
+  `relics.RELIC_FLOOR_INTERVAL`-th, so a 6-floor run's 5 draft screens -- one per floor cleared, the
+  6th never clears once it's loaded `endless=True` -- alternate 3 tower / 2 relic, never both at
+  once), and skips the screen entirely -- straight to the next floor -- if
+  that kind has nothing left to offer.
+- The next floor isn't loaded until a card is actually picked, which is what leaves
+  `self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
+
+A run ends **only** by permadeath. The last floor always loads `endless=True`, so
+`all_waves_complete` structurally can never fire for it, and `update()`'s win-check routes a run to
+`_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the run" event by
+construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
+`run_history.py` and bumps the meta-progression counters.
+
+Both RNG streams a floor needs (its own enemy routing, and its draft offer) are re-derived from
+`(run.seed, floor_index)` on demand via `Game._run_rng(stream, floor_index)` rather than carried as
+one continuously-consumed `random.Random`. That's what lets `save_state.py` serialize a run without
+serializing any RNG state at all -- a resumed run just re-derives the identical objects.
+
+A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
+`start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
+snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.
+`run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
+needs no special handling anywhere.
 
 ### Content is registries, not conditionals
 
@@ -42,7 +123,13 @@ Towers (`TOWER_TYPES` in `tower.py`), enemies (`ENEMY_TYPES` in `enemy.py`), and
 in `levels.py`) are all `{name: class_or_instance}` dicts. `Grid`, `WaveManager`, `ui.py`'s build
 menu, and `Game`'s placement logic all iterate or index these registries generically -- adding a
 new tower/enemy/level is subclassing (or a new `Level(...)`) plus one registry line, never a
-change to the systems that consume it. `Tower.EXTRA_STATS` (label, attribute, format-fn tuples)
+change to the systems that consume it. The run loop added one wrinkle to exactly one of those
+consumers: the build menu is built from `Game._active_tower_names()` (a run's own
+`unlocked_towers` while one is active, `ui.TOWER_ORDER` otherwise) rather than `TOWER_TYPES`
+directly, rebuilt on demand by `_rebuild_button_rects()` inside `_load_level_object()` -- the same
+"rebuilt on demand, never cached once" precedent `level_select_rects` already set. `try_place_tower`
+re-checks membership itself as defense in depth, since `selected_tower_name` could in principle
+outlive the menu that set it. `Tower.EXTRA_STATS` (label, attribute, format-fn tuples)
 is how a subclass's special mechanic (splash radius, slow %, chain range, ...) shows up in the
 stats panel automatically. `Projectile` (`projectile.py`) is a single data-parametrized class, not
 one subclass per tower -- splash/slow/knockback/chain are just constructor args a tower's
@@ -201,8 +288,9 @@ list of names.
 The level browser (`GameState.LEVEL_SELECT`) serves two different purposes from the same screen,
 tracked by `Game.level_select_purpose` ("play", the default, or "edit") and threaded through to
 `ui.draw_level_select_screen` for its title/back-hint/tag text: entered via the menu's `L`, it lists
-built-ins and custom levels together and picking one starts playing it (unchanged); entered via the
-editor's "Load Map..." action (`Game._handle_editor_action`'s `"load"` branch,
+built-ins and custom levels together and picking one starts playing it as **Practice** -- always
+`sandbox=True`, never gated by anything, earning nothing (see "Difficulty modes, Sandbox/Practice
+mode, and player settings" below); entered via the editor's "Load Map..." action (`Game._handle_editor_action`'s `"load"` branch,
 `_enter_level_select(purpose="edit")`), it lists **only** custom levels -- a built-in one has no
 corresponding file to reopen -- and picking one calls `Editor.load_level(level)` instead, then
 returns to `GameState.EDITOR` rather than `PLAYING`. `Editor.load_level()` is a full replace of every
@@ -279,8 +367,10 @@ enemy it eventually hits). `Game.try_sell_tower()` moves a sold tower into `self
 than discarding it, so a tower's stats still show up in the results table even after being sold
 mid-level -- `Game._tower_results()` reports on `self.towers + self.sold_towers` together.
 `ui.compute_tower_results()`/`draw_results_table()` render that as a compact, damage-sorted table
-capped at `RESULTS_MAX_ROWS` rows (with a "+N more" line for the overflow) underneath both the
-Victory and Game Over overlays -- `accuracy` is `None` (not `0`) for a tower that never got a shot
+capped at `RESULTS_MAX_ROWS` rows (with a "+N more" line for the overflow) underneath the Victory,
+Game Over, and Floor Cleared overlays alike (a run's floor clear is the common case now -- see
+`_advance_run_floor`'s docstring for why the just-cleared floor's towers are still live at that
+point) -- `accuracy` is `None` (not `0`) for a tower that never got a shot
 off, which is *every* `SupportTower`, so the table shows `"--"` rather than a misleading `0%`.
 
 `Tower.total_invested` (base `cost` + every upgrade/specialization cost actually paid) is what
@@ -328,7 +418,7 @@ endless run gets its own private wave list to grow. `Game.level_select_endless_a
 into whichever level gets picked next; it's independent of, and combinable with, Sandbox mode (see
 below).
 
-### Difficulty modes, Sandbox mode, and player settings
+### Difficulty modes, Sandbox/Practice mode, and player settings
 
 `difficulty.py`'s `DIFFICULTY_MODES` registry (easy/normal/hard, same `{key: ...}` shape as every
 other registry in this codebase) is a bundle of multipliers -- `enemy_hp_multiplier`/
@@ -342,49 +432,68 @@ difficulty is a **sticky, cross-session player preference** (`self.difficulty`, 
 `player_settings.py`), read at `_load_level_object` time -- changing it mid-level has no effect
 until the next level load, the same "applies on next load" precedent `unlimited_gold` already set.
 
-**Sandbox/Creative mode** is a player-reachable, per-run alternative to the CLI-only
+**Sandbox/Creative mode** is a player-reachable, per-level alternative to the CLI-only
 `--unlimited-gold` debug flag, threaded through `load_level`/`load_custom_level`/
-`_load_level_object` exactly parallel to `endless` above (a sticky `self.sandbox`, a second
-level-select toggle -- `B`, independent of and combinable with `V` -- and its own
-`Game.level_select_sandbox_armed`). It sets both `Economy.unlimited_gold` and a new
-`Economy.invulnerable` (`lose_life()` becomes a no-op, `is_out_of_lives` stays `False` regardless of
-`self.lives`, mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a
-decrement-then-clamp `ui.py` would then have to also mask). A sandbox win intentionally does *not*
-call `progress.mark_level_cleared()` or bump any achievement counter -- trivializing victory
-shouldn't trivialize real progress -- the same reasoning that already keeps a genuine endless run's
-`all_waves_complete` from ever firing at all.
+`_load_level_object` exactly parallel to `endless` above (a sticky `self.sandbox`). It used to be
+its own independent level-select toggle (`B`, alongside `V`'s endless toggle); the run loop's
+Practice mode (below) absorbed that entirely -- picking any level to play always loads
+`sandbox=True` now, unconditionally, so there is no `B` key or `level_select_sandbox_armed` flag
+left to arm it separately. It sets both `Economy.unlimited_gold` and a new `Economy.invulnerable`
+(`lose_life()` becomes a no-op, `is_out_of_lives` stays `False` regardless of `self.lives`,
+mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a decrement-then-clamp
+`ui.py` would then have to also mask). A sandbox win intentionally does *not* record progress or
+bump any achievement/meta-progression counter -- trivializing victory shouldn't trivialize real
+progress -- the same reasoning that already keeps a genuine endless run's `all_waves_complete` from
+ever firing at all. `Game._record_level_cleared()`'s own `if self.sandbox: return` is the one gate
+for the `progress.py` half; `_record_achievement`/`_record_meta_progress` carry the same gate
+internally for every counter, never re-checked at each call site.
+
+**Practice mode** is what absorbed "play a level standalone": `LEVEL_SELECT`'s play purpose always
+loads `sandbox=True`. That's a deliberate design position, not an implementation detail -- real
+progress comes only from playing a run, so a standalone level is explicitly a place to experiment
+and earns nothing. It's also what retired `progress.is_unlocked()`: with no progress to gate on and
+no gate to apply it to, sequential campaign unlocking was removed outright rather than left
+half-wired (see the `progress.py` bullet below for what survived).
 
 The `GameState.SETTINGS` screen (`S` from the menu) is where `fullscreen` and `difficulty` actually
 get changed (`ui.draw_settings_screen`/`get_clicked_settings_option`); both persist immediately on
 change via `player_settings.save_settings()` rather than only on quit, the same "write through
-immediately" choice `progress.mark_level_cleared()` and the achievement/save-state modules below all
-make too.
+immediately" choice `progress.mark_level_cleared()` and the achievement/meta-progression/save-state
+modules below all make too.
 
-### Small on-disk JSON state files: progress, achievements, and a saved run
+### Small on-disk JSON state files: progress, achievements, meta-progression, run history, and a saved run
 
-Four modules now follow the exact same shape for local player data: one JSON file, a defensive
+Six modules now follow the exact same shape for local player data: one JSON file, a defensive
 `load_*()` that falls back to an empty/default state on a missing or corrupt file rather than
 crashing (same spirit as `AssetManager` falling back to a placeholder sprite), and a path that's
 always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievements_path`/
-`save_path` params) so tests never touch the real repo-root files. All four are gitignored -- local
-player data, not shipped content, same as `custom_levels/`. That shared shape isn't just
-convention -- `json_io.load_json_with_fallback(path, transform, default)` is the one function all
-four `load_*()`s actually call: it does the file-exists check and `try`/`except` itself, and takes
+`save_path`/`meta_progression_path`/`run_history_path` params) so tests never touch the real
+repo-root files. All six are gitignored -- local player data, not shipped content, same as
+`custom_levels/`. That shared shape isn't just convention --
+`json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
+`load_*()`s actually calls: it does the file-exists check and `try`/`except` itself, and takes
 `transform` (parsed JSON -> whatever shape the caller wants, also where a caller raises on
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
 accidentally shared across calls) as the two places each module still supplies its own behavior.
-`json_io.module_relative_path(module_file, *parts)` factors out the other shape all six on-disk-state
-modules share (the four above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
+`json_io.module_relative_path(module_file, *parts)` factors out the other shape all eight
+on-disk-state modules share (the six above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
 `DEFAULT_ASSET_ROOT`): a path anchored to the calling module's own `__file__`, not the process's
 current working directory -- see "Release binary" below for why that distinction matters for a
-packaged build. Before this was factored out, all six independently wrote the same
+packaged build. Before this was factored out, each independently wrote the same
 `os.path.join(os.path.dirname(os.path.abspath(__file__)), ...)` expression.
 
-- `progress.py` tracks `{level_id: best_lives_remaining}` and gates sequential unlocking
-  (`is_unlocked()`: the lowest id in a level registry is always unlocked, every other one needs its
-  immediate sorted predecessor already cleared) -- a custom (editor-authored) level is never gated
-  by this at all.
+- `progress.py` tracks `{level_id: best_lives_remaining}`. It is now a *record*, not a gate: it
+  used to also own sequential unlocking (`is_unlocked()`), which the run loop retired outright --
+  a run picks its own floors, `meta_progression.py` gates what the draft can offer, and Practice
+  plays anything immediately, so there was nothing left for it to gate. `Game._record_level_cleared()`
+  is the single writer, called from both `_advance_run_floor()` (a floor clear -- the common case
+  now) and `update()`'s `VICTORY` branch (Practice/editor playtest). Keeping those two paths on one
+  helper is load-bearing rather than tidiness: the bookkeeping used to live inline in the `VICTORY`
+  branch alone, which a run never reaches, so `progress.py` and the `distinct_levels_cleared`
+  achievement derived from it had quietly become unreachable in normal play. A custom
+  (editor-authored) level still bumps the naive `levels_cleared` tally but is never recorded here --
+  it has no registry id to key on.
 - `achievements.py` is a registry (`ACHIEVEMENTS`, same shape as every other registry) of
   unlockable achievements, each keyed off a threshold on one of a handful of cumulative lifetime
   counters (kills, towers built/maxed/specialized, levels cleared, waves survived). `bump()` mirrors
@@ -394,9 +503,30 @@ packaged build. Before this was factored out, all six independently wrote the sa
   `try_specialize_tower` on success, and a few points in `update()`) -- **never** from inside
   `Tower`/`Enemy`/`Economy`, since `resume_saved_run()` (below) reconstructs a resumed tower via
   `Tower.upgrade()`/`specialize()` directly, and a counter living inside those methods would
-  silently double-count on every resume. Every bump site is gated on `not self.sandbox`, mirroring
-  `progress.mark_level_cleared()`'s own sandbox guard.
-- `save_state.py` saves a single in-progress run -- but **only** between waves
+  silently double-count on every resume. The sandbox guard lives once inside `_record_achievement`
+  rather than at each of those call sites, mirroring `_record_level_cleared`'s own.
+- `meta_progression.py` is the run loop's cross-run unlock registry (`META_UNLOCKS`: one
+  `TOWER_TYPES` name each, gated on a threshold on `total_floors_cleared`/`runs_played`/
+  `runs_reached_endless`), sharing its threshold mechanics with `achievements.py` via
+  `threshold_unlocks.py` while keeping a genuinely separate file, registry, and JSON state.
+  The split is intentional: achievements are cosmetic/trophy-flavored, meta-progression unlocks are
+  gameplay-flavored -- they change what `card_pool.draft_offer()` can offer a future run.
+  `Game._record_meta_progress()` mirrors `_record_achievement()` exactly, sandbox guard included.
+  `unlock_knockback`'s goal of `1` is load-bearing: `_advance_run_floor` bumps
+  `total_floors_cleared` *before* the player reaches the draft screen, so a brand-new player's very
+  first draft has a real card to offer instead of finding `STARTER_TOWERS` exhausted and silently
+  skipping.
+- `run_history.py` records `{seed: best_floors_cleared}`, written once per run by
+  `_record_run_permadeath()`. Per-seed max rather than last-write, which is what makes a replayed
+  seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
+  handling here at all, it's just another seed.
+- `save_state.py` saves a single in-progress session -- but **only** between waves. ("Session," not
+  "run": `save_run()`/`can_save_run()`/`resume_saved_run()`/`_resumed_from_save` predate the
+  overhaul and name *whatever's being played*, classic level or roguelike run alike -- unrelated to
+  `RunState`/`Game.active_run`/`start_new_run()`, which are always the roguelike run specifically.
+  A rename would touch ~60 production call sites plus every test, so it's left alone; the prose
+  here says "session" for the save-file sense precisely to keep the two apart on the page even
+  though the code itself doesn't.)
   (`Game.can_save_run()`: `WaveManager.state` in `AWAITING_START`/`BETWEEN_WAVES`), so there's no
   live enemy/projectile/effect state to serialize at all; a resumed run always starts from a clean
   wave boundary. It reuses `persistence.level_to_dict`/`level_from_dict` for the level blob (an
@@ -416,6 +546,13 @@ packaged build. Before this was factored out, all six independently wrote the sa
   conclusion, so a fresh, unrelated session's own victory can never delete a different, still-valid
   save left over from some other abandoned run; every `_load_level_object()` call resets it to
   `False` first, and `resume_saved_run()` is the one caller that sets it back to `True` afterward.
+  An optional `"run"` key carries the `RunState` (validated on load against `LEVELS`/`TOWER_TYPES`/
+  `RELICS`); `None` means a save with no active run -- Practice, an editor playtest, or a file
+  written before the key existed -- and is passed straight through to `_load_level_object()`'s
+  `active_run` parameter either way, so its one `_rebuild_button_rects()` call already produces the
+  right menu (the run's drafted pool, or every tower) with nothing left to fix up afterward. No RNG
+  state is serialized: a run's streams are re-derived from `(seed, floor_index)` on demand (see the
+  run loop section above).
 
 ### Visual effects: the drain-a-per-frame-event-list idiom
 

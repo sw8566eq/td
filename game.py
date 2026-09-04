@@ -79,15 +79,16 @@ class Game:
 
         # Injectable path, same idea as persistence.save_level's own
         # `directory` param -- lets tests point this at a tmp_path instead
-        # of ever touching the real repo-root progress.json. Still written
-        # by a classic-mode built-in-level victory (see update()'s
-        # win-check) -- Practice mode (LEVEL_SELECT's purpose="play") no
-        # longer reads it back into a lock (see _enter_level_select), the
-        # one deliberate behavior change of Milestone 5's overhaul work,
-        # but the underlying progress-tracking mechanism itself is
-        # otherwise untouched.
+        # of ever touching the real repo-root progress.json. Written by
+        # _record_level_cleared() on every non-sandbox level/floor clear --
+        # a run's own floor clear is the common case now, a classic/
+        # Practice/playtest VICTORY the other. No in-memory cache of it is
+        # kept on Game itself (unlike achievements_state/has_saved_run
+        # below): nothing else on Game ever reads it back, Practice mode
+        # least of all -- it no longer gates anything (see
+        # _enter_level_select) -- so there's nothing for a cached copy to
+        # go stale for.
         self.progress_path = progress_path or progress.PROGRESS_PATH
-        self.progress = progress.load_progress(self.progress_path)
 
         # Same injectable-path convention as progress_path above.
         # achievements_state is re-read fresh whenever the Achievements
@@ -391,9 +392,10 @@ class Game:
     def _is_relic_floor(self, floor_index):
         """Whether floor_index's own draft (see _enter_draft) offers relics
         instead of a tower -- every other floor transition, so a 6-floor
-        run sees exactly 2 relic drafts (floors 2 and 4) alternating with
-        4 tower drafts, never both on the same floor. A relic floor still
-        falls back to a tower draft if every relic is already held (see
+        run's 5 draft screens (one per floor cleared; the 6th floor loads
+        endless=True and never "clears") alternate 3 tower / 2 relic
+        (floors 2 and 4 relic), never both on the same floor. A relic floor
+        still falls back to a tower draft if every relic is already held (see
         _enter_draft) -- the alternation is about which draft *usually*
         shows up, not a hard guarantee either card type is ever offered on
         a given floor."""
@@ -1237,6 +1239,34 @@ class Game:
             self._resumed_from_save = False
             self.has_saved_run = False
 
+    def _record_level_cleared(self):
+        """One level genuinely beaten -- called once, from update()'s own
+        win-check, above the run-floor-clear/classic-VICTORY split (see
+        that call site's own comment for why: a run never reaches VICTORY
+        at all, so this used to live inline there alone and had quietly
+        made progress.py -- and with it the "Campaign Complete"
+        achievement -- unreachable in a normal playthrough).
+
+        A single sandbox gate up front, same shape _record_achievement's
+        own docstring argues for: a trivial sandbox run shouldn't earn
+        real progress, and that's one policy, not two calls each
+        remembering it independently. levels_cleared is still bumped for
+        any level, built-in or custom; progress.py and the
+        distinct_levels_cleared counter derived from it only make sense
+        for a LEVELS registry entry (isinstance -- a custom editor-authored
+        level has no registry id, and no fixed order among its peers to be
+        "distinct" within)."""
+        if self.sandbox:
+            return
+        if isinstance(self.current_level_id, int):
+            cleared = progress.mark_level_cleared(
+                self.current_level_id, self.economy.lives, self.progress_path,
+            )
+            self._queue_achievement_toasts(achievements.set_counter(
+                "distinct_levels_cleared", len(cleared), self.achievements_path,
+            ))
+        self._record_achievement("levels_cleared")
+
     def _record_achievement(self, counter_name, amount=1):
         """Bump `counter_name` by `amount` (see achievements.py) and queue
         a toast for anything newly unlocked -- called from every Game-
@@ -1603,6 +1633,12 @@ class Game:
                 # gives.
                 self._record_run_permadeath()
         elif self.wave_manager.all_waves_complete and not self.enemies:
+            # One level genuinely beaten, on either path below -- recorded
+            # once, here, above the split, rather than duplicated into both
+            # branches (see _record_level_cleared's own docstring for why
+            # this used to live inline in the VICTORY branch alone, which a
+            # run never reaches).
+            self._record_level_cleared()
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
                 # the run's last floor is always loaded endless=True (see
@@ -1612,23 +1648,6 @@ class Game:
                 self._advance_run_floor()
             else:
                 self.state = GameState.VICTORY
-                # A built-in level's progress is gated by real clears -- a
-                # sandbox run (unlimited gold, invulnerable) trivializes
-                # winning, so it shouldn't count as one, same reasoning
-                # _record_achievement's own sandbox guard applies to every
-                # achievement counter below. isinstance() gates only the
-                # progress/distinct-levels tracking, which only makes sense
-                # for a real LEVELS registry entry -- levels_cleared itself
-                # (any level, built-in or custom) is still recorded either
-                # way.
-                if not self.sandbox and isinstance(self.current_level_id, int):
-                    self.progress = progress.mark_level_cleared(
-                        self.current_level_id, self.economy.lives, self.progress_path,
-                    )
-                    self._queue_achievement_toasts(achievements.set_counter(
-                        "distinct_levels_cleared", len(self.progress), self.achievements_path,
-                    ))
-                self._record_achievement("levels_cleared")
                 self._delete_save_if_this_run_was_resumed()
 
     # --- Render ---

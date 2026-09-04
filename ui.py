@@ -755,8 +755,9 @@ def build_achievements_back_rect(achievement_count=len(ACHIEVEMENT_ORDER)):
 def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters, back_rect):
     """`unlocked_keys` and `counters` are achievements.load_achievements()'s
     own "unlocked"/"counters" values -- read fresh whenever this screen is
-    (re-)entered (see Game._enter_achievements()), same "always re-read"
-    spirit as the level-select browser's self.progress. Every registry
+    (re-)entered (see Game._enter_achievements()), same "always re-read,
+    never a stale cached copy" spirit persistence.list_custom_levels()
+    follows for the level browser. Every registry
     entry is always listed, in ACHIEVEMENT_ORDER (registry insertion order)
     -- a locked one shows its live progress toward its own goal rather than
     just "Locked", so the screen doubles as a progress tracker."""

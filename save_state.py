@@ -16,7 +16,7 @@ too, under an optional "run" key -- None for a save with no active run
 (classic/Practice/editor-playtest play, or save_state.json files written
 before this key existed), a plain dict for one taken mid-run. It's genuinely
 optional rather than always-present specifically so an old save file
-without it still loads cleanly: _parse_and_validate_run only reconstructs a
+without it still loads cleanly: _parse_and_validate_save only reconstructs a
 RunState when the key is both present and not None, same `.get()`-defaults
 spirit save_state.py already applies to `sold_towers` on an even older save.
 """
@@ -138,10 +138,10 @@ def load_run(path=SAVE_PATH):
     persistence.list_custom_levels() skipping a bad file -- every field
     resume_saved_run() goes on to read is validated here first, so it
     never has to guard against a malformed save itself."""
-    return load_json_with_fallback(path, _parse_and_validate_run, lambda: None)
+    return load_json_with_fallback(path, _parse_and_validate_save, lambda: None)
 
 
-def _parse_and_validate_run(data):
+def _parse_and_validate_save(data):
     """The `transform` half of load_run()'s load_json_with_fallback() call
     -- converts the level blob to a live Level and raises ValueError (one
     of json_io's own fallback-triggering exceptions, so an invalid save is
@@ -161,7 +161,7 @@ def _parse_and_validate_run(data):
 
 
 def _parse_and_validate_active_run(run_data):
-    """The "run" key's own validation, split out of _parse_and_validate_run
+    """The "run" key's own validation, split out of _parse_and_validate_save
     for the same reason the top-level checks aren't one giant function --
     same regression-guard spirit as the unrecognized-tower-type check
     above, just against run_state.py's own registries (LEVELS/TOWER_TYPES/

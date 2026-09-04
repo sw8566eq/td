@@ -12,9 +12,10 @@ jobs:
     env:
       # Game() and a couple of AssetManager tests open a real pygame
       # window; the SDL "dummy" driver lets that happen with no real
-      # display. tests/test_game.py and tests/test_assets.py already set
-      # this themselves before pygame is touched, so it's set here mainly
-      # for clarity/robustness rather than because CI would fail without it.
+      # display. tests/conftest.py (for every Game-level module) and
+      # tests/test_assets.py already set this themselves before pygame is
+      # touched, so it's set here mainly for clarity/robustness rather than
+      # because CI would fail without it.
       SDL_VIDEODRIVER: dummy
     steps:
       - uses: actions/checkout@v4

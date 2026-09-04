@@ -3,11 +3,19 @@
 Mirrors persistence.py's own conventions: a single JSON file, defensive
 handling of a missing/corrupt file (falls back to "nothing cleared" rather
 than crashing, same spirit as persistence.list_custom_levels() skipping a
-bad file). Unlocking is sequential, not "any earlier level" -- the lowest
-id in a level registry is always unlocked, and every other level needs its
-immediate predecessor (by sorted id) already cleared. Custom (editor-
-authored) levels have no fixed order among themselves and are never gated
-by this at all -- is_unlocked() is only ever consulted for a LEVELS entry.
+bad file).
+
+This is a *record*, not a gate. It used to also decide which levels were
+playable (a sequential is_unlocked(): the lowest id always open, every
+other one needing its immediate predecessor cleared), but the roguelike
+run loop retired that idea outright -- a run's floor sequence picks its own
+levels (see run_floors.py), meta_progression.py gates what the draft can
+offer, and Practice mode plays any level immediately. What survives is the
+{level_id: best_lives_remaining} tally itself, written by
+Game._record_level_cleared() on every non-sandbox floor/level clear and
+read back for the "Campaign Complete" achievement's distinct-levels count.
+Custom (editor-authored) levels are never recorded here -- they have no
+registry id to key on.
 """
 
 import json
@@ -47,15 +55,3 @@ def mark_level_cleared(level_id, lives_remaining, path=PROGRESS_PATH):
     cleared[level_id] = max(lives_remaining, cleared.get(level_id, 0))
     save_progress(cleared, path)
     return cleared
-
-
-def is_unlocked(level_id, levels_dict, cleared):
-    """True if `level_id` (a key of `levels_dict`) is playable given
-    `cleared` (a load_progress()-shaped mapping) -- the lowest id in
-    `levels_dict` is always unlocked; every other id needs its immediate
-    sequential predecessor already cleared."""
-    ordered_ids = sorted(levels_dict)
-    if not ordered_ids or level_id == ordered_ids[0]:
-        return True
-    previous_id = ordered_ids[ordered_ids.index(level_id) - 1]
-    return previous_id in cleared
