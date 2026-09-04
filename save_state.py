@@ -10,13 +10,25 @@ same restriction WaveManager.restore() itself enforces on the way back in.
 Reuses persistence.level_to_dict()/level_from_dict() for the level blob
 (a Level is exactly as JSON-serializable here as it is for a saved custom
 level, endless-appended waves included) rather than re-deriving that shape.
+
+A roguelike run in progress (Game.active_run, see run_state.py) is captured
+too, under an optional "run" key -- None for a save with no active run
+(classic/Practice/editor-playtest play, or save_state.json files written
+before this key existed), a plain dict for one taken mid-run. It's genuinely
+optional rather than always-present specifically so an old save file
+without it still loads cleanly: _parse_and_validate_run only reconstructs a
+RunState when the key is both present and not None, same `.get()`-defaults
+spirit save_state.py already applies to `sold_towers` on an even older save.
 """
 
 import json
 import os
 
 from json_io import load_json_with_fallback, module_relative_path
+from levels import LEVELS
 from persistence import level_from_dict, level_to_dict
+from relics import RELICS
+from run_state import RunState
 from tower import TOWER_TYPES
 from waves import WaveState
 
@@ -53,6 +65,38 @@ def _tower_to_dict(tower):
     }
 
 
+def _run_to_dict(run):
+    """One RunState -> the plain-JSON dict _run_from_dict() reconstructs it
+    from. floor_sequence/unlocked_towers/relics are all plain lists on the
+    way out -- RunState.floor_sequence is a tuple, the one field here JSON
+    can't round-trip byte-for-byte, so _run_from_dict() converts it back."""
+    return {
+        "seed": run.seed,
+        "floor_sequence": list(run.floor_sequence),
+        "difficulty": run.difficulty,
+        "unlocked_towers": list(run.unlocked_towers),
+        "floor_index": run.floor_index,
+        "lives": run.lives,
+        "gold": run.gold,
+        "relics": list(run.relics),
+        "is_daily": run.is_daily,
+    }
+
+
+def _run_from_dict(data):
+    return RunState(
+        seed=data["seed"],
+        floor_sequence=tuple(data["floor_sequence"]),
+        difficulty=data["difficulty"],
+        unlocked_towers=list(data["unlocked_towers"]),
+        floor_index=data["floor_index"],
+        lives=data["lives"],
+        gold=data["gold"],
+        relics=list(data["relics"]),
+        is_daily=data["is_daily"],
+    )
+
+
 def save_run(game, path=SAVE_PATH):
     """Serialize `game`'s current in-progress run to `path`. The caller
     (Game.save_run()) is responsible for only ever calling this between
@@ -77,6 +121,7 @@ def save_run(game, path=SAVE_PATH):
         # post-level results table (see Game._tower_results()) -- without
         # this, resuming would silently drop it from that table entirely.
         "sold_towers": [_tower_to_dict(tower) for tower in game.sold_towers],
+        "run": _run_to_dict(game.active_run) if game.active_run is not None else None,
     }
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
@@ -110,7 +155,29 @@ def _parse_and_validate_run(data):
     for tower_data in data["towers"] + data.get("sold_towers", []):
         if tower_data["type"] not in TOWER_TYPES:
             raise ValueError(f"saved run references an unrecognized tower type {tower_data['type']!r}")
+    run_data = data.get("run")  # absent (older save) and explicit None both mean "no active run"
+    data["run"] = _parse_and_validate_active_run(run_data) if run_data is not None else None
     return data
+
+
+def _parse_and_validate_active_run(run_data):
+    """The "run" key's own validation, split out of _parse_and_validate_run
+    for the same reason the top-level checks aren't one giant function --
+    same regression-guard spirit as the unrecognized-tower-type check
+    above, just against run_state.py's own registries (LEVELS/TOWER_TYPES/
+    relics.RELICS) instead of TOWER_TYPES alone."""
+    for level_id in run_data["floor_sequence"]:
+        if level_id not in LEVELS:
+            raise ValueError(f"saved run's floor_sequence references an unrecognized level id {level_id!r}")
+    if not 0 <= run_data["floor_index"] < len(run_data["floor_sequence"]):
+        raise ValueError("saved run's floor_index is out of range for its own floor_sequence")
+    for tower_name in run_data["unlocked_towers"]:
+        if tower_name not in TOWER_TYPES:
+            raise ValueError(f"saved run's unlocked_towers references an unrecognized tower type {tower_name!r}")
+    for relic_key in run_data["relics"]:
+        if relic_key not in RELICS:
+            raise ValueError(f"saved run's relics references an unrecognized relic {relic_key!r}")
+    return _run_from_dict(run_data)
 
 
 def has_saved_run(path=SAVE_PATH):

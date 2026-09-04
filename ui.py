@@ -649,7 +649,7 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 # Game.has_saved_run, handled separately by both sides below.
 MENU_KEY_HINTS = [
     ("e", "Map Editor"),
-    ("l", "Level Browser"),
+    ("l", "Practice a Floor"),
     ("s", "Settings"),
     ("a", "Achievements"),
     ("h", "How to Play"),
@@ -807,7 +807,7 @@ HELP_LINES = [
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
-    "Level browser: V arms Endless mode, B arms Sandbox mode",
+    "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]
 
 
@@ -1450,8 +1450,7 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
 
 
 def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
-                              purpose="play", scroll_offset=0, locked_ids=frozenset(),
-                              endless_armed=False, sandbox_armed=False):
+                              purpose="play", scroll_offset=0, endless_armed=False):
     """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
     both listed, picking one starts playing it) or "edit" (the map
     editor's "Load Map..." -- only custom levels listed, since a built-in
@@ -1465,17 +1464,16 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
     see Game._level_select_rects), this just clips the drawing and shows
     a hint when there's more list than fits either direction.
 
-    `locked_ids` (only ever nonempty for purpose="play" -- see
-    Game._enter_level_select) dims a not-yet-unlocked built-in level's row
-    and tags its label "(Locked)" instead of drawing it like a normal,
-    playable entry.
+    No row is ever locked -- purpose="play" always starts a level in
+    Practice mode (see Game._enter_level_select's own docstring), so every
+    row draws the same way regardless of progress.
 
-    `endless_armed`/`sandbox_armed` (only ever meaningful for purpose="play"
-    -- see Game._handle_keydown's `V`/`B` handling) each show a small hint
-    that picking a level next starts it in that mode instead of normally --
-    independently, since the two are combinable (infinite lives plus
-    escalating waves is a legitimate "just mess around" combo, not a
-    conflict)."""
+    `endless_armed` (only meaningful for purpose="play" -- see
+    Game._handle_keydown's `V` handling) shows a small hint that picking a
+    level next starts it in Survival mode instead of normally. purpose="play"
+    itself always starts a level in Practice mode (unlimited gold, no life
+    loss -- see Game._handle_level_select_click), shown as a static notice
+    rather than a toggle since it's no longer optional."""
     surface.fill(settings.COLOR_BG)
     title_text = "Load a Map to Edit" if purpose == "edit" else "Select a Level"
     title = font.render(title_text, True, settings.COLOR_TEXT)
@@ -1487,10 +1485,10 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         survival_label = small_font.render(survival_text, True, survival_color)
         surface.blit(survival_label, survival_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 60)))
 
-        sandbox_text = f"[B] Sandbox: {'On' if sandbox_armed else 'Off'}"
-        sandbox_color = settings.COLOR_BUTTON_SELECTED if sandbox_armed else settings.COLOR_TEXT_DIM
-        sandbox_label = small_font.render(sandbox_text, True, sandbox_color)
-        surface.blit(sandbox_label, sandbox_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 80)))
+        practice_label = small_font.render(
+            "Practice Mode -- unlimited gold, no life loss", True, settings.COLOR_TEXT_DIM,
+        )
+        surface.blit(practice_label, practice_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 80)))
 
     if not entries:
         empty_text = "No custom levels saved yet." if purpose == "edit" else "No levels available."
@@ -1505,9 +1503,7 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         rect = rects[key]
         if not rect.colliderect(viewport):
             continue  # scrolled fully out of view -- nothing to draw
-        locked = key in locked_ids
-        row_color = settings.COLOR_BUTTON_DISABLED if locked else settings.COLOR_BUTTON
-        pygame.draw.rect(surface, row_color, rect, border_radius=6)
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
 
         thumbnail = thumbnails.get(key)
         text_x = rect.left + LEVEL_SELECT_ROW_PADDING
@@ -1521,17 +1517,12 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         # built-in one's is the int key it's registered under in LEVELS.
         # purpose == "edit" never lists a built-in at all (see
         # Game._enter_level_select), so the "(custom)" tag would just be
-        # redundant noise there -- every row already is one. locked_ids is
-        # always empty for purpose == "edit" and for a custom level's own
-        # key, so the "(Locked)" tag only ever applies to a "play" row.
+        # redundant noise there -- every row already is one.
         if purpose == "edit" or isinstance(key, int):
             label = level.name
         else:
             label = f"{level.name} (custom)"
-        if locked:
-            label += " (Locked)"
-        text_color = settings.COLOR_TEXT_DIM if locked else settings.COLOR_TEXT
-        text = small_font.render(label, True, text_color)
+        text = small_font.render(label, True, settings.COLOR_TEXT)
         surface.blit(text, text.get_rect(midleft=(text_x, rect.centery)))
 
     surface.set_clip(previous_clip)
