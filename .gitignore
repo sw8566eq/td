@@ -33,17 +33,13 @@ achievements.json
 # game data, same spirit as progress.json.
 save_state.json
 
-# Best score per Daily Challenge seed (see daily_challenge.py) -- local game
-# data, same spirit as progress.json.
-daily_challenge.json
-
 # Cumulative meta-progression counters/tower unlocks for the roguelike run's
 # draft pool (see meta_progression.py) -- local game data, same spirit as
 # achievements.json.
 meta_progression.json
 
-# Best floors-cleared score per roguelike run seed (see run_history.py) --
-# local game data, same spirit as daily_challenge.json.
+# Best floors-cleared score per roguelike run seed, Daily Run included (see
+# run_history.py) -- local game data, same spirit as progress.json.
 run_history.json
 
 # Claude Code local settings (machine/user-specific, not meant to be shared)

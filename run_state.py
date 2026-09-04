@@ -36,11 +36,14 @@ class RunState:
     # blocked_cells/branch_weights already establish, so this default is
     # never shared/aliased across RunState instances.
     relics: list = field(default_factory=list)
-    # Whether this is a Daily Run (see Game.start_new_run/daily_challenge.
-    # todays_seed) -- read by run_history.py-adjacent code that wants to
-    # distinguish a Daily Run's outcome from an ordinary one; nothing
-    # branches game logic on it (a Daily Run plays by the exact same rules,
-    # just with a seed everyone shares that day).
+    # Whether this is a Daily Run -- see Game.start_new_run's own docstring
+    # for the one thing that actually branches on it (pinning difficulty
+    # to "normal" for a fair, comparable score). Not currently threaded
+    # into run_history.record_run_result, so a Daily Run's outcome isn't
+    # yet distinguishable from an ordinary run's in run_history.json --
+    # this field only lives on the in-memory RunState for now; a future
+    # run-history browse screen wanting that distinction would need
+    # record_run_result to start accepting/persisting it too.
     is_daily: bool = False
 
     @property

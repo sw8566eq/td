@@ -68,7 +68,7 @@ class Game:
     TIME_SCALES = (1.0, 2.0, 3.0)
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
-                 achievements_path=None, save_path=None, daily_challenge_path=None,
+                 achievements_path=None, save_path=None,
                  meta_progression_path=None, run_history_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
@@ -109,20 +109,6 @@ class Game:
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
 
-        # Same injectable-path convention as the paths above. True only
-        # between _start_daily_challenge() and that run's own eventual
-        # GAME_OVER (a Daily Challenge is always Endless, so VICTORY never
-        # fires -- see update()'s loss branch) -- gates recording a score,
-        # mirroring _resumed_from_save's exact reset-then-set-True-by-the-
-        # one-special-caller shape (None doubles as the "not active" flag,
-        # so there's no separate boolean to keep in sync with it) so an
-        # unrelated normal level load never mis-attributes a score to
-        # whatever seed happened to be active last. Every
-        # _load_level_object() call resets this to None first;
-        # _start_daily_challenge() is the one caller that sets it
-        # afterward.
-        self.daily_challenge_path = daily_challenge_path or daily_challenge.DAILY_CHALLENGE_PATH
-        self._daily_challenge_seed = None
         # Same injectable-path convention as the paths above. Neither needs
         # an eagerly-loaded cached copy on Game the way achievements_state
         # does -- there's no browse screen for either yet, only the read/
@@ -131,12 +117,13 @@ class Game:
         # default pool, each of which reads fresh at the point it matters.
         self.meta_progression_path = meta_progression_path or meta_progression.META_PROGRESSION_PATH
         self.run_history_path = run_history_path or run_history.RUN_HISTORY_PATH
-        # The active roguelike run, or None outside of one (classic/Practice
-        # play, Daily Challenge, a map-editor playtest). Same reset-inside-
-        # _load_level_object shape as _resumed_from_save/_daily_challenge_
-        # seed above -- _load_floor() is the one caller that sets it back
-        # afterward, once per floor, so a run's own lives/gold survive
-        # across each floor's fresh _load_level_object() call.
+        # The active roguelike run, or None outside of one (classic/
+        # Practice play, a map-editor playtest -- a Daily Run is still a
+        # real run, see _start_daily_challenge). Same reset-inside-
+        # _load_level_object shape as _resumed_from_save above --
+        # _load_floor() is the one caller that sets it back afterward,
+        # once per floor, so a run's own lives/gold survive across each
+        # floor's fresh _load_level_object() call.
         self.active_run = None
         # This floor-clear's draft choices/rects/kind (see _enter_draft) --
         # only meaningful while self.state == GameState.DRAFT, rebuilt from
@@ -263,9 +250,9 @@ class Game:
 
     def _active_tower_names(self):
         """Which TOWER_TYPES names the build menu should currently offer --
-        a run's own drafted pool while one is active, every registered
-        tower otherwise (classic/Practice play, Daily Challenge, a
-        map-editor playtest)."""
+        a run's own drafted pool while one is active (a Daily Run is still
+        a real run, see _start_daily_challenge), every registered tower
+        otherwise (classic/Practice play, a map-editor playtest)."""
         return self.active_run.unlocked_towers if self.active_run is not None else ui.TOWER_ORDER
 
     def _rebuild_button_rects(self):
@@ -276,28 +263,37 @@ class Game:
         unconditionally right after resetting active_run to None (see its
         own comment) -- the correct, all-towers default for every loader
         that funnels through it (load_level/load_custom_level/
-        resume_saved_run/_start_daily_challenge, and reset()/
-        advance_or_replay_level()'s own direct calls for a custom/
-        playtested level, never part of a run). _load_floor is the one
-        caller that calls this a *second* time, after restoring the real
-        RunState onto self.active_run, to narrow the menu back down to
-        that run's own drafted pool."""
+        resume_saved_run, and reset()/advance_or_replay_level()'s own
+        direct calls for a custom/playtested level, never part of a run).
+        _load_floor is the one caller that calls this a *second* time,
+        after restoring the real RunState onto self.active_run, to narrow
+        the menu back down to that run's own drafted pool."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
-    def start_new_run(self, seed=None):
+    def start_new_run(self, seed=None, is_daily=False):
         """Start a new roguelike run: a seeded, ordered floor_sequence
         sampled from LEVELS, a starter tower pool (card_pool.STARTER_
         TOWERS), and floor 0's own starting gold/lives -- floor 0 behaves
         exactly like loading that level normally does today; _load_floor()
         just also captures its outcome into self.active_run for floor 1
-        onward to build on. `seed` is overridable (Daily Challenge/Daily
-        Run passes one; tests want determinism) the same way
-        daily_challenge.todays_seed()'s own `today` param is."""
+        onward to build on. `seed` is overridable (_start_daily_challenge
+        passes one derived from today's date; tests want determinism).
+
+        `is_daily` pins the run's own difficulty to "normal" rather than
+        snapshotting the player's own live sticky preference, so every
+        player's Daily Run score is comparable regardless of their own
+        difficulty setting -- the same fairness _start_daily_challenge
+        already guaranteed back when it built a Daily Challenge by calling
+        _load_level_object(..., difficulty_override="normal") directly,
+        now snapshotted onto the run itself instead (same "snapshot once
+        at start, don't re-read the live preference mid-run" precedent
+        save_state.py's own resumed-run difficulty already follows)."""
         seed = seed if seed is not None else random.Random().getrandbits(32)
         floor_sequence = run_floors.sample_floor_sequence(random.Random(seed))
         self.active_run = RunState(
-            seed=seed, floor_sequence=floor_sequence, difficulty=self.difficulty,
-            unlocked_towers=list(card_pool.STARTER_TOWERS),
+            seed=seed, floor_sequence=floor_sequence,
+            difficulty="normal" if is_daily else self.difficulty,
+            unlocked_towers=list(card_pool.STARTER_TOWERS), is_daily=is_daily,
         )
         self._load_floor(0)
 
@@ -330,12 +326,11 @@ class Game:
         that.
 
         _load_level_object() unconditionally resets self.active_run to
-        None (same reset-at-the-one-choke-point shape _resumed_from_save/
-        _daily_challenge_seed already use) -- run is kept as a local
+        None (same reset-at-the-one-choke-point shape _resumed_from_save
+        already uses for its own sentinel field) -- run is kept as a local
         across that call and restored onto self.active_run right after,
-        the same "set back afterward" shape resume_saved_run()/
-        _start_daily_challenge() already use for their own sentinel
-        fields."""
+        the same "set back afterward" shape resume_saved_run() already
+        uses for its own."""
         run = self.active_run
         run.floor_index = floor_index
         level_id = run.current_level_id
@@ -387,9 +382,9 @@ class Game:
         _load_floor's docstring). Same shape as _advance_run_floor: one
         helper update()'s win/loss branches each delegate a run-specific
         multi-step side effect to, rather than growing update() itself.
-        floors_cleared doubles as the run's own score, same "simple,
-        monotonic" spirit as the Daily Challenge branch above this one in
-        update()."""
+        floors_cleared doubles as the run's own score, a simple,
+        monotonic count -- a Daily Run needs no special handling here
+        either, it's just self.active_run with is_daily set."""
         run_history.record_run_result(self.active_run.seed, self.active_run.floors_cleared, self.run_history_path)
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
@@ -457,11 +452,7 @@ class Game:
         # abandoned run still sits on disk) from later deleting that
         # unrelated save on its own eventual victory/game-over.
         self._resumed_from_save = False
-        # Same reset-first shape as _resumed_from_save above --
-        # _start_daily_challenge() is the one caller that sets this back
-        # afterward.
-        self._daily_challenge_seed = None
-        # Same reset-first shape again -- _load_floor() is the one caller
+        # Same reset-first shape -- _load_floor() is the one caller
         # that sets this back afterward (see its own docstring). This is
         # what keeps a stale RunState from leaking into an unrelated fresh
         # load -- resume_saved_run() included, even though it doesn't
@@ -681,23 +672,14 @@ class Game:
         self.state = GameState.PLAYING
 
     def _start_daily_challenge(self, seed=None):
-        """Start today's Daily Challenge -- a seeded, deterministic Endless
-        run (see daily_challenge.py for why Endless + a seeded rng is all
-        this needs, no new simulation logic). Calls _load_level_object()
-        directly rather than through load_level(), same precedent as
-        resume_saved_run() above, since it needs to pass rng= (and pin
-        difficulty to "normal" so every player's score is comparable
-        regardless of their own live difficulty setting, mirroring how a
-        resumed run snapshots a fixed difficulty rather than reapplying
-        whatever's currently active)."""
+        """Start today's Daily Run -- a roguelike run seeded off today's
+        UTC date (daily_challenge.todays_seed()) instead of a random one,
+        so every player sees the exact same floor_sequence and draft
+        offers today and their own skill/picks are the only variable.
+        Genuinely just a run otherwise -- see start_new_run's own
+        docstring for what is_daily=True actually does."""
         seed = seed if seed is not None else daily_challenge.todays_seed()
-        level_id = daily_challenge.level_id_for_seed(seed)
-        self._load_level_object(
-            LEVELS[level_id], endless=True, rng=random.Random(seed), difficulty_override="normal",
-        )
-        self.current_level_id = level_id
-        self._daily_challenge_seed = seed  # see __init__'s comment on this field
-        self.state = GameState.PLAYING
+        self.start_new_run(seed=seed, is_daily=True)
 
     def _tower_from_save_data(self, tower_data):
         """Reconstruct one Tower from save_state.py's per-tower dict --
@@ -1615,16 +1597,11 @@ class Game:
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
             self._delete_save_if_this_run_was_resumed()
-            if self._daily_challenge_seed is not None:
-                # A Daily Challenge is always Endless -- all_waves_complete
-                # never fires (see waves.py), so is_out_of_lives is the
-                # only way one ever ends. current_wave_number is "how many
-                # waves this run reached," a simple, monotonic score.
-                daily_challenge.record_result(
-                    self._daily_challenge_seed, self.wave_manager.current_wave_number,
-                    self.daily_challenge_path,
-                )
-            elif self.active_run is not None:
+            if self.active_run is not None:
+                # A Daily Run is still just self.active_run with is_daily
+                # set -- _record_run_permadeath() needs no special case for
+                # it, same reasoning _start_daily_challenge's own docstring
+                # gives.
                 self._record_run_permadeath()
         elif self.wave_manager.all_waves_complete and not self.enemies:
             if self.active_run is not None:

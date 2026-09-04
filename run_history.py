@@ -1,12 +1,11 @@
 """A record of every roguelike run's outcome, kept per seed so a replayed
-seed (Daily Run's own repeatable date-seed, a future milestone) keeps its
-best result rather than being overwritten by a worse retry -- the exact
-same shape and reasoning as daily_challenge.py's own {seed: best_waves_
-survived} tracking, generalized from one endless level's wave count to a
-full run's own floors-cleared count. A regular run's seed is random
+seed (Daily Run's own repeatable date-seed -- see daily_challenge.
+todays_seed/Game._start_daily_challenge) keeps its best result rather than
+being overwritten by a worse retry. A regular run's seed is random
 (Game.start_new_run(seed=None)), so in practice this just grows one entry
 per run played; the per-seed max is what makes it also correct for a
-seed that gets replayed on purpose.
+seed that gets replayed on purpose -- Daily Run needs no special handling
+here at all, it's just another seed.
 """
 
 import json
@@ -20,7 +19,7 @@ RUN_HISTORY_PATH = module_relative_path(__file__, "run_history.json")
 def load_run_history(path=RUN_HISTORY_PATH):
     """{seed: best_floors_cleared} for every seed played so far, or {} if
     the file doesn't exist yet or fails to parse -- same defensive
-    fallback spirit as daily_challenge.load_daily_challenge()."""
+    fallback spirit as progress.load_progress()."""
     return load_json_with_fallback(
         path,
         lambda data: {int(seed): floors for seed, floors in data.get("best_floors_cleared", {}).items()},

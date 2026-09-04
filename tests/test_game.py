@@ -18,7 +18,6 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import achievements  # noqa: E402
-import daily_challenge  # noqa: E402
 import difficulty  # noqa: E402
 import meta_progression  # noqa: E402
 import persistence  # noqa: E402
@@ -39,21 +38,19 @@ from waves import WaveState  # noqa: E402
 @pytest.fixture
 def game(tmp_path):
     # progress_path/settings_path/achievements_path/save_path/
-    # daily_challenge_path/meta_progression_path/run_history_path all pinned
-    # to throwaway files -- Game writes real progress on VICTORY (see
-    # progress.py), real settings on set_fullscreen()/set_difficulty() (see
-    # player_settings.py), real achievement counters on nearly every tower/
-    # kill/wave/level event (see achievements.py), a real in-progress save on
-    # save_run() (see save_state.py), a real Daily Challenge score on a
-    # Daily Challenge run's game-over (see daily_challenge.py), real
-    # meta-progression counters on nearly every roguelike-run event (see
-    # meta_progression.py), and a real run outcome on a run's game-over (see
-    # run_history.py) -- and this must never touch (or leave behind) any of
-    # those real repo-root files.
+    # meta_progression_path/run_history_path all pinned to throwaway files --
+    # Game writes real progress on VICTORY (see progress.py), real settings
+    # on set_fullscreen()/set_difficulty() (see player_settings.py), real
+    # achievement counters on nearly every tower/kill/wave/level event (see
+    # achievements.py), a real in-progress save on save_run() (see
+    # save_state.py), real meta-progression counters on nearly every
+    # roguelike-run event (see meta_progression.py), and a real run outcome
+    # on a run's game-over, Daily Run included (see run_history.py) -- and
+    # this must never touch (or leave behind) any of those real repo-root
+    # files.
     g = Game(
         progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json",
         achievements_path=tmp_path / "achievements.json", save_path=tmp_path / "save_state.json",
-        daily_challenge_path=tmp_path / "daily_challenge.json",
         meta_progression_path=tmp_path / "meta_progression.json", run_history_path=tmp_path / "run_history.json",
     )
     yield g
@@ -3599,48 +3596,41 @@ def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game,
     assert calls == ["handle_events", "update", "render", "pygame.quit", "sys.exit"]
 
 
-# --- Daily Challenge ---
+# --- Daily Run ---
 
-def test_menu_d_key_starts_daily_challenge(game):
+def test_menu_d_key_starts_daily_run(game):
     game._handle_keydown(pygame.K_d)
     assert game.state == GameState.PLAYING
-    assert game.wave_manager.endless is True
-    assert game._daily_challenge_seed is not None
+    assert game.active_run is not None
+    assert game.active_run.is_daily is True
 
 
-def test_daily_challenge_picks_a_multi_lane_level(game):
-    for seed in range(20260101, 20260101 + 10):
-        game._start_daily_challenge(seed=seed)
-        assert game.current_level_id in daily_challenge.MULTI_LANE_LEVEL_IDS
-
-
-def test_daily_challenge_level_choice_is_deterministic(game):
-    game._start_daily_challenge(seed=20260903)
-    first_level_id = game.current_level_id
-
-    game._start_daily_challenge(seed=20260903)
-    assert game.current_level_id == first_level_id
-
-
-def test_daily_challenge_seeds_the_wave_manager_rng_deterministically(game):
+def test_daily_run_seeds_reproducibly(game):
     game._start_daily_challenge(seed=20260903)
     # Nothing has drawn from the rng yet at this point (no enemy spawned) --
-    # a fresh random.Random(seed) must produce the identical next value.
-    assert game.wave_manager.rng.random() == random.Random(20260903).random()
+    # a fresh run seeded the same way must produce the identical next value.
+    first_draw = game.wave_manager.rng.random()
+
+    game._start_daily_challenge(seed=20260903)
+    second_draw = game.wave_manager.rng.random()
+
+    assert first_draw == second_draw
 
 
-def test_daily_challenge_pins_difficulty_to_normal_regardless_of_player_setting(game):
+def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
     game.set_difficulty("hard")  # starting_gold_multiplier=0.85, see difficulty.py
 
     game._start_daily_challenge(seed=20260903)
 
+    assert game.active_run.difficulty == "normal"
     level = LEVELS[game.current_level_id]
     assert game.economy.gold == level.starting_gold  # normal's 1.0x, not hard's 0.85x
 
 
-def test_daily_challenge_records_best_waves_survived_on_game_over(game):
+def test_daily_run_records_floors_cleared_on_game_over_and_keeps_the_best_score(game):
     game._start_daily_challenge(seed=20260903)
-    game.wave_manager.all_waves_complete = False
+    seed = game.active_run.seed
+    game.active_run.floor_index = 3  # simulate having cleared several floors
     game.economy.lives = 1
     game.enemies = []
     game.economy.lose_life()
@@ -3648,32 +3638,21 @@ def test_daily_challenge_records_best_waves_survived_on_game_over(game):
     game.update(dt=0.01)
 
     assert game.state == GameState.GAME_OVER
-    recorded = daily_challenge.load_daily_challenge(game.daily_challenge_path)
-    assert recorded[20260903] == game.wave_manager.current_wave_number
+    assert run_history.load_run_history(game.run_history_path) == {seed: 3}
+    first_score = 3
 
-
-def test_daily_challenge_keeps_the_best_score_across_repeat_attempts(game):
-    game._start_daily_challenge(seed=20260903)
-    game.wave_manager.wave_index = 5  # simulate having survived several waves
-    game.economy.lives = 1
-    game.enemies = []
-    game.economy.lose_life()
-    game.update(dt=0.01)
-    first_score = daily_challenge.load_daily_challenge(game.daily_challenge_path)[20260903]
-    assert first_score > 1
-
-    # A second, worse attempt (loses immediately, on wave 1) must not
-    # overwrite the better score already recorded.
+    # A second, worse attempt (dies on floor 0) must not overwrite the
+    # better score already recorded.
     game._start_daily_challenge(seed=20260903)
     game.economy.lives = 1
     game.enemies = []
     game.economy.lose_life()
     game.update(dt=0.01)
 
-    assert daily_challenge.load_daily_challenge(game.daily_challenge_path)[20260903] == first_score
+    assert run_history.load_run_history(game.run_history_path)[seed] == first_score
 
 
-def test_a_normal_game_over_does_not_record_a_daily_score(game):
+def test_a_classic_game_over_does_not_record_a_run_history_score(game):
     game.load_level(1)
     game.state = GameState.PLAYING
     game.economy.lives = 1
@@ -3683,16 +3662,7 @@ def test_a_normal_game_over_does_not_record_a_daily_score(game):
     game.update(dt=0.01)
 
     assert game.state == GameState.GAME_OVER
-    assert daily_challenge.load_daily_challenge(game.daily_challenge_path) == {}
-
-
-def test_daily_challenge_seed_resets_on_a_normal_level_load(game):
-    game._start_daily_challenge(seed=20260903)
-    assert game._daily_challenge_seed is not None
-
-    game.load_level(1)
-
-    assert game._daily_challenge_seed is None
+    assert run_history.load_run_history(game.run_history_path) == {}
 
 
 # --- Import Level ---
@@ -3897,10 +3867,18 @@ def test_a_custom_level_load_clears_any_active_run(game):
     assert game.active_run is None
 
 
-def test_starting_a_daily_challenge_clears_any_active_run(game):
+def test_starting_a_daily_run_replaces_any_active_run(game):
+    # Unlike load_level/load_custom_level (which clear out to a non-run
+    # classic load), _start_daily_challenge is itself a run entry point --
+    # starting one replaces whatever run/floor a player was previously on
+    # with a fresh Daily Run, rather than clearing active_run to None.
     game.start_new_run(seed=1)
+
     game._start_daily_challenge(seed=20260101)
-    assert game.active_run is None
+
+    assert game.active_run is not None
+    assert game.active_run.seed == 20260101
+    assert game.active_run.is_daily is True
 
 
 def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
