@@ -16,6 +16,7 @@ import meta_progression
 import persistence
 import player_settings
 import progress
+import relics
 import run_escalation
 import run_floors
 import run_history
@@ -137,12 +138,16 @@ class Game:
         # afterward, once per floor, so a run's own lives/gold survive
         # across each floor's fresh _load_level_object() call.
         self.active_run = None
-        # This floor-clear's draft choices/rects (see _enter_draft) --
+        # This floor-clear's draft choices/rects/kind (see _enter_draft) --
         # only meaningful while self.state == GameState.DRAFT, rebuilt from
         # scratch every time that screen is (re-)entered, same "computed
         # fresh, not a persistent cache" spirit as level_select_entries.
+        # draft_kind ("tower" or "relic") is what tells _handle_draft_click/
+        # ui.draw_draft_screen which registry draft_choices' keys are from
+        # and how a pick gets applied -- see _is_relic_floor.
         self.draft_choices = []
         self.draft_choice_rects = []
+        self.draft_kind = "tower"
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -334,20 +339,31 @@ class Game:
         run = self.active_run
         run.floor_index = floor_index
         level_id = run.current_level_id
+        relic_modifiers = relics.compose_relic_modifiers(run.relics)
         self._load_level_object(
             LEVELS[level_id], endless=run.is_final_floor,
             difficulty_override=run.difficulty, rng=self._run_rng(_FLOOR_RNG_STREAM, floor_index),
-            escalation=run_escalation.escalation_for_floor(floor_index),
+            escalation=run_escalation.escalation_for_floor(floor_index), relic_modifiers=relic_modifiers,
         )
         self.active_run = run
         self.current_level_id = level_id
         self._rebuild_button_rects()
+        # Unlike starting_gold_multiplier/starting_lives_bonus above
+        # (folded into _load_level_object's own Economy construction, so
+        # they only actually matter for floor 0's initial capture -- every
+        # later floor's economy comes from the run's own carried-forward
+        # gold/lives instead), gold_per_floor_bonus is meant to apply on
+        # every floor -- added once below, after floor 1+'s restore but
+        # before floor 0's own capture, so run.gold is never briefly stale
+        # (missing a bonus that's already been credited to self.economy.gold).
         if floor_index == 0:
             run.lives = self.economy.lives
-            run.gold = self.economy.gold
         else:
             self.economy.lives = run.lives
             self.economy.gold = run.gold
+        self.economy.add_gold(relic_modifiers.gold_per_floor_bonus)
+        if floor_index == 0:
+            run.gold = self.economy.gold
         self.state = GameState.PLAYING
 
     def _advance_run_floor(self):
@@ -379,16 +395,33 @@ class Game:
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
 
+    def _is_relic_floor(self, floor_index):
+        """Whether floor_index's own draft (see _enter_draft) offers relics
+        instead of a tower -- every other floor transition, so a 6-floor
+        run sees exactly 2 relic drafts (floors 2 and 4) alternating with
+        4 tower drafts, never both on the same floor. A relic floor still
+        falls back to a tower draft if every relic is already held (see
+        _enter_draft) -- the alternation is about which draft *usually*
+        shows up, not a hard guarantee either card type is ever offered on
+        a given floor."""
+        return floor_index % relics.RELIC_FLOOR_INTERVAL == 0
+
     def _enter_draft(self):
         """Advance from FLOOR_CLEARED into the draft screen -- computes
-        this floor-clear's card choices and switches to GameState.DRAFT, or
-        skips straight to the next floor if there's nothing left to draft
-        (every registered tower already unlocked into this run)."""
+        this floor-clear's card choices (relics on alternating floors, see
+        _is_relic_floor; towers otherwise) and switches to GameState.DRAFT,
+        or skips straight to the next floor if there's nothing left to
+        draft (every candidate of that draft's own kind already held)."""
         next_floor = self.active_run.floor_index + 1
-        self.draft_choices = card_pool.draft_offer(
-            self._run_rng(_DRAFT_RNG_STREAM, next_floor), self.active_run,
-            meta_progression_path=self.meta_progression_path,
-        )
+        rng = self._run_rng(_DRAFT_RNG_STREAM, next_floor)
+        if self._is_relic_floor(next_floor):
+            self.draft_kind = "relic"
+            self.draft_choices = relics.relic_offer(rng, self.active_run)
+        else:
+            self.draft_kind = "tower"
+            self.draft_choices = card_pool.draft_offer(
+                rng, self.active_run, meta_progression_path=self.meta_progression_path,
+            )
         if not self.draft_choices:
             self._load_floor(next_floor)
             return
@@ -400,11 +433,15 @@ class Game:
         if index is None:
             return
         next_floor = self.active_run.floor_index + 1
-        self.active_run.unlocked_towers.append(self.draft_choices[index])
+        picked = self.draft_choices[index]
+        if self.draft_kind == "relic":
+            self.active_run.relics.append(picked)
+        else:
+            self.active_run.unlocked_towers.append(picked)
         self._load_floor(next_floor)
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
-                            escalation=run_escalation.FloorEscalation()):
+                            escalation=run_escalation.FloorEscalation(), relic_modifiers=relics.RelicModifiers()):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
         # out of an endless run doesn't silently drop back into a normal,
@@ -459,17 +496,22 @@ class Game:
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
         )
-        # Defaults to a no-op (every multiplier 1.0, safe as a literal
-        # default since FloorEscalation is frozen/immutable) unless a
-        # caller passes a real one -- only _load_floor does, since only it
-        # knows which floor of a run this is. Composed into the same three
-        # WaveManager kwargs `mode`'s own multipliers already occupy, same
-        # "extra factor, never replacing" rule difficulty.py's own
-        # docstring states.
+        # escalation/relic_modifiers both default to a no-op (safe as literal
+        # defaults -- both are frozen/immutable) unless a caller passes a
+        # real one -- only _load_floor does, since only it knows which floor
+        # of a run this is and what relics that run has drafted. Composed
+        # into the same construction `mode`'s own multipliers already
+        # occupy, same "extra factor, never replacing" rule difficulty.py's
+        # own docstring states. relic_modifiers.gold_per_floor_bonus isn't
+        # applied here -- unlike a starting multiplier, it's meant to apply
+        # on top of every floor's economy including floor 1+'s carried-
+        # forward gold, not just what's constructed fresh here, so
+        # _load_floor adds it after this method returns instead (see its
+        # own comment).
         mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
-            round(level.starting_gold * mode.starting_gold_multiplier),
-            round(level.starting_lives * mode.starting_lives_multiplier),
+            round(level.starting_gold * mode.starting_gold_multiplier * relic_modifiers.starting_gold_multiplier),
+            round(level.starting_lives * mode.starting_lives_multiplier) + relic_modifiers.starting_lives_bonus,
             unlimited_gold=self.unlimited_gold or sandbox,
             invulnerable=sandbox,
         )
@@ -477,7 +519,9 @@ class Game:
             level, self.grid.tile_to_pixel_center,
             enemy_hp_multiplier=mode.enemy_hp_multiplier * escalation.enemy_hp_multiplier,
             enemy_speed_multiplier=mode.enemy_speed_multiplier * escalation.enemy_speed_multiplier,
-            enemy_gold_multiplier=mode.enemy_gold_multiplier * escalation.enemy_gold_multiplier,
+            enemy_gold_multiplier=(
+                mode.enemy_gold_multiplier * escalation.enemy_gold_multiplier * relic_modifiers.enemy_gold_multiplier
+            ),
             endless=endless,
             rng=rng,
         )
@@ -1730,7 +1774,7 @@ class Game:
         elif self.state == GameState.DRAFT:
             ui.draw_draft_screen(
                 self.screen, self.font, self.small_font,
-                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
+                self.draft_choices, self.draft_choice_rects, self.draft_kind, self._hovered_draft_choice(),
             )
 
         pygame.display.flip()

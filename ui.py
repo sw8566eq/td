@@ -16,6 +16,7 @@ import settings
 from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
+from relics import RELICS
 from tower import TOWER_TYPES
 from waves import WaveState
 
@@ -495,13 +496,21 @@ def get_clicked_draft_choice(pos, draft_choice_rects):
     return None
 
 
-def _draw_draft_card(surface, font, small_font, rect, name, hovered):
-    tower_cls = TOWER_TYPES[name]
+def _draw_card_frame(surface, rect, hovered):
+    """The fill+border every draft card (tower or relic) shares -- pulled
+    out so the two card kinds' own content-drawing can't drift apart on
+    hover color/border width/radius the way two independent copies of
+    this would. Returns the x each card's own content should start
+    drawing at."""
     fill_color = settings.COLOR_BUTTON_SELECTED if hovered else settings.COLOR_HUD_BG
     pygame.draw.rect(surface, fill_color, rect, border_radius=8)
     pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+    return rect.x + PANEL_PADDING
 
-    x = rect.x + PANEL_PADDING
+
+def _draw_draft_card(surface, font, small_font, rect, name, hovered):
+    tower_cls = TOWER_TYPES[name]
+    x = _draw_card_frame(surface, rect, hovered)
     # Reuses the sidebar's own class-subject header+stats rendering
     # verbatim (a draft card is exactly a build-menu selection's
     # not-yet-built display, just laid out in its own rect instead of the
@@ -512,21 +521,40 @@ def _draw_draft_card(surface, font, small_font, rect, name, hovered):
     _draw_panel_stats(surface, small_font, x, y, tower_cls, tower_cls, False)
 
 
-def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, hovered_index=None):
-    """`choices` is a list of TOWER_TYPES names (see card_pool.draft_offer),
-    `draft_choice_rects` one Rect per choice, same length/order (see
-    build_draft_choice_rects). The board underneath (grid/towers/HUD) is
-    left drawn by the caller -- same "frozen board behind a dark overlay"
-    look draw_victory_screen/draw_game_over_screen already use, for visual
-    continuity between the floor that was just cleared and the choice
-    that's about to shape the next one."""
+def _draw_relic_card(surface, font, small_font, rect, key, hovered):
+    relic = RELICS[key]
+    x = _draw_card_frame(surface, rect, hovered)
+    y = rect.y + PANEL_PADDING
+    title = font.render(relic.display_name, True, settings.COLOR_TEXT)
+    surface.blit(title, (x, y))
+    y += 34
+
+    max_width = DRAFT_CARD_WIDTH - 2 * PANEL_PADDING
+    for line in _wrap_text(relic.description, small_font, max_width):
+        line_text = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+        surface.blit(line_text, (x, y))
+        y += PANEL_ROW_HEIGHT
+
+
+def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, draft_kind, hovered_index=None):
+    """`choices` is a list of TOWER_TYPES names (see card_pool.draft_offer)
+    or RELICS keys (see relics.relic_offer), depending on `draft_kind`
+    ("tower" or "relic" -- see Game._is_relic_floor); `draft_choice_rects`
+    is one Rect per choice, same length/order (see build_draft_choice_
+    rects). The board underneath (grid/towers/HUD) is left drawn by the
+    caller -- same "frozen board behind a dark overlay" look draw_victory_
+    screen/draw_game_over_screen already use, for visual continuity
+    between the floor that was just cleared and the choice that's about
+    to shape the next one."""
     _draw_dim_overlay(surface)
 
-    title = font.render("Choose a new tower", True, settings.COLOR_GOLD)
+    title_text = "Choose a relic" if draft_kind == "relic" else "Choose a new tower"
+    title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 40)))
 
-    for index, name in enumerate(choices):
-        _draw_draft_card(surface, font, small_font, draft_choice_rects[index], name, index == hovered_index)
+    draw_card = _draw_relic_card if draft_kind == "relic" else _draw_draft_card
+    for index, key in enumerate(choices):
+        draw_card(surface, font, small_font, draft_choice_rects[index], key, index == hovered_index)
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---

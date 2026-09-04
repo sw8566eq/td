@@ -16,6 +16,18 @@ def test_defaults():
     assert run.lives == 0
     assert run.gold == 0
     assert run.floors_cleared == 0
+    assert run.relics == []
+    assert run.is_daily is False
+
+
+def test_relics_default_is_not_shared_across_instances():
+    # Regression guard: a plain `relics: list = []` default would share one
+    # mutable list across every RunState -- field(default_factory=list) is
+    # what run_state.py actually uses, this just proves it.
+    a = _run()
+    b = _run()
+    a.relics.append("something")
+    assert b.relics == []
 
 
 def test_current_level_id_reads_floor_sequence_at_floor_index():

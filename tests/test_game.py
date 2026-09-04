@@ -4070,6 +4070,129 @@ def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
     assert game.wave_manager.enemy_gold_multiplier == hard.enemy_gold_multiplier * escalation.enemy_gold_multiplier
 
 
+# --- Roguelike Run: Milestone 4b relics ---
+
+def test_relic_floor_offers_relics_instead_of_towers(game):
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1  # next_floor = 2, an even (relic) floor
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert game.draft_kind == "relic"
+    from relics import RELICS
+    assert set(game.draft_choices).issubset(RELICS.keys())
+
+
+def test_non_relic_floor_offers_towers(game):
+    # Unlike a relic draft (never gated), a tower draft needs something
+    # meta-progression-unlocked beyond STARTER_TOWERS to actually offer --
+    # real gameplay always has this by the time _enter_draft runs
+    # (_advance_run_floor bumps total_floors_cleared first), but this test
+    # skips straight to _enter_draft without ever clearing a floor.
+    import meta_progression
+    meta_progression.bump("total_floors_cleared", 1, game.meta_progression_path)
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 0  # next_floor = 1, an odd (tower) floor
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert game.draft_kind == "tower"
+
+
+def test_picking_a_relic_adds_it_to_the_runs_relics_and_advances(game):
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    picked = game.draft_choices[0]
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    assert picked in game.active_run.relics
+    assert game.active_run.floor_index == 2
+    assert game.state == GameState.PLAYING
+
+
+def test_relic_gold_per_floor_bonus_is_applied_on_every_floor_load(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["prospectors_charm"]
+    gold_before = game.active_run.gold
+
+    game._load_floor(1)
+
+    from relics import RELICS
+    assert game.economy.gold == gold_before + RELICS["prospectors_charm"].gold_per_floor_bonus
+
+
+def test_relic_gold_per_floor_bonus_is_reflected_in_run_gold_at_floor_zero(game):
+    # Regression guard: run.gold is captured *after* the bonus is applied
+    # at floor 0, not before -- otherwise the very next floor's carried-
+    # forward gold would silently lose whatever bonus floor 0 already
+    # credited to the live economy.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["prospectors_charm"]
+
+    game._load_floor(0)
+
+    assert game.active_run.gold == game.economy.gold
+
+
+def test_relic_starting_gold_multiplier_applies_only_at_floor_zero(game):
+    # war_chest is deliberately a one-time bonus (see relics.py's own
+    # RelicModifiers docstring for why) -- carried-forward gold on floor
+    # 1+ shouldn't get the multiplier applied a second time.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["war_chest"]
+
+    game._load_floor(0)
+
+    from levels import LEVELS
+    from relics import RELICS
+    level = LEVELS[game.active_run.floor_sequence[0]]
+    expected = round(level.starting_gold * RELICS["war_chest"].starting_gold_multiplier)
+    assert game.economy.gold == expected
+
+    game._load_floor(1)
+    assert game.economy.gold == expected  # not reapplied past floor zero
+
+
+def test_relic_starting_lives_bonus_applies_only_at_floor_zero(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["sturdy_gate"]
+
+    game._load_floor(0)
+
+    from levels import LEVELS
+    from relics import RELICS
+    level = LEVELS[game.active_run.floor_sequence[0]]
+    expected = level.starting_lives + RELICS["sturdy_gate"].starting_lives_bonus
+    assert game.economy.lives == expected
+
+    game._load_floor(1)
+    assert game.economy.lives == expected  # not reapplied past floor zero
+
+
+def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["bounty_hunters_ledger"]
+
+    game._load_floor(0)
+
+    from relics import RELICS
+    assert game.wave_manager.enemy_gold_multiplier == RELICS["bounty_hunters_ledger"].enemy_gold_multiplier
+
+
+def test_render_relic_draft_does_not_crash(game):
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    assert game.state == GameState.DRAFT
+    assert game.draft_kind == "relic"
+
+    game.render()
+
+
 def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
     game.start_new_run(seed=1)
     seed = game.active_run.seed
