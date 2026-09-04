@@ -3,6 +3,7 @@ import json
 import save_state
 import settings
 from levels import Level
+from run_state import RunState
 from tower import BasicTower, LightningTower
 from waves import WaveState
 
@@ -53,7 +54,7 @@ class _FakeGame:
     def __init__(self, level, towers, current_level_id=1, endless=False, sandbox=False,
                  difficulty="normal", gold=150, lives=20,
                  wave_index=0, wave_state=WaveState.BETWEEN_WAVES, between_wave_timer=3.0,
-                 sold_towers=None):
+                 sold_towers=None, active_run=None):
         self.current_level_id = current_level_id
         self.level = level
         self.endless = endless
@@ -63,6 +64,7 @@ class _FakeGame:
         self.wave_manager = _FakeWaveManager(wave_index, wave_state, between_wave_timer)
         self.towers = towers
         self.sold_towers = sold_towers or []
+        self.active_run = active_run
 
 
 def test_save_and_load_run_round_trips(tmp_path):
@@ -93,6 +95,94 @@ def test_save_and_load_run_round_trips(tmp_path):
         "shots_fired": 0, "shots_hit": 0, "damage_dealt": 0.0, "kills": 0,
     }]
     assert loaded["sold_towers"] == []
+    assert loaded["run"] is None
+
+
+def test_save_and_load_run_round_trips_an_active_run(tmp_path):
+    path = tmp_path / "save_state.json"
+    level = make_level()
+    run = RunState(
+        seed=42, floor_sequence=(1, 2, 3), difficulty="hard",
+        unlocked_towers=["basic", "cannon", "frost"], floor_index=1,
+        lives=15, gold=80, relics=["prospectors_charm"], is_daily=True,
+    )
+    game = _FakeGame(level, [], active_run=run)
+
+    save_state.save_run(game, path=path)
+    loaded = save_state.load_run(path=path)
+
+    loaded_run = loaded["run"]
+    assert loaded_run.seed == 42
+    assert loaded_run.floor_sequence == (1, 2, 3)  # round-trips back to a tuple, not a list
+    assert loaded_run.difficulty == "hard"
+    assert loaded_run.unlocked_towers == ["basic", "cannon", "frost"]
+    assert loaded_run.floor_index == 1
+    assert loaded_run.lives == 15
+    assert loaded_run.gold == 80
+    assert loaded_run.relics == ["prospectors_charm"]
+    assert loaded_run.is_daily is True
+
+
+def test_load_run_with_a_saved_run_predating_the_run_key_still_resumes(tmp_path):
+    # An older save file (written before save_state.py gained the "run"
+    # key) has no such key at all, not an explicit null -- must load as
+    # cleanly as one with "run": null, same .get()-defaults spirit already
+    # applied to sold_towers on an even older save.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [])
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    del data["run"]
+    path.write_text(json.dumps(data))
+
+    loaded = save_state.load_run(path=path)
+
+    assert loaded["run"] is None
+
+
+def test_load_run_with_a_run_referencing_an_unrecognized_level_id_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
+    game = _FakeGame(make_level(), [], active_run=run)
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["floor_sequence"] = [999999]
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_floor_index_out_of_range_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    run = RunState(seed=1, floor_sequence=(1, 2), difficulty="normal", unlocked_towers=["basic"], floor_index=5)
+    game = _FakeGame(make_level(), [], active_run=run)
+    save_state.save_run(game, path=path)
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_referencing_an_unrecognized_tower_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
+    game = _FakeGame(make_level(), [], active_run=run)
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["unlocked_towers"] = ["no_such_tower"]
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_referencing_an_unrecognized_relic_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
+    game = _FakeGame(make_level(), [], active_run=run)
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["relics"] = ["no_such_relic"]
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
 
 
 def test_save_run_captures_endless_appended_waves():

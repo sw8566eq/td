@@ -90,7 +90,7 @@ def test_menu_options_lists_every_key_in_documented_order():
     assert menu_options(has_saved_run=False) == [
         "Press any key to start a run",
         "E -- Map Editor",
-        "L -- Level Browser",
+        "L -- Practice a Floor",
         "S -- Settings",
         "A -- Achievements",
         "H -- How to Play",
@@ -604,7 +604,7 @@ def test_draw_level_select_screen_shows_the_survival_hint_only_for_purpose_play(
                               purpose="edit", endless_armed=True)
 
 
-def test_draw_level_select_screen_shows_the_sandbox_hint_only_for_purpose_play():
+def test_draw_level_select_screen_shows_the_practice_mode_notice_only_for_purpose_play():
     pygame.font.init()
     font = pygame.font.SysFont(None, 32)
     small_font = pygame.font.SysFont(None, 22)
@@ -612,14 +612,11 @@ def test_draw_level_select_screen_shows_the_sandbox_hint_only_for_purpose_play()
     entries = []
     rects = {}
 
-    # Same idea as the Survival hint above, for the independent Sandbox
-    # toggle -- exercises every branch of the new sandbox_armed handling.
-    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
-                              purpose="play", sandbox_armed=False)
-    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
-                              purpose="play", sandbox_armed=True)
-    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={},
-                              purpose="edit", sandbox_armed=True)
+    # Practice mode is unconditional now (see Game._handle_level_select_
+    # click), so the notice is static -- just confirms it renders for
+    # purpose="play" and is skipped for purpose="edit" without crashing.
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={}, purpose="play")
+    draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails={}, purpose="edit")
 
 
 # --- Level select scrolling ---

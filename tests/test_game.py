@@ -2563,31 +2563,12 @@ def test_reset_without_endless_stays_non_endless(game):
 
 # --- Sandbox/Creative mode ---
 
-def test_b_key_arms_sandbox_only_while_browsing_to_play(game):
-    game._enter_level_select(purpose="play")
-    assert game.level_select_sandbox_armed is False
-    game._handle_keydown(pygame.K_b)
-    assert game.level_select_sandbox_armed is True
-    game._handle_keydown(pygame.K_b)
-    assert game.level_select_sandbox_armed is False
-
-
-def test_b_key_is_a_no_op_while_browsing_to_edit(game):
-    game._enter_level_select(purpose="edit")
-    game._handle_keydown(pygame.K_b)
-    assert game.level_select_sandbox_armed is False
-
-
-def test_entering_level_select_resets_sandbox_armed(game):
+def test_picking_a_level_to_play_always_starts_it_in_sandbox_mode(game):
+    # Practice (LEVEL_SELECT's purpose="play") is unconditionally Sandbox
+    # now -- decoupled from real progress, same reasoning a custom level's
+    # own progress-exemption already established (see
+    # test_clearing_a_custom_level_does_not_touch_progress).
     game._enter_level_select()
-    game.level_select_sandbox_armed = True
-    game._enter_level_select()
-    assert game.level_select_sandbox_armed is False
-
-
-def test_picking_a_level_while_sandbox_armed_starts_it_in_sandbox_mode(game):
-    game._enter_level_select()
-    game.level_select_sandbox_armed = True
     rect = game.level_select_rects[1]
     game._handle_level_select_click(rect.center)
     assert game.sandbox is True
@@ -2595,20 +2576,13 @@ def test_picking_a_level_while_sandbox_armed_starts_it_in_sandbox_mode(game):
     assert game.economy.invulnerable is True
 
 
-def test_picking_a_level_while_not_armed_starts_it_without_sandbox(game):
-    game._enter_level_select()
-    rect = game.level_select_rects[1]
-    game._handle_level_select_click(rect.center)
-    assert game.sandbox is False
-    assert game.economy.invulnerable is False
-
-
 def test_sandbox_and_endless_are_independently_combinable(game):
     # Infinite lives plus escalating waves is a legitimate "just mess
-    # around" combo -- arming both must not make either a no-op.
+    # around" combo -- Sandbox is unconditional in Practice now, so this
+    # only needs to confirm arming Survival on top doesn't make either a
+    # no-op.
     game._enter_level_select()
     game.level_select_endless_armed = True
-    game.level_select_sandbox_armed = True
     rect = game.level_select_rects[1]
     game._handle_level_select_click(rect.center)
     assert game.wave_manager.endless is True
@@ -2972,50 +2946,107 @@ def test_render_pause_menu_with_save_available_does_not_crash(playing_game):
     playing_game.render()
 
 
+# --- Save/resume a roguelike run in progress (Milestone 5) ---
+
+def test_saving_without_an_active_run_resumes_with_no_active_run(playing_game):
+    # playing_game is a classic/Practice-shaped load (no active_run at
+    # all) -- a save taken from one must round-trip that absence, not
+    # somehow acquire a run on resume.
+    assert playing_game.active_run is None
+    playing_game.save_run()
+    playing_game.state = GameState.MENU
+
+    playing_game._continue_saved_run()
+
+    assert playing_game.active_run is None
+
+
+def test_saving_mid_run_captures_the_active_run(game):
+    game.start_new_run(seed=1)
+    run_before = game.active_run
+
+    assert game.save_run() is True
+    saved = save_state.load_run(game.save_path)
+
+    assert saved["run"].seed == run_before.seed
+    assert saved["run"].floor_sequence == run_before.floor_sequence
+    assert saved["run"].unlocked_towers == run_before.unlocked_towers
+    assert saved["run"].floor_index == run_before.floor_index
+    assert saved["run"].gold == run_before.gold
+    assert saved["run"].lives == run_before.lives
+
+
+def test_resuming_a_saved_run_restores_active_run(game):
+    game.start_new_run(seed=1)
+    game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
+    # active_run.gold/lives are only re-synced from economy at a floor's own
+    # clear (_advance_run_floor) -- not live every frame -- so a save taken
+    # mid-floor genuinely captures two different numbers here, same as it
+    # would with no save/resume involved at all. economy.gold (350 after
+    # this) is what a resume should restore live play to; active_run.gold
+    # (still floor 0's original 150) is what the *next* floor load would
+    # carry forward from, unaffected by this frame's spending.
+    game.economy.gold += 200
+    run_before = game.active_run
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    assert game.active_run is not run_before  # a fresh RunState, reconstructed from disk
+    assert game.active_run.seed == run_before.seed
+    assert game.active_run.floor_sequence == run_before.floor_sequence
+    assert game.active_run.unlocked_towers == run_before.unlocked_towers
+    assert game.active_run.floor_index == run_before.floor_index
+    assert game.active_run.gold == run_before.gold
+    assert game.active_run.lives == run_before.lives
+    assert game.economy.gold == 350
+    assert game.state == GameState.PLAYING
+
+
+def test_resuming_a_saved_run_still_restricts_the_build_menu_to_its_unlocked_towers(game):
+    game.start_new_run(seed=1)
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    assert set(game.button_rects.keys()) == set(game.active_run.unlocked_towers)
+
+
 # --- Level unlocking (progress.py) ---
 
-def test_level_2_is_locked_until_level_1_is_cleared(game):
+def test_practice_mode_never_locks_any_built_in_level(game):
+    # Practice (LEVEL_SELECT purpose="play") is always Sandbox now (see
+    # test_picking_a_level_to_play_always_starts_it_in_sandbox_mode) --
+    # decoupled from real progress, so progress.py's sequential unlock
+    # gating no longer applies here, even for a level with nothing cleared
+    # ahead of it yet.
     game._enter_level_select()
-    assert 1 not in game.level_select_locked_ids  # the lowest id is always unlocked
-    assert 2 in game.level_select_locked_ids
+    assert game.level_select_locked_ids == set()
 
     rect = game.level_select_rects[2]
     game._handle_level_select_click(rect.center)
 
-    assert game.state == GameState.LEVEL_SELECT  # a locked row's click is a no-op
+    assert game.state == GameState.PLAYING
+    assert game.current_level_id == 2
 
 
-def test_clearing_level_1_unlocks_level_2(playing_game):
-    assert playing_game.current_level_id == 1
+def test_progress_still_persists_across_a_fresh_game_instance(playing_game):
+    # progress.py itself is untouched -- Game.load_level(sandbox=False)
+    # (what playing_game's own fixture uses, same as a real roguelike-run
+    # floor load) still marks a level cleared; Practice's own screen just
+    # no longer reads that back into a lock (see
+    # test_practice_mode_never_locks_any_built_in_level).
     playing_game.wave_manager.all_waves_complete = True
     playing_game.enemies = []
     playing_game.update(dt=0.01)
     assert playing_game.state == GameState.VICTORY
 
-    playing_game._enter_level_select()
-    assert 2 not in playing_game.level_select_locked_ids
-
-    rect = playing_game.level_select_rects[2]
-    playing_game._handle_level_select_click(rect.center)
-
-    assert playing_game.state == GameState.PLAYING
-    assert playing_game.current_level_id == 2
-
-
-def test_clearing_a_level_persists_across_a_fresh_game_instance(playing_game):
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
-    playing_game.update(dt=0.01)
-    assert playing_game.state == GameState.VICTORY
-
-    # A brand-new Game pointed at the same progress file should see level 2
-    # already unlocked -- progress persists across sessions, not just for
-    # the instance that earned it.
     reloaded = Game(progress_path=playing_game.progress_path, settings_path=playing_game.settings_path,
                      achievements_path=playing_game.achievements_path, save_path=playing_game.save_path)
     try:
-        reloaded._enter_level_select()
-        assert 2 not in reloaded.level_select_locked_ids
+        assert 1 in progress.load_progress(reloaded.progress_path)
     finally:
         pygame.quit()
 

@@ -79,10 +79,13 @@ class Game:
 
         # Injectable path, same idea as persistence.save_level's own
         # `directory` param -- lets tests point this at a tmp_path instead
-        # of ever touching the real repo-root progress.json. self.progress
-        # is refreshed from disk in _enter_level_select() too (same
-        # "always re-read" convention list_custom_levels() follows), not
-        # just here.
+        # of ever touching the real repo-root progress.json. Still written
+        # by a classic-mode built-in-level victory (see update()'s
+        # win-check) -- Practice mode (LEVEL_SELECT's purpose="play") no
+        # longer reads it back into a lock (see _enter_level_select), the
+        # one deliberate behavior change of Milestone 5's overhaul work,
+        # but the underlying progress-tracking mechanism itself is
+        # otherwise untouched.
         self.progress_path = progress_path or progress.PROGRESS_PATH
         self.progress = progress.load_progress(self.progress_path)
 
@@ -220,13 +223,11 @@ class Game:
         # Toggled by V while browsing to play (not edit); a level picked
         # while armed loads in endless/survival mode -- see
         # _handle_level_select_click. Reset to False every time the
-        # browser is (re-)entered, same as scroll_offset.
+        # browser is (re-)entered, same as scroll_offset. Sandbox itself is
+        # no longer a separate toggle here -- purpose="play" always loads a
+        # level in Practice/sandbox mode (see _handle_level_select_click),
+        # so it's always on and combinable with Survival for free.
         self.level_select_endless_armed = False
-        # Same idea as the endless toggle above, but for Sandbox/Creative
-        # mode (B, also "play"-only) -- independently armable/combinable
-        # with endless, since infinite lives plus escalating waves is a
-        # legitimate "just mess around" combo, not a conflict.
-        self.level_select_sandbox_armed = False
         self._custom_levels_by_id = {}
 
         self.state = GameState.MENU
@@ -262,12 +263,13 @@ class Game:
         one-time __init__ cache. _load_level_object() itself calls this
         unconditionally right after resetting active_run to None (see its
         own comment) -- the correct, all-towers default for every loader
-        that funnels through it (load_level/load_custom_level/
-        resume_saved_run, and reset()/advance_or_replay_level()'s own
-        direct calls for a custom/playtested level, never part of a run).
-        _load_floor is the one caller that calls this a *second* time,
-        after restoring the real RunState onto self.active_run, to narrow
-        the menu back down to that run's own drafted pool."""
+        that funnels through it (load_level/load_custom_level, and
+        reset()/advance_or_replay_level()'s own direct calls for a
+        custom/playtested level, never part of a run). _load_floor and
+        resume_saved_run (when resuming a save with an active run) are the
+        two callers that call this a *second* time, after restoring a real
+        RunState onto self.active_run, to narrow the menu back down to
+        that run's own drafted pool."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
     def start_new_run(self, seed=None, is_daily=False):
@@ -668,6 +670,23 @@ class Game:
         for tower_data in save_data.get("sold_towers", []):
             self.sold_towers.append(self._tower_from_save_data(tower_data))
 
+        # _load_level_object() unconditionally resets active_run to None
+        # (see its own docstring) -- restored afterward here, same "capture
+        # locally, restore after the reset" shape _load_floor() already
+        # uses for its own call into _load_level_object(). save_data["run"]
+        # is None for a save with no active run (classic/Practice/editor-
+        # playtest play, or one taken before this key existed -- see
+        # save_state.py's own docstring), so this is a plain restore, not
+        # something resume_saved_run() needs its own run/non-run branches
+        # for.
+        self.active_run = save_data.get("run")
+        if self.active_run is not None:
+            # Same "narrow back down after the default reset" second call
+            # _load_floor() already makes -- without it, a resumed run's
+            # build menu would show every registered tower instead of just
+            # the ones this run has actually drafted.
+            self._rebuild_button_rects()
+
         self._resumed_from_save = True  # see __init__'s comment on this flag
         self.state = GameState.PLAYING
 
@@ -821,9 +840,6 @@ class Game:
                 # gets picked next -- meaningless while browsing to load a
                 # map into the editor (purpose="edit"), so a no-op there.
                 self.level_select_endless_armed = not self.level_select_endless_armed
-            elif key == pygame.K_b and self.level_select_purpose == "play":
-                # Arms/disarms Sandbox/Creative mode, same idea as V above.
-                self.level_select_sandbox_armed = not self.level_select_sandbox_armed
         elif self.state == GameState.PLAYING:
             if key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PAUSED
@@ -1114,40 +1130,38 @@ class Game:
         run of the game shows up here just as readily as one saved this
         session.
 
-        `purpose` is "play" (the menu's L -- picking a level starts
-        playing it) or "edit" (the editor's Load Map... action -- picking
-        a level loads it back into the editor for further editing
-        instead; see _handle_level_select_click). Built-in levels have no
+        `purpose` is "play" (the menu's L -- picking a level starts it in
+        Practice mode) or "edit" (the editor's Load Map... action -- picking
+        a level loads it back into the editor for further editing instead;
+        see _handle_level_select_click). Built-in levels have no
         corresponding file to reopen for editing, so "edit" only ever
         lists custom ones.
 
-        Also refreshes self.progress from disk (same "always re-read"
-        convention list_custom_levels() follows) and, for purpose="play"
-        only, computes which built-in level ids are still locked -- a
-        custom level is never locked, and "edit" never lists built-ins at
-        all, so level_select_locked_ids is empty for both of those cases."""
+        level_select_locked_ids is always empty regardless of purpose --
+        "edit" never lists built-ins at all, and purpose="play" always
+        starts a level in Practice/sandbox mode (see
+        _handle_level_select_click), decoupled from progress.py's real-
+        clears tracking the same way a custom level already always was, so
+        there's nothing left for progress.is_unlocked() to gate here.
+        progress.py itself is untouched -- Game.load_level(sandbox=False)
+        (what a real roguelike-run floor load, or a direct API/test call,
+        still uses) keeps marking levels cleared exactly as before; this
+        screen just no longer reads that back into a lock."""
         custom_levels = persistence.list_custom_levels()
         self._custom_levels_by_id = {level.id: level for level in custom_levels}
-        self.progress = progress.load_progress(self.progress_path)
 
         if purpose == "edit":
             entries = [(level.id, level) for level in custom_levels]
-            locked_ids = set()
         else:
             entries = [(level_id, level) for level_id, level in sorted(LEVELS.items())]
             entries += [(level.id, level) for level in custom_levels]
-            locked_ids = {
-                level_id for level_id in LEVELS
-                if not progress.is_unlocked(level_id, LEVELS, self.progress)
-            }
 
         self.level_select_entries = entries
         self.level_select_thumbnails = {key: ui.build_level_thumbnail(level) for key, level in entries}
         self.level_select_purpose = purpose
-        self.level_select_locked_ids = locked_ids
+        self.level_select_locked_ids = set()
         self.level_select_scroll_offset = 0  # always open scrolled to the top
         self.level_select_endless_armed = False  # always re-opens un-armed
-        self.level_select_sandbox_armed = False  # same -- always re-opens un-armed
         self._rebuild_level_select_rects()
         self.state = GameState.LEVEL_SELECT
 
@@ -1182,14 +1196,15 @@ class Game:
             self.editor.load_level(self._custom_levels_by_id[key])
             self.state = GameState.EDITOR
         elif isinstance(key, int):
-            if key in self.level_select_locked_ids:
-                return  # locked -- stays on LEVEL_SELECT
-            self.load_level(key, endless=self.level_select_endless_armed, sandbox=self.level_select_sandbox_armed)
+            # level_select_locked_ids is always empty (see
+            # _enter_level_select) -- there's genuinely nothing left to gate
+            # here, not a check that happens to always pass.
+            self.load_level(key, endless=self.level_select_endless_armed, sandbox=True)
             self.state = GameState.PLAYING
         else:
             self.load_custom_level(
                 self._custom_levels_by_id[key],
-                endless=self.level_select_endless_armed, sandbox=self.level_select_sandbox_armed,
+                endless=self.level_select_endless_armed, sandbox=True,
             )
             self.state = GameState.PLAYING
 
@@ -1688,7 +1703,6 @@ class Game:
                 self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
                 self.level_select_purpose, self.level_select_scroll_offset,
                 self.level_select_locked_ids, self.level_select_endless_armed,
-                self.level_select_sandbox_armed,
             )
             pygame.display.flip()
             return
