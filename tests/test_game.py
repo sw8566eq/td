@@ -3014,16 +3014,15 @@ def test_resuming_a_saved_run_still_restricts_the_build_menu_to_its_unlocked_tow
     assert set(game.button_rects.keys()) == set(game.active_run.unlocked_towers)
 
 
-# --- Level unlocking (progress.py) ---
+# --- Practice mode has retired progress.py's level-unlock gating ---
 
-def test_practice_mode_never_locks_any_built_in_level(game):
+def test_practice_mode_lets_you_play_any_built_in_level_immediately(game):
     # Practice (LEVEL_SELECT purpose="play") is always Sandbox now (see
     # test_picking_a_level_to_play_always_starts_it_in_sandbox_mode) --
     # decoupled from real progress, so progress.py's sequential unlock
     # gating no longer applies here, even for a level with nothing cleared
-    # ahead of it yet.
+    # ahead of it yet (a fresh `game` fixture has no progress.json at all).
     game._enter_level_select()
-    assert game.level_select_locked_ids == set()
 
     rect = game.level_select_rects[2]
     game._handle_level_select_click(rect.center)
@@ -3036,8 +3035,8 @@ def test_progress_still_persists_across_a_fresh_game_instance(playing_game):
     # progress.py itself is untouched -- Game.load_level(sandbox=False)
     # (what playing_game's own fixture uses, same as a real roguelike-run
     # floor load) still marks a level cleared; Practice's own screen just
-    # no longer reads that back into a lock (see
-    # test_practice_mode_never_locks_any_built_in_level).
+    # has no notion of a lock to read that back into (see
+    # test_practice_mode_lets_you_play_any_built_in_level_immediately).
     playing_game.wave_manager.all_waves_complete = True
     playing_game.enemies = []
     playing_game.update(dt=0.01)
@@ -3062,15 +3061,6 @@ def test_clearing_a_custom_level_does_not_touch_progress(playing_game):
 
     assert playing_game.state == GameState.VICTORY
     assert progress.load_progress(playing_game.progress_path) == {}
-
-
-def test_custom_levels_are_never_locked_regardless_of_progress(game, monkeypatch):
-    custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
-
-    game._enter_level_select()
-
-    assert custom.id not in game.level_select_locked_ids
 
 
 # --- Loading a saved map back into the editor ---

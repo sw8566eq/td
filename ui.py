@@ -1450,8 +1450,7 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
 
 
 def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnails,
-                              purpose="play", scroll_offset=0, locked_ids=frozenset(),
-                              endless_armed=False):
+                              purpose="play", scroll_offset=0, endless_armed=False):
     """`purpose` is "play" (the menu's `L` -- built-ins and custom levels
     both listed, picking one starts playing it) or "edit" (the map
     editor's "Load Map..." -- only custom levels listed, since a built-in
@@ -1465,11 +1464,9 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
     see Game._level_select_rects), this just clips the drawing and shows
     a hint when there's more list than fits either direction.
 
-    `locked_ids` is currently always empty (see Game._enter_level_select's
-    own docstring for why) -- kept as a param, rather than dropped outright,
-    since dimming a not-yet-unlocked row and tagging its label "(Locked)"
-    is still a real, generically useful drawing capability, just one
-    nothing currently exercises.
+    No row is ever locked -- purpose="play" always starts a level in
+    Practice mode (see Game._enter_level_select's own docstring), so every
+    row draws the same way regardless of progress.
 
     `endless_armed` (only meaningful for purpose="play" -- see
     Game._handle_keydown's `V` handling) shows a small hint that picking a
@@ -1506,9 +1503,7 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         rect = rects[key]
         if not rect.colliderect(viewport):
             continue  # scrolled fully out of view -- nothing to draw
-        locked = key in locked_ids
-        row_color = settings.COLOR_BUTTON_DISABLED if locked else settings.COLOR_BUTTON
-        pygame.draw.rect(surface, row_color, rect, border_radius=6)
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
 
         thumbnail = thumbnails.get(key)
         text_x = rect.left + LEVEL_SELECT_ROW_PADDING
@@ -1522,17 +1517,12 @@ def draw_level_select_screen(surface, font, small_font, entries, rects, thumbnai
         # built-in one's is the int key it's registered under in LEVELS.
         # purpose == "edit" never lists a built-in at all (see
         # Game._enter_level_select), so the "(custom)" tag would just be
-        # redundant noise there -- every row already is one. locked_ids is
-        # always empty for purpose == "edit" and for a custom level's own
-        # key, so the "(Locked)" tag only ever applies to a "play" row.
+        # redundant noise there -- every row already is one.
         if purpose == "edit" or isinstance(key, int):
             label = level.name
         else:
             label = f"{level.name} (custom)"
-        if locked:
-            label += " (Locked)"
-        text_color = settings.COLOR_TEXT_DIM if locked else settings.COLOR_TEXT
-        text = small_font.render(label, True, text_color)
+        text = small_font.render(label, True, settings.COLOR_TEXT)
         surface.blit(text, text.get_rect(midleft=(text_x, rect.centery)))
 
     surface.set_clip(previous_clip)
