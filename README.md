@@ -2,7 +2,12 @@
 
 [![Tests](https://github.com/sw8566eq/td/actions/workflows/tests.yml/badge.svg)](https://github.com/sw8566eq/td/actions/workflows/tests.yml)
 
-A minimal, extensible tower defense game built with Python + Pygame.
+A roguelike deckbuilder tower defense game built with Python + Pygame.
+
+You don't pick a level and beat it -- you start a **run**: a seeded sequence of floors, each one a
+tower-defense map, played with a small pool of towers you grow by **drafting** a new card between
+floors. Gold and lives carry from floor to floor, the enemies escalate as you descend, and losing
+your last life ends the run for good. What you unlock along the way sticks around for the next one.
 
 ## Run it
 
@@ -25,12 +30,49 @@ Don't want to set up Python at all? Grab a pre-built Linux binary from the
 to the executable); progress, achievements, settings, and saved runs are all written there too, so
 moving just the `td` binary out on its own would leave those behind.
 
+## Runs
+
+Press any unbound key at the main menu to start a run. That samples a **floor sequence** -- six
+built-in levels drawn from the eleven available, kept in ascending order so they escalate
+(`run_floors.py`) -- and hands you a starter pool of three towers: Basic, Cannon, and Frost
+(`card_pool.STARTER_TOWERS`). The build menu shows only those three; the other six towers exist,
+but you can't build them yet.
+
+Clear a floor's waves and you get a **Floor Cleared** screen with that floor's tower results, then
+a **draft**: three cards, pick one. Usually that's a new tower added to the run's pool for every
+remaining floor. Every other floor it's a **relic** instead (`relics.py`) -- a passive, run-wide
+modifier like "+20 gold at the start of every floor" or "+3 extra lives for this run." Picking a
+card loads the next floor: fresh grid, fresh towers to place, but your gold and lives carry over.
+
+Three things make each floor harder than the last:
+
+- The levels themselves get more complex as the sequence ascends.
+- A per-floor **escalation** multiplies enemy HP, speed, and gold reward on top of your difficulty
+  setting rather than replacing it (`run_escalation.py`) -- floor 0 is exactly 1.0x, so a run's
+  first floor plays identically to that level on its own.
+- The **last** floor loads in Endless mode from the start, so its waves never run out.
+
+That last point is the point: there is no "you won the run" screen. A run ends only by
+**permadeath** -- losing your last life -- which records the run (`run_history.py`, keyed by seed,
+keeping your best result) and banks its progress toward the next one.
+
+**Meta-progression** is what carries across runs. Six of the nine towers are locked account-wide
+behind lifetime counters (`meta_progression.py`): clear 1/3/5 total floors to unlock Knockback,
+Poison, and Lightning; play 1/2 runs for Sniper and Support; reach the endless final floor once for
+Beam. An unlocked tower joins the pool the draft can offer from -- it doesn't start in your hand,
+it just becomes a card you might be dealt. A toast pops up in-game the moment you unlock one.
+
+`D` from the menu starts the **Daily Run** -- the same thing, seeded off today's UTC date, so
+everyone gets the identical floor sequence and identical draft offers today. Its difficulty is
+pinned to Normal regardless of your own setting, so scores are comparable.
+
 ## Controls
 
-From the main **menu**: press any other key to start playing the currently loaded level, `E` opens
-the map editor, `L` opens the level browser, `S` opens Settings, `A` opens your Achievements, `H`
-opens an in-game How to Play screen (a condensed version of this section), and `C` (shown only when
-one exists) continues a saved in-progress run.
+From the main **menu**: press any other key to start a new run (see "Runs" above), `E` opens the
+map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
+your Achievements, `H` opens an in-game How to Play screen (a condensed version of this section),
+`D` starts today's Daily Run, and `C` (shown only when one exists) continues a saved in-progress
+run.
 
 While **playing**: click a tower button in the bottom bar, then click a buildable tile to place it
 -- the sidebar on the right shows that tower type's stats while it's selected; right-click at any
@@ -58,23 +100,29 @@ simulated world speeds up.
 level, `S` (shown only between waves) saves the run to disk and returns to the menu -- see "Save &
 resume" below -- `Q` quits. Playing a level you're playtesting from the map editor adds one more
 option there: `E` stops the run and takes you straight back to the editor, paint buffer untouched
--- not offered on a built-in level, which has no editor session to return to. `R` also restarts the
-level from the game-over screen, or -- from the victory screen -- advances to the next level if
-there is one, otherwise replays the level you just won. `Esc` quits from the main menu, game-over,
-or victory screens (there's no pause menu to open there).
+-- not offered on a built-in level, which has no editor session to return to.
+
+On the **Floor Cleared** screen, any key moves on to the draft; on the **draft** screen, click one
+of the three cards to take it and load the next floor. `Esc` quits from either, same as it does
+from the main menu, game-over, or victory screens (there's no pause menu to open on any of those).
+`R` restarts from the game-over screen, and -- from the victory screen a practice or playtested
+level can still reach -- advances to the next level if there is one, otherwise replays the one you
+just won.
 
 The level browser (`L`) has two extra toggles, both reset every time you reopen it and combinable
-with each other: `V` arms **Endless** (Survival) mode and `B` arms **Sandbox** mode for whichever
-level you pick next -- see "Difficulty, Endless, and Sandbox modes" below.
+with each other: `V` arms **Endless** (Survival) mode for whichever level you pick next -- see
+"Practice, Difficulty, Endless, and Sandbox modes" below for what always applies regardless.
 
 ## Testing
 
-Run the test suite with `pytest` (from the venv) -- 890+ tests covering every module, including
-`Game`'s full state machine, click/key handling, and update loop (`tests/test_game.py`) and
-`AssetManager`'s placeholder fallback and caching (`tests/test_assets.py`). Both of those open a
-real pygame window, so they force the SDL dummy video driver themselves
-(`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")` at the top of the file) -- `pytest` runs
-headless with no extra setup, in CI or anywhere else.
+Run the test suite with `pytest` (from the venv) -- 1060+ tests covering every module. The
+`Game`-level tests are split three ways by concern: `tests/test_game.py` (state machine, click/key
+handling, update loop, rendering), `tests/test_run.py` (the whole run lifecycle -- floors, drafts,
+relics, permadeath, meta-progression, save/resume, Daily Run, Practice), and
+`tests/test_game_editor.py` (the editor, wave editor, and level browser screens). All three share
+fixtures and helpers from `tests/conftest.py`, which is also where the SDL dummy video driver gets
+forced before pygame is imported -- so `pytest` runs headless with no extra setup, in CI or
+anywhere else. (`tests/test_assets.py` stands alone and does its own.)
 
 ## Art
 
@@ -104,7 +152,8 @@ anyway.
 
 ## Towers
 
-Eight so far:
+Nine so far. In a run you start with three of them and draft the rest (see "Runs" above); Practice
+mode and editor playtests always offer all nine.
 
 - **Basic** -- cheap, single-target, no special mechanic; its damage scales especially steeply with
   level so it stays worth building late-game.
@@ -130,6 +179,11 @@ Eight so far:
   take the strongest buff on offer, and a tower that walks out of every Support tower's range
   reverts immediately. Its own level-ups scale the buff strength rather than a nonexistent attack
   stat.
+- **Beam** -- fires rapidly at one target and rewards staying locked onto it: each consecutive hit
+  on the same, uninterrupted target ramps its damage further, capped at `max_ramp_multiplier`.
+  Switching targets -- because a different enemy wandered into range, or the targeting mode picked
+  someone new -- resets the ramp on the very next shot. Weaker than Basic until a target is
+  committed to, the roster's best sustained single-target damage once it's fully ramped.
 
 ## Tower levels & specialization
 
@@ -196,26 +250,37 @@ invariant, not just a convention.
 
 ## Levels
 
-Nine built in: five single-lane corridors of increasing switchback complexity (`LEVELS[1]`-`[5]`),
-and four that branch and/or merge -- `LEVELS[6]` ("Confluence", two spawns merging into one goal),
-`LEVELS[7]` ("Forked River", one spawn branching into two goals), `LEVELS[8]` ("Twin Confluence",
-two spawns merge then branch again into two goals), and `LEVELS[9]` ("Triple Crossing", three
-spawns merging into one goal). Beating a level's boss wave shows a "Level Complete!" screen; `R`
-advances to the next level (`Game.advance_or_replay_level()`), starting that level's economy fresh.
-Winning the last registered level shows "Victory!" instead, and `R` there just replays it. `L` from
-the main menu opens a level browser listing every built-in level plus any custom ones you've saved
-from the map editor -- each one shown with a small thumbnail of its actual path (ground/path fill
-plus spawn/goal dots), not just its name, and a **locked** built-in level greyed out until you clear
-the one before it. Saved levels persist across game sessions -- quit and relaunch, and `L` still
-finds everything you'd saved before, straight off disk. More levels than fit on screen at once
-scroll with the mouse wheel -- a "more below" hint appears whenever there's further to go.
+Eleven built in -- collectively, the pool a run's floors are drawn from. Six are single-lane
+corridors of increasing switchback complexity (`LEVELS[1]`-`[5]`, `[10]`), and five branch and/or
+merge: `LEVELS[6]` ("Confluence", two spawns merging into one goal), `LEVELS[7]` ("Forked River",
+one spawn branching into two goals), `LEVELS[8]` ("Twin Confluence", two spawns merge then branch
+again into two goals), `LEVELS[9]` ("Triple Crossing", three spawns merging into one goal), and
+`LEVELS[11]` ("Grand Delta"). The ids are an authored difficulty ramp, which is why a run samples
+its floors *without* reordering them (`run_floors.py`) -- a shuffle would occasionally front-load a
+hard map onto floor 1.
 
-## Difficulty, Endless, and Sandbox modes
+`L` from the main menu opens a level browser listing every built-in level plus any custom ones
+you've saved from the map editor -- each one shown with a small thumbnail of its actual path
+(ground/path fill plus spawn/goal dots), not just its name. Nothing here is locked: picking one is
+**Practice** (see below), which is deliberately decoupled from real progress, so there's no reason
+to gate it. Saved levels persist across game sessions -- quit and relaunch, and `L` still finds
+everything you'd saved before, straight off disk. More levels than fit on screen at once scroll
+with the mouse wheel -- a "more below" hint appears whenever there's further to go.
+
+## Practice, Difficulty, Endless, and Sandbox modes
+
+**Practice** is what the level browser (`L`) does: play any single built-in or custom level on its
+own, outside a run. It always loads in Sandbox mode (below) -- unlimited gold, invulnerable, all
+nine towers available -- because it's for trying things out, not for earning anything. Nothing you
+do in Practice touches your progress, achievements, or meta-progression unlocks. Real progress
+comes from clearing run floors.
 
 **Difficulty** (`S` from the main menu -> Settings) picks one of Easy/Normal/Hard -- a bundle of
 multipliers on enemy HP/speed/gold reward and starting gold/lives (`difficulty.py`). Normal is
 every multiplier at 1.0, i.e. exactly the original numbers -- see "Settings" below for how your
-choice persists.
+choice persists. A run snapshots your setting when it starts, so changing it mid-run doesn't move
+the goalposts partway through; the per-floor escalation (see "Runs") stacks on top of it rather
+than replacing it.
 
 **Endless (Survival) mode** -- armed with `V` from the level browser before picking a level -- keeps
 generating new waves once a level's own last wave clears instead of ending the level: each new wave
@@ -223,11 +288,11 @@ takes the previous one's enemy counts and bumps them up further, so it escalates
 rather than plateauing. There's no way to "win" an endless run; it plays until you run out of
 lives.
 
-**Sandbox mode** -- armed with `B` from the level browser, independently of and combinable with
-Endless -- gives you unlimited gold and makes you invulnerable (a leaked enemy never actually
-costs a life), for freely experimenting with tower combinations. A sandbox win/clear doesn't count
-toward your real level-unlock progress or your achievements, since it isn't a real test of
-anything.
+**Sandbox mode** gives you unlimited gold and makes you invulnerable (a leaked enemy never
+actually costs a life), for freely experimenting with tower combinations. A sandbox win/clear
+doesn't count toward progress, achievements, or meta-progression unlocks, since it isn't a real
+test of anything. Practice always uses it -- unconditionally, not as a toggle -- which is exactly
+why Practice earns nothing.
 
 ## Settings
 
@@ -237,29 +302,44 @@ set the same way the next time you launch the game.
 
 ## Post-level results
 
-The Victory and Game Over screens both show a compact table of every tower you built that level
-(including ones you later sold), sorted by damage dealt -- damage, kills, and accuracy per tower,
-so you can see which of your towers actually carried the level.
+The Floor Cleared, Victory, and Game Over screens all show a compact table of every tower you built
+on that floor/level (including ones you later sold), sorted by damage dealt -- damage, kills, and
+accuracy per tower, so you can see which of your towers actually carried it. A Support tower shows
+`--` for accuracy rather than a misleading 0%, since it never fires a shot.
 
 ## Achievements
 
 `A` from the main menu opens an Achievements screen listing all ten you can unlock -- landing your
-first kill, racking up 100/1000 kills total, placing your first tower, maxing one out,
-choosing your first specialization, clearing your first level (and eventually every built-in one),
-and clearing waves of enemies over time. Progress toward a still-locked achievement is shown right
+first kill, racking up 100/1000 kills total, placing your first tower, maxing one out, choosing
+your first specialization, clearing your first level (and eventually every built-in one), and
+clearing waves of enemies over time. Progress toward a still-locked achievement is shown right
 there (e.g. "37/100"), and a small toast pops up in-game the moment you unlock a new one. None of
-this counts while playing in Sandbox mode.
+this counts while playing in Sandbox mode, which includes all of Practice.
+
+Achievements are deliberately separate from the **meta-progression** unlocks described under
+"Runs": achievements are trophies with no gameplay consequence (`achievements.py`), meta-progression
+unlocks change what a future run's draft can offer you (`meta_progression.py`). They're tracked in
+separate files and separate registries, so one number never has to serve both purposes. Clearing
+floors feeds both: "Campaign Complete" wants every built-in level cleared at least once, counted
+across however many runs it takes (`progress.py` keeps that per-level tally -- your best lives
+remaining on each is recorded alongside it, kept for a future summary screen to show, though
+nothing displays it yet).
 
 ## Save & resume
 
-The pause menu's `S` (shown only between waves, not mid-wave) saves your current run -- level,
-gold, lives, wave progress, every placed tower's level/specialization/targeting mode, and whether
-it's an endless or sandbox run -- to disk and returns you to the main menu, which now shows a `C`
-option to pick that run back up exactly where you left off, even after quitting and relaunching the
-game entirely. Resuming never re-spends the gold you already spent on upgrades, and picks up right
-where the run's *own* difficulty was, even if you've changed the difficulty setting since saving.
-Playing that resumed run through to its own Victory or Game Over clears the save, so "Continue"
-only ever offers a run that's genuinely still in progress -- there's only ever one save slot.
+The pause menu's `S` (shown only between waves, not mid-wave) saves what you're playing -- the
+level, gold, lives, wave progress, every placed tower's level/specialization/targeting mode, and
+whether it's an endless or sandbox session -- to disk and returns you to the main menu, which now
+shows a `C` option to pick it back up exactly where you left off, even after quitting and
+relaunching the game entirely. If a run is active, the run itself is saved too: its seed, floor
+sequence and position, drafted tower pool, and relics, so you resume on the same floor with the
+same deck. Resuming never re-spends the gold you already spent on upgrades, and picks up right
+where the *saved* difficulty was, even if you've changed the setting since. Playing that resumed
+session through to its own conclusion clears the save, so "Continue" only ever offers something
+genuinely still in progress -- there's only ever one save slot.
+
+Saving is only possible between waves, which is what keeps this simple: there's no live enemy or
+projectile state to serialize, so a resumed run always restarts from a clean wave boundary.
 
 ## Map editor
 
@@ -353,9 +433,10 @@ entry, not a change to the systems that already work.
   independent of any other spawn's -- hand-authored, or via `generate_default_waves()`/
   `_single_spawn_waves()` for the common single-spawn case), and starting gold/lives. `Grid`,
   `WaveManager`, and `Game` all consume whichever level is active generically, so this needs no
-  other changes -- registering it is also what makes it reachable: winning the level before it in
-  numeric order will offer to advance into it, and it's listed in `L`'s level browser. (All levels
-  currently share the same map size, set in `settings.py` -- only the path/waves differ.)
+  other changes -- registering it is also what makes it reachable: it joins the pool a run's floors
+  are drawn from (`run_floors.py`), and it's listed in `L`'s level browser for Practice. Put it at
+  the id its difficulty belongs at, since the ids are the ramp a run ascends. (All levels currently
+  share the same map size, set in `settings.py` -- only the path/waves differ.)
   Give its final wave a `"boss": 1` entry to match every other level -- enforced by
   `tests/test_levels.py::test_every_levels_final_wave_includes_a_boss`. A player-made level doesn't
   need a registry entry at all -- see "Map editor" above.
@@ -364,3 +445,16 @@ entry, not a change to the systems that already work.
   `towers_specialized`, `levels_cleared`, `waves_survived`) or a new one -- a new counter just needs
   one `Game._record_achievement("your_counter_name")` call added at whatever point in `game.py` the
   event actually happens.
+- **New relic**: add a `Relic(...)` entry to `RELICS` in `relics.py` with whichever modifier fields
+  it sets (`gold_per_floor_bonus`, `starting_gold_multiplier`, `starting_lives_bonus`,
+  `enemy_gold_multiplier`). `compose_relic_modifiers()` folds every held relic together and
+  `Game._load_floor` composes the result into the floor's `Economy`/`WaveManager` alongside
+  difficulty and escalation, so nothing else needs changing. Relics aren't unlock-gated -- every
+  registered one is eligible in any run. Write the description to say what it *actually* does: a
+  `starting_*` field only ever affects floor 0, since every later floor carries gold and lives
+  forward instead of reconstructing them.
+- **New tower unlock**: add a `MetaUnlock(...)` entry to `META_UNLOCKS` in `meta_progression.py`
+  pairing a `TOWER_TYPES` name with a threshold on one of the lifetime run counters
+  (`total_floors_cleared`, `runs_played`, `runs_reached_endless`). Every tower not in
+  `card_pool.STARTER_TOWERS` should have exactly one entry, so a new tower needs one here too or it
+  can never be drafted.

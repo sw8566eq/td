@@ -43,17 +43,3 @@ def test_load_progress_on_an_unexpected_shape_returns_empty_instead_of_raising(t
     path.write_text(json.dumps({"cleared": "not a dict"}))
 
     assert progress.load_progress(path=path) == {}
-
-
-def test_is_unlocked_the_lowest_id_is_always_unlocked():
-    levels = {1: "level one", 2: "level two"}
-    assert progress.is_unlocked(1, levels, cleared={}) is True
-
-
-def test_is_unlocked_a_later_level_needs_its_predecessor_cleared():
-    levels = {1: "level one", 2: "level two", 3: "level three"}
-    assert progress.is_unlocked(2, levels, cleared={}) is False
-    assert progress.is_unlocked(2, levels, cleared={1: 10}) is True
-    # Level 3 needs level 2 specifically, not just "some earlier level".
-    assert progress.is_unlocked(3, levels, cleared={1: 10}) is False
-    assert progress.is_unlocked(3, levels, cleared={1: 10, 2: 5}) is True

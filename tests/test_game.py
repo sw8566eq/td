@@ -1,119 +1,45 @@
-"""Tests for the Game state machine, input handling, and update loop.
+"""Tests for the Game state machine, input handling, update loop, and
+rendering.
 
-Game() opens a real pygame window, so this module forces the SDL dummy
-video driver before pygame ever gets touched -- these tests must be able
-to run headless in CI/sandboxes with no real display, same as the manual
-smoke tests this project has been relying on during development.
+The roguelike run loop (floors, drafts, permadeath, meta-progression) lives
+in test_run.py, and the editor/wave-editor/level-browser screens in
+test_game_editor.py; shared fixtures and helpers for all three are in
+conftest.py.
 """
 
 import json
-import os
-import random
 import string
 import sys
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+import pygame
+import pytest
 
-import pygame  # noqa: E402
-import pytest  # noqa: E402
+import achievements
+import difficulty
+import player_settings
+import progress
+import save_state
+import settings
+import ui
+from editor import EditorTool
+from game import GameState
+from levels import LEVELS
+from tower import TOWER_TYPES, BasicTower
+from waves import WaveState
 
-import achievements  # noqa: E402
-import difficulty  # noqa: E402
-import meta_progression  # noqa: E402
-import persistence  # noqa: E402
-import player_settings  # noqa: E402
-import progress  # noqa: E402
-import run_history  # noqa: E402
-import save_state  # noqa: E402
-import settings  # noqa: E402
-import ui  # noqa: E402
-from card_pool import STARTER_TOWERS  # noqa: E402
-from editor import EditorTool  # noqa: E402
-from game import Game, GameState  # noqa: E402
-from levels import LEVELS, Level  # noqa: E402
-from tower import TOWER_TYPES, BasicTower  # noqa: E402
-from waves import WaveState  # noqa: E402
-
-
-@pytest.fixture
-def game(tmp_path):
-    # progress_path/settings_path/achievements_path/save_path/
-    # meta_progression_path/run_history_path all pinned to throwaway files --
-    # Game writes real progress on VICTORY (see progress.py), real settings
-    # on set_fullscreen()/set_difficulty() (see player_settings.py), real
-    # achievement counters on nearly every tower/kill/wave/level event (see
-    # achievements.py), a real in-progress save on save_run() (see
-    # save_state.py), real meta-progression counters on nearly every
-    # roguelike-run event (see meta_progression.py), and a real run outcome
-    # on a run's game-over, Daily Run included (see run_history.py) -- and
-    # this must never touch (or leave behind) any of those real repo-root
-    # files.
-    g = Game(
-        progress_path=tmp_path / "progress.json", settings_path=tmp_path / "player_settings.json",
-        achievements_path=tmp_path / "achievements.json", save_path=tmp_path / "save_state.json",
-        meta_progression_path=tmp_path / "meta_progression.json", run_history_path=tmp_path / "run_history.json",
-    )
-    yield g
-    pygame.quit()
-
-
-@pytest.fixture
-def playing_game(game):
-    game.state = GameState.PLAYING
-    return game
-
-
-def find_buildable_anchor(game, *, adjacent_to_path=False):
-    """A buildable placement anchor (tile-aligned, i.e. (col, row) *
-    SUBTILES_PER_TILE); optionally one touching the path, for tests that
-    care about tower coverage rather than just placement."""
-    n = settings.SUBTILES_PER_TILE
-    for row in range(settings.GRID_ROWS):
-        for col in range(settings.GRID_COLS):
-            if not game.grid.is_buildable(col * n, row * n):
-                continue
-            if not adjacent_to_path:
-                return col * n, row * n
-            for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                if game.grid.is_path(col + dc, row + dr):
-                    return col * n, row * n
-    raise AssertionError("no matching buildable cell found")
-
-
-_REAL_MOUSE_GET_POS = pygame.mouse.get_pos  # saved once, before anything monkeypatches it
-
-
-def mock_mouse_pos(pos):
-    """Context-manager-free mouse mock: pygame.mouse.set_pos() is inert
-    under the headless dummy driver, so tests that need a specific hover
-    position monkeypatch get_pos() directly instead."""
-    pygame.mouse.get_pos = lambda: pos
-
-
-def clear_mouse_mock():
-    # Restore the real get_pos rather than del'ing the attribute -- del
-    # would just remove it outright (mock_mouse_pos *replaces* the dict
-    # entry, it doesn't shadow it), leaving pygame.mouse with no get_pos
-    # at all for every test that runs after this one in the same session.
-    pygame.mouse.get_pos = _REAL_MOUSE_GET_POS
-
-
-_REAL_KEY_GET_MODS = pygame.key.get_mods  # saved once, before anything monkeypatches it
-
-
-def mock_key_mods(mods):
-    """Same idea as mock_mouse_pos -- pygame.key.get_mods() reads real
-    global keyboard state, which a headless test can't hold Ctrl/Shift/etc.
-    on, so tests needing a specific modifier state (Ctrl+Z/Ctrl+Y) mock it
-    directly instead."""
-    pygame.key.get_mods = lambda: mods
-
-
-def clear_key_mods():
-    pygame.key.get_mods = _REAL_KEY_GET_MODS
+from conftest import (
+    finish_all_waves,
+    find_buildable_anchor,
+    cell_center_px,
+    make_custom_level,
+    make_game,
+    mock_mouse_pos,
+    clear_mouse_mock,
+)
 
 
 # --- Initialization ---
+
 
 def test_starts_at_the_menu_on_level_one(game):
     assert game.state == GameState.MENU
@@ -136,9 +62,7 @@ def test_unlimited_gold_defaults_to_off(game):
 
 
 def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
-    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
-             settings_path=tmp_path / "player_settings.json", achievements_path=tmp_path / "achievements.json",
-             save_path=tmp_path / "save_state.json")
+    g = make_game(tmp_path, unlimited_gold=True)
     try:
         assert g.economy.unlimited_gold is True
     finally:
@@ -146,9 +70,7 @@ def test_unlimited_gold_flag_flows_through_to_the_economy(tmp_path):
 
 
 def test_unlimited_gold_flag_survives_a_level_reload(tmp_path):
-    g = Game(unlimited_gold=True, progress_path=tmp_path / "progress.json",
-             settings_path=tmp_path / "player_settings.json", achievements_path=tmp_path / "achievements.json",
-             save_path=tmp_path / "save_state.json")
+    g = make_game(tmp_path, unlimited_gold=True)
     try:
         g.load_level(g.current_level_id)
         assert g.economy.unlimited_gold is True
@@ -165,6 +87,7 @@ def test_starts_with_no_entities_or_selection(game):
 
 # --- Difficulty modes ---
 
+
 def test_defaults_to_normal_difficulty(game):
     assert game.difficulty == "normal"
 
@@ -180,10 +103,8 @@ def test_set_difficulty_ignores_an_unknown_key(game):
 
 
 def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_easy(tmp_path):
-    hard = Game(progress_path=tmp_path / "hard.json", settings_path=tmp_path / "hard_settings.json",
-                achievements_path=tmp_path / "hard_achievements.json", save_path=tmp_path / "hard_save.json")
-    easy = Game(progress_path=tmp_path / "easy.json", settings_path=tmp_path / "easy_settings.json",
-                achievements_path=tmp_path / "easy_achievements.json", save_path=tmp_path / "easy_save.json")
+    hard = make_game(tmp_path, prefix="hard_")
+    easy = make_game(tmp_path, prefix="easy_")
     try:
         hard.set_difficulty("hard")
         hard.load_level(1)
@@ -208,6 +129,7 @@ def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_ea
 
 
 # --- State machine: keydown handling ---
+
 
 def test_menu_any_key_starts_a_new_run(game):
     game._handle_keydown(pygame.K_SPACE)  # not one of the menu's own bound keys (E/L/S/A)
@@ -417,7 +339,23 @@ def test_victory_escape_quits(game):
     assert game.running is False
 
 
+def test_menu_e_key_enters_the_editor(game):
+    game._handle_keydown(pygame.K_e)
+    assert game.state == GameState.EDITOR
+
+
+def test_menu_l_key_enters_level_select(game):
+    game._handle_keydown(pygame.K_l)
+    assert game.state == GameState.LEVEL_SELECT
+
+
+def test_menu_s_key_enters_settings(game):
+    game._handle_keydown(pygame.K_s)
+    assert game.state == GameState.SETTINGS
+
+
 # --- Click handling: build menu / skip button ---
+
 
 def test_clicking_a_tower_button_selects_it(playing_game):
     rect = playing_game.button_rects["basic"]
@@ -460,6 +398,7 @@ def test_clicks_are_ignored_entirely_outside_playing(game):
 
 
 # --- Click handling: placing towers ---
+
 
 def test_clicking_a_buildable_cell_with_a_tower_selected_places_it(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
@@ -505,6 +444,7 @@ def test_clicking_to_place_an_unaffordable_tower_does_nothing(playing_game):
 
 # --- Click handling: upgrading towers ---
 
+
 def test_clicking_a_towers_badge_upgrades_it(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -534,6 +474,7 @@ def test_clicking_elsewhere_on_a_placed_tower_does_not_upgrade_it(playing_game):
 
 
 # --- Click handling: selecting and selling placed towers ---
+
 
 def test_clicking_a_placed_tower_pins_it_as_selected(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
@@ -1149,6 +1090,7 @@ def test_clicking_the_sell_button_with_nothing_selected_does_nothing(playing_gam
 
 # --- Right-click handling ---
 
+
 def test_right_click_clears_the_selected_tower_name(playing_game):
     playing_game.selected_tower_name = "basic"
     playing_game._handle_right_click()
@@ -1179,6 +1121,7 @@ def test_right_click_is_ignored_outside_playing(game):
 
 
 # --- try_place_tower / try_upgrade_tower directly ---
+
 
 def test_try_place_tower_succeeds_and_deducts_gold(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
@@ -1311,6 +1254,7 @@ def test_try_upgrade_tower_fails_at_max_level(playing_game):
 
 # --- update(): the frame loop ---
 
+
 def test_update_is_a_no_op_outside_playing(game):
     game.state = GameState.PAUSED
     game.enemies = ["sentinel"]
@@ -1426,15 +1370,17 @@ def test_clearing_a_levels_final_wave_still_records_waves_survived(playing_game)
 
 
 def test_clearing_a_level_records_the_levels_cleared_achievement_counter(playing_game):
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
 
     playing_game.update(dt=0.01)
 
     assert playing_game.state == GameState.VICTORY
     counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
     assert counters["levels_cleared"] == 1
-    assert counters["distinct_levels_cleared"] == len(playing_game.progress)
+    # Both halves of Game._record_level_cleared(): the naive per-clear
+    # tally, and the distinct count re-derived from progress.py's own keys.
+    assert counters["distinct_levels_cleared"] == 1
+    assert progress.load_progress(playing_game.progress_path) == {1: playing_game.economy.lives}
 
 
 def test_clearing_a_custom_level_still_records_the_levels_cleared_achievement(playing_game):
@@ -1445,8 +1391,7 @@ def test_clearing_a_custom_level_still_records_the_levels_cleared_achievement(pl
     # able to unlock "First Victory" no matter how many times it was won.
     playing_game.load_custom_level(make_custom_level())
     assert playing_game.current_level_id is None
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
 
     playing_game.update(dt=0.01)
 
@@ -1456,12 +1401,12 @@ def test_clearing_a_custom_level_still_records_the_levels_cleared_achievement(pl
     # A custom level has no registry entry to unlock progress against, and
     # doesn't count toward "every built-in level" either.
     assert "distinct_levels_cleared" not in counters
+    assert progress.load_progress(playing_game.progress_path) == {}
 
 
 def test_clearing_a_level_in_sandbox_mode_records_no_levels_cleared_achievement(playing_game):
     playing_game.sandbox = True
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
 
     playing_game.update(dt=0.01)
 
@@ -1576,8 +1521,7 @@ def test_lives_reaching_zero_triggers_game_over(playing_game):
 
 
 def test_clearing_all_waves_with_no_enemies_left_triggers_victory(playing_game):
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
     playing_game.update(dt=0.01)
     assert playing_game.state == GameState.VICTORY
 
@@ -1613,7 +1557,14 @@ def test_dead_projectiles_never_linger_in_the_list(playing_game):
     assert ever_fired
 
 
-# --- Level loading / progression ---
+# --- Level loading, reset, and level-to-level progression ---
+#
+# has_next_level()/advance_or_replay_level() are the *classic* campaign
+# walk, which now only ever runs for Practice mode and editor playtests:
+# a roguelike run advances through its own floor sequence instead (see
+# test_run.py) and never reaches the VICTORY screen these are driven
+# from at all.
+
 
 def test_load_level_switches_level_and_resets_entities(game):
     game.towers = ["fake"]
@@ -1671,42 +1622,7 @@ def test_advance_or_replay_level_replays_when_no_next_level(game):
     assert game.towers == []  # freshly reloaded
 
 
-# --- Map editor / level select ---
-
-def cell_center_px(cell, tile_size=64):
-    col, row = cell
-    return col * tile_size + tile_size // 2, row * tile_size + tile_size // 2
-
-
-def make_custom_level(level_id="custom-slug", name="Custom Level"):
-    return Level(
-        id=level_id,
-        name=name,
-        path_cells=frozenset({(0, 0), (1, 0), (2, 0)}),
-        spawn_cells=((0, 0),),
-        goal_cells=((2, 0),),
-        wave_specs=[{(0, 0): {"grunt": 2}}],
-    )
-
-
-def test_game_starts_with_an_empty_unplayable_editor(game):
-    assert game.editor.path_cells == set()
-    assert not game.editor.can_play()
-
-
-def test_menu_e_key_enters_the_editor(game):
-    game._handle_keydown(pygame.K_e)
-    assert game.state == GameState.EDITOR
-
-
-def test_menu_l_key_enters_level_select(game):
-    game._handle_keydown(pygame.K_l)
-    assert game.state == GameState.LEVEL_SELECT
-
-
-def test_menu_s_key_enters_settings(game):
-    game._handle_keydown(pygame.K_s)
-    assert game.state == GameState.SETTINGS
+# --- Settings screen ---
 
 
 def test_settings_escape_returns_to_menu(game):
@@ -1746,7 +1662,36 @@ def test_settings_click_off_any_button_is_a_no_op(game):
     assert game.difficulty == "normal"
 
 
+def test_fullscreen_setting_persists_to_the_settings_file(game):
+    game.set_fullscreen(True)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["fullscreen"] is True
+
+
+def test_difficulty_setting_persists_to_the_settings_file(game):
+    game.set_difficulty("easy")
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["difficulty"] == "easy"
+
+
+def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
+    first = make_game(tmp_path)
+    try:
+        first.set_fullscreen(True)
+        first.set_difficulty("hard")
+    finally:
+        pygame.quit()
+
+    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    try:
+        assert second.fullscreen is True
+        assert second.difficulty == "hard"
+    finally:
+        pygame.quit()
+
+
 # --- Achievements screen ---
+
 
 def test_menu_a_key_enters_achievements(game):
     game._handle_keydown(pygame.K_a)
@@ -1823,6 +1768,7 @@ def test_render_achievements_screen_does_not_crash(game):
 
 # --- Help / How to Play screen ---
 
+
 def test_menu_h_key_enters_help(game):
     game._handle_keydown(pygame.K_h)
     assert game.state == GameState.HELP
@@ -1857,631 +1803,8 @@ def test_render_help_screen_does_not_crash(game):
     game.render()
 
 
-def test_fullscreen_setting_persists_to_the_settings_file(game):
-    game.set_fullscreen(True)
-    reloaded = player_settings.load_settings(game.settings_path)
-    assert reloaded["fullscreen"] is True
-
-
-def test_difficulty_setting_persists_to_the_settings_file(game):
-    game.set_difficulty("easy")
-    reloaded = player_settings.load_settings(game.settings_path)
-    assert reloaded["difficulty"] == "easy"
-
-
-def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
-    settings_path = tmp_path / "player_settings.json"
-    achievements_path = tmp_path / "achievements.json"
-    save_path = tmp_path / "save_state.json"
-    first = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path,
-                 achievements_path=achievements_path, save_path=save_path)
-    try:
-        first.set_fullscreen(True)
-        first.set_difficulty("hard")
-    finally:
-        pygame.quit()
-
-    second = Game(progress_path=tmp_path / "progress.json", settings_path=settings_path,
-                   achievements_path=achievements_path, save_path=save_path)
-    try:
-        assert second.fullscreen is True
-        assert second.difficulty == "hard"
-    finally:
-        pygame.quit()
-
-
-def test_editor_escape_returns_to_menu(game):
-    game.state = GameState.EDITOR
-    game._handle_keydown(pygame.K_ESCAPE)
-    assert game.state == GameState.MENU
-
-
-def test_editor_unbound_key_is_a_no_op(game):
-    game.state = GameState.EDITOR
-    game._handle_keydown(pygame.K_z)
-    assert game.state == GameState.EDITOR
-
-
-def test_ctrl_z_undoes_in_the_editor(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((3, 4)))
-    assert (3, 4) in game.editor.path_cells
-
-    mock_key_mods(pygame.KMOD_CTRL)
-    try:
-        game._handle_keydown(pygame.K_z)
-    finally:
-        clear_key_mods()
-
-    assert (3, 4) not in game.editor.path_cells
-
-
-def test_z_without_ctrl_does_not_undo_in_the_editor(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((3, 4)))
-
-    game._handle_keydown(pygame.K_z)  # no Ctrl mocked -- real (unheld) modifier state
-
-    assert (3, 4) in game.editor.path_cells
-
-
-def test_ctrl_y_redoes_in_the_editor(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((3, 4)))
-    game.editor.undo()
-    assert (3, 4) not in game.editor.path_cells
-
-    mock_key_mods(pygame.KMOD_CTRL)
-    try:
-        game._handle_keydown(pygame.K_y)
-    finally:
-        clear_key_mods()
-
-    assert (3, 4) in game.editor.path_cells
-
-
-def test_ctrl_z_undoes_in_the_wave_editor(game):
-    game.state = GameState.WAVE_EDITOR
-    _paint_valid_path(game)
-    game.editor.validate()
-    game.editor.set_active_spawn((0, 2))
-    game.editor.adjust_unit_count("grunt", +1)
-    assert game.editor.wave_specs[0][(0, 2)]["grunt"] == 1
-
-    mock_key_mods(pygame.KMOD_CTRL)
-    try:
-        game._handle_keydown(pygame.K_z)
-    finally:
-        clear_key_mods()
-
-    assert game.editor.wave_specs[0].get((0, 2)) is None
-
-
-def test_level_select_escape_returns_to_menu(game):
-    game.state = GameState.LEVEL_SELECT
-    game._handle_keydown(pygame.K_ESCAPE)
-    assert game.state == GameState.MENU
-
-
-def test_level_select_unbound_key_is_a_no_op(game):
-    game.state = GameState.LEVEL_SELECT
-    game._handle_keydown(pygame.K_z)
-    assert game.state == GameState.LEVEL_SELECT
-
-
-def test_clicking_an_editor_tool_button_switches_the_active_tool(game):
-    game.state = GameState.EDITOR
-    game._handle_editor_click(game.editor_tool_rects["spawn"].center)
-    assert game.editor.active_tool == EditorTool.SPAWN
-
-
-def test_clicking_the_grid_paints_a_path_cell(game):
-    game.state = GameState.EDITOR
-    game._handle_editor_click(cell_center_px((3, 4)))
-    assert (3, 4) in game.editor.path_cells
-
-
-def test_dragging_with_the_left_button_held_paints_a_stroke_of_cells(game):
-    game.state = GameState.EDITOR
-    for col in range(3):
-        game._handle_editor_motion(cell_center_px((col, 2)), (True, False, False))
-    assert {(0, 2), (1, 2), (2, 2)} <= game.editor.path_cells
-
-
-def test_motion_without_the_left_button_held_does_not_paint(game):
-    game.state = GameState.EDITOR
-    game._handle_editor_motion(cell_center_px((5, 5)), (False, False, False))
-    assert game.editor.path_cells == set()
-
-
-# --- Map editor: undo/redo, Line/Rect/Select tools, copy/paste ---
-
-def test_editor_mouse_up_ends_a_freeform_stroke(game):
-    game.state = GameState.EDITOR
-    game.editor.set_tool(EditorTool.PAINT)
-    game._handle_editor_click(cell_center_px((0, 0)))
-    assert game.editor._stroke_active is True
-
-    game._handle_editor_mouse_up(cell_center_px((0, 0)))
-
-    assert game.editor._stroke_active is False
-
-
-def test_clicking_the_grid_with_the_line_tool_begins_a_shape_not_a_paint(game):
-    game.state = GameState.EDITOR
-    game.editor.set_tool(EditorTool.LINE)
-    game._handle_editor_click(cell_center_px((3, 3)))
-
-    assert game.editor.path_cells == set()  # not painted yet -- only a drag started
-    assert game.editor._shape_start == (3, 3)
-
-
-def test_dragging_with_the_line_tool_updates_the_preview(game):
-    game.state = GameState.EDITOR
-    game.editor.set_tool(EditorTool.LINE)
-    game._handle_editor_click(cell_center_px((0, 0)))
-    game._handle_editor_motion(cell_center_px((3, 0)), (True, False, False))
-
-    assert game.editor.pending_shape_cells() == {(0, 0), (1, 0), (2, 0), (3, 0)}
-    assert game.editor.path_cells == set()  # still just a preview
-
-
-def test_releasing_the_line_tool_commits_the_shape(game):
-    game.state = GameState.EDITOR
-    game.editor.set_tool(EditorTool.LINE)
-    game._handle_editor_click(cell_center_px((0, 0)))
-    game._handle_editor_motion(cell_center_px((3, 0)), (True, False, False))
-
-    game._handle_editor_mouse_up(cell_center_px((3, 0)))
-
-    assert game.editor.path_cells == {(0, 0), (1, 0), (2, 0), (3, 0)}
-
-
-def test_releasing_the_select_tool_commits_a_selection_not_a_paint(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.editor.set_tool(EditorTool.SELECT)
-    game._handle_editor_click(cell_center_px((0, 2)))
-    game._handle_editor_mouse_up(cell_center_px((2, 2)))
-
-    assert game.editor.selection_bounds == (0, 2, 2, 2)
-
-
-def test_clicking_the_undo_action_button_undoes_the_last_edit(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((3, 4)))
-    game._handle_editor_click(game.editor_action_rects["undo"].center)
-    assert (3, 4) not in game.editor.path_cells
-
-
-def test_clicking_the_redo_action_button_redoes_the_last_undo(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((3, 4)))
-    game.editor.undo()
-    game._handle_editor_click(game.editor_action_rects["redo"].center)
-    assert (3, 4) in game.editor.path_cells
-
-
-def test_wave_editor_undo_action_button_undoes_the_last_edit(game):
-    game.state = GameState.WAVE_EDITOR
-    _paint_valid_path(game)
-    game.editor.adjust_unit_count("grunt", +1)
-    count_before = game.editor.wave_specs[0][(0, 2)]["grunt"]
-
-    game._handle_wave_editor_action("undo")
-
-    assert game.editor.wave_specs[0].get((0, 2), {}).get("grunt", 0) != count_before
-
-
-def test_clicking_copy_then_paste_stamps_the_selection_at_a_new_anchor(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.editor.set_tool(EditorTool.SELECT)
-    game._handle_editor_click(cell_center_px((0, 2)))
-    game._handle_editor_mouse_up(cell_center_px((2, 2)))
-
-    game._handle_editor_click(game.editor_action_rects["copy"].center)
-    game._handle_editor_click(game.editor_action_rects["paste"].center)
-    assert game.editor.paste_pending is True
-
-    game._handle_editor_click(cell_center_px((10, 5)))  # consumes paste_pending
-
-    assert (10, 5) in game.editor.path_cells
-    assert game.editor.paste_pending is False
-
-
-def test_paste_pending_takes_priority_over_the_active_tool(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.editor.set_tool(EditorTool.SELECT)
-    game._handle_editor_click(cell_center_px((0, 2)))
-    game._handle_editor_mouse_up(cell_center_px((2, 2)))
-    game.editor.copy_selection()
-    game.editor.paste_pending = True
-    game.editor.set_tool(EditorTool.LINE)  # switch tools before the paste click lands
-
-    game._handle_editor_click(cell_center_px((10, 5)))
-
-    assert (10, 5) in game.editor.path_cells
-    assert game.editor._shape_start is None  # never started a Line drag
-
-
-def test_waves_action_is_a_no_op_while_the_editors_path_is_invalid(game):
-    game.state = GameState.EDITOR
-    assert not game.editor.path_is_valid()
-    game._handle_editor_click(game.editor_action_rects["waves"].center)
-    assert game.state == GameState.EDITOR  # never left -- path isn't ready yet
-
-
-def _paint_valid_path(game, row=2):
-    game.editor.set_tool(EditorTool.PAINT)
-    for col in range(3):
-        game.editor.paint_at(*cell_center_px((col, row)))
-    game.editor.set_tool(EditorTool.SPAWN)
-    game.editor.paint_at(*cell_center_px((0, row)))
-    game.editor.set_tool(EditorTool.GOAL)
-    game.editor.paint_at(*cell_center_px((2, row)))
-
-
-def test_waves_action_switches_to_the_wave_editor_once_the_path_is_valid(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    assert game.editor.path_is_valid()
-
-    game._handle_editor_click(game.editor_action_rects["waves"].center)
-
-    assert game.state == GameState.WAVE_EDITOR
-
-
-def test_back_action_returns_to_menu_without_touching_the_paint_buffer(game):
-    game.state = GameState.EDITOR
-    game.editor.paint_at(*cell_center_px((0, 0)))
-    game._handle_editor_click(game.editor_action_rects["back"].center)
-    assert game.state == GameState.MENU
-    assert (0, 0) in game.editor.path_cells  # still there next time the editor opens
-
-
-# --- Wave editor ---
-
-def test_wave_editor_escape_returns_to_the_path_editor(game):
-    game.state = GameState.WAVE_EDITOR
-    game._handle_keydown(pygame.K_ESCAPE)
-    assert game.state == GameState.EDITOR
-
-
-def test_wave_editor_unbound_key_is_a_no_op(game):
-    game.state = GameState.WAVE_EDITOR
-    game._handle_keydown(pygame.K_z)
-    assert game.state == GameState.WAVE_EDITOR
-
-
-def test_clicking_add_wave_tab_appends_a_wave(game):
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(game._wave_tab_rects()["add"].center)
-    assert len(game.editor.wave_specs) == 2
-    assert game.editor.active_wave_index == 1
-
-
-def test_clicking_remove_wave_tab_removes_the_active_wave(game):
-    game.state = GameState.WAVE_EDITOR
-    game.editor.add_wave()
-    game._handle_wave_editor_click(game._wave_tab_rects()["remove"].center)
-    assert len(game.editor.wave_specs) == 1
-
-
-def test_clicking_a_wave_number_tab_selects_it(game):
-    game.state = GameState.WAVE_EDITOR
-    game.editor.add_wave()
-    game.editor.add_wave()
-    game._handle_wave_editor_click(game._wave_tab_rects()[0].center)
-    assert game.editor.active_wave_index == 0
-
-
-def test_clicking_plus_increments_the_active_waves_unit_count(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    spawn = game.editor.active_spawn_cell
-
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-
-    assert game.editor.wave_specs[0][spawn]["grunt"] == 2
-
-
-def test_clicking_minus_decrements_and_floors_at_zero(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    spawn = game.editor.active_spawn_cell
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "minus")].center)
-
-    assert game.editor.wave_specs[0].get(spawn, {}) == {}
-
-
-def test_clicking_plus_with_no_spawn_selected_is_a_no_op(game):
-    # Fresh editor -- no path painted yet, so there's no active spawn for
-    # +/- to target.
-    game.state = GameState.WAVE_EDITOR
-    assert game.editor.active_spawn_cell is None
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    assert game.editor.wave_specs == [{}]
-
-
-def _paint_two_spawn_path(game):
-    game.editor.set_tool(EditorTool.PAINT)
-    for cell in [(0, 0), (0, 1), (0, 2), (1, 1)]:
-        game.editor.paint_at(*cell_center_px(cell))
-    game.editor.set_tool(EditorTool.SPAWN)
-    game.editor.paint_at(*cell_center_px((0, 0)))
-    game.editor.paint_at(*cell_center_px((0, 2)))
-    game.editor.set_tool(EditorTool.GOAL)
-    game.editor.paint_at(*cell_center_px((1, 1)))
-
-
-def test_clicking_a_spawn_marker_switches_the_active_spawn(game):
-    game.state = GameState.EDITOR
-    _paint_two_spawn_path(game)
-    game.state = GameState.WAVE_EDITOR
-    assert game.editor.active_spawn_cell == (0, 0)  # min() of the two, auto-selected
-
-    game._handle_wave_editor_click(cell_center_px((0, 2)))
-
-    assert game.editor.active_spawn_cell == (0, 2)
-
-
-def test_clicking_a_non_spawn_grid_cell_in_the_wave_editor_is_a_no_op(game):
-    game.state = GameState.EDITOR
-    _paint_two_spawn_path(game)
-    game.state = GameState.WAVE_EDITOR
-    active_before = game.editor.active_spawn_cell
-
-    game._handle_wave_editor_click(cell_center_px((0, 1)))  # a plain path cell, not a spawn
-
-    assert game.editor.active_spawn_cell == active_before
-
-
-def test_plus_after_switching_spawns_targets_the_newly_active_one(game):
-    game.state = GameState.EDITOR
-    _paint_two_spawn_path(game)
-    game.state = GameState.WAVE_EDITOR
-
-    game._handle_wave_editor_click(cell_center_px((0, 2)))
-    game._handle_wave_editor_click(game.wave_unit_rects[("tank", "plus")].center)
-
-    assert game.editor.wave_specs[0] == {(0, 2): {"tank": 1}}
-
-
-def test_wave_editor_playtest_is_a_no_op_until_every_wave_has_units(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    assert not game.editor.can_play()  # path ready, but the one wave is empty
-
-    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
-
-    assert game.state == GameState.WAVE_EDITOR  # never left
-
-
-def test_wave_editor_playtest_loads_the_level_and_switches_to_playing(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    assert game.editor.can_play()
-
-    game._handle_wave_editor_click(game.wave_editor_action_rects["playtest"].center)
-
-    assert game.state == GameState.PLAYING
-    assert game.current_level_id is None
-    assert game.level.path_cells == frozenset({(0, 2), (1, 2), (2, 2)})
-    assert game.level.wave_specs == [{(0, 2): {"grunt": 1}}]
-
-
-def test_wave_editor_back_action_returns_to_the_path_editor(game):
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(game.wave_editor_action_rects["back"].center)
-    assert game.state == GameState.EDITOR
-
-
-def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch):
-    saved = []
-
-    def fake_save_level(level):
-        saved.append(level)
-        return "/fake/custom_levels/custom-level.json"
-
-    monkeypatch.setattr("persistence.save_level", fake_save_level)
-
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    assert game.editor.can_play()
-    assert game.last_saved_path is None
-
-    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
-
-    assert len(saved) == 1
-    assert saved[0].wave_specs == [{(0, 2): {"grunt": 1}}]
-    assert game.state == GameState.WAVE_EDITOR  # saving doesn't navigate away
-    assert game.last_saved_path == "/fake/custom_levels/custom-level.json"
-
-
-def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
-    saved = []
-    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
-
-    game.state = GameState.WAVE_EDITOR
-    assert not game.editor.can_play()
-    game._handle_wave_editor_click(game.wave_editor_action_rects["save"].center)
-
-    assert saved == []
-    assert game.last_saved_path is None
-
-
-def test_level_select_click_outside_the_viewport_is_a_no_op(game):
-    game._enter_level_select()
-    game._handle_level_select_click((-1000, -1000))
-    assert game.state == GameState.LEVEL_SELECT  # never left
-
-
-def test_level_select_click_inside_the_viewport_but_off_every_row_is_a_no_op(game):
-    # Distinct from the viewport-fence case above -- this is a click that
-    # passes the fence (a real y within LEVEL_SELECT_TOP..LEVEL_SELECT_BOTTOM)
-    # but still doesn't land on any row's Rect.
-    game._enter_level_select()
-    game._handle_level_select_click((settings.SCREEN_WIDTH - 1, ui.LEVEL_SELECT_TOP + 5))
-    assert game.state == GameState.LEVEL_SELECT  # never left
-
-
-# --- Level select scrolling ---
-
-def _make_many_custom_levels(count):
-    return [make_custom_level(level_id=f"level-{i}", name=f"Level {i}") for i in range(count)]
-
-
-def test_scrolling_down_moves_the_level_select_rows_up(game, monkeypatch):
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-    assert game.level_select_scroll_offset == 0
-
-    first_row_y_before = game.level_select_rects[levels[0].id].y
-    game._scroll_level_select(-1)  # wheel "down" gesture
-    first_row_y_after = game.level_select_rects[levels[0].id].y
-
-    assert game.level_select_scroll_offset > 0
-    assert first_row_y_after < first_row_y_before
-
-
-def test_scroll_offset_clamps_at_zero_and_at_max(game, monkeypatch):
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-
-    game._scroll_level_select(1)  # can't scroll up past the top
-    assert game.level_select_scroll_offset == 0
-
-    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
-    for _ in range(50):
-        game._scroll_level_select(-1)
-    assert game.level_select_scroll_offset == max_scroll
-
-
-def test_enter_level_select_resets_scroll_to_the_top(game, monkeypatch):
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-    game._scroll_level_select(-3)
-    assert game.level_select_scroll_offset > 0
-
-    game._enter_level_select()  # re-entering (e.g. via L again) starts back at the top
-    assert game.level_select_scroll_offset == 0
-
-
-def test_clicking_a_scrolled_row_still_loads_the_right_level(game, monkeypatch):
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
-    for _ in range(50):
-        game._scroll_level_select(-1)
-    assert game.level_select_scroll_offset == max_scroll
-
-    target = levels[-1]
-    rect = game.level_select_rects[target.id]
-    assert ui.LEVEL_SELECT_TOP <= rect.centery <= ui.LEVEL_SELECT_BOTTOM  # sanity: actually visible now
-
-    game._handle_level_select_click(rect.center)
-
-    assert game.state == GameState.PLAYING
-    assert game.level.id == target.id
-
-
-def test_clicking_a_partially_scrolled_off_row_above_the_viewport_is_a_no_op(game, monkeypatch):
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-    game.level_select_scroll_offset = 50
-    game._rebuild_level_select_rects()
-
-    first_key = game.level_select_entries[0][0]
-    row_rect = game.level_select_rects[first_key]
-    assert row_rect.top < ui.LEVEL_SELECT_TOP < row_rect.bottom  # straddles the fence
-
-    click_pos = (row_rect.centerx, ui.LEVEL_SELECT_TOP - 10)  # inside the rect, above the viewport
-    assert row_rect.collidepoint(click_pos)  # sanity: the rect really does cover this point
-
-    game._handle_level_select_click(click_pos)
-    assert game.state == GameState.LEVEL_SELECT  # rejected by the viewport fence
-
-
-def test_enter_level_select_builds_one_thumbnail_per_entry(game):
-    game._enter_level_select()
-    assert set(game.level_select_thumbnails.keys()) == {key for key, _level in game.level_select_entries}
-    for thumbnail in game.level_select_thumbnails.values():
-        assert thumbnail.get_size() == (ui.LEVEL_THUMBNAIL_WIDTH, ui.LEVEL_THUMBNAIL_HEIGHT)
-
-
-def test_has_next_level_is_false_for_a_custom_level(game):
-    game.load_custom_level(make_custom_level())
-    assert game.current_level_id is None
-    assert game.has_next_level() is False
-
-
-def test_reset_on_a_custom_level_reloads_it_without_a_registry_lookup(game):
-    game.load_custom_level(make_custom_level())
-    game.towers = ["fake"]
-
-    game.reset()
-
-    assert game.state == GameState.MENU
-    assert game.current_level_id is None
-    assert game.towers == []
-    assert game.level.path_cells == frozenset({(0, 0), (1, 0), (2, 0)})
-
-
-def test_advance_or_replay_level_on_a_custom_level_replays_it(game):
-    game.load_custom_level(make_custom_level())
-    game.towers = ["fake"]
-
-    game.advance_or_replay_level()
-
-    assert game.current_level_id is None
-    assert game.towers == []
-
-
-def test_level_select_click_on_a_built_in_entry_loads_it(game):
-    game._enter_level_select()
-    rect = game.level_select_rects[1]
-    game._handle_level_select_click(rect.center)
-    assert game.state == GameState.PLAYING
-    assert game.current_level_id == 1
-
-
-def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
-    custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
-
-    game._enter_level_select()
-    assert (custom.id, custom) in game.level_select_entries
-
-    # Custom entries are listed after every built-in one -- with as many
-    # built-ins as there are now, this one is scrolled below the fold, so
-    # scroll all the way down (like the player would) before clicking it.
-    game._scroll_level_select(-9999)
-    game._handle_level_select_click(game.level_select_rects[custom.id].center)
-
-    assert game.state == GameState.PLAYING
-    assert game.current_level_id is None
-    assert game.level.id == custom.id
-
-
 # --- Endless/Survival mode ---
+
 
 def test_v_key_arms_endless_only_while_browsing_to_play(game):
     game._enter_level_select(purpose="play")
@@ -2562,12 +1885,20 @@ def test_reset_without_endless_stays_non_endless(game):
 
 
 # --- Sandbox/Creative mode ---
+#
+# Also the mode Practice mode is built on -- picking any level to play
+# from the level browser always loads it sandboxed (see
+# test_picking_a_level_to_play_always_starts_it_in_sandbox_mode below,
+# and test_run.py's own Practice section for what that costs you).
+
 
 def test_picking_a_level_to_play_always_starts_it_in_sandbox_mode(game):
     # Practice (LEVEL_SELECT's purpose="play") is unconditionally Sandbox
     # now -- decoupled from real progress, same reasoning a custom level's
     # own progress-exemption already established (see
-    # test_clearing_a_custom_level_does_not_touch_progress).
+    # test_clearing_a_custom_level_still_records_the_levels_cleared_achievement,
+    # which also asserts progress stays empty for a level with no registry
+    # id to earn any against).
     game._enter_level_select()
     rect = game.level_select_rects[1]
     game._handle_level_select_click(rect.center)
@@ -2605,8 +1936,7 @@ def test_sandbox_victory_does_not_mark_progress_cleared(game):
     # endless run never reaching all_waves_complete at all.
     game.load_level(1, sandbox=True)
     game.state = GameState.PLAYING
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
+    finish_all_waves(game)
     game.update(dt=0.01)
     assert game.state == GameState.VICTORY
     assert 1 not in progress.load_progress(game.progress_path)
@@ -2626,7 +1956,13 @@ def test_reset_without_sandbox_stays_non_sandbox(game):
     assert game.economy.invulnerable is False
 
 
-# --- Save/resume a run in progress ---
+# --- Save/resume: the save file's own mechanics ---
+#
+# save_run()/resume_saved_run() capture whatever is being played, run or
+# not; the roguelike-run half of that (save_data["run"]) is covered in
+# test_run.py. What's here is the part that doesn't care: when a save is
+# allowed at all, and what a level/tower round trip has to preserve.
+
 
 def test_can_save_run_true_while_awaiting_start(playing_game):
     assert playing_game.wave_manager.state == WaveState.AWAITING_START
@@ -2685,11 +2021,9 @@ def test_a_fresh_game_instance_picks_up_an_existing_save_file(tmp_path):
     # has_saved_run is cached rather than re-stat()'d every frame (see
     # __init__), but must still reflect whatever's already on disk at
     # construction time -- a save file from an earlier session, here.
-    save_path = tmp_path / "save_state.json"
-    save_path.write_text("{}")
+    (tmp_path / "save_state.json").write_text("{}")  # make_game's own save_path, pre-populated
 
-    game = Game(progress_path=tmp_path / "progress.json", settings_path=tmp_path / "settings.json",
-                achievements_path=tmp_path / "achievements.json", save_path=save_path)
+    game = make_game(tmp_path)
     try:
         assert game.has_saved_run is True
     finally:
@@ -2811,8 +2145,7 @@ def test_has_saved_run_is_cleared_once_a_resumed_run_concludes(playing_game):
     playing_game.resume_saved_run(save_data)
     assert playing_game.has_saved_run is True  # still on disk -- the run isn't over yet
 
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
     playing_game.update(dt=0.01)  # reaches VICTORY, deletes the now-played-out save
 
     assert playing_game.state == GameState.VICTORY
@@ -2898,8 +2231,7 @@ def test_victory_after_resuming_deletes_the_save_file(playing_game):
     playing_game.resume_saved_run(save_data)
     assert save_state.has_saved_run(playing_game.save_path)
 
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
     playing_game.update(dt=0.01)
 
     assert playing_game.state == GameState.VICTORY
@@ -2912,8 +2244,7 @@ def test_a_fresh_unrelated_run_reaching_victory_does_not_delete_someone_elses_sa
     save_state.save_run(playing_game, playing_game.save_path)
     assert playing_game._resumed_from_save is False
 
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
+    finish_all_waves(playing_game)
     playing_game.update(dt=0.01)
 
     assert playing_game.state == GameState.VICTORY
@@ -2946,167 +2277,8 @@ def test_render_pause_menu_with_save_available_does_not_crash(playing_game):
     playing_game.render()
 
 
-# --- Save/resume a roguelike run in progress (Milestone 5) ---
-
-def test_saving_without_an_active_run_resumes_with_no_active_run(playing_game):
-    # playing_game is a classic/Practice-shaped load (no active_run at
-    # all) -- a save taken from one must round-trip that absence, not
-    # somehow acquire a run on resume.
-    assert playing_game.active_run is None
-    playing_game.save_run()
-    playing_game.state = GameState.MENU
-
-    playing_game._continue_saved_run()
-
-    assert playing_game.active_run is None
-
-
-def test_saving_mid_run_captures_the_active_run(game):
-    game.start_new_run(seed=1)
-    run_before = game.active_run
-
-    assert game.save_run() is True
-    saved = save_state.load_run(game.save_path)
-
-    assert saved["run"].seed == run_before.seed
-    assert saved["run"].floor_sequence == run_before.floor_sequence
-    assert saved["run"].unlocked_towers == run_before.unlocked_towers
-    assert saved["run"].floor_index == run_before.floor_index
-    assert saved["run"].gold == run_before.gold
-    assert saved["run"].lives == run_before.lives
-
-
-def test_resuming_a_saved_run_restores_active_run(game):
-    game.start_new_run(seed=1)
-    game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
-    # active_run.gold/lives are only re-synced from economy at a floor's own
-    # clear (_advance_run_floor) -- not live every frame -- so a save taken
-    # mid-floor genuinely captures two different numbers here, same as it
-    # would with no save/resume involved at all. economy.gold (350 after
-    # this) is what a resume should restore live play to; active_run.gold
-    # (still floor 0's original 150) is what the *next* floor load would
-    # carry forward from, unaffected by this frame's spending.
-    game.economy.gold += 200
-    run_before = game.active_run
-    game.save_run()
-    game.state = GameState.MENU
-
-    game._continue_saved_run()
-
-    assert game.active_run is not run_before  # a fresh RunState, reconstructed from disk
-    assert game.active_run.seed == run_before.seed
-    assert game.active_run.floor_sequence == run_before.floor_sequence
-    assert game.active_run.unlocked_towers == run_before.unlocked_towers
-    assert game.active_run.floor_index == run_before.floor_index
-    assert game.active_run.gold == run_before.gold
-    assert game.active_run.lives == run_before.lives
-    assert game.economy.gold == 350
-    assert game.state == GameState.PLAYING
-
-
-def test_resuming_a_saved_run_still_restricts_the_build_menu_to_its_unlocked_towers(game):
-    game.start_new_run(seed=1)
-    game.save_run()
-    game.state = GameState.MENU
-
-    game._continue_saved_run()
-
-    assert set(game.button_rects.keys()) == set(game.active_run.unlocked_towers)
-
-
-# --- Practice mode has retired progress.py's level-unlock gating ---
-
-def test_practice_mode_lets_you_play_any_built_in_level_immediately(game):
-    # Practice (LEVEL_SELECT purpose="play") is always Sandbox now (see
-    # test_picking_a_level_to_play_always_starts_it_in_sandbox_mode) --
-    # decoupled from real progress, so progress.py's sequential unlock
-    # gating no longer applies here, even for a level with nothing cleared
-    # ahead of it yet (a fresh `game` fixture has no progress.json at all).
-    game._enter_level_select()
-
-    rect = game.level_select_rects[2]
-    game._handle_level_select_click(rect.center)
-
-    assert game.state == GameState.PLAYING
-    assert game.current_level_id == 2
-
-
-def test_progress_still_persists_across_a_fresh_game_instance(playing_game):
-    # progress.py itself is untouched -- Game.load_level(sandbox=False)
-    # (what playing_game's own fixture uses, same as a real roguelike-run
-    # floor load) still marks a level cleared; Practice's own screen just
-    # has no notion of a lock to read that back into (see
-    # test_practice_mode_lets_you_play_any_built_in_level_immediately).
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
-    playing_game.update(dt=0.01)
-    assert playing_game.state == GameState.VICTORY
-
-    reloaded = Game(progress_path=playing_game.progress_path, settings_path=playing_game.settings_path,
-                     achievements_path=playing_game.achievements_path, save_path=playing_game.save_path)
-    try:
-        assert 1 in progress.load_progress(reloaded.progress_path)
-    finally:
-        pygame.quit()
-
-
-def test_clearing_a_custom_level_does_not_touch_progress(playing_game):
-    custom = make_custom_level()
-    playing_game.load_custom_level(custom)
-    assert playing_game.current_level_id is None
-
-    playing_game.wave_manager.all_waves_complete = True
-    playing_game.enemies = []
-    playing_game.update(dt=0.01)
-
-    assert playing_game.state == GameState.VICTORY
-    assert progress.load_progress(playing_game.progress_path) == {}
-
-
-# --- Loading a saved map back into the editor ---
-
-def test_editor_load_action_enters_level_select_for_editing(game):
-    game.state = GameState.EDITOR
-    game._handle_editor_click(game.editor_action_rects["load"].center)
-    assert game.state == GameState.LEVEL_SELECT
-    assert game.level_select_purpose == "edit"
-
-
-def test_level_select_for_editing_lists_only_custom_levels(game, monkeypatch):
-    custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
-
-    game._enter_level_select(purpose="edit")
-
-    assert game.level_select_entries == [(custom.id, custom)]
-    assert all(isinstance(key, str) for key, _level in game.level_select_entries)
-
-
-def test_level_select_click_while_editing_loads_the_level_into_the_editor(game, monkeypatch):
-    custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
-    game._enter_level_select(purpose="edit")
-
-    game._handle_level_select_click(game.level_select_rects[custom.id].center)
-
-    assert game.state == GameState.EDITOR
-    assert game.editor.path_cells == set(custom.path_cells)
-    assert game.editor.wave_specs == custom.wave_specs
-
-
-def test_level_select_escape_returns_to_editor_when_entered_to_load_a_map(game):
-    game._enter_level_select(purpose="edit")
-    game._handle_keydown(pygame.K_ESCAPE)
-    assert game.state == GameState.EDITOR
-
-
-def test_level_select_escape_still_returns_to_menu_when_entered_to_play(game):
-    game._enter_level_select(purpose="play")
-    game._handle_keydown(pygame.K_ESCAPE)
-    assert game.state == GameState.MENU
-
-
 # --- render(): smoke tests across every state ---
+
 
 @pytest.mark.parametrize("state", list(GameState))
 def test_render_does_not_crash_in_any_state(playing_game, state):
@@ -3260,186 +2432,8 @@ def test_render_editor_with_the_rect_tool_active_shows_the_loop_hint(game):
     game.render()
 
 
-# --- Wave editor scrolling ---
-#
-# The per-species row list (unit_rects) has grown past what a fixed sidebar
-# budget can show all at once -- see ui.WAVE_UNIT_ROWS_TOP/_BOTTOM -- so it
-# scrolls, mirroring the level browser's own scroll mechanism (see the
-# "Level select scrolling" tests above this module for the template these
-# follow).
-
-def test_scrolling_down_moves_the_wave_unit_rows_up(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    first_name = ui.ENEMY_ORDER[0]
-    first_row_y_before = game.wave_unit_rects[(first_name, "minus")].y
-
-    game._scroll_wave_unit_list(-1)  # wheel "down" gesture
-    first_row_y_after = game.wave_unit_rects[(first_name, "minus")].y
-
-    assert game.wave_unit_scroll_offset > 0
-    assert first_row_y_after < first_row_y_before
-
-
-def test_wave_unit_scroll_offset_clamps_at_zero_and_at_max(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-
-    game._scroll_wave_unit_list(1)  # can't scroll up past the top
-    assert game.wave_unit_scroll_offset == 0
-
-    max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
-    assert max_scroll > 0  # sanity: today's real registry actually overflows
-    for _ in range(50):
-        game._scroll_wave_unit_list(-1)
-    assert game.wave_unit_scroll_offset == max_scroll
-
-
-def test_entering_wave_editor_resets_scroll_to_the_top(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game._handle_editor_action("waves")
-    game._scroll_wave_unit_list(-3)
-    assert game.wave_unit_scroll_offset > 0
-
-    game._handle_editor_action("waves")  # re-entering (e.g. via the button again) starts back at the top
-    assert game.wave_unit_scroll_offset == 0
-
-
-def test_clicking_a_scrolled_wave_unit_row_still_adjusts_the_right_species(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
-    for _ in range(50):
-        game._scroll_wave_unit_list(-1)
-    assert game.wave_unit_scroll_offset == max_scroll
-
-    last_name = ui.ENEMY_ORDER[-1]
-    rect = game.wave_unit_rects[(last_name, "plus")]
-    assert ui.WAVE_UNIT_ROWS_TOP <= rect.centery <= ui.WAVE_UNIT_ROWS_BOTTOM  # sanity: actually visible now
-
-    game._handle_wave_editor_click(rect.center)
-
-    composition = game.editor.wave_specs[game.editor.active_wave_index][game.editor.active_spawn_cell]
-    assert composition.get(last_name, 0) == 1
-
-
-def test_clicking_an_action_button_is_not_intercepted_by_an_overflowing_wave_unit_row(game):
-    # Regression guard for the exact bug class CLAUDE.md documents for the
-    # level browser: even unscrolled, today's real ENEMY_ORDER registry (8
-    # species) overflows the sidebar's fixed vertical budget, so the last
-    # row's raw Rect spills past WAVE_UNIT_ROWS_BOTTOM into the action-
-    # button area (clipped from view when drawn, but a real Rect there
-    # regardless -- see build_wave_unit_rects' docstring). Without the
-    # pos-fence in _handle_wave_editor_click, a click on a real action
-    # button could be intercepted by that spilled-over row instead.
-    assert ui.wave_unit_content_height(len(ui.ENEMY_ORDER)) > ui.WAVE_UNIT_ROWS_BOTTOM - ui.WAVE_UNIT_ROWS_TOP
-
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-
-    back_rect = game.wave_editor_action_rects["back"]
-    game._handle_wave_editor_click(back_rect.center)
-    assert game.state == GameState.EDITOR
-
-
-def test_render_wave_editor_while_scrolled_does_not_crash(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game._scroll_wave_unit_list(-1)
-
-    game.render()
-
-
-def test_render_wave_editor_with_units_added_does_not_crash(game):
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game.editor.adjust_unit_count("grunt", +2)
-    game.editor.add_wave()
-
-    game.render()
-
-
-def test_render_wave_editor_with_multiple_spawns_does_not_crash(game):
-    # A single-spawn editor never draws the active-spawn highlight ring or
-    # more than one numbered marker -- paint a second spawn so render()
-    # actually exercises that code, not just the single-spawn case every
-    # other wave editor render test leaves it in.
-    game.state = GameState.EDITOR
-    _paint_two_spawn_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(cell_center_px((0, 2)))  # a non-default active spawn
-
-    game.render()
-
-
-def test_render_wave_editor_after_saving_does_not_crash(game):
-    # last_saved_path is None until a save actually happens -- the "Saved
-    # to:" status line never renders in any other wave-editor test.
-    game.state = GameState.EDITOR
-    _paint_valid_path(game)
-    game.state = GameState.WAVE_EDITOR
-    game._handle_wave_editor_click(game.wave_unit_rects[("grunt", "plus")].center)
-    game.last_saved_path = "/fake/custom_levels/a-fairly-long-level-name-to-test-wrapping.json"
-
-    game.render()
-
-
-def test_render_level_select_with_entries_does_not_crash(game):
-    # An empty level_select_entries list never exercises the per-row
-    # drawing loop -- populate it the same way _enter_level_select() does.
-    game._enter_level_select()
-    game.render()
-
-
-def test_render_level_select_for_editing_does_not_crash(game, monkeypatch):
-    # purpose="edit" changes the title/back-hint/tag text and (usually)
-    # lists only custom levels -- exercise both the populated and the
-    # "no custom levels saved yet" empty-state branches.
-    game._enter_level_select(purpose="edit")
-    game.render()
-
-    custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
-    game._enter_level_select(purpose="edit")
-    game.render()
-
-
-def test_render_level_select_with_more_levels_than_fit_does_not_crash(game, monkeypatch):
-    # Fewer than this always fits without scrolling, so the clipped
-    # viewport and "more above"/"more below" hints never actually draw
-    # in any other render test.
-    levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
-    game._enter_level_select()
-    game.render()  # scrolled to the top -- only "more below" should show
-
-    game._scroll_level_select(-3)
-    game.render()  # scrolled partway -- both hints should show
-
-    max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
-    for _ in range(50):
-        game._scroll_level_select(-1)
-    assert game.level_select_scroll_offset == max_scroll
-    game.render()  # scrolled to the bottom -- only "more above" should show
-
-
-def test_render_paused_on_a_custom_level_does_not_crash(game):
-    # test_render_does_not_crash_in_any_state only ever pauses on a
-    # built-in level, so the pause menu's extra "Return to Map Editor"
-    # option (is_custom_level=True) never actually gets drawn there.
-    game.load_custom_level(make_custom_level())
-    game.state = GameState.PAUSED
-    game.render()
-
-
 # --- Hover helpers ---
+
 
 def test_hovered_tower_is_none_when_mouse_is_far_from_every_tower(playing_game):
     mock_mouse_pos((0, 0))
@@ -3593,6 +2587,7 @@ def test_handle_events_ignores_events_that_match_no_branch(playing_game):
 
 # --- run(): the top-level frame loop ---
 
+
 def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game, monkeypatch):
     calls = []
     monkeypatch.setattr(game, "handle_events", lambda: calls.append("handle_events"))
@@ -3615,740 +2610,3 @@ def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game,
     game.run()
 
     assert calls == ["handle_events", "update", "render", "pygame.quit", "sys.exit"]
-
-
-# --- Daily Run ---
-
-def test_menu_d_key_starts_daily_run(game):
-    game._handle_keydown(pygame.K_d)
-    assert game.state == GameState.PLAYING
-    assert game.active_run is not None
-    assert game.active_run.is_daily is True
-
-
-def test_daily_run_seeds_reproducibly(game):
-    game._start_daily_challenge(seed=20260903)
-    # Nothing has drawn from the rng yet at this point (no enemy spawned) --
-    # a fresh run seeded the same way must produce the identical next value.
-    first_draw = game.wave_manager.rng.random()
-
-    game._start_daily_challenge(seed=20260903)
-    second_draw = game.wave_manager.rng.random()
-
-    assert first_draw == second_draw
-
-
-def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
-    game.set_difficulty("hard")  # starting_gold_multiplier=0.85, see difficulty.py
-
-    game._start_daily_challenge(seed=20260903)
-
-    assert game.active_run.difficulty == "normal"
-    level = LEVELS[game.current_level_id]
-    assert game.economy.gold == level.starting_gold  # normal's 1.0x, not hard's 0.85x
-
-
-def test_daily_run_records_floors_cleared_on_game_over_and_keeps_the_best_score(game):
-    game._start_daily_challenge(seed=20260903)
-    seed = game.active_run.seed
-    game.active_run.floor_index = 3  # simulate having cleared several floors
-    game.economy.lives = 1
-    game.enemies = []
-    game.economy.lose_life()
-
-    game.update(dt=0.01)
-
-    assert game.state == GameState.GAME_OVER
-    assert run_history.load_run_history(game.run_history_path) == {seed: 3}
-    first_score = 3
-
-    # A second, worse attempt (dies on floor 0) must not overwrite the
-    # better score already recorded.
-    game._start_daily_challenge(seed=20260903)
-    game.economy.lives = 1
-    game.enemies = []
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    assert run_history.load_run_history(game.run_history_path)[seed] == first_score
-
-
-def test_a_classic_game_over_does_not_record_a_run_history_score(game):
-    game.load_level(1)
-    game.state = GameState.PLAYING
-    game.economy.lives = 1
-    game.enemies = []
-    game.economy.lose_life()
-
-    game.update(dt=0.01)
-
-    assert game.state == GameState.GAME_OVER
-    assert run_history.load_run_history(game.run_history_path) == {}
-
-
-# --- Import Level ---
-
-def _write_external_level_file(tmp_path, name="Imported Level"):
-    """A small, valid, standalone level JSON file sitting somewhere other
-    than custom_levels/ -- standing in for "a file someone else handed
-    you," the way sharing a level actually works today (see CLAUDE.md)."""
-    level = Level(
-        id="external",
-        name=name,
-        path_cells=frozenset({(0, 0), (0, 1), (0, 2)}),
-        spawn_cells=((0, 0),),
-        goal_cells=((0, 2),),
-        wave_specs=[{(0, 0): {"grunt": 3}}],
-    )
-    return persistence.save_level(level, directory=tmp_path / "source")
-
-
-def test_import_level_from_path_copies_a_valid_level_into_the_target_directory(game, tmp_path):
-    source_path = _write_external_level_file(tmp_path, name="Imported Level")
-    target_dir = tmp_path / "custom_levels"
-
-    result = game._import_level_from_path(source_path, directory=target_dir)
-
-    assert result is True
-    assert game.import_status_is_error is False
-    imported = persistence.list_custom_levels(target_dir)
-    assert len(imported) == 1
-    assert imported[0].name == "Imported Level"
-
-
-def test_import_level_from_path_sets_a_success_status_message(game, tmp_path):
-    source_path = _write_external_level_file(tmp_path)
-
-    game._import_level_from_path(source_path, directory=tmp_path / "custom_levels")
-
-    assert game.import_status_message is not None
-    assert game.import_status_is_error is False
-
-
-def test_import_level_from_path_rejects_a_corrupt_file(game, tmp_path):
-    bad_path = tmp_path / "bad.json"
-    bad_path.write_text("{not valid json")
-    target_dir = tmp_path / "custom_levels"
-
-    result = game._import_level_from_path(str(bad_path), directory=target_dir)
-
-    assert result is False
-    assert game.import_status_message is not None
-    assert game.import_status_is_error is True
-    assert persistence.list_custom_levels(target_dir) == []
-
-
-def test_import_level_from_path_rejects_a_file_with_an_invalid_topology(game, tmp_path):
-    # Well-formed JSON, but semantically invalid (Level.__post_init__
-    # rejects it -- here, a wave referencing a spawn cell that isn't one of
-    # spawn_cells). Confirms the exact same validation
-    # persistence.list_custom_levels() already relies on actually runs
-    # during import, not just a JSON-parses-at-all check.
-    bad_path = tmp_path / "bad_topology.json"
-    bad_path.write_text(json.dumps({
-        "schema_version": persistence.SCHEMA_VERSION,
-        "id": "bad",
-        "name": "Bad Level",
-        "path_cells": [[0, 0], [0, 1]],
-        "spawn_cells": [[0, 0]],
-        "goal_cells": [[0, 1]],
-        "blocked_cells": [],
-        "branch_weights": [],
-        "wave_specs": [[[[9, 9], {"grunt": 1}]]],
-        "starting_gold": 150,
-        "starting_lives": 20,
-    }))
-    target_dir = tmp_path / "custom_levels"
-
-    result = game._import_level_from_path(str(bad_path), directory=target_dir)
-
-    assert result is False
-    assert persistence.list_custom_levels(target_dir) == []
-
-
-def test_import_level_from_path_leaves_other_saved_levels_alone_on_failure(game, tmp_path):
-    target_dir = tmp_path / "custom_levels"
-    good_source = _write_external_level_file(tmp_path, name="Already There")
-    game._import_level_from_path(good_source, directory=target_dir)
-    assert len(persistence.list_custom_levels(target_dir)) == 1
-
-    bad_path = tmp_path / "bad.json"
-    bad_path.write_text("{not valid json")
-    game._import_level_from_path(str(bad_path), directory=target_dir)
-
-    assert len(persistence.list_custom_levels(target_dir)) == 1
-
-
-def test_editor_import_action_calls_import_level(game, monkeypatch):
-    called = []
-    monkeypatch.setattr(game, "_import_level", lambda: called.append(True))
-    game.state = GameState.EDITOR
-
-    game._handle_editor_action("import")
-
-    assert called == [True]
-
-
-def test_render_editor_with_an_import_status_message_does_not_crash(game):
-    game.state = GameState.EDITOR
-    game.import_status_message = "Level imported."
-    game.import_status_is_error = False
-    game.render()
-
-    game.import_status_message = "Import failed."
-    game.import_status_is_error = True
-    game.render()
-
-
-# --- Roguelike Run (Milestone 1 floor mechanic + Milestone 2 draft UI) ---
-
-def test_start_new_run_populates_active_run_and_loads_floor_zero(game):
-    game.start_new_run(seed=1)
-
-    assert game.active_run is not None
-    assert game.active_run.floor_index == 0
-    assert game.active_run.unlocked_towers == list(STARTER_TOWERS)
-    assert game.current_level_id == game.active_run.floor_sequence[0]
-    assert game.state == GameState.PLAYING
-
-
-def test_start_new_run_captures_floor_zeros_starting_economy(game):
-    game.start_new_run(seed=1)
-
-    assert game.active_run.lives == game.economy.lives
-    assert game.active_run.gold == game.economy.gold
-
-
-def test_starting_a_run_restricts_the_build_menu_to_the_starter_towers(game):
-    game.start_new_run(seed=1)
-    assert set(game.button_rects.keys()) == set(STARTER_TOWERS)
-
-
-def test_a_classic_level_load_restores_the_full_build_menu(game):
-    game.start_new_run(seed=1)
-    game.load_level(1)
-    assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
-
-
-def test_any_direct_load_level_object_call_restores_the_full_build_menu(game):
-    # Regression guard: the build-menu reset lives inside _load_level_object
-    # itself (see its own comment), not hand-repeated at every wrapper that
-    # calls it -- so this holds even for reset()/advance_or_replay_level()'s
-    # own direct _load_level_object() calls for a custom/playtested level,
-    # not just the load_level/load_custom_level/resume_saved_run/
-    # _start_daily_challenge/_load_floor call sites that have their own
-    # test coverage above.
-    game.start_new_run(seed=1)
-    game._load_level_object(LEVELS[1])
-    assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
-
-
-def test_try_place_tower_rejects_a_tower_not_in_the_active_runs_pool(game):
-    game.start_new_run(seed=1)
-    anchor_col, anchor_row = find_buildable_anchor(game)
-    # Bypasses the build menu entirely -- selected_tower_name would never
-    # actually reach this value through a real click, since button_rects
-    # only ever offers _active_tower_names() (see try_place_tower's own
-    # defense-in-depth comment).
-    game.selected_tower_name = "sniper"  # not in STARTER_TOWERS
-
-    assert game.try_place_tower(anchor_col, anchor_row) is False
-    assert game.grid.get_tower(anchor_col, anchor_row) is None
-
-
-def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
-    game.start_new_run(seed=1234)
-    first_sequence = game.active_run.floor_sequence
-
-    game.start_new_run(seed=1234)
-    second_sequence = game.active_run.floor_sequence
-
-    assert first_sequence == second_sequence
-
-
-def test_start_new_run_without_a_seed_still_produces_a_playable_run(game):
-    game.start_new_run()
-
-    assert game.active_run.seed is not None
-    assert game.state == GameState.PLAYING
-
-
-def test_a_classic_level_load_clears_any_active_run(game):
-    game.start_new_run(seed=1)
-    assert game.active_run is not None
-
-    game.load_level(1)
-
-    assert game.active_run is None
-
-
-def test_a_custom_level_load_clears_any_active_run(game):
-    game.start_new_run(seed=1)
-    game.load_custom_level(LEVELS[1])
-    assert game.active_run is None
-
-
-def test_starting_a_daily_run_replaces_any_active_run(game):
-    # Unlike load_level/load_custom_level (which clear out to a non-run
-    # classic load), _start_daily_challenge is itself a run entry point --
-    # starting one replaces whatever run/floor a player was previously on
-    # with a fresh Daily Run, rather than clearing active_run to None.
-    game.start_new_run(seed=1)
-
-    game._start_daily_challenge(seed=20260101)
-
-    assert game.active_run is not None
-    assert game.active_run.seed == 20260101
-    assert game.active_run.is_daily is True
-
-
-def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
-    # Regression guard: active_run is reset inside _load_level_object
-    # itself (the one choke point every loader funnels through) precisely
-    # so a caller like resume_saved_run -- which never mentions active_run
-    # at all -- can't leak a stale RunState from an unrelated earlier run
-    # into a resumed classic save.
-    playing_game.save_run()
-    save_data = save_state.load_run(playing_game.save_path)
-    playing_game.start_new_run(seed=1)
-
-    playing_game.resume_saved_run(save_data)
-
-    assert playing_game.active_run is None
-
-
-def test_floor_clear_enters_floor_cleared_and_captures_gold_lives(game):
-    game.start_new_run(seed=1)
-    # Distinct from whatever floor 1's own authored starting_gold/
-    # starting_lives happen to be -- proves these came from the run, not
-    # from _load_level_object's usual per-level defaults.
-    game.economy.gold = 9999
-    game.economy.lives = 3
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-
-    game.update(dt=0.01)
-
-    # The next floor isn't loaded yet -- that only happens once the player
-    # advances through FLOOR_CLEARED and picks a draft choice (see below) --
-    # so floor_index/self.economy still reflect the floor just cleared.
-    assert game.state == GameState.FLOOR_CLEARED
-    assert game.active_run.floor_index == 0
-    assert game.active_run.gold == 9999
-    assert game.active_run.lives == 3
-
-
-def test_floor_clear_never_reaches_classic_victory(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-
-    game.update(dt=0.01)
-
-    assert game.state != GameState.VICTORY
-    assert game.state == GameState.FLOOR_CLEARED
-
-
-def test_floor_cleared_any_key_enters_draft(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-
-    game._handle_keydown(pygame.K_SPACE)
-
-    assert game.state == GameState.DRAFT
-    assert len(game.draft_choices) == len(game.draft_choice_rects)
-    assert game.draft_choices  # STARTER_TOWERS isn't the whole registry yet
-
-
-def test_floor_cleared_escape_quits(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    assert game.state == GameState.FLOOR_CLEARED
-
-    game._handle_keydown(pygame.K_ESCAPE)
-
-    assert game.running is False
-
-
-def test_draft_escape_quits(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    assert game.state == GameState.DRAFT
-
-    game._handle_keydown(pygame.K_ESCAPE)
-
-    assert game.running is False
-
-
-def test_enter_draft_skips_the_draft_screen_once_the_pool_is_exhausted(game):
-    game.start_new_run(seed=1)
-    game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already drafted
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-
-    game._enter_draft()
-
-    assert game.state == GameState.PLAYING
-    assert game.active_run.floor_index == 1
-
-
-def test_picking_a_draft_choice_advances_to_the_next_floor(game):
-    game.start_new_run(seed=1)
-    game.economy.gold = 9999
-    game.economy.lives = 3
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    picked = game.draft_choices[0]
-    rect = game.draft_choice_rects[0]
-
-    game._handle_draft_click(rect.center)
-
-    assert game.state == GameState.PLAYING
-    assert game.active_run.floor_index == 1
-    assert picked in game.active_run.unlocked_towers
-    # Carried from the just-cleared floor, not floor 1's own authored
-    # starting_gold/starting_lives -- same proof test_floor_clear_enters_
-    # floor_cleared_and_captures_gold_lives makes for the FLOOR_CLEARED
-    # step, extended through the rest of the flow.
-    assert game.economy.gold == 9999
-    assert game.economy.lives == 3
-    assert picked in game.button_rects  # menu reflects the newly-drafted tower too
-
-
-def test_clicking_off_a_draft_card_does_nothing(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    unlocked_before = list(game.active_run.unlocked_towers)
-
-    game._handle_draft_click((0, 0))  # nowhere near any card
-
-    assert game.state == GameState.DRAFT
-    assert game.active_run.unlocked_towers == unlocked_before
-
-
-def test_last_floor_of_a_run_loads_endless(game):
-    game.start_new_run(seed=1)
-    last_index = len(game.active_run.floor_sequence) - 1
-
-    game._load_floor(last_index)
-
-    assert game.wave_manager.endless is True
-
-
-def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
-    # Milestone 4's own equivalent of test_hard_difficulty_yields_fewer_
-    # starting_lives_and_tougher_enemies_than_easy above -- one integration
-    # test proving the wiring multiplies mode.X * escalation.X rather than
-    # one replacing the other; escalation_for_floor's own formula (no-op
-    # at floor 0, strictly increasing after) is already exhaustively
-    # covered by tests/test_run_escalation.py, so it isn't re-proven here.
-    game.difficulty = "hard"
-    game.start_new_run(seed=1)
-    game._load_floor(3)
-
-    from difficulty import DIFFICULTY_MODES
-    from run_escalation import escalation_for_floor
-
-    hard = DIFFICULTY_MODES["hard"]
-    escalation = escalation_for_floor(3)
-    assert game.wave_manager.enemy_hp_multiplier == hard.enemy_hp_multiplier * escalation.enemy_hp_multiplier
-    assert game.wave_manager.enemy_speed_multiplier == hard.enemy_speed_multiplier * escalation.enemy_speed_multiplier
-    assert game.wave_manager.enemy_gold_multiplier == hard.enemy_gold_multiplier * escalation.enemy_gold_multiplier
-
-
-# --- Roguelike Run: Milestone 4b relics ---
-
-def test_relic_floor_offers_relics_instead_of_towers(game):
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1  # next_floor = 2, an even (relic) floor
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "relic"
-    from relics import RELICS
-    assert set(game.draft_choices).issubset(RELICS.keys())
-
-
-def test_non_relic_floor_offers_towers(game):
-    # Unlike a relic draft (never gated), a tower draft needs something
-    # meta-progression-unlocked beyond STARTER_TOWERS to actually offer --
-    # real gameplay always has this by the time _enter_draft runs
-    # (_advance_run_floor bumps total_floors_cleared first), but this test
-    # skips straight to _enter_draft without ever clearing a floor.
-    import meta_progression
-    meta_progression.bump("total_floors_cleared", 1, game.meta_progression_path)
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 0  # next_floor = 1, an odd (tower) floor
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "tower"
-
-
-def test_picking_a_relic_adds_it_to_the_runs_relics_and_advances(game):
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
-    game._enter_draft()
-    picked = game.draft_choices[0]
-
-    game._handle_draft_click(game.draft_choice_rects[0].center)
-
-    assert picked in game.active_run.relics
-    assert game.active_run.floor_index == 2
-    assert game.state == GameState.PLAYING
-
-
-def test_relic_gold_per_floor_bonus_is_applied_on_every_floor_load(game):
-    game.start_new_run(seed=1)
-    game.active_run.relics = ["prospectors_charm"]
-    gold_before = game.active_run.gold
-
-    game._load_floor(1)
-
-    from relics import RELICS
-    assert game.economy.gold == gold_before + RELICS["prospectors_charm"].gold_per_floor_bonus
-
-
-def test_relic_gold_per_floor_bonus_is_reflected_in_run_gold_at_floor_zero(game):
-    # Regression guard: run.gold is captured *after* the bonus is applied
-    # at floor 0, not before -- otherwise the very next floor's carried-
-    # forward gold would silently lose whatever bonus floor 0 already
-    # credited to the live economy.
-    game.start_new_run(seed=1)
-    game.active_run.relics = ["prospectors_charm"]
-
-    game._load_floor(0)
-
-    assert game.active_run.gold == game.economy.gold
-
-
-def test_relic_starting_gold_multiplier_applies_only_at_floor_zero(game):
-    # war_chest is deliberately a one-time bonus (see relics.py's own
-    # RelicModifiers docstring for why) -- carried-forward gold on floor
-    # 1+ shouldn't get the multiplier applied a second time.
-    game.start_new_run(seed=1)
-    game.active_run.relics = ["war_chest"]
-
-    game._load_floor(0)
-
-    from levels import LEVELS
-    from relics import RELICS
-    level = LEVELS[game.active_run.floor_sequence[0]]
-    expected = round(level.starting_gold * RELICS["war_chest"].starting_gold_multiplier)
-    assert game.economy.gold == expected
-
-    game._load_floor(1)
-    assert game.economy.gold == expected  # not reapplied past floor zero
-
-
-def test_relic_starting_lives_bonus_applies_only_at_floor_zero(game):
-    game.start_new_run(seed=1)
-    game.active_run.relics = ["sturdy_gate"]
-
-    game._load_floor(0)
-
-    from levels import LEVELS
-    from relics import RELICS
-    level = LEVELS[game.active_run.floor_sequence[0]]
-    expected = level.starting_lives + RELICS["sturdy_gate"].starting_lives_bonus
-    assert game.economy.lives == expected
-
-    game._load_floor(1)
-    assert game.economy.lives == expected  # not reapplied past floor zero
-
-
-def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
-    game.start_new_run(seed=1)
-    game.active_run.relics = ["bounty_hunters_ledger"]
-
-    game._load_floor(0)
-
-    from relics import RELICS
-    assert game.wave_manager.enemy_gold_multiplier == RELICS["bounty_hunters_ledger"].enemy_gold_multiplier
-
-
-def test_render_relic_draft_does_not_crash(game):
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
-    game._enter_draft()
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "relic"
-
-    game.render()
-
-
-def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
-    game.start_new_run(seed=1)
-    seed = game.active_run.seed
-    game.economy.lives = 1
-    game.enemies = []
-
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    assert game.state == GameState.GAME_OVER
-    assert game.active_run is not None
-    assert game.active_run.seed == seed
-
-
-def test_run_seed_reproduces_the_same_draft_offer(game):
-    # Floor-sequence reproducibility for a fixed seed is already covered by
-    # test_start_new_run_is_deterministic_for_a_fixed_seed above -- this
-    # covers the one additional fact that test can't: the draft offer
-    # itself (derived via _run_rng, only reachable through Game)
-    # reproduces too, so two players on the same seed see the same cards.
-    game.start_new_run(seed=99)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    first_offer = list(game.draft_choices)
-
-    game.start_new_run(seed=99)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    second_offer = list(game.draft_choices)
-
-    assert first_offer == second_offer
-
-
-def test_render_floor_cleared_does_not_crash(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    assert game.state == GameState.FLOOR_CLEARED
-
-    game.render()
-
-
-def test_render_draft_does_not_crash(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-    game._enter_draft()
-    assert game.state == GameState.DRAFT
-
-    mock_mouse_pos((0, 0))  # exercises _hovered_draft_choice's "over nothing" path
-    try:
-        game.render()
-    finally:
-        clear_mouse_mock()
-
-    mock_mouse_pos(game.draft_choice_rects[0].center)  # and its "over a card" path
-    try:
-        game.render()
-    finally:
-        clear_mouse_mock()
-
-
-# --- Roguelike Run: Milestone 3 meta-progression persistence ---
-
-def test_floor_clear_bumps_total_floors_cleared(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-
-    game.update(dt=0.01)
-
-    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
-    assert counters["total_floors_cleared"] == 1
-
-
-def test_first_floor_clear_unlocks_a_tower_and_it_appears_in_the_draft(game):
-    # Regression guard: unlock_knockback's goal is 1 specifically so a
-    # brand new player's very first floor clear already has something to
-    # draft -- see meta_progression.py's own comment on why.
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert "knockback" in game.draft_choices
-
-
-def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
-    game.start_new_run(seed=1)
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-
-    game.update(dt=0.01)
-
-    assert any("New tower unlocked" in toast.text for toast in game.achievement_toasts)
-
-
-def test_permadeath_bumps_runs_played_and_records_run_history(game):
-    game.start_new_run(seed=1)
-    seed = game.active_run.seed
-    game.economy.lives = 1
-    game.enemies = []
-
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    assert meta_progression.load_meta_progression(game.meta_progression_path)["counters"]["runs_played"] == 1
-    assert run_history.load_run_history(game.run_history_path) == {seed: 0}
-
-
-def test_permadeath_on_a_non_final_floor_does_not_bump_runs_reached_endless(game):
-    game.start_new_run(seed=1)
-    game.economy.lives = 1
-    game.enemies = []
-
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
-    assert counters.get("runs_reached_endless", 0) == 0
-
-
-def test_permadeath_on_the_final_floor_bumps_runs_reached_endless(game):
-    game.start_new_run(seed=1)
-    last_index = len(game.active_run.floor_sequence) - 1
-    game._load_floor(last_index)
-    game.economy.lives = 1
-    game.enemies = []
-
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
-    assert counters["runs_reached_endless"] == 1
-
-
-def test_run_history_records_floors_cleared_at_time_of_death(game):
-    game.start_new_run(seed=1)
-    seed = game.active_run.seed
-    game.wave_manager.all_waves_complete = True
-    game.enemies = []
-    game.update(dt=0.01)  # clears floor 0 -> FLOOR_CLEARED
-    game._enter_draft()
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 1, PLAYING
-    game.economy.lives = 1
-    game.enemies = []
-
-    game.economy.lose_life()
-    game.update(dt=0.01)
-
-    assert run_history.load_run_history(game.run_history_path) == {seed: 1}
