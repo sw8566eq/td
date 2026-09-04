@@ -94,7 +94,7 @@ def test_menu_options_lists_every_key_in_documented_order():
         "S -- Settings",
         "A -- Achievements",
         "H -- How to Play",
-        "D -- Daily Challenge",
+        "D -- Daily Run",
     ]
 
 

@@ -653,7 +653,7 @@ MENU_KEY_HINTS = [
     ("s", "Settings"),
     ("a", "Achievements"),
     ("h", "How to Play"),
-    ("d", "Daily Challenge"),
+    ("d", "Daily Run"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
