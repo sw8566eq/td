@@ -613,6 +613,25 @@ def test_tower_results_includes_a_sold_tower(playing_game):
     assert any(row["damage_dealt"] == 42.0 for row in results)
 
 
+def test_cache_tower_results_snapshots_rather_than_reflecting_live_changes(playing_game):
+    # render() reads this snapshot on every frame a results screen is
+    # shown instead of recomputing ui.compute_tower_results() (and
+    # re-sorting it) fresh each time -- safe only because self.towers/
+    # self.sold_towers genuinely can't change outside PLAYING (every
+    # place/upgrade/sell click handler is gated to it). Proven here by
+    # mutating self.towers directly (bypassing that gate) after caching
+    # and confirming the snapshot doesn't move.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+
+    playing_game._cache_tower_results()
+    snapshot_before = list(playing_game._cached_tower_results)
+    playing_game.towers = []  # would change a live _tower_results() call
+
+    assert playing_game._cached_tower_results == snapshot_before
+
+
 def test_try_sell_tower_clears_a_matching_pinned_selection(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -643,11 +662,30 @@ def test_loading_a_new_level_clears_sold_towers_from_the_previous_one(playing_ga
     assert playing_game.sold_towers == []
 
 
+def test_loading_a_new_level_clears_the_previous_ones_cached_tower_results(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    playing_game._cache_tower_results()
+    assert playing_game._cached_tower_results != []
+
+    playing_game.load_level(2)
+
+    assert playing_game._cached_tower_results == []
+
+
 def test_render_victory_screen_with_tower_stats_does_not_crash(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
     playing_game.try_place_tower(anchor_col, anchor_row)
     playing_game.grid.get_tower(anchor_col, anchor_row).damage_dealt = 99.0
+    # render() reads the results table _cache_tower_results() snapshots at
+    # the real VICTORY transition (see update()'s own win-check), not
+    # _tower_results() fresh every frame -- force-setting state directly,
+    # the way this smoke test does, skips that transition, so the cache
+    # has to be primed by hand here to actually exercise the with-real-
+    # data path this test is named for.
+    playing_game._cache_tower_results()
     playing_game.state = GameState.VICTORY
     playing_game.render()
 
@@ -657,6 +695,7 @@ def test_render_game_over_screen_with_tower_stats_does_not_crash(playing_game):
     playing_game.selected_tower_name = "basic"
     playing_game.try_place_tower(anchor_col, anchor_row)
     playing_game.grid.get_tower(anchor_col, anchor_row).damage_dealt = 99.0
+    playing_game._cache_tower_results()  # see test_render_victory_screen_with_tower_stats_does_not_crash
     playing_game.state = GameState.GAME_OVER
     playing_game.render()
 

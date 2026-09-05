@@ -24,7 +24,9 @@ from ui import (
     WAVE_UNIT_ROWS_BOTTOM,
     WAVE_UNIT_ROWS_TOP,
     WAVE_UNIT_ROW_HEIGHT,
+    _dim_overlay_cache,
     _draw_centered_overlay,
+    _draw_dim_overlay,
     _wrap_text,
     build_achievements_back_rect,
     build_button_rects,
@@ -831,6 +833,35 @@ def test_draw_centered_overlay_skips_a_falsy_subtitle_line():
     surface_without_blank = pygame.Surface((400, 300))
     _draw_centered_overlay(surface_without_blank, font, small_font, "Title", ["a real line"], (255, 255, 255))
     assert surface.get_buffer().raw == surface_without_blank.get_buffer().raw
+
+
+# --- _draw_dim_overlay ---
+
+def test_draw_dim_overlay_reuses_the_same_surface_for_the_same_width():
+    # The backdrop is solid black at a fixed alpha for a given size and
+    # never actually changes -- built once per distinct (width,
+    # SCREEN_HEIGHT) and cached (_dim_overlay_cache) rather than
+    # reallocated fresh on every single call, since draw_draft_screen/
+    # FLOOR_CLEARED can now call this many times a second.
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    _draw_dim_overlay(surface)
+    cached_after_first_call = dict(_dim_overlay_cache)
+    _draw_dim_overlay(surface)
+
+    assert _dim_overlay_cache == cached_after_first_call  # no new entry added
+    assert _dim_overlay_cache[(settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT)] is \
+        cached_after_first_call[(settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT)]  # same object, not rebuilt
+
+
+def test_draw_dim_overlay_caches_separately_per_distinct_width():
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    _draw_dim_overlay(surface, width=200)
+    _draw_dim_overlay(surface, width=300)
+
+    assert _dim_overlay_cache[(200, settings.SCREEN_HEIGHT)].get_width() == 200
+    assert _dim_overlay_cache[(300, settings.SCREEN_HEIGHT)].get_width() == 300
 
 
 # --- _wrap_text (editor validation-message word wrap) ---

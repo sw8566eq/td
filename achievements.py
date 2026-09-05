@@ -8,18 +8,19 @@ progress.py's own conventions closely: a single JSON file, defensive
 handling of a missing/corrupt file (falls back to "nothing tracked yet"
 rather than crashing, same spirit as progress.load_progress()).
 
-bump() mirrors progress.mark_level_cleared()'s exact shape too -- load the
-persisted state fresh, mutate, save, return what changed -- so it's always
-safe to call from wherever the relevant Game-level event actually happens,
-with no in-memory counters of its own that could go stale between calls or
-across multiple Game instances sharing one file.
+bump()/set_counter() mirror progress.mark_level_cleared()'s exact shape too
+-- load the persisted state fresh, mutate, save, return what changed -- so
+they're always safe to call from wherever the relevant Game-level event
+actually happens, with no in-memory counters of its own that could go
+stale between calls or across multiple Game instances sharing one file.
+That load-mutate-save-return mechanics is shared with meta_progression.py
+via threshold_unlocks.py (see that module's own docstring) -- this module
+just supplies its own registry/path/schema version to it.
 """
 
-import json
-
 import levels
-from json_io import load_json_with_fallback, module_relative_path
-from threshold_unlocks import empty_counters_state, parse_counters_state, unlock_crossed_thresholds
+import threshold_unlocks
+from json_io import module_relative_path
 
 SCHEMA_VERSION = 1
 ACHIEVEMENTS_PATH = module_relative_path(__file__, "achievements.json")
@@ -84,17 +85,11 @@ def load_achievements(path=ACHIEVEMENTS_PATH):
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as progress.load_progress()."""
-    return load_json_with_fallback(path, parse_counters_state, empty_counters_state)
+    return threshold_unlocks.load_counters_state(path)
 
 
 def save_achievements(state, path=ACHIEVEMENTS_PATH):
-    data = {
-        "schema_version": SCHEMA_VERSION,
-        "counters": state["counters"],
-        "unlocked": sorted(state["unlocked"]),
-    }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    threshold_unlocks.save_counters_state(state, path, SCHEMA_VERSION)
 
 
 def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
@@ -102,11 +97,7 @@ def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
     keys newly unlocked by this bump (in ACHIEVEMENT_ORDER). For a
     counter that's a simple +1-(or more)-per-event tally -- kills, towers
     built, waves survived, and so on."""
-    state = load_achievements(path)
-    state["counters"][counter_name] = state["counters"].get(counter_name, 0) + amount
-    newly_unlocked = unlock_crossed_thresholds(ACHIEVEMENTS, state, counter_name)
-    save_achievements(state, path)
-    return newly_unlocked
+    return threshold_unlocks.bump_counter(ACHIEVEMENTS, counter_name, amount, path, SCHEMA_VERSION)
 
 
 def set_counter(counter_name, value, path=ACHIEVEMENTS_PATH):
@@ -119,8 +110,4 @@ def set_counter(counter_name, value, path=ACHIEVEMENTS_PATH):
     additional progress. The max() keeps it monotonic (a lifetime
     counter, like every other one here) even if called with a smaller
     value than what's already recorded."""
-    state = load_achievements(path)
-    state["counters"][counter_name] = max(state["counters"].get(counter_name, 0), value)
-    newly_unlocked = unlock_crossed_thresholds(ACHIEVEMENTS, state, counter_name)
-    save_achievements(state, path)
-    return newly_unlocked
+    return threshold_unlocks.set_counter(ACHIEVEMENTS, counter_name, value, path, SCHEMA_VERSION)

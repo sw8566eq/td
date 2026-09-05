@@ -33,11 +33,16 @@ from tower import TOWER_TYPES
 from waves import WaveManager, WaveState
 
 # Two independently-derived rng streams within one roguelike run (see
-# Game._run_rng) -- large, distinct multipliers so a floor's own routing rng
-# and that floor's draft-pick rng never collide despite both being derived
-# from the same (run.seed, floor_index) pair.
-_FLOOR_RNG_STREAM = 1_000_003
-_DRAFT_RNG_STREAM = 2_000_003
+# Game._run_rng) -- distinct string labels, folded into the seed string
+# alongside run.seed/floor_index, so a floor's own routing rng and that
+# floor's draft-pick rng never collide. Not the multiply-and-add integer
+# scheme this used before: seed * stream + floor_index degenerates to just
+# `floor_index` for every stream whenever seed == 0 (start_new_run(seed=0)
+# is reachable directly, and even an unseeded run has roughly a 1-in-4.3e9
+# chance of drawing it), silently collapsing both streams onto the same
+# sequence. A string seed has no such degenerate case -- see _run_rng.
+_FLOOR_RNG_STREAM = "floor"
+_DRAFT_RNG_STREAM = "draft"
 
 
 class GameState(Enum):
@@ -107,10 +112,12 @@ class Game:
         # run's own eventual GAME_OVER/VICTORY (see update()'s win/loss
         # branches) -- what actually gates deleting the save file once it's
         # been played out, so a fresh, unrelated session's own victory can
-        # never delete some other still-valid in-progress save. Every
-        # _load_level_object() call resets this to False first (see
-        # there); resume_saved_run() is the one caller that sets it back to
-        # True afterward.
+        # never delete some other still-valid in-progress save. An explicit
+        # parameter on _load_level_object() (default False) rather than set
+        # after the fact -- resume_saved_run() is the one caller that
+        # passes True; _load_floor() passes whatever this already was,
+        # unaffected by its own floor-to-floor _load_level_object() calls
+        # (see that method's own comment for why).
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
 
@@ -288,7 +295,21 @@ class Game:
         _load_level_object(..., difficulty_override="normal") directly,
         now snapshotted onto the run itself instead (same "snapshot once
         at start, don't re-read the live preference mid-run" precedent
-        save_state.py's own resumed-run difficulty already follows)."""
+        save_state.py's own resumed-run difficulty already follows).
+
+        Explicitly resets _resumed_from_save -- unlike every other
+        _load_level_object() call this run will ever make (all routed
+        through _load_floor(), which deliberately preserves this flag
+        across its own calls, see that method's own comment), starting a
+        brand new run here genuinely is the "unrelated fresh session"
+        case _load_level_object()'s own reset exists for, whether or not a
+        previously-resumed run is still technically active_run at this
+        exact moment (e.g. saved-and-returned-to-menu, then started a
+        different run without ever concluding the resumed one) -- that
+        older run's own save file must stay resumable, not get deleted
+        out from under it by this new, unrelated run's own eventual
+        conclusion."""
+        self._resumed_from_save = False
         seed = seed if seed is not None else random.Random().getrandbits(32)
         floor_sequence = run_floors.sample_floor_sequence(random.Random(seed))
         self.active_run = RunState(
@@ -298,17 +319,34 @@ class Game:
         )
         self._load_floor(0)
 
-    def _run_rng(self, stream, floor_index):
+    def _floor_load_context(self, run, floor_index):
+        """The (relic_modifiers, escalation, rng) triple _load_level_object()
+        needs to load `floor_index` of `run` -- shared by _load_floor() (a
+        normal floor transition, or a mid-run restart of the current
+        floor -- see reset()) and resume_saved_run() (which needs the
+        identical derivation for whatever floor the resumed run was
+        already on), so the two don't independently re-derive the same
+        three values and risk drifting apart if a future change alters
+        what a floor-load needs derived from a RunState."""
+        return (
+            relics.compose_relic_modifiers(run.relics),
+            run_escalation.escalation_for_floor(floor_index),
+            self._run_rng(run, _FLOOR_RNG_STREAM, floor_index),
+        )
+
+    def _run_rng(self, run, stream, floor_index):
         # A floor's own routing rng and that floor's draft-pick rng are
         # both deterministically re-derived from (run.seed, floor_index)
         # rather than carried as one continuously-consumed random.Random
-        # across floors, so a resumed run (see save_state.py, a future
-        # milestone) needs no RNG state serialized -- just re-derive the
-        # same object the same way on load. `stream` (one of the
-        # _*_RNG_STREAM constants above) keeps the two derived streams
-        # from colliding despite being seeded off the same (seed,
-        # floor_index) pair.
-        return random.Random(self.active_run.seed * stream + floor_index)
+        # across floors, so resuming a saved run needs no RNG state
+        # serialized at all -- just re-derive the same object the same way
+        # on load (see resume_saved_run(), the other caller that needs
+        # this before self.active_run is even set, which is why `run` is
+        # taken as a parameter here instead of read off self.active_run).
+        # `stream` (one of the _*_RNG_STREAM string constants above) keeps
+        # the two derived streams from colliding despite being seeded off
+        # the same (seed, floor_index) pair.
+        return random.Random(f"{run.seed}:{stream}:{floor_index}")
 
     def _load_floor(self, floor_index):
         """Load floor `floor_index` of self.active_run. Resets everything
@@ -330,26 +368,41 @@ class Game:
         `active_run` parameter -- see its docstring for why that already
         builds the correct, run-narrowed button menu in its one
         _rebuild_button_rects() call, with nothing left for _load_floor to
-        restore or rebuild itself afterward."""
+        restore or rebuild itself afterward.
+
+        Also doubles as the restart path for the current floor of an
+        active run (see reset()) -- called again with the same floor_index
+        it's already on, which is exactly "reload this floor from scratch"
+        since run.gold/run.lives (what floor_index != 0 restores from)
+        don't change again until either this floor actually clears (see
+        _advance_run_floor) or its own next draft picks a one-time relic
+        bonus (_apply_one_time_relic_bonus) -- neither reachable mid-floor.
+
+        _resumed_from_save is passed straight through as-is (see
+        _load_level_object's own `resumed_from_save` parameter) -- unlike
+        start_new_run(), which explicitly resets it since starting a
+        brand new run always is the "unrelated fresh session" case that
+        flag exists to catch, _load_floor is never that: it always
+        continues whatever run is already active, resumed or not, so
+        whatever this flag already was stays exactly as it was."""
         run = self.active_run
         run.floor_index = floor_index
         level_id = run.current_level_id
-        relic_modifiers = relics.compose_relic_modifiers(run.relics)
+        relic_modifiers, escalation, rng = self._floor_load_context(run, floor_index)
         self._load_level_object(
             LEVELS[level_id], endless=run.is_final_floor,
-            difficulty_override=run.difficulty, rng=self._run_rng(_FLOOR_RNG_STREAM, floor_index),
-            escalation=run_escalation.escalation_for_floor(floor_index), relic_modifiers=relic_modifiers,
-            active_run=run,
+            difficulty_override=run.difficulty, rng=rng, escalation=escalation, relic_modifiers=relic_modifiers,
+            active_run=run, resumed_from_save=self._resumed_from_save,
         )
         self.current_level_id = level_id
-        # Unlike starting_gold_multiplier/starting_lives_bonus above
-        # (folded into _load_level_object's own Economy construction, so
-        # they only actually matter for floor 0's initial capture -- every
-        # later floor's economy comes from the run's own carried-forward
-        # gold/lives instead), gold_per_floor_bonus is meant to apply on
-        # every floor -- added once below, after floor 1+'s restore but
-        # before floor 0's own capture, so run.gold is never briefly stale
-        # (missing a bonus that's already been credited to self.economy.gold).
+        # gold_per_floor_bonus is meant to apply on every floor -- added
+        # once below, after floor 1+'s restore but before floor 0's own
+        # capture, so run.gold is never briefly stale (missing a bonus
+        # that's already been credited to self.economy.gold). A relic's
+        # own one-time bonus (starting_gold_multiplier/starting_lives_bonus)
+        # never reaches here at all -- see Game._apply_one_time_relic_bonus
+        # for why that's applied once, directly, at the moment the card is
+        # drafted instead.
         if floor_index == 0:
             run.lives = self.economy.lives
         else:
@@ -372,6 +425,7 @@ class Game:
         run.gold = self.economy.gold
         run.lives = self.economy.lives
         self._record_meta_progress("total_floors_cleared")
+        self._cache_tower_results()
         self.state = GameState.FLOOR_CLEARED
 
     def _record_run_permadeath(self):
@@ -383,7 +437,19 @@ class Game:
         multi-step side effect to, rather than growing update() itself.
         floors_cleared doubles as the run's own score, a simple,
         monotonic count -- a Daily Run needs no special handling here
-        either, it's just self.active_run with is_daily set."""
+        either, it's just self.active_run with is_daily set.
+
+        Sandbox-gated up front, same as every other real-progress recorder
+        in this codebase (_record_achievement/_record_meta_progress/
+        _record_level_cleared) -- no normal UI path can currently combine
+        an active run with sandbox=True (Practice never starts a run, and
+        start_new_run never sets sandbox), but resume_saved_run() restores
+        both fields independently off a save file with nothing enforcing
+        that they can't both be set, so this stays consistent with its
+        siblings rather than silently recording a trivialized run's
+        outcome if that combination is ever reachable."""
+        if self.sandbox:
+            return
         run_history.record_run_result(self.active_run.seed, self.active_run.floors_cleared, self.run_history_path)
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
@@ -404,16 +470,24 @@ class Game:
     def _enter_draft(self):
         """Advance from FLOOR_CLEARED into the draft screen -- computes
         this floor-clear's card choices (relics on alternating floors, see
-        _is_relic_floor; towers otherwise) and switches to GameState.DRAFT,
-        or skips straight to the next floor if there's nothing left to
-        draft (every candidate of that draft's own kind already held)."""
+        _is_relic_floor; towers otherwise) and switches to GameState.DRAFT.
+        A relic floor with every relic already held falls back to a tower
+        draft on the same rng/floor instead of offering nothing (matching
+        _is_relic_floor's own documented contract -- unreachable at the
+        current RELICS/RELIC_FLOOR_INTERVAL tuning, since a run can never
+        hold more relics than it has relic-draft floors for, but a real
+        fallback rather than a documented-but-unbuilt one costs nothing and
+        stays correct if that tuning ever changes). Only skips straight to
+        the next floor with no draft at all if *that* also comes up empty
+        -- the tower pool itself exhausted too."""
         next_floor = self.active_run.floor_index + 1
-        rng = self._run_rng(_DRAFT_RNG_STREAM, next_floor)
-        if self._is_relic_floor(next_floor):
-            self.draft_kind = "relic"
+        rng = self._run_rng(self.active_run, _DRAFT_RNG_STREAM, next_floor)
+        self.draft_kind = "relic" if self._is_relic_floor(next_floor) else "tower"
+        if self.draft_kind == "relic":
             self.draft_choices = relics.relic_offer(rng, self.active_run)
-        else:
-            self.draft_kind = "tower"
+            if not self.draft_choices:
+                self.draft_kind = "tower"
+        if self.draft_kind == "tower":
             self.draft_choices = card_pool.draft_offer(
                 rng, self.active_run, meta_progression_path=self.meta_progression_path,
             )
@@ -431,13 +505,46 @@ class Game:
         picked = self.draft_choices[index]
         if self.draft_kind == "relic":
             self.active_run.relics.append(picked)
+            self._apply_one_time_relic_bonus(relics.RELICS[picked])
         else:
             self.active_run.unlocked_towers.append(picked)
         self._load_floor(next_floor)
 
+    def _scaled_starting_gold(self, level, mode):
+        """`level.starting_gold` scaled by `mode.starting_gold_multiplier`
+        -- the exact formula _load_level_object() uses to construct a
+        fresh floor's own starting Economy, factored out here so
+        _apply_one_time_relic_bonus's own baseline computation below can't
+        silently drift from it."""
+        return round(level.starting_gold * mode.starting_gold_multiplier)
+
+    def _apply_one_time_relic_bonus(self, relic):
+        """War Chest/Sturdy Gate (relics.py's own RelicModifiers docstring
+        for the full reasoning) can structurally never be drafted before
+        floor 0 -- the earliest possible relic draft is floor 2 (see
+        _is_relic_floor), by which point floor 0's Economy is long gone
+        and every later floor's gold/lives comes from the run's own
+        carried-forward values instead (see _load_floor). Baking the
+        bonus into Economy construction the way every other relic modifier
+        works would make these two permanently inert no matter when they're
+        picked -- so instead, apply it directly onto the run's carried
+        gold/lives the instant the card is picked, computed against what
+        this run's own starter floor's baseline would have been (its own
+        Level's starting_gold, scaled by the run's own difficulty mode --
+        _scaled_starting_gold, the exact same formula floor 0's own
+        Economy construction used), so "+25% starting gold for this run"
+        still means a fixed amount tied to this run's own starting point,
+        not an unpredictable multiplier on whatever gold the player
+        happens to be carrying at pick time."""
+        starter_level = LEVELS[self.active_run.floor_sequence[0]]
+        mode = difficulty.DIFFICULTY_MODES[self.active_run.difficulty]
+        base_gold = self._scaled_starting_gold(starter_level, mode)
+        self.active_run.gold += round(base_gold * (relic.starting_gold_multiplier - 1.0))
+        self.active_run.lives += relic.starting_lives_bonus
+
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
                             escalation=run_escalation.FloorEscalation(), relic_modifiers=relics.RelicModifiers(),
-                            active_run=None):
+                            active_run=None, resumed_from_save=False):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
         # out of an endless run doesn't silently drop back into a normal,
@@ -445,14 +552,16 @@ class Game:
         # Economy construction below and the win-check in update()).
         self.endless = endless
         self.sandbox = sandbox
-        # Every level load starts "not resumed" by default -- only
-        # resume_saved_run() (the one caller that also passes
-        # difficulty_override) sets this back to True, after this method
-        # returns. This is what stops an unrelated fresh level load (picked
-        # from the menu/level-select while an old save from a different,
-        # abandoned run still sits on disk) from later deleting that
-        # unrelated save on its own eventual victory/game-over.
-        self._resumed_from_save = False
+        # False (the default) for every loader except _load_floor/
+        # resume_saved_run, mirroring active_run just below -- taken as an
+        # explicit parameter, not set after the fact, so resume_saved_run()
+        # can pass resumed_from_save=True directly instead of having to
+        # overwrite it right after this call returns. This is what stops
+        # an unrelated fresh level load (picked from the menu/level-select
+        # while an old save from a different, abandoned run still sits on
+        # disk) from later deleting that unrelated save on its own
+        # eventual victory/game-over.
+        self._resumed_from_save = resumed_from_save
         # None (the default) for every loader except _load_floor/
         # resume_saved_run, the two callers that actually have a RunState
         # to thread through -- taking it as a parameter here, rather than
@@ -494,16 +603,20 @@ class Game:
         # of a run this is and what relics that run has drafted. Composed
         # into the same construction `mode`'s own multipliers already
         # occupy, same "extra factor, never replacing" rule difficulty.py's
-        # own docstring states. relic_modifiers.gold_per_floor_bonus isn't
-        # applied here -- unlike a starting multiplier, it's meant to apply
-        # on top of every floor's economy including floor 1+'s carried-
-        # forward gold, not just what's constructed fresh here, so
-        # _load_floor adds it after this method returns instead (see its
-        # own comment).
+        # own docstring states. Only enemy_gold_multiplier (below, folded
+        # into WaveManager) and gold_per_floor_bonus (not applied here at
+        # all -- _load_floor adds it after this method returns, see its own
+        # comment, since it's meant to apply on top of every floor's
+        # economy, not just what's constructed fresh here) actually reach
+        # this construction -- relic_modifiers has no starting_gold/lives
+        # fields at all, since a relic can never be held this early (see
+        # Game._apply_one_time_relic_bonus, where their own one-time bonus
+        # is applied instead, directly onto the run's carried gold/lives at
+        # the moment the card is drafted).
         mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
-            round(level.starting_gold * mode.starting_gold_multiplier * relic_modifiers.starting_gold_multiplier),
-            round(level.starting_lives * mode.starting_lives_multiplier) + relic_modifiers.starting_lives_bonus,
+            self._scaled_starting_gold(level, mode),
+            round(level.starting_lives * mode.starting_lives_multiplier),
             unlimited_gold=self.unlimited_gold or sandbox,
             invulnerable=sandbox,
         )
@@ -526,6 +639,15 @@ class Game:
         # _tower_results() can still find it. Never touched otherwise; a
         # sold tower is already fully inert once off the grid.
         self.sold_towers = []
+        # render()'s own snapshot of _tower_results(), taken once by
+        # _cache_tower_results() at the moment GAME_OVER/VICTORY/
+        # FLOOR_CLEARED is actually entered -- reset to empty here purely
+        # so a fresh level never has a stale table left over from
+        # whatever was last shown before it, same spirit as sold_towers
+        # above (it's always overwritten again before anything reads it
+        # for real, since every path into one of those three states goes
+        # through _cache_tower_results() first).
+        self._cached_tower_results = []
         self.projectiles = []
         self.damage_numbers = []
         self.impact_effects = []
@@ -591,7 +713,32 @@ class Game:
         self.time_scale = self.TIME_SCALES[(index + 1) % len(self.TIME_SCALES)]
 
     def reset(self):
-        if self.current_level_id is None:
+        """Restart whatever's currently loaded, exactly as it was when
+        this load began -- the pause menu's "Restart Level" (still alive)
+        and the game-over screen's "Restart" (see _handle_keydown's own
+        two K_r call sites, the only two callers).
+
+        Mid-run and still alive (state == PAUSED, checked directly rather
+        than via some indirect proxy like the economy's own is_out_of_lives
+        -- self.state hasn't been reassigned to PLAYING yet at this point,
+        both callers do that themselves right after reset() returns, so it
+        still reliably reflects which of the two ever calls this), this
+        restarts the run's own current floor (_load_floor(self.active_run.
+        floor_index) -- same run, same floor, fresh towers/enemies/economy
+        for that floor, drafted pool/relics/carried gold-lives all
+        untouched) rather than silently discarding the whole run the way a
+        bare _load_level_object() call would (see its own active_run
+        parameter, reset to None on every call unless a caller passes one
+        through explicitly). A run that's already ended by permadeath
+        (state == GAME_OVER, since _record_run_permadeath never clears
+        active_run) has nothing left to restart *into*: the run's outcome
+        is already recorded, so resurrecting it here would let a player
+        undo their own death for free. That falls through to the same
+        plain, run-less reload every other reset() has always done, same
+        as classic/Practice/playtest play."""
+        if self.active_run is not None and self.state == GameState.PAUSED:
+            self._load_floor(self.active_run.floor_index)
+        elif self.current_level_id is None:
             # custom level: nothing in LEVELS to re-look-up
             self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
         else:
@@ -653,7 +800,22 @@ class Game:
         once, back when it first happened. Lifetime shots/damage/kills
         stats and sold_towers are restored too (see _tower_from_save_data),
         so a level's post-level results table still reflects everything
-        that happened before the save, not just what happens after."""
+        that happened before the save, not just what happens after.
+
+        A resumed run's escalation/relic_modifiers/rng are re-derived here
+        via the same _floor_load_context() _load_floor() itself calls for
+        that same floor -- WaveManager's own multipliers (enemy_hp/speed/
+        gold) and its routing rng are never touched by wave_manager.
+        restore() below (that only restores wave_index/state/between_wave_
+        timer), so leaving these three at _load_level_object()'s own
+        no-op defaults would silently understate this floor's difficulty/
+        gold and make its enemy routing non-deterministic for the rest of
+        the floor, only self-correcting once the *next* floor's own
+        _load_floor() call gets it right. relic_modifiers.gold_per_floor_
+        bonus is the one exception deliberately NOT re-applied here
+        (unlike _load_floor's own call) -- it was already added once, back
+        when this floor was first entered, and that's already baked into
+        save_data["gold"] below; re-adding it here would double it."""
         level = save_data["level"]
         # save_data["run"] is None for a save with no active run (classic/
         # Practice/editor-playtest play, or one taken before this key
@@ -663,9 +825,25 @@ class Game:
         # _rebuild_button_rects() call already builds the correct menu
         # (every tower, or just this run's drafted pool) with nothing left
         # for resume_saved_run() to restore or rebuild itself afterward.
+        run = save_data.get("run")
+        if run is not None:
+            relic_modifiers, escalation, rng = self._floor_load_context(run, run.floor_index)
+            # The run's own pinned difficulty, not save_data["difficulty"]
+            # (save_run() writes that from the same source, but reading it
+            # straight off the already-reconstructed RunState here doesn't
+            # depend on that -- see save_state.py's own comment on why the
+            # top-level field can't just be the live, sticky game.difficulty).
+            difficulty_override = run.difficulty
+        else:
+            relic_modifiers = relics.RelicModifiers()
+            escalation = run_escalation.FloorEscalation()
+            rng = None
+            difficulty_override = save_data["difficulty"]
         self._load_level_object(
             level, endless=save_data["endless"], sandbox=save_data["sandbox"],
-            difficulty_override=save_data["difficulty"], active_run=save_data.get("run"),
+            difficulty_override=difficulty_override, rng=rng,
+            escalation=escalation, relic_modifiers=relic_modifiers, active_run=run,
+            resumed_from_save=True,
         )
         self.current_level_id = save_data["current_level_id"]
         self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
@@ -677,7 +855,6 @@ class Game:
         for tower_data in save_data.get("sold_towers", []):
             self.sold_towers.append(self._tower_from_save_data(tower_data))
 
-        self._resumed_from_save = True  # see __init__'s comment on this flag
         self.state = GameState.PLAYING
 
     def _start_daily_challenge(self, seed=None):
@@ -1267,20 +1444,28 @@ class Game:
             ))
         self._record_achievement("levels_cleared")
 
+    def _record_progress_counter(self, bump_fn, path, queue_toasts_fn, counter_name, amount):
+        """The shared "sandbox-gated bump-and-toast" shape behind
+        _record_achievement/_record_meta_progress below, which otherwise
+        differ only in which module's own bump() they call, which path,
+        and which toast-formatting method the newly-unlocked keys go
+        through. Sandbox-gated once, here, rather than at each of those
+        two call sites -- a trivial sandbox run shouldn't count toward
+        real progress or expand what a future real run can draft, and
+        that's one policy, not two independently-remembered ones."""
+        if self.sandbox:
+            return
+        queue_toasts_fn(bump_fn(counter_name, amount, path))
+
     def _record_achievement(self, counter_name, amount=1):
         """Bump `counter_name` by `amount` (see achievements.py) and queue
         a toast for anything newly unlocked -- called from every Game-
         level event an achievement can key off (try_place_tower/
         try_upgrade_tower/try_specialize_tower and update()'s kill/wave/
-        level-clear hooks). Sandbox-gated once, here, rather than at each
-        of those call sites -- a trivial sandbox run should never count
-        toward real progress, same reasoning already applied to
-        progress.mark_level_cleared, but that's a policy every caller
-        shares, not something each one should have to remember on its
-        own."""
-        if self.sandbox:
-            return
-        self._queue_achievement_toasts(achievements.bump(counter_name, amount, self.achievements_path))
+        level-clear hooks)."""
+        self._record_progress_counter(
+            achievements.bump, self.achievements_path, self._queue_achievement_toasts, counter_name, amount,
+        )
 
     def _queue_achievement_toasts(self, newly_unlocked_keys):
         """Queue one rising/fading toast per achievement key in
@@ -1297,11 +1482,10 @@ class Game:
         """Same shape as _record_achievement, for meta_progression.py's own
         counters instead of achievements.py's -- bump `counter_name` and
         queue a toast for any tower newly unlocked into the account-wide
-        draft pool. Sandbox-gated for the same reason: a trivial sandbox
-        run shouldn't expand what a future real run can draft."""
-        if self.sandbox:
-            return
-        self._queue_meta_unlock_toasts(meta_progression.bump(counter_name, amount, self.meta_progression_path))
+        draft pool."""
+        self._record_progress_counter(
+            meta_progression.bump, self.meta_progression_path, self._queue_meta_unlock_toasts, counter_name, amount,
+        )
 
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         """Same toast presentation _queue_achievement_toasts uses, for
@@ -1520,6 +1704,19 @@ class Game:
     def _tower_results(self):
         return ui.compute_tower_results(self.towers + self.sold_towers)
 
+    def _cache_tower_results(self):
+        """Snapshot _tower_results() once, at the moment a results-showing
+        screen (GAME_OVER/VICTORY/FLOOR_CLEARED) is actually entered, for
+        render() to read on every frame that screen stays up instead of
+        rebuilding and re-sorting the same, unchanging table every single
+        frame -- self.towers/self.sold_towers can't change outside
+        PLAYING (every place/upgrade/sell click handler is gated to it),
+        so there's nothing for a cached copy to go stale against while
+        one of these screens is shown. FLOOR_CLEARED especially: it's
+        reachable up to once per floor now, far more often than GAME_OVER/
+        VICTORY ever were before the run loop."""
+        self._cached_tower_results = self._tower_results()
+
     # --- Update ---
 
     def update(self, dt):
@@ -1625,6 +1822,7 @@ class Game:
 
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
+            self._cache_tower_results()
             self._delete_save_if_this_run_was_resumed()
             if self.active_run is not None:
                 # A Daily Run is still just self.active_run with is_daily
@@ -1648,6 +1846,7 @@ class Game:
                 self._advance_run_floor()
             else:
                 self.state = GameState.VICTORY
+                self._cache_tower_results()
                 self._delete_save_if_this_run_was_resumed()
 
     # --- Render ---
@@ -1748,10 +1947,10 @@ class Game:
             ui.draw_pause_menu(self.screen, self.font, self.small_font,
                                 self.current_level_id is None, self.can_save_run())
         elif self.state == GameState.GAME_OVER:
-            ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._tower_results())
+            ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._cached_tower_results)
         elif self.state == GameState.VICTORY:
             ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level(),
-                                    self._tower_results())
+                                    self._cached_tower_results)
         elif self.state == GameState.FLOOR_CLEARED and self.active_run is not None:
             # active_run is None only ever happens by force-setting state
             # directly (e.g. the render() smoke test's blanket sweep across
@@ -1762,7 +1961,7 @@ class Game:
             ui.draw_floor_cleared_screen(
                 self.screen, self.font, self.small_font,
                 self.active_run.floor_index + 1, len(self.active_run.floor_sequence),
-                self._tower_results(),
+                self._cached_tower_results,
             )
         elif self.state == GameState.DRAFT:
             ui.draw_draft_screen(

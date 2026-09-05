@@ -20,10 +20,8 @@ directly (see Game._queue_meta_unlock_toasts) rather than duplicating it
 here where it could drift out of sync.
 """
 
-import json
-
-from json_io import load_json_with_fallback, module_relative_path
-from threshold_unlocks import empty_counters_state, parse_counters_state, unlock_crossed_thresholds
+import threshold_unlocks
+from json_io import module_relative_path
 
 SCHEMA_VERSION = 1
 META_PROGRESSION_PATH = module_relative_path(__file__, "meta_progression.json")
@@ -71,17 +69,11 @@ def load_meta_progression(path=META_PROGRESSION_PATH):
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as achievements.load_achievements()."""
-    return load_json_with_fallback(path, parse_counters_state, empty_counters_state)
+    return threshold_unlocks.load_counters_state(path)
 
 
 def save_meta_progression(state, path=META_PROGRESSION_PATH):
-    data = {
-        "schema_version": SCHEMA_VERSION,
-        "counters": state["counters"],
-        "unlocked": sorted(state["unlocked"]),
-    }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    threshold_unlocks.save_counters_state(state, path, SCHEMA_VERSION)
 
 
 def bump(counter_name, amount=1, path=META_PROGRESSION_PATH):
@@ -91,12 +83,9 @@ def bump(counter_name, amount=1, path=META_PROGRESSION_PATH):
     above is one of these; achievements.py's sibling set_counter() (for a
     counter driven by an already-deduplicated external count, like its own
     distinct_levels_cleared) has no equivalent here yet since nothing
-    needs it -- add one, mirroring that shape, if a future counter does."""
-    state = load_meta_progression(path)
-    state["counters"][counter_name] = state["counters"].get(counter_name, 0) + amount
-    newly_unlocked = unlock_crossed_thresholds(META_UNLOCKS, state, counter_name)
-    save_meta_progression(state, path)
-    return newly_unlocked
+    needs it -- threshold_unlocks.set_counter() already exists to mirror
+    that shape if a future counter does."""
+    return threshold_unlocks.bump_counter(META_UNLOCKS, counter_name, amount, path, SCHEMA_VERSION)
 
 
 def unlocked_tower_pool(path=META_PROGRESSION_PATH):
