@@ -592,16 +592,30 @@ def _draw_panel_action_buttons(surface, small_font, subject, economy,
     action_button(sell_button_rect, f"Sell (+{subject.sell_value()}g)", True)
 
 
+_dim_overlay_cache = {}
+
+
 def _draw_dim_overlay(surface, width=None):
     """The full-height, semi-transparent black backdrop every full-screen
     overlay in this module draws before its own content -- shared by
     _draw_centered_overlay below (menu/pause/victory/game-over/floor-
     cleared) and draw_draft_screen, so the two don't silently drift apart
-    on how dim "dim" is."""
+    on how dim "dim" is. The backdrop itself never changes (solid black,
+    alpha 170) for a given size, so it's built once per distinct
+    (width, SCREEN_HEIGHT) and reused from _dim_overlay_cache rather than
+    reallocated fresh every single frame one of these screens is shown --
+    DRAFT/FLOOR_CLEARED especially, which can now stay up for many
+    consecutive frames per floor, far more often than the comparatively
+    rare MENU/PAUSED/VICTORY/GAME_OVER screens this was originally
+    written for."""
     if width is None:
         width = settings.SCREEN_WIDTH
-    overlay = pygame.Surface((width, settings.SCREEN_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 170))
+    key = (width, settings.SCREEN_HEIGHT)
+    overlay = _dim_overlay_cache.get(key)
+    if overlay is None:
+        overlay = pygame.Surface(key, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        _dim_overlay_cache[key] = overlay
     surface.blit(overlay, (0, 0))
 
 

@@ -20,9 +20,10 @@ import meta_progression
 import progress
 import run_history
 import save_state
+import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
-from game import GameState
+from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
 from relics import RELICS
 from tower import TOWER_TYPES
@@ -305,6 +306,74 @@ def test_progress_earned_in_a_run_persists_across_a_fresh_game_instance(game):
     assert level_id in progress.load_progress(game.progress_path)
 
 
+# --- Restarting mid-run (the pause menu's "Restart Level") ---
+
+
+def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run(playing_game):
+    # Regression guard: reset() used to call _load_level_object() with no
+    # active_run at all (its own default), silently discarding the entire
+    # run -- drafted tower pool, relics, carried gold/lives, floor
+    # position -- and dropping the player into a plain classic reload of
+    # whatever level they happened to be on, with no warning shown.
+    playing_game.start_new_run(seed=1)
+    playing_game._load_floor(2)
+    run_before = playing_game.active_run
+    playing_game.towers = ["fake"]
+    playing_game.economy.gold = 999999
+    playing_game.state = GameState.PAUSED  # reset()'s own restart-the-run branch checks this directly
+
+    playing_game.reset()
+
+    assert playing_game.active_run is run_before  # same RunState, not discarded
+    assert playing_game.active_run.floor_index == 2  # still on the floor it restarted
+    assert playing_game.current_level_id == run_before.floor_sequence[2]
+    assert playing_game.towers == []  # the floor itself still reloads fresh
+    assert set(playing_game.button_rects.keys()) == set(run_before.unlocked_towers)  # menu stays run-narrowed
+    # Regression guard: reset()'s own trailing "classic reload" branch
+    # used to unconditionally set self.state = MENU afterward, clobbering
+    # _load_floor()'s own PLAYING right back to MENU -- harmless for
+    # reset()'s two real callers (both reassign PLAYING themselves right
+    # after), but wrong for a direct call like this one.
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_restarting_mid_run_restores_the_floors_own_starting_gold_and_lives(playing_game):
+    # A restart discards whatever was spent/earned since this floor began,
+    # same as any other "Restart Level" -- but restores to the run's own
+    # carried-forward gold/lives for this floor, not the level's raw
+    # starting_gold/starting_lives a classic reload would use.
+    playing_game.start_new_run(seed=1)
+    playing_game._load_floor(1)
+    gold_at_floor_start = playing_game.active_run.gold
+    lives_at_floor_start = playing_game.active_run.lives
+    playing_game.economy.gold = 1
+    playing_game.economy.lives = 1
+    playing_game.state = GameState.PAUSED  # reset()'s own restart-the-run branch checks this directly
+
+    playing_game.reset()
+
+    assert playing_game.economy.gold == gold_at_floor_start
+    assert playing_game.economy.lives == lives_at_floor_start
+
+
+def test_restarting_after_permadeath_does_not_resurrect_the_run(playing_game):
+    # A run that's already ended by permadeath has nothing left to restart
+    # *into* -- its outcome is already recorded (_record_run_permadeath),
+    # so GAME_OVER's own R still falls through to a plain, run-less reload,
+    # same as it always has, rather than letting the player undo their
+    # death for free.
+    playing_game.start_new_run(seed=1)
+    playing_game.economy.lives = 1
+    playing_game.economy.lose_life()
+    playing_game.update(dt=0.01)
+    assert playing_game.state == GameState.GAME_OVER
+    assert playing_game.active_run is not None  # _record_run_permadeath doesn't clear it
+
+    playing_game.reset()
+
+    assert playing_game.active_run is None
+
+
 # --- The draft: picking a tower card between floors ---
 
 
@@ -390,6 +459,22 @@ def test_run_seed_reproduces_the_same_draft_offer(game):
     assert first_offer == second_offer
 
 
+def test_floor_and_draft_rng_streams_dont_collide_even_for_a_zero_seed(game):
+    # Regression guard: _run_rng used to derive both streams as
+    # seed * stream + floor_index, which degenerates to plain floor_index
+    # for *every* stream whenever seed == 0 -- start_new_run(seed=0) is
+    # directly reachable, and even an unseeded run has a real (if tiny)
+    # chance of drawing it -- silently collapsing the floor-routing and
+    # draft-pick rng onto the exact same sequence.
+    game.start_new_run(seed=0)
+    run = game.active_run
+
+    floor_rng = game._run_rng(run, _FLOOR_RNG_STREAM, 3)
+    draft_rng = game._run_rng(run, _DRAFT_RNG_STREAM, 3)
+
+    assert floor_rng.random() != draft_rng.random()
+
+
 # --- The draft: relic cards, and the modifiers they compose in ---
 
 
@@ -402,6 +487,27 @@ def test_relic_floor_offers_relics_instead_of_towers(game):
     assert game.state == GameState.DRAFT
     assert game.draft_kind == "relic"
     assert set(game.draft_choices).issubset(RELICS.keys())
+
+
+def test_relic_floor_falls_back_to_a_tower_draft_once_every_relic_is_held(game):
+    # Matches _is_relic_floor's own documented contract: unreachable at the
+    # current RELICS/RELIC_FLOOR_INTERVAL tuning in real play (a run can
+    # never hold more relics than it has relic-draft floors for), but
+    # _enter_draft() used to skip the screen entirely here instead of
+    # actually falling back, contradicting what it claimed to do.
+    # (Same meta-progression bump test_non_relic_floor_offers_towers needs
+    # and explains above -- without it there's nothing beyond STARTER_
+    # TOWERS to fall back to either, and this test would prove nothing.)
+    meta_progression.bump("total_floors_cleared", 1, game.meta_progression_path)
+    game.start_new_run(seed=1)
+    game.active_run.relics = list(RELICS.keys())  # every relic already held
+    game.active_run.floor_index = 1  # next_floor = 2, a relic floor
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert game.draft_kind == "tower"
+    assert game.draft_choices  # STARTER_TOWERS isn't the whole registry yet
 
 
 def test_non_relic_floor_offers_towers(game):
@@ -456,35 +562,105 @@ def test_relic_gold_per_floor_bonus_is_reflected_in_run_gold_at_floor_zero(game)
     assert game.active_run.gold == game.economy.gold
 
 
-def test_relic_starting_gold_multiplier_applies_only_at_floor_zero(game):
-    # war_chest is deliberately a one-time bonus (see relics.py's own
-    # RelicModifiers docstring for why) -- carried-forward gold on floor
-    # 1+ shouldn't get the multiplier applied a second time.
+def _force_relic_draft(game, relic_key):
+    """Overrides whatever relic_offer() actually offered with a single
+    forced choice, for tests that need to verify one specific relic's math
+    rather than accept whichever ones a given seed happened to draw."""
+    game.draft_choices = [relic_key]
+    game.draft_choice_rects = ui.build_draft_choice_rects(1)
+
+
+def test_war_chest_grants_a_one_time_gold_bonus_when_drafted(game):
+    # war_chest can never be drafted before floor 2 (see _is_relic_floor),
+    # by which point floor 0's own Economy construction -- the only place
+    # a starting_gold_multiplier could otherwise act -- is long gone (see
+    # relics.RelicModifiers' own docstring for the full reasoning). Its
+    # bonus is applied directly, once, the instant the card is drafted
+    # (Game._apply_one_time_relic_bonus), computed against what this run's
+    # own starter floor's baseline actually was -- not whatever gold the
+    # player happens to be carrying at pick time.
     game.start_new_run(seed=1)
-    game.active_run.relics = ["war_chest"]
+    game.active_run.floor_index = 1  # next_floor = 2, a relic floor
+    game._enter_draft()
+    _force_relic_draft(game, "war_chest")
+    starter_level = LEVELS[game.active_run.floor_sequence[0]]
+    mode = DIFFICULTY_MODES[game.active_run.difficulty]
+    base_gold = round(starter_level.starting_gold * mode.starting_gold_multiplier)
+    gold_before = game.active_run.gold
 
-    game._load_floor(0)
+    game._handle_draft_click(game.draft_choice_rects[0].center)
 
-    level = LEVELS[game.active_run.floor_sequence[0]]
-    expected = round(level.starting_gold * RELICS["war_chest"].starting_gold_multiplier)
-    assert game.economy.gold == expected
+    # One combined round(), not round(base_gold * (multiplier - 1.0)) --
+    # see test_war_chests_bonus_matches_a_single_combined_rounding below
+    # for why the two formulas can disagree once a difficulty multiplier
+    # makes base_gold itself not already a whole number.
+    expected_bonus = (
+        round(starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier)
+        - base_gold
+    )
+    assert game.active_run.gold == gold_before + expected_bonus
 
-    game._load_floor(1)
-    assert game.economy.gold == expected  # not reapplied past floor zero
 
-
-def test_relic_starting_lives_bonus_applies_only_at_floor_zero(game):
+def test_sturdy_gate_grants_a_one_time_lives_bonus_when_drafted(game):
     game.start_new_run(seed=1)
-    game.active_run.relics = ["sturdy_gate"]
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    _force_relic_draft(game, "sturdy_gate")
+    lives_before = game.active_run.lives
 
-    game._load_floor(0)
+    game._handle_draft_click(game.draft_choice_rects[0].center)
 
-    level = LEVELS[game.active_run.floor_sequence[0]]
-    expected = level.starting_lives + RELICS["sturdy_gate"].starting_lives_bonus
-    assert game.economy.lives == expected
+    assert game.active_run.lives == lives_before + RELICS["sturdy_gate"].starting_lives_bonus
 
-    game._load_floor(1)
-    assert game.economy.lives == expected  # not reapplied past floor zero
+
+def test_war_chests_bonus_is_not_reapplied_on_a_later_floor_load(game):
+    # Regression guard for the bug this replaced: war_chest/sturdy_gate
+    # used to be folded into Economy construction, which only ever fires
+    # at floor 0 -- silently making them permanently inert, since no relic
+    # can ever be held that early. Now that the bonus is a one-time,
+    # direct addition at pick time instead, confirm it really is one-time:
+    # loading (or restarting) a later floor after the draft that picked it
+    # must not grant it again.
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    _force_relic_draft(game, "war_chest")
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 2, bonus applied once
+    gold_after_draft = game.active_run.gold
+
+    game._load_floor(game.active_run.floor_index)  # restart the same floor
+
+    assert game.active_run.gold == gold_after_draft
+
+
+def test_war_chests_bonus_matches_a_single_combined_rounding(game):
+    # Regression guard: _apply_one_time_relic_bonus used to compute
+    # base_gold = round(starting_gold * mode_multiplier), then add
+    # round(base_gold * (relic_multiplier - 1.0)) on top -- two separate
+    # roundings that can disagree with the single round(starting_gold *
+    # mode_multiplier * relic_multiplier) _load_level_object's own Economy
+    # construction would produce had the relic's multiplier been present
+    # from the start. Hard's 0.85 starting_gold_multiplier is what
+    # actually exposes the gap (round(round(150*0.85)*1.25) == 160 vs.
+    # round(150*0.85*1.25) == 159) -- Normal's 1.0 multiplier leaves
+    # base_gold already a whole number, where both formulas coincide.
+    game.set_difficulty("hard")
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    _force_relic_draft(game, "war_chest")
+    starter_level = LEVELS[game.active_run.floor_sequence[0]]
+    mode = DIFFICULTY_MODES[game.active_run.difficulty]
+    gold_before = game.active_run.gold
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    single_rounding_gold = round(
+        starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier
+    )
+    base_gold = round(starter_level.starting_gold * mode.starting_gold_multiplier)
+    assert single_rounding_gold != round(base_gold * RELICS["war_chest"].starting_gold_multiplier)  # the gap is real
+    assert game.active_run.gold == gold_before + (single_rounding_gold - base_gold)
 
 
 def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
@@ -511,6 +687,28 @@ def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
     assert game.state == GameState.GAME_OVER
     assert game.active_run is not None
     assert game.active_run.seed == seed
+
+
+def test_permadeath_in_sandbox_mode_records_no_run_history_or_meta_progress(game):
+    # sandbox + an active run can't happen through any current UI path
+    # (Practice never starts a run, start_new_run never sets sandbox) --
+    # but resume_saved_run() restores both fields independently off a save
+    # file with nothing enforcing they can't combine, so this stays
+    # consistent with every other real-progress recorder in this codebase
+    # (_record_achievement/_record_meta_progress/_record_level_cleared)
+    # rather than leaving one silent gap that would trivialize a sandboxed
+    # run's outcome into real run history.
+    game.start_new_run(seed=1)
+    game.sandbox = True
+    game.economy.lives = 1
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert game.state == GameState.GAME_OVER
+    assert run_history.load_run_history(game.run_history_path) == {}
+    counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    assert counters.get("runs_played", 0) == 0
 
 
 def test_permadeath_bumps_runs_played_and_records_run_history(game):
@@ -671,6 +869,121 @@ def test_saving_without_an_active_run_resumes_with_no_active_run(playing_game):
     playing_game._continue_saved_run()
 
     assert playing_game.active_run is None
+
+
+def test_resuming_a_run_rederives_the_same_floor_routing_rng(game):
+    # WaveManager's own routing rng is never serialized (see _run_rng's own
+    # docstring) -- resuming re-derives the identical (seed, floor_index)
+    # rng a *fresh* (never-saved) load of this same floor would get, not
+    # an unseeded random.Random() that would make routing non-deterministic
+    # from the resume point on. This is narrower than "identical to an
+    # uninterrupted playthrough" in general, though: since no rng state is
+    # serialized, a save taken mid-floor -- after some waves have already
+    # consumed draws from this same rng object -- resumes at that rng's
+    # own start, not wherever the un-saved playthrough's consumption had
+    # already left it. Later waves can route differently after such a
+    # resume than they would have without one; this test only covers a
+    # save taken before any wave (wave_index 0) has drawn anything, the
+    # one case where "identical to fresh" and "identical to uninterrupted"
+    # coincide. Serializing the rng's own consumed position would close
+    # this gap but means carrying real RNG state in the save file, which
+    # is the exact thing this whole re-derivation scheme exists to avoid.
+    game.start_new_run(seed=1)
+    game._load_floor(3)
+    expected_first_draw = game.wave_manager.rng.random()
+
+    game._load_floor(3)  # reload floor 3 fresh -- re-derives the same un-consumed rng
+    game.save_run()
+    game.state = GameState.MENU
+    game._continue_saved_run()
+
+    assert game.wave_manager.rng.random() == expected_first_draw
+
+
+def test_resuming_a_run_reapplies_this_floors_own_escalation(game):
+    # Regression guard: WaveManager's own multipliers aren't touched by
+    # wave_manager.restore() (only wave_index/state/between_wave_timer
+    # are) -- leaving escalation at _load_level_object's own no-op default
+    # would silently understate this floor's difficulty for the rest of
+    # the floor, only self-correcting once the *next* floor's own
+    # _load_floor() call gets it right.
+    game.start_new_run(seed=1)
+    game._load_floor(3)
+    expected_hp_multiplier = game.wave_manager.enemy_hp_multiplier
+    assert expected_hp_multiplier != 1.0  # floor 3 genuinely escalates -- not a vacuous assertion
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    assert game.wave_manager.enemy_hp_multiplier == expected_hp_multiplier
+
+
+def test_resuming_a_run_reapplies_its_held_relics_enemy_gold_multiplier(game):
+    # Composed with floor 2's own escalation too (see run_escalation.py),
+    # so the expected value is whatever this floor's multiplier actually
+    # was just before saving, not the relic's own multiplier in isolation.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["bounty_hunters_ledger"]
+    game._load_floor(2)
+    expected_gold_multiplier = game.wave_manager.enemy_gold_multiplier
+    assert expected_gold_multiplier != 1.0  # relic + escalation both contribute -- not a vacuous assertion
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    assert game.wave_manager.enemy_gold_multiplier == expected_gold_multiplier
+
+
+def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_live_setting(game):
+    # Regression guard: save_run() used to write the live, sticky
+    # game.difficulty into the save file's top-level "difficulty" field
+    # instead of the run's own pinned one, and resume_saved_run() read
+    # that field straight back as its WaveManager's difficulty_override --
+    # silently replacing a Daily Run's fairness-guaranteeing "normal" pin
+    # with whatever the player's difficulty setting happened to be at
+    # resume time.
+    game.set_difficulty("hard")
+    game._start_daily_challenge(seed=20260903)
+    assert game.active_run.difficulty == "normal"
+    game.save_run()
+    game.state = GameState.MENU
+    game.set_difficulty("easy")  # the live preference changes again before resuming
+
+    game._continue_saved_run()
+
+    assert game.active_run.difficulty == "normal"
+    assert game.wave_manager.enemy_hp_multiplier == DIFFICULTY_MODES["normal"].enemy_hp_multiplier
+
+
+def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
+    # Regression guard: _load_level_object() resets _resumed_from_save to
+    # False on every call, the right default for a genuinely new/unrelated
+    # load -- but _load_floor() (what every floor transition after a
+    # resume goes through) used to inherit that reset unconditionally too,
+    # silently un-marking the run as resumed the moment its very next
+    # floor loaded. That left _delete_save_if_this_run_was_resumed()
+    # gated on an already-False flag by the time this run actually
+    # concluded, so its now-stale save file was never cleaned up.
+    game.start_new_run(seed=1)
+    game.save_run()
+    game.state = GameState.MENU
+    game._continue_saved_run()
+    assert game._resumed_from_save is True
+
+    finish_all_waves(game)
+    game.update(dt=0.01)  # -> FLOOR_CLEARED
+    game._enter_draft()
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> _load_floor(1), still same run
+    assert game._resumed_from_save is True
+
+    game.economy.lives = 1
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    assert game.state == GameState.GAME_OVER
+    assert not save_state.has_saved_run(game.save_path)  # the stale save is actually cleaned up now
 
 
 # --- Daily Run ---

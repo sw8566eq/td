@@ -73,9 +73,12 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   raising. `_default_unlocked_pool` reorders into `TOWER_TYPES`' own registry order before sampling
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
-- `relics.py` -- `RELICS`, a registry of run-wide passive modifiers (`gold_per_floor_bonus`/
-  `starting_gold_multiplier`/`starting_lives_bonus`/`enemy_gold_multiplier`), plus `relic_offer()`
-  (mirroring `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards.
+- `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
+  `draft_offer`) and `compose_relic_modifiers()` (which composes only the two fields that genuinely
+  recur every floor a relic is held, `gold_per_floor_bonus`/`enemy_gold_multiplier` -- a relic's
+  other two fields, `starting_gold_multiplier`/`starting_lives_bonus`, are a one-time bonus applied
+  directly at draft-pick time instead, see `Game._apply_one_time_relic_bonus`; `RelicModifiers`
+  itself has no fields for them at all). Not unlock-gated, unlike tower cards.
 - `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
   precisely because `floor_index` is unbounded once the final floor's endless tail runs.
 - `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.
@@ -95,8 +98,10 @@ Clearing a floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameS
 - `_enter_draft` picks the draft's *kind* by floor (`_is_relic_floor`: every
   `relics.RELIC_FLOOR_INTERVAL`-th, so a 6-floor run's 5 draft screens -- one per floor cleared, the
   6th never clears once it's loaded `endless=True` -- alternate 3 tower / 2 relic, never both at
-  once), and skips the screen entirely -- straight to the next floor -- if
-  that kind has nothing left to offer.
+  once). A relic floor with nothing left to offer (every relic already held -- unreachable at the
+  current `RELICS`/`RELIC_FLOOR_INTERVAL` tuning, since a run can never hold more relics than it has
+  relic-draft floors for) falls back to a tower draft on the same rng/floor instead; only skips the
+  screen entirely -- straight to the next floor -- if that also comes up empty.
 - The next floor isn't loaded until a card is actually picked, which is what leaves
   `self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
@@ -107,9 +112,14 @@ construction, not by a missing branch. `_record_run_permadeath()` writes the out
 `run_history.py` and bumps the meta-progression counters.
 
 Both RNG streams a floor needs (its own enemy routing, and its draft offer) are re-derived from
-`(run.seed, floor_index)` on demand via `Game._run_rng(stream, floor_index)` rather than carried as
-one continuously-consumed `random.Random`. That's what lets `save_state.py` serialize a run without
-serializing any RNG state at all -- a resumed run just re-derives the identical objects.
+`(run.seed, floor_index)` on demand via `Game._run_rng(run, stream, floor_index)` rather than
+carried as one continuously-consumed `random.Random`. That's what lets `save_state.py` serialize a
+run without serializing any RNG state at all -- a resumed run just re-derives the identical objects
+(`resume_saved_run()` is why `run` is a parameter here rather than read off `self.active_run`: it
+needs this derivation *before* `_load_level_object()` sets `self.active_run`). The seed itself is a
+string (`f"{run.seed}:{stream}:{floor_index}"`), not `run.seed * stream + floor_index` -- that
+integer scheme degenerated to plain `floor_index` for every stream whenever `run.seed == 0`,
+colliding the two streams; a string has no such degenerate case.
 
 A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
 `start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
@@ -445,8 +455,11 @@ mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a d
 bump any achievement/meta-progression counter -- trivializing victory shouldn't trivialize real
 progress -- the same reasoning that already keeps a genuine endless run's `all_waves_complete` from
 ever firing at all. `Game._record_level_cleared()`'s own `if self.sandbox: return` is the one gate
-for the `progress.py` half; `_record_achievement`/`_record_meta_progress` carry the same gate
-internally for every counter, never re-checked at each call site.
+for the `progress.py` half; `_record_achievement`/`_record_meta_progress` share a second one inside
+`_record_progress_counter()`, the helper both delegate to, rather than either repeating it at its
+own call sites. `_record_run_permadeath()` carries a third, separate `if self.sandbox: return` of
+its own -- its `run_history.record_run_result()` call has no sandbox awareness to delegate to, so
+this one guard can't be folded into the shared helper the other two use.
 
 **Practice mode** is what absorbed "play a level standalone": `LEVEL_SELECT`'s play purpose always
 loads `sandbox=True`. That's a deliberate design position, not an implementation detail -- real
@@ -471,7 +484,11 @@ always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievemen
 repo-root files. All six are gitignored -- local player data, not shipped content, same as
 `custom_levels/`. That shared shape isn't just convention --
 `json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
-`load_*()`s actually calls: it does the file-exists check and `try`/`except` itself, and takes
+`load_*()`s is ultimately built on (`achievements.load_achievements()`/`meta_progression.
+load_meta_progression()` go through `threshold_unlocks.load_counters_state()`'s own thin wrapper
+around it, since those two share their load/save/bump mechanics -- see the `meta_progression.py`
+bullet below for that split -- rather than calling it directly themselves): it does the file-exists
+check and `try`/`except` itself, and takes
 `transform` (parsed JSON -> whatever shape the caller wants, also where a caller raises on
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
@@ -503,12 +520,17 @@ packaged build. Before this was factored out, each independently wrote the same
   `try_specialize_tower` on success, and a few points in `update()`) -- **never** from inside
   `Tower`/`Enemy`/`Economy`, since `resume_saved_run()` (below) reconstructs a resumed tower via
   `Tower.upgrade()`/`specialize()` directly, and a counter living inside those methods would
-  silently double-count on every resume. The sandbox guard lives once inside `_record_achievement`
-  rather than at each of those call sites, mirroring `_record_level_cleared`'s own.
+  silently double-count on every resume. The sandbox guard lives once inside the shared
+  `_record_progress_counter()` helper `_record_achievement`/`_record_meta_progress` both delegate
+  to, rather than at each of *their* own call sites, mirroring `_record_level_cleared`'s own single
+  guard.
 - `meta_progression.py` is the run loop's cross-run unlock registry (`META_UNLOCKS`: one
   `TOWER_TYPES` name each, gated on a threshold on `total_floors_cleared`/`runs_played`/
-  `runs_reached_endless`), sharing its threshold mechanics with `achievements.py` via
-  `threshold_unlocks.py` while keeping a genuinely separate file, registry, and JSON state.
+  `runs_reached_endless`), sharing its load/save/bump-counter mechanics with `achievements.py` via
+  `threshold_unlocks.py`'s own `load_counters_state`/`save_counters_state`/`bump_counter`/
+  `set_counter` (each module's own `load_*`/`save_*`/`bump()` just delegates its body to these,
+  supplying its own registry/path/schema version) while keeping a genuinely separate file, registry,
+  and JSON state.
   The split is intentional: achievements are cosmetic/trophy-flavored, meta-progression unlocks are
   gameplay-flavored -- they change what `card_pool.draft_offer()` can offer a future run.
   `Game._record_meta_progress()` mirrors `_record_achievement()` exactly, sandbox guard included.
@@ -544,8 +566,11 @@ packaged build. Before this was factored out, each independently wrote the same
   poking those fields directly. `Game._resumed_from_save` -- true only between a `resume_saved_run()`
   call and that run's own eventual `GAME_OVER`/`VICTORY` -- is what gates deleting the save file on
   conclusion, so a fresh, unrelated session's own victory can never delete a different, still-valid
-  save left over from some other abandoned run; every `_load_level_object()` call resets it to
-  `False` first, and `resume_saved_run()` is the one caller that sets it back to `True` afterward.
+  save left over from some other abandoned run. An explicit `_load_level_object()` parameter
+  (default `False`), mirroring `active_run` just below it: `resume_saved_run()` passes `True`
+  directly; `_load_floor()` passes `self._resumed_from_save` straight through unchanged on every one
+  of a run's own floor transitions (resumed or not, it's still the same session continuing); only
+  `start_new_run()` -- the one place a genuinely *new* session begins -- explicitly resets it first.
   An optional `"run"` key carries the `RunState` (validated on load against `LEVELS`/`TOWER_TYPES`/
   `RELICS`); `None` means a save with no active run -- Practice, an editor playtest, or a file
   written before the key existed -- and is passed straight through to `_load_level_object()`'s

@@ -3,6 +3,7 @@ pool ("cards").
 """
 
 import meta_progression
+from rng_sampling import sample_up_to
 from tower import TOWER_TYPES
 
 # What every run starts with, before any drafting. Chosen from the towers
@@ -35,8 +36,9 @@ def draft_offer(rng, run, count=DEFAULT_DRAFT_COUNT, unlocked_pool=None, meta_pr
     touch the real repo-root meta_progression.json) minus whatever
     `run.unlocked_towers` already has. Returns fewer than `count` once the
     pool is exhausted rather than raising -- a run that's drafted every
-    available tower just stops seeing new choices."""
+    available tower just stops seeing new choices (see
+    rng_sampling.sample_up_to)."""
     if unlocked_pool is None:
         unlocked_pool = _default_unlocked_pool(meta_progression_path or meta_progression.META_PROGRESSION_PATH)
     candidates = [name for name in unlocked_pool if name not in run.unlocked_towers]
-    return rng.sample(candidates, min(count, len(candidates)))
+    return sample_up_to(rng, candidates, count)

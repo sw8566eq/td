@@ -107,10 +107,19 @@ def save_run(game, path=SAVE_PATH):
         "level": level_to_dict(game.level),
         "endless": game.endless,
         "sandbox": game.sandbox,
-        # This run's own difficulty, not necessarily whatever
-        # game.difficulty (a sticky, cross-session player preference) says
-        # by the time it's resumed -- see Game.resume_saved_run().
-        "difficulty": game.difficulty,
+        # The difficulty this save was actually played under -- a run's
+        # own pinned difficulty (game.active_run.difficulty, already
+        # snapshotted once at start_new_run() and possibly different from
+        # the player's live sticky preference by save time), or plain
+        # game.difficulty itself for a classic/Practice/playtest save,
+        # which has no run of its own to pin one from. Game.resume_saved_
+        # run() actually reads run.difficulty straight off the
+        # reconstructed RunState rather than this field when one exists
+        # (so its own correctness doesn't depend on this line), but this
+        # field is still the one a save file's own top level shows for
+        # "what difficulty was this played under," and should say so
+        # honestly regardless of which reader ends up using it.
+        "difficulty": game.active_run.difficulty if game.active_run is not None else game.difficulty,
         "gold": game.economy.gold,
         "lives": game.economy.lives,
         "wave_index": game.wave_manager.wave_index,
