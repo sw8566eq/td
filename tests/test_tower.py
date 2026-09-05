@@ -49,6 +49,70 @@ def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():
         assert projectile.damage == tower_cls.damage, name
 
 
+# --- Footprint geometry (see Game._current_footprint_subtiles for how a
+# Compact Framework-style relic actually sets footprint_subtiles) ---
+
+def test_tile_rect_is_a_full_tile_by_default():
+    import settings
+    tower = BasicTower(anchor_col=2, anchor_row=3, pixel_pos=(0, 0))
+    rect = tower.tile_rect()
+    assert rect.size == (settings.TILE_SIZE, settings.TILE_SIZE)
+    assert rect.topleft == (2 * settings.SUBTILE_SIZE, 3 * settings.SUBTILE_SIZE)
+
+
+def test_tile_rect_shrinks_with_footprint_subtiles():
+    import settings
+    tower = BasicTower(anchor_col=2, anchor_row=3, pixel_pos=(0, 0))
+    tower.footprint_subtiles = 6
+
+    rect = tower.tile_rect()
+
+    size = 6 * settings.SUBTILE_SIZE
+    assert rect.size == (size, size)
+    assert rect.topleft == (2 * settings.SUBTILE_SIZE, 3 * settings.SUBTILE_SIZE)  # anchor unaffected
+
+
+def test_upgrade_badge_center_sits_on_the_shrunk_footprints_own_corner():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    full_size_center = tower.upgrade_badge_center()
+
+    tower.footprint_subtiles = 6
+    shrunk_center = tower.upgrade_badge_center()
+
+    # The badge sits at tile_rect()'s own top-right corner -- a smaller
+    # rect's right edge is closer to the anchor, so the badge moves with
+    # it rather than floating outside the now-smaller sprite.
+    rect = tower.tile_rect()
+    inset = tower.BADGE_RADIUS + 2
+    assert shrunk_center == (rect.left + rect.width - inset, rect.top + inset)
+    assert shrunk_center[0] < full_size_center[0]
+
+
+def test_draw_requests_a_smaller_sprite_size_when_footprint_subtiles_is_reduced():
+    import settings
+    from assets import AssetManager
+
+    class _SpyAssetManager(AssetManager):
+        def __init__(self):
+            super().__init__()
+            self.requested_sizes = []
+
+        def get(self, name, size):
+            self.requested_sizes.append(size)
+            return super().get(name, size)
+
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    tower.footprint_subtiles = 6
+    surface = pygame.Surface((100, 100))
+    assets = _SpyAssetManager()
+
+    tower.draw(surface, assets)
+
+    margin = 2 * settings.SUBTILE_GAP
+    expected_size = 6 * settings.SUBTILE_SIZE - margin
+    assert assets.requested_sizes[0] == (expected_size, expected_size)
+
+
 # --- Lifetime stats (post-level results screen -- see ui.compute_tower_results) ---
 
 def test_new_tower_starts_with_every_stat_at_zero():
@@ -355,6 +419,69 @@ def test_reset_aura_clears_a_previously_applied_buff():
     attacker.reset_aura()
     assert attacker.aura_damage_multiplier == 1.0
     assert attacker.aura_range_multiplier == 1.0
+
+
+def test_effective_range_stacks_the_relic_bonus_additively_with_the_aura():
+    # Regression guard: a Spyglass Array-style relic's bonus must ADD to a
+    # Support tower's own per-frame aura buff, not multiply with it and
+    # not take max() the way receive_aura()'s own multi-SupportTower rule
+    # does -- see effective_range()'s own docstring.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.aura_range_multiplier = 1.15
+    tower.relic_range_bonus_multiplier = 1.10
+
+    assert tower.effective_range() == pytest.approx(tower.range * 1.25)
+    assert tower.effective_range() != pytest.approx(tower.range * 1.15 * 1.10)  # not multiplicative
+    assert tower.effective_range() != pytest.approx(tower.range * max(1.15, 1.10))  # not max()
+
+
+def test_effective_range_matches_range_with_no_aura_or_relic_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    assert tower.effective_range() == tower.range
+
+
+def test_relic_range_bonus_alone_widens_in_range():
+    attacker = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    just_outside_base_range = FakeEnemy((BasicTower.range + 10, 0))
+    assert not attacker.in_range(just_outside_base_range)
+
+    attacker.relic_range_bonus_multiplier = 2.0
+    assert attacker.in_range(just_outside_base_range)
+
+
+def test_effective_fire_rate_reflects_the_relic_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_fire_rate_bonus_multiplier = 1.08
+
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.08)
+
+
+def test_effective_fire_rate_matches_fire_rate_with_no_relic_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    assert tower.effective_fire_rate() == tower.fire_rate
+
+
+def test_update_uses_effective_fire_rate_for_the_next_cooldown():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_fire_rate_bonus_multiplier = 2.0
+    target = FakeEnemy((0, 0))
+
+    tower.update(dt=0.0, enemies=[target], projectiles=[])
+
+    assert tower.cooldown == pytest.approx(1.0 / (tower.fire_rate * 2.0))
+
+
+def test_support_towers_own_aura_range_widens_with_a_relic_bonus_too():
+    # No relic in this codebase singles out one tower type -- a Range
+    # relic widens a Support tower's own reach the same as everyone
+    # else's, so its aura reaches further too.
+    support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    support.relic_range_bonus_multiplier = 2.0
+    other = BasicTower(anchor_col=10, anchor_row=10, pixel_pos=(support.range + 10, 0))
+
+    support.update(dt=0.0, enemies=[], projectiles=[], towers=[support, other])
+
+    assert other.aura_range_multiplier == support.buff_range_multiplier
 
 
 def test_receive_aura_keeps_the_stronger_buff_not_stacked():

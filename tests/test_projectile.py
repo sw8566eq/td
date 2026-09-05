@@ -107,6 +107,136 @@ def test_no_poison_when_effect_is_none():
     assert target.poison_applied is None
 
 
+# --- Relic-driven hit effects (poison-chance/crit-chance) -- see
+# Tower.update(), the one place that copies a firing tower's own
+# relic_poison_chance/relic_crit_chance (etc.) onto its projectile ---
+
+def test_relic_poison_always_applies_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_poison_chance=1.0, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied == (3, 0.5, 2.0)
+
+
+def test_relic_poison_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_poison_chance=0.0, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied is None
+
+
+def test_relic_poison_chance_never_rolls_when_no_relic_is_held():
+    # relic_poison_chance defaults to 0.0 -- must not call random.random()
+    # at all, so a relic-less run's projectiles behave identically
+    # regardless of whatever the process's global random state happens to
+    # be at the time.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied is None
+
+
+def test_relic_poison_applies_independently_to_every_enemy_in_a_splash():
+    target = FakeEnemy((0, 0))
+    bystander = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        relic_poison_chance=1.0, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bystander])
+
+    assert target.poison_applied == (3, 0.5, 2.0)
+    assert bystander.poison_applied == (3, 0.5, 2.0)
+
+
+def test_relic_poison_roll_is_independent_per_enemy_not_one_shared_roll(monkeypatch):
+    # Feeds a sequence across a 3-enemy splash to prove each enemy gets its
+    # own random.random() draw -- not one roll applied to the whole group.
+    target = FakeEnemy((0, 0))
+    hit = FakeEnemy((5, 0))
+    missed = FakeEnemy((10, 0))
+    draws = iter([0.1, 0.1, 0.9])  # < 0.5 chance, < 0.5 chance, >= 0.5 chance
+    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        relic_poison_chance=0.5, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, hit, missed])
+
+    assert target.poison_applied == (3, 0.5, 2.0)
+    assert hit.poison_applied == (3, 0.5, 2.0)
+    assert missed.poison_applied is None
+
+
+def test_relic_crit_always_doubles_damage_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_crit_chance=1.0, relic_crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 20
+
+
+def test_relic_crit_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_crit_chance=0.0, relic_crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_relic_crit_still_credits_damage_dealt_and_kills_through_source():
+    target = FakeEnemy((0, 0))
+    tower = FakeTower()
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, source=tower,
+        relic_crit_chance=1.0, relic_crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert tower.damage_dealt == 20
+
+
+def test_relic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
+    target = FakeEnemy((0, 0))
+    crit = FakeEnemy((5, 0))
+    normal = FakeEnemy((10, 0))
+    draws = iter([0.1, 0.1, 0.9])
+    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        relic_crit_chance=0.5, relic_crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, crit, normal])
+
+    assert target.damage_taken == 20
+    assert crit.damage_taken == 20
+    assert normal.damage_taken == 10
+
+
 def test_update_on_an_already_dead_projectile_is_a_no_op():
     target = FakeEnemy((100, 0))
     projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)

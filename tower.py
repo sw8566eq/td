@@ -167,6 +167,25 @@ class Tower:
         self.aura_damage_multiplier = 1.0
         self.aura_range_multiplier = 1.0
 
+        # Relic-driven bonuses, resolved once at construction time from
+        # whatever relics the active run holds (see Game._construct_tower)
+        # -- neutral defaults here so a relic-less run's towers, and every
+        # existing direct-construction test/call site, behave exactly as
+        # before. Unlike aura_damage_multiplier/aura_range_multiplier
+        # above, these never reset -- a relic's effect is constant for the
+        # tower's whole lifetime, not a per-frame proximity buff.
+        self.relic_range_bonus_multiplier = 1.0
+        self.relic_fire_rate_bonus_multiplier = 1.0
+        self.relic_poison_chance = 0.0
+        self.relic_poison_effect = None
+        self.relic_crit_chance = 0.0
+        self.relic_crit_damage_multiplier = 1.0
+        # Always one tile's worth of area (settings.SUBTILES_PER_TILE)
+        # unless a Compact Framework-style relic shrinks it -- see
+        # tile_rect()/upgrade_badge_center()/draw() below and
+        # Game._current_footprint_subtiles().
+        self.footprint_subtiles = settings.SUBTILES_PER_TILE
+
     @property
     def is_max_level(self):
         return self.level >= self.MAX_LEVEL
@@ -273,8 +292,20 @@ class Tower:
             return
 
         self.shots_fired += 1
-        projectiles.append(self.create_projectile(target))
-        self.cooldown = 1.0 / self.fire_rate
+        projectile = self.create_projectile(target)
+        # Relic-driven, chance-based hit effects apply uniformly to every
+        # tower's shots -- copied onto the projectile here, the one choke
+        # point every tower type's fire cycle passes through, rather than
+        # each create_projectile() override having to remember to do it
+        # itself. See Projectile._apply_hit_effects for where the actual
+        # roll happens (once per enemy the projectile hits, not once here
+        # per shot).
+        projectile.relic_poison_chance = self.relic_poison_chance
+        projectile.relic_poison_effect = self.relic_poison_effect
+        projectile.relic_crit_chance = self.relic_crit_chance
+        projectile.relic_crit_damage_multiplier = self.relic_crit_damage_multiplier
+        projectiles.append(projectile)
+        self.cooldown = 1.0 / self.effective_fire_rate()
 
     def acquire_target(self, enemies):
         """In-range, still-on-the-path enemy selected by targeting_mode --
@@ -293,9 +324,11 @@ class Tower:
         (see enemy.py) from a tower whose can_target_flying is False --
         checked via getattr rather than a bare attribute access, since not
         every enemy stand-in (tests, mainly) defines is_flying."""
+        effective_range = self.effective_range()
         candidates = [
             e for e in enemies
-            if not e.is_dead and not e.reached_goal and self.in_range(e)
+            if not e.is_dead and not e.reached_goal
+            and self.pos.distance_to(e.pos) <= effective_range
             and (self.can_target_flying or not getattr(e, "is_flying", False))
         ]
         if not candidates:
@@ -331,7 +364,22 @@ class Tower:
     }
 
     def in_range(self, enemy):
-        return self.pos.distance_to(enemy.pos) <= self.range * self.aura_range_multiplier
+        return self.pos.distance_to(enemy.pos) <= self.effective_range()
+
+    def effective_range(self):
+        """self.range scaled by both the transient per-frame aura buff
+        (aura_range_multiplier, reset every frame -- see reset_aura()/
+        receive_aura()) and this tower's own persistent, relic-driven
+        bonus (relic_range_bonus_multiplier, set once at construction
+        from whatever Spyglass Array-style relic the run holds -- see
+        Game._construct_tower). The two ADD (1.0 + aura_bonus +
+        relic_bonus), they don't multiply and don't take max() -- a
+        tower buffed by both a nearby Support tower and a held Range
+        relic gets more range than either alone, unlike receive_aura()'s
+        own max()-not-stacking rule for multiple SupportTowers."""
+        return self.range * (
+            1.0 + (self.aura_range_multiplier - 1.0) + (self.relic_range_bonus_multiplier - 1.0)
+        )
 
     def effective_damage(self):
         """self.damage scaled by any currently-active aura buff (see
@@ -340,15 +388,25 @@ class Tower:
         shots reflect it without each subclass repeating the multiplication."""
         return self.damage * self.aura_damage_multiplier
 
+    def effective_fire_rate(self):
+        """self.fire_rate scaled by this tower's own persistent,
+        relic-driven bonus (relic_fire_rate_bonus_multiplier -- see
+        Game._construct_tower). Unlike effective_range(), there's no aura
+        equivalent for fire rate to also fold in -- a plain single-source
+        multiply, not an additive stack."""
+        return self.fire_rate * self.relic_fire_rate_bonus_multiplier
+
     def create_projectile(self, target):
         raise NotImplementedError
 
     def tile_rect(self):
-        """pygame.Rect for this tower's footprint -- always one tile's
-        worth of area (settings.TILE_SIZE square), positioned at its
+        """pygame.Rect for this tower's footprint -- self.footprint_subtiles
+        subtiles square (a full tile, settings.SUBTILES_PER_TILE, unless a
+        relic shrank it -- see Game._construct_tower), positioned at its
         subtile anchor rather than a tile boundary."""
+        size = self.footprint_subtiles * settings.SUBTILE_SIZE
         return pygame.Rect(self.anchor_col * settings.SUBTILE_SIZE, self.anchor_row * settings.SUBTILE_SIZE,
-                            settings.TILE_SIZE, settings.TILE_SIZE)
+                            size, size)
 
     def contains_point(self, pos):
         """True if pixel position `pos` is anywhere on this tower's tile --
@@ -364,10 +422,9 @@ class Tower:
     BADGE_RADIUS = 9
 
     def upgrade_badge_center(self):
-        tile_left = self.anchor_col * settings.SUBTILE_SIZE
-        tile_top = self.anchor_row * settings.SUBTILE_SIZE
+        rect = self.tile_rect()
         inset = self.BADGE_RADIUS + 2
-        return (tile_left + settings.TILE_SIZE - inset, tile_top + inset)
+        return (rect.left + rect.width - inset, rect.top + inset)
 
     def contains_upgrade_badge(self, pos):
         """True if pixel position `pos` is within this tower's upgrade
@@ -380,13 +437,15 @@ class Tower:
         return dx * dx + dy * dy <= self.BADGE_RADIUS ** 2
 
     def draw(self, surface, assets, font=None):
-        # Sized almost edge-to-edge with the footprint (settings.TILE_SIZE
-        # square) rather than with a big margin, so the sprite's own edges
-        # make it obvious which subtiles the tower's anchor actually
-        # covers -- the margin is just the same subtile gap the map's own
-        # mosaic uses, not an arbitrary inset.
+        # Sized almost edge-to-edge with the footprint (self.footprint_
+        # subtiles subtiles square -- a full tile unless a relic shrank
+        # it, see tile_rect()) rather than with a big margin, so the
+        # sprite's own edges make it obvious which subtiles the tower's
+        # anchor actually covers -- the margin is just the same subtile
+        # gap the map's own mosaic uses, not an arbitrary inset.
         margin = 2 * settings.SUBTILE_GAP
-        size = (settings.TILE_SIZE - margin, settings.TILE_SIZE - margin)
+        footprint_size = self.footprint_subtiles * settings.SUBTILE_SIZE
+        size = (footprint_size - margin, footprint_size - margin)
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
@@ -827,10 +886,15 @@ class SupportTower(Tower):
     }
 
     def update(self, dt, enemies, projectiles, towers=None):
+        # effective_range(), not raw self.range -- a Spyglass Array-style
+        # relic widens a Support tower's own reach too, same as every
+        # other tower's range, since no relic in this codebase singles
+        # out one tower type.
+        effective_range = self.effective_range()
         for other in (towers or ()):
             if other is self:
                 continue
-            if self.pos.distance_to(other.pos) <= self.range:
+            if self.pos.distance_to(other.pos) <= effective_range:
                 other.receive_aura(self.buff_damage_multiplier, self.buff_range_multiplier)
 
     def create_projectile(self, target):

@@ -16,13 +16,17 @@ raises its own questions about who counts as already-hit that a single-
 target chain doesn't have to answer).
 """
 
+import random
+
 import pygame
 
 
 class Projectile:
     def __init__(self, pos, target, speed, damage, splash_radius=0, slow_effect=None,
                  knockback_duration=0.0, chain_range=0.0, max_chain_targets=1,
-                 poison_effect=None, sprite_name="", source=None):
+                 poison_effect=None, sprite_name="", source=None,
+                 relic_poison_chance=0.0, relic_poison_effect=None,
+                 relic_crit_chance=0.0, relic_crit_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -40,6 +44,18 @@ class Projectile:
         # (damage_per_tick, tick_interval, duration) or None -- same shape
         # as slow_effect, just handed to enemy.apply_poison() instead.
         self.poison_effect = poison_effect
+        # Relic-driven, chance-based hit effects (see Tower.update(), the
+        # one place that copies these from a firing tower's own relic_*
+        # attributes onto its projectile) -- neutral defaults (0.0/None/
+        # 1.0) here so a projectile built directly (every existing test,
+        # a relic-less run) never rolls at all, and applying independently
+        # of poison_effect/self.damage above: this is what actually lets
+        # a poison OR crit relic reach every tower's own attacks, not just
+        # the one tower type each mechanic was originally built for.
+        self.relic_poison_chance = relic_poison_chance
+        self.relic_poison_effect = relic_poison_effect
+        self.relic_crit_chance = relic_crit_chance
+        self.relic_crit_damage_multiplier = relic_crit_damage_multiplier
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -141,12 +157,23 @@ class Projectile:
 
     def _apply_hit_effects(self, enemy):
         was_alive = not enemy.is_dead
-        # take_damage() returns however much of self.damage actually
+        # A Lucky Strikes-style relic's crit roll happens here, once per
+        # enemy this projectile actually hits (see this method's own call
+        # sites -- once for a direct hit, once per enemy in a splash
+        # blast, once per chain link) -- damage stays a local, not
+        # self.damage, so a splash/chain shot's later hits each get their
+        # own independent roll rather than one roll deciding the whole
+        # shot. Guarded on relic_crit_chance being truthy so a relic-less
+        # run's projectiles never call random.random() at all.
+        damage = self.damage
+        if self.relic_crit_chance and random.random() < self.relic_crit_chance:
+            damage *= self.relic_crit_damage_multiplier
+        # take_damage() returns however much of the above actually
         # reached hp -- usually all of it, but a shielded or armored
         # enemy (ShieldedEnemy/BossEnemy) can absorb part of a hit first,
         # and damage_dealt should reflect what was really done, not the
         # full nominal shot damage regardless of what landed.
-        applied = enemy.take_damage(self.damage)
+        applied = enemy.take_damage(damage)
         if self.source is not None:
             self.source.damage_dealt += applied
             if was_alive and enemy.is_dead:
@@ -157,6 +184,15 @@ class Projectile:
             enemy.apply_knockback(enemy.speed * self.knockback_duration)
         if self.poison_effect is not None:
             enemy.apply_poison(*self.poison_effect)
+        # A Venomous Coating-style relic's poison roll -- same "once per
+        # enemy actually hit, independent of the tower's own poison_effect
+        # above" shape as the crit roll. Enemy.apply_poison()'s own
+        # max()/max()/last-write semantics mean a successful roll here on
+        # a hit that's ALSO already poisoning (e.g. from PoisonTower
+        # itself) just refreshes/strengthens the stronger of the two,
+        # never stacks a second concurrent DoT.
+        if self.relic_poison_chance and random.random() < self.relic_poison_chance:
+            enemy.apply_poison(*self.relic_poison_effect)
 
     def draw(self, surface, assets):
         size = (12, 12)

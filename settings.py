@@ -17,12 +17,18 @@ GRID_ROWS = 9
 
 # Tower placement works at finer-than-tile granularity: each tile is cut
 # into an 8x8 grid of small tiles, and a tower's required footprint is
-# exactly one tile's worth of area (8x8 subtiles) but can be anchored at
-# any subtile, not just a tile boundary -- see Grid.placement_anchor. 8
-# divides TILE_SIZE evenly, so every pixel<->subtile conversion is exact
-# integer math with no rounding edge cases.
+# normally one tile's worth of area (8x8 subtiles, smaller for a
+# relic-shrunk footprint -- see Game._current_footprint_subtiles) but can
+# be anchored at any subtile, not just a tile boundary -- see
+# Grid.placement_anchor. 8 divides TILE_SIZE evenly, so every
+# pixel<->subtile conversion is exact integer math with no rounding edge
+# cases.
 SUBTILES_PER_TILE = 8
 SUBTILE_SIZE = TILE_SIZE // SUBTILES_PER_TILE
+# A floor under how far a Compact Framework-style relic (or several
+# summed together) can shrink a tower's footprint -- half a tile, so
+# placement never collapses to a degenerate zero/negative-size footprint.
+MIN_TOWER_FOOTPRINT_SUBTILES = 4
 # How each buildable tile's subtile mosaic is drawn (see Grid.draw): each
 # small tile is inset by SUBTILE_GAP pixels, and SUBTILE_GAP_ALPHA (0-255)
 # controls how visible the soft tint showing through that gap is -- kept

@@ -74,11 +74,23 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
-  `draft_offer`) and `compose_relic_modifiers()` (which composes only the two fields that genuinely
-  recur every floor a relic is held, `gold_per_floor_bonus`/`enemy_gold_multiplier` -- a relic's
-  other two fields, `starting_gold_multiplier`/`starting_lives_bonus`, are a one-time bonus applied
-  directly at draft-pick time instead, see `Game._apply_one_time_relic_bonus`; `RelicModifiers`
-  itself has no fields for them at all). Not unlock-gated, unlike tower cards.
+  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Ten relics,
+  three effect shapes: **per-floor** (composed into `RelicModifiers`, threaded into
+  `WaveManager`/`Economy` construction every floor -- `gold_per_floor_bonus`/`enemy_gold_multiplier`/
+  `enemy_speed_multiplier`); **one-time** (`starting_gold_multiplier`/`starting_lives_bonus`, applied
+  directly at draft-pick time instead, see `Game._apply_one_time_relic_bonus` -- `RelicModifiers` has
+  no fields for these); and **per-tower** (`tower_range_multiplier`/`tower_fire_rate_multiplier`/
+  `poison_chance`+`poison_effect`/`crit_chance`+`crit_damage_multiplier`/`tower_footprint_shrink`,
+  read once per tower at construction time -- see `Game._construct_tower`/`_current_footprint_
+  subtiles`, and `Tower.effective_range()`/`effective_fire_rate()`/`Projectile._apply_hit_effects()`
+  for where each actually applies). `compose_relic_modifiers()`'s per-tower fields aggregate the same
+  "flat sums, multipliers multiply" way as the per-floor ones, except `crit_damage_multiplier` (`max()`
+  across relics, not multiplied -- two crit relics compounding multiplicatively would spike far faster
+  than two flat +chance relics summing) and `poison_effect`: composing two poison-granting relics
+  combines their `(damage_per_tick, tick_interval, duration)` tuples the exact same way
+  `Enemy.apply_poison()` already combines two poison *hits* on one enemy (keep the harsher tick damage
+  and longer duration, last-write on interval), so drafting a second poison relic behaves exactly like
+  landing a second poison hit already does.
 - `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
   precisely because `floor_index` is unbounded once the final floor's endless tail runs.
 - `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.
@@ -167,11 +179,25 @@ construction (the same reason it already has a `hasattr(enemy, "max_shield")` pa
   rendered mosaic. Comes straight from a `Level`'s `path_cells`/`spawn_cells`/`goal_cells`/
   `blocked_cells` (see "Paths are a graph, not a route" below).
 - **Subtile coords** (`anchor_col, anchor_row`; unit = `SUBTILE_SIZE`, `TILE_SIZE /
-  SUBTILES_PER_TILE`) -- tower placement. A tower's footprint is always one tile's worth of area
+  SUBTILES_PER_TILE`) -- tower placement. A tower's footprint is normally one tile's worth of area
   (`SUBTILES_PER_TILE x SUBTILES_PER_TILE` subtiles, currently 8x8) but can be *anchored* at any
   subtile, not just a tile boundary, which is what gives placement finer-than-a-tile precision.
   `SUBTILES_PER_TILE` must evenly divide `TILE_SIZE` (enforced in `Grid.__init__`) so every
   pixel<->subtile conversion is exact integer math.
+
+`is_buildable`/`occupy`/`placement_anchor`/`anchor_to_pixel_center`/`_footprint_subtiles` all take an
+optional `footprint_subtiles` (default `None`, meaning a full tile) -- the one hook a Compact
+Framework-style relic uses to shrink every tower's footprint for a floor (see
+`Game._current_footprint_subtiles`, clamped to `settings.MIN_TOWER_FOOTPRINT_SUBTILES` so a relic
+can never collapse it to nothing). `remove(anchor_col, anchor_row)` keeps its original 2-argument
+signature regardless -- `occupy()` records what size it actually reserved in
+`Grid._footprint_size_by_anchor`, so `remove()` can free exactly that without the caller (or the
+tower object itself, which several tests stand in for with a bare placeholder) needing to repeat it.
+`Tower` mirrors this as its own `footprint_subtiles` instance attribute (set once at construction by
+`Game._construct_tower`, read by `tile_rect()`/`upgrade_badge_center()`/`draw()` in place of the
+`settings.TILE_SIZE`/`SUBTILE_SIZE` those methods used to hardcode directly) so a shrunk footprint's
+sprite, hit-box, and click target all shrink together rather than the grid and the tower silently
+disagreeing about how much space one occupies.
 
 `is_buildable`/`occupy`/`remove`/`is_occupied`/`get_tower` all operate in subtile coords; two
 footprints collide if they overlap *at all* (checked against a flat `occupied_subtiles` set), not
@@ -361,7 +387,15 @@ so several overlapping support towers don't compound into an ever-growing buff, 
 walks out of every support tower's range this frame reverts to `1.0x` (via `reset_aura()`) rather
 than keeping a stale buff. Every attack path reads `effective_damage()`/`in_range()` (which fold the
 current aura multiplier in) instead of `self.damage`/`self.range` directly, so a buffed tower's own
-stats shown in the sidebar and its actual shots always agree. `ui.py`'s stats panel and
+stats shown in the sidebar and its actual shots always agree. `effective_range()` also folds in
+`relic_range_bonus_multiplier` (a Spyglass Array-style relic's own bonus, set once at construction
+by `Game._construct_tower`, never reset) -- deliberately **additive** with `aura_range_multiplier`
+(`range * (1.0 + (aura - 1.0) + (relic - 1.0))`), not multiplicative and not `max()`'d, so a relic
+and a nearby Support tower's own buff genuinely stack rather than the stronger one silently winning
+the way two overlapping Support towers already do. `SupportTower.update()`'s own reach check uses
+`effective_range()` too, for the same "no relic singles out one tower type" reason -- a Range relic
+widens a Support tower's own aura radius, not just its role as an aura *recipient*. `ui.py`'s stats
+panel and
 `Game._handle_panel_action_click` both check `IS_SUPPORT` to skip the targeting-mode row and the
 plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless
 `"Damage: 0.0"`/a clickable targeting mode a support tower never reads.

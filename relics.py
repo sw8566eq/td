@@ -1,14 +1,23 @@
 """Run-wide passive modifier cards ("relics") -- a second, genuinely
 optional card type alongside tower cards (see card_pool.py), offered via
-the exact same draft screen (see Game._enter_draft/_is_relic_floor). A
-per-floor relic's modifiers (gold_per_floor_bonus/enemy_gold_multiplier,
-see RelicModifiers) are composed into a run's floor-load the same way
-difficulty.DIFFICULTY_MODES/run_escalation.FloorEscalation already are: an
-extra factor on top of what's already there, never replacing it. A
-one-time relic's (war_chest/sturdy_gate) bonus applies once instead,
-directly, the instant the card is drafted (Game._apply_one_time_relic_bonus)
--- see RelicModifiers' own docstring for why a one-time bonus can't be
-folded into that same per-floor composition.
+the exact same draft screen (see Game._enter_draft/_is_relic_floor). Every
+relic's numeric effect is one of three shapes:
+
+- Per-floor (RelicModifiers' own fields), composed into a run's
+  floor-load the same way difficulty.DIFFICULTY_MODES/
+  run_escalation.FloorEscalation already are: an extra factor on top of
+  what's already there, never replacing it. Some of these feed
+  WaveManager/Economy construction directly (gold_per_floor_bonus/
+  enemy_gold_multiplier/enemy_speed_multiplier); others are read once per
+  tower at construction time instead (tower_range_multiplier/
+  tower_fire_rate_multiplier/poison_chance/poison_effect/crit_chance/
+  crit_damage_multiplier/tower_footprint_shrink) -- see RelicModifiers'
+  own docstring and Game._construct_tower/_current_footprint_subtiles.
+- One-time (war_chest/sturdy_gate's starting_gold_multiplier/
+  starting_lives_bonus), applied once instead, directly, the instant the
+  card is drafted (Game._apply_one_time_relic_bonus) -- see
+  RelicModifiers' own docstring for why a one-time bonus can't be folded
+  into the per-floor composition above.
 
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are
@@ -32,6 +41,28 @@ class Relic:
     starting_gold_multiplier: float = 1.0
     starting_lives_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
+    enemy_speed_multiplier: float = 1.0
+    # Tower-facing fields below -- composed into RelicModifiers the same
+    # "flat bonuses add, multipliers multiply" way as everything above,
+    # then copied onto each Tower instance at construction time
+    # (Game._construct_tower) rather than threaded through
+    # WaveManager/Economy like the per-floor fields above. Neutral
+    # defaults (0.0/1.0/0/None) mean a relic that doesn't set one simply
+    # doesn't contribute to it -- see compose_relic_modifiers.
+    tower_range_multiplier: float = 1.0
+    tower_fire_rate_multiplier: float = 1.0
+    poison_chance: float = 0.0
+    poison_damage_per_tick: float = 0.0
+    poison_tick_interval: float = 0.0
+    poison_duration: float = 0.0
+    crit_chance: float = 0.0
+    crit_damage_multiplier: float = 1.0
+    # Footprint shrink is the one tower-facing field that ISN'T copied onto
+    # a Tower's own attribute by _construct_tower -- see
+    # Game._current_footprint_subtiles()/_construct_tower instead, since
+    # it has to be resolved *before* a Tower's pixel_pos is even computed,
+    # not after the tower object already exists.
+    tower_footprint_shrink: int = 0
 
 
 RELICS = {
@@ -61,6 +92,37 @@ RELICS = {
     "bounty_hunters_ledger": Relic(
         "bounty_hunters_ledger", "Bounty Hunter's Ledger", "+15% gold from every kill.",
         enemy_gold_multiplier=1.15,
+    ),
+    "tangled_roots": Relic(
+        "tangled_roots", "Tangled Roots", "Enemies move 10% slower, every floor.",
+        enemy_speed_multiplier=0.90,
+    ),
+    "spyglass_array": Relic(
+        "spyglass_array", "Spyglass Array", "+10% range for every tower, every floor.",
+        tower_range_multiplier=1.10,
+    ),
+    "quickfire_rounds": Relic(
+        "quickfire_rounds", "Quickfire Rounds", "+8% fire rate for every tower, every floor.",
+        tower_fire_rate_multiplier=1.08,
+    ),
+    # Deliberately weaker than PoisonTower's own base poison (4 damage/tick,
+    # 0.5s interval, 3.0s duration -> 24 total) -- Enemy.apply_poison()'s
+    # own max()-per-field refresh semantics (see its own docstring) mean a
+    # successful roll here on a hit that's already poisoning from
+    # PoisonTower itself is usually absorbed without visibly changing
+    # anything, but the dedicated tower keeps its identity as the
+    # strongest poison source in the game either way.
+    "venomous_coating": Relic(
+        "venomous_coating", "Venomous Coating", "15% chance for any hit to poison its target.",
+        poison_chance=0.15, poison_damage_per_tick=3, poison_tick_interval=0.5, poison_duration=2.0,
+    ),
+    "lucky_strikes": Relic(
+        "lucky_strikes", "Lucky Strikes", "12% chance for any hit to deal double damage.",
+        crit_chance=0.12, crit_damage_multiplier=2.0,
+    ),
+    "compact_framework": Relic(
+        "compact_framework", "Compact Framework", "Towers take up 25% less space on the grid, every floor.",
+        tower_footprint_shrink=2,
     ),
 }
 
@@ -94,10 +156,18 @@ class RelicModifiers:
       on every floor load, explicitly, since a floor's economy is either
       freshly constructed (floor 0) or carried forward from the previous
       floor (floor 1+) either way.
-    - enemy_gold_multiplier: threaded into WaveManager's own constructor
-      kwargs in _load_level_object, and WaveManager itself is always
-      rebuilt fresh every floor, so this needs no special per-floor
-      handling to keep applying.
+    - enemy_gold_multiplier/enemy_speed_multiplier: threaded into
+      WaveManager's own constructor kwargs in _load_level_object, and
+      WaveManager itself is always rebuilt fresh every floor, so these
+      need no special per-floor handling to keep applying.
+    - tower_range_multiplier/tower_fire_rate_multiplier/poison_chance/
+      poison_effect/crit_chance/crit_damage_multiplier/
+      tower_footprint_shrink: read once per tower, at construction time
+      (Game._construct_tower/_current_footprint_subtiles), rather than
+      through WaveManager/Economy -- see Tower.effective_range()/
+      effective_fire_rate() and Projectile._apply_hit_effects() for where
+      the tower-facing ones actually apply, and _current_footprint_
+      subtiles() for the footprint one.
 
     A Relic's own starting_gold_multiplier/starting_lives_bonus (a
     genuinely one-time bonus, not a per-floor one -- see RELICS' own
@@ -112,16 +182,74 @@ class RelicModifiers:
     aggregate-and-reuse shape is built for."""
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
+    enemy_speed_multiplier: float = 1.0
+    tower_range_multiplier: float = 1.0
+    tower_fire_rate_multiplier: float = 1.0
+    poison_chance: float = 0.0
+    poison_effect: tuple = None
+    crit_chance: float = 0.0
+    crit_damage_multiplier: float = 1.0
+    tower_footprint_shrink: int = 0
 
 
 def compose_relic_modifiers(relic_keys):
     """Aggregate every relic in `relic_keys` into one RelicModifiers bundle
     -- flat bonuses add, multipliers multiply, so composing several relics
-    is order-independent regardless of which was drafted first."""
+    is order-independent regardless of which was drafted first.
+
+    poison_effect and crit_damage_multiplier are the two fields that aren't
+    a plain sum/multiply. crit_damage_multiplier takes the max() across
+    relics rather than multiplying -- two crit relics compounding
+    multiplicatively would spike far faster than two flat +chance relics
+    summing, the same conservative choice poison's own tick damage below
+    already makes. poison_effect's aggregation is the more involved one:
+    each
+    poison-granting relic (poison_chance > 0) contributes its own
+    (damage_per_tick, tick_interval, duration), folded together the exact
+    same way Enemy.apply_poison() itself already combines two *hits* of
+    poison on the same enemy -- keep the harsher tick damage and the
+    longer duration (max()), last-write on tick interval -- so composing
+    two poison relics behaves exactly like landing two poison hits does,
+    order-independent either way."""
     gold_per_floor_bonus = 0
     enemy_gold_multiplier = 1.0
+    enemy_speed_multiplier = 1.0
+    tower_range_multiplier = 1.0
+    tower_fire_rate_multiplier = 1.0
+    poison_chance = 0.0
+    poison_effect = None
+    crit_chance = 0.0
+    crit_damage_multiplier = 1.0
+    tower_footprint_shrink = 0
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
         enemy_gold_multiplier *= relic.enemy_gold_multiplier
-    return RelicModifiers(gold_per_floor_bonus, enemy_gold_multiplier)
+        enemy_speed_multiplier *= relic.enemy_speed_multiplier
+        tower_range_multiplier *= relic.tower_range_multiplier
+        tower_fire_rate_multiplier *= relic.tower_fire_rate_multiplier
+        crit_chance += relic.crit_chance
+        crit_damage_multiplier = max(crit_damage_multiplier, relic.crit_damage_multiplier)
+        tower_footprint_shrink += relic.tower_footprint_shrink
+        if relic.poison_chance > 0:
+            poison_chance += relic.poison_chance
+            if poison_effect is None:
+                poison_effect = (relic.poison_damage_per_tick, relic.poison_tick_interval, relic.poison_duration)
+            else:
+                poison_effect = (
+                    max(poison_effect[0], relic.poison_damage_per_tick),
+                    relic.poison_tick_interval,
+                    max(poison_effect[2], relic.poison_duration),
+                )
+    return RelicModifiers(
+        gold_per_floor_bonus=gold_per_floor_bonus,
+        enemy_gold_multiplier=enemy_gold_multiplier,
+        enemy_speed_multiplier=enemy_speed_multiplier,
+        tower_range_multiplier=tower_range_multiplier,
+        tower_fire_rate_multiplier=tower_fire_rate_multiplier,
+        poison_chance=poison_chance,
+        poison_effect=poison_effect,
+        crit_chance=crit_chance,
+        crit_damage_multiplier=crit_damage_multiplier,
+        tower_footprint_shrink=tower_footprint_shrink,
+    )
