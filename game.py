@@ -510,13 +510,19 @@ class Game:
             self.active_run.unlocked_towers.append(picked)
         self._load_floor(next_floor)
 
-    def _scaled_starting_gold(self, level, mode):
+    def _scaled_starting_gold(self, level, mode, extra_multiplier=1.0):
         """`level.starting_gold` scaled by `mode.starting_gold_multiplier`
-        -- the exact formula _load_level_object() uses to construct a
-        fresh floor's own starting Economy, factored out here so
-        _apply_one_time_relic_bonus's own baseline computation below can't
-        silently drift from it."""
-        return round(level.starting_gold * mode.starting_gold_multiplier)
+        (and, for _apply_one_time_relic_bonus's own use below,
+        `extra_multiplier` too) -- the exact formula _load_level_object()
+        uses to construct a fresh floor's own starting Economy, factored
+        out here so that computation and the relic bonus's own baseline
+        can't silently drift apart. `extra_multiplier` is folded into the
+        same single `round()` call rather than applied as a separate step
+        afterward, so a relic's own bonus is computed with the identical
+        rounding _load_level_object() itself would have produced had the
+        relic's multiplier been present from the start, not
+        round(round(x) * y) double-rounding to a different result."""
+        return round(level.starting_gold * mode.starting_gold_multiplier * extra_multiplier)
 
     def _apply_one_time_relic_bonus(self, relic):
         """War Chest/Sturdy Gate (relics.py's own RelicModifiers docstring
@@ -530,16 +536,19 @@ class Game:
         picked -- so instead, apply it directly onto the run's carried
         gold/lives the instant the card is picked, computed against what
         this run's own starter floor's baseline would have been (its own
-        Level's starting_gold, scaled by the run's own difficulty mode --
-        _scaled_starting_gold, the exact same formula floor 0's own
-        Economy construction used), so "+25% starting gold for this run"
-        still means a fixed amount tied to this run's own starting point,
-        not an unpredictable multiplier on whatever gold the player
-        happens to be carrying at pick time."""
+        Level's starting_gold, scaled by the run's own difficulty mode via
+        _scaled_starting_gold -- the exact same formula floor 0's own
+        Economy construction used, called a second time with the relic's
+        own multiplier folded in as its `extra_multiplier` so both figures
+        round the identical way before taking their difference), so
+        "+25% starting gold for this run" still means a fixed amount tied
+        to this run's own starting point, not an unpredictable multiplier
+        on whatever gold the player happens to be carrying at pick time."""
         starter_level = LEVELS[self.active_run.floor_sequence[0]]
         mode = difficulty.DIFFICULTY_MODES[self.active_run.difficulty]
         base_gold = self._scaled_starting_gold(starter_level, mode)
-        self.active_run.gold += round(base_gold * (relic.starting_gold_multiplier - 1.0))
+        bonused_gold = self._scaled_starting_gold(starter_level, mode, relic.starting_gold_multiplier)
+        self.active_run.gold += bonused_gold - base_gold
         self.active_run.lives += relic.starting_lives_bonus
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
@@ -737,13 +746,23 @@ class Game:
         plain, run-less reload every other reset() has always done, same
         as classic/Practice/playtest play."""
         if self.active_run is not None and self.state == GameState.PAUSED:
+            # _load_floor() already sets self.state = PLAYING itself --
+            # left alone here rather than clobbered by the trailing MENU
+            # assignment below, which is only ever right for the two
+            # classic-reload branches. Harmless for reset()'s own two real
+            # callers either way (both reassign PLAYING themselves right
+            # after this returns, regardless of which branch ran), but a
+            # caller that doesn't -- a direct call, the way this method's
+            # own tests exercise it -- deserves the state this branch
+            # actually produced, not a state it never was.
             self._load_floor(self.active_run.floor_index)
-        elif self.current_level_id is None:
-            # custom level: nothing in LEVELS to re-look-up
-            self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
         else:
-            self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
-        self.state = GameState.MENU
+            if self.current_level_id is None:
+                # custom level: nothing in LEVELS to re-look-up
+                self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
+            else:
+                self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
+            self.state = GameState.MENU
 
     def has_next_level(self):
         if not isinstance(self.current_level_id, int):
@@ -809,9 +828,17 @@ class Game:
         restore() below (that only restores wave_index/state/between_wave_
         timer), so leaving these three at _load_level_object()'s own
         no-op defaults would silently understate this floor's difficulty/
-        gold and make its enemy routing non-deterministic for the rest of
-        the floor, only self-correcting once the *next* floor's own
-        _load_floor() call gets it right. relic_modifiers.gold_per_floor_
+        gold and make its enemy routing merely unseeded (rather than
+        deterministic) for the rest of the floor, only self-correcting
+        once the *next* floor's own _load_floor() call gets it right.
+        Re-deriving the rng this way reproduces what a *fresh* load of
+        this floor would draw, not necessarily what an uninterrupted
+        playthrough already would have consumed by save time -- no rng
+        state is serialized (see _run_rng's own docstring for why), so a
+        save taken after some waves have already drawn from this floor's
+        rng resumes at that rng's own start, not wherever those draws had
+        already left it; later waves can route differently post-resume
+        than they would have without one. relic_modifiers.gold_per_floor_
         bonus is the one exception deliberately NOT re-applied here
         (unlike _load_floor's own call) -- it was already added once, back
         when this floor was first entered, and that's already baked into

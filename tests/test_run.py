@@ -329,6 +329,12 @@ def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run
     assert playing_game.current_level_id == run_before.floor_sequence[2]
     assert playing_game.towers == []  # the floor itself still reloads fresh
     assert set(playing_game.button_rects.keys()) == set(run_before.unlocked_towers)  # menu stays run-narrowed
+    # Regression guard: reset()'s own trailing "classic reload" branch
+    # used to unconditionally set self.state = MENU afterward, clobbering
+    # _load_floor()'s own PLAYING right back to MENU -- harmless for
+    # reset()'s two real callers (both reassign PLAYING themselves right
+    # after), but wrong for a direct call like this one.
+    assert playing_game.state == GameState.PLAYING
 
 
 def test_restarting_mid_run_restores_the_floors_own_starting_gold_and_lives(playing_game):
@@ -584,7 +590,14 @@ def test_war_chest_grants_a_one_time_gold_bonus_when_drafted(game):
 
     game._handle_draft_click(game.draft_choice_rects[0].center)
 
-    expected_bonus = round(base_gold * (RELICS["war_chest"].starting_gold_multiplier - 1.0))
+    # One combined round(), not round(base_gold * (multiplier - 1.0)) --
+    # see test_war_chests_bonus_matches_a_single_combined_rounding below
+    # for why the two formulas can disagree once a difficulty multiplier
+    # makes base_gold itself not already a whole number.
+    expected_bonus = (
+        round(starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier)
+        - base_gold
+    )
     assert game.active_run.gold == gold_before + expected_bonus
 
 
@@ -618,6 +631,36 @@ def test_war_chests_bonus_is_not_reapplied_on_a_later_floor_load(game):
     game._load_floor(game.active_run.floor_index)  # restart the same floor
 
     assert game.active_run.gold == gold_after_draft
+
+
+def test_war_chests_bonus_matches_a_single_combined_rounding(game):
+    # Regression guard: _apply_one_time_relic_bonus used to compute
+    # base_gold = round(starting_gold * mode_multiplier), then add
+    # round(base_gold * (relic_multiplier - 1.0)) on top -- two separate
+    # roundings that can disagree with the single round(starting_gold *
+    # mode_multiplier * relic_multiplier) _load_level_object's own Economy
+    # construction would produce had the relic's multiplier been present
+    # from the start. Hard's 0.85 starting_gold_multiplier is what
+    # actually exposes the gap (round(round(150*0.85)*1.25) == 160 vs.
+    # round(150*0.85*1.25) == 159) -- Normal's 1.0 multiplier leaves
+    # base_gold already a whole number, where both formulas coincide.
+    game.set_difficulty("hard")
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    _force_relic_draft(game, "war_chest")
+    starter_level = LEVELS[game.active_run.floor_sequence[0]]
+    mode = DIFFICULTY_MODES[game.active_run.difficulty]
+    gold_before = game.active_run.gold
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    single_rounding_gold = round(
+        starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier
+    )
+    base_gold = round(starter_level.starting_gold * mode.starting_gold_multiplier)
+    assert single_rounding_gold != round(base_gold * RELICS["war_chest"].starting_gold_multiplier)  # the gap is real
+    assert game.active_run.gold == gold_before + (single_rounding_gold - base_gold)
 
 
 def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
@@ -830,10 +873,21 @@ def test_saving_without_an_active_run_resumes_with_no_active_run(playing_game):
 
 def test_resuming_a_run_rederives_the_same_floor_routing_rng(game):
     # WaveManager's own routing rng is never serialized (see _run_rng's own
-    # docstring) -- resuming must re-derive the identical (seed,
-    # floor_index) rng _load_floor() itself always uses, not fall back to
-    # an unseeded random.Random() that would make enemy routing diverge
-    # from what it would have been had the run never been saved at all.
+    # docstring) -- resuming re-derives the identical (seed, floor_index)
+    # rng a *fresh* (never-saved) load of this same floor would get, not
+    # an unseeded random.Random() that would make routing non-deterministic
+    # from the resume point on. This is narrower than "identical to an
+    # uninterrupted playthrough" in general, though: since no rng state is
+    # serialized, a save taken mid-floor -- after some waves have already
+    # consumed draws from this same rng object -- resumes at that rng's
+    # own start, not wherever the un-saved playthrough's consumption had
+    # already left it. Later waves can route differently after such a
+    # resume than they would have without one; this test only covers a
+    # save taken before any wave (wave_index 0) has drawn anything, the
+    # one case where "identical to fresh" and "identical to uninterrupted"
+    # coincide. Serializing the rng's own consumed position would close
+    # this gap but means carrying real RNG state in the save file, which
+    # is the exact thing this whole re-derivation scheme exists to avoid.
     game.start_new_run(seed=1)
     game._load_floor(3)
     expected_first_draw = game.wave_manager.rng.random()

@@ -98,8 +98,10 @@ Clearing a floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameS
 - `_enter_draft` picks the draft's *kind* by floor (`_is_relic_floor`: every
   `relics.RELIC_FLOOR_INTERVAL`-th, so a 6-floor run's 5 draft screens -- one per floor cleared, the
   6th never clears once it's loaded `endless=True` -- alternate 3 tower / 2 relic, never both at
-  once), and skips the screen entirely -- straight to the next floor -- if
-  that kind has nothing left to offer.
+  once). A relic floor with nothing left to offer (every relic already held -- unreachable at the
+  current `RELICS`/`RELIC_FLOOR_INTERVAL` tuning, since a run can never hold more relics than it has
+  relic-draft floors for) falls back to a tower draft on the same rng/floor instead; only skips the
+  screen entirely -- straight to the next floor -- if that also comes up empty.
 - The next floor isn't loaded until a card is actually picked, which is what leaves
   `self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
@@ -453,8 +455,11 @@ mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a d
 bump any achievement/meta-progression counter -- trivializing victory shouldn't trivialize real
 progress -- the same reasoning that already keeps a genuine endless run's `all_waves_complete` from
 ever firing at all. `Game._record_level_cleared()`'s own `if self.sandbox: return` is the one gate
-for the `progress.py` half; `_record_achievement`/`_record_meta_progress` carry the same gate
-internally for every counter, never re-checked at each call site.
+for the `progress.py` half; `_record_achievement`/`_record_meta_progress` share a second one inside
+`_record_progress_counter()`, the helper both delegate to, rather than either repeating it at its
+own call sites. `_record_run_permadeath()` carries a third, separate `if self.sandbox: return` of
+its own -- its `run_history.record_run_result()` call has no sandbox awareness to delegate to, so
+this one guard can't be folded into the shared helper the other two use.
 
 **Practice mode** is what absorbed "play a level standalone": `LEVEL_SELECT`'s play purpose always
 loads `sandbox=True`. That's a deliberate design position, not an implementation detail -- real
@@ -479,7 +484,11 @@ always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievemen
 repo-root files. All six are gitignored -- local player data, not shipped content, same as
 `custom_levels/`. That shared shape isn't just convention --
 `json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
-`load_*()`s actually calls: it does the file-exists check and `try`/`except` itself, and takes
+`load_*()`s is ultimately built on (`achievements.load_achievements()`/`meta_progression.
+load_meta_progression()` go through `threshold_unlocks.load_counters_state()`'s own thin wrapper
+around it, since those two share their load/save/bump mechanics -- see the `meta_progression.py`
+bullet below for that split -- rather than calling it directly themselves): it does the file-exists
+check and `try`/`except` itself, and takes
 `transform` (parsed JSON -> whatever shape the caller wants, also where a caller raises on
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
@@ -517,8 +526,11 @@ packaged build. Before this was factored out, each independently wrote the same
   guard.
 - `meta_progression.py` is the run loop's cross-run unlock registry (`META_UNLOCKS`: one
   `TOWER_TYPES` name each, gated on a threshold on `total_floors_cleared`/`runs_played`/
-  `runs_reached_endless`), sharing its threshold mechanics with `achievements.py` via
-  `threshold_unlocks.py` while keeping a genuinely separate file, registry, and JSON state.
+  `runs_reached_endless`), sharing its load/save/bump-counter mechanics with `achievements.py` via
+  `threshold_unlocks.py`'s own `load_counters_state`/`save_counters_state`/`bump_counter`/
+  `set_counter` (each module's own `load_*`/`save_*`/`bump()` just delegates its body to these,
+  supplying its own registry/path/schema version) while keeping a genuinely separate file, registry,
+  and JSON state.
   The split is intentional: achievements are cosmetic/trophy-flavored, meta-progression unlocks are
   gameplay-flavored -- they change what `card_pool.draft_offer()` can offer a future run.
   `Game._record_meta_progress()` mirrors `_record_achievement()` exactly, sandbox guard included.
