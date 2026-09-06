@@ -14,7 +14,7 @@ def test_defaults():
     run = _run()
     assert run.floor_index == 0
     assert run.lives == 0
-    assert run.gold == 0
+    assert run.shop_currency == 0
     assert run.floors_cleared == 0
     assert run.relics == []
     assert run.is_daily is False

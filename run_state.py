@@ -1,6 +1,9 @@
 """RunState: the small bundle of state that survives *across* floor loads
-within one roguelike run -- lives, gold, drafted tower pool, relics, seed,
-and floor position.
+within one roguelike run -- lives, shop currency, drafted tower pool,
+relics, seed, and floor position. Battle gold (Economy.gold) is
+deliberately *not* one of these fields -- it resets fresh every floor
+instead of carrying forward; see game.py's _load_floor and CLAUDE.md's
+"Two currencies" section for the split this reflects.
 
 Everything else about a floor (Grid/Economy/WaveManager/towers/enemies) is
 fully rebuilt fresh by Game._load_level_object() on every floor load, exactly
@@ -23,9 +26,19 @@ class RunState:
     floor_index: int = 0
     # Placeholder until _load_floor(0) captures floor 0's own freshly-loaded
     # Economy -- see _load_floor's docstring for why floor 0 is the one
-    # exception to "the run's own lives/gold carry into a floor load."
+    # exception to "the run's own lives carry into a floor load." There is
+    # no equivalent `gold` field: battle gold (Economy.gold) resets fresh
+    # every floor now (see game.py's _load_floor and CLAUDE.md's "Two
+    # currencies" section) and so has nothing left to carry -- only lives
+    # still survives a floor transition.
     lives: int = 0
-    gold: int = 0
+    # The run's own cross-floor currency -- unlike battle gold (Economy.
+    # gold, reset fresh every floor), this persists exactly like
+    # unlocked_towers/relics below, reset only at start_new_run. Earned at
+    # every floor clear (see shop.income_for_floor/Game._advance_run_floor)
+    # and spent at the Shop screen between floors (see shop.py/Game.
+    # _enter_draft's own "Shop, not draft" naming note).
+    shop_currency: int = 0
     # Run-wide passive modifier cards -- see relics.py. Grows via a
     # relic-flavored draft offered instead of a tower draft on alternating
     # floors (see Game._is_relic_floor), the same "drafted into a list"

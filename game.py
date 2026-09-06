@@ -22,6 +22,7 @@ import run_floors
 import run_history
 import save_state
 import settings
+import shop
 import ui
 from assets import AssetManager
 from economy import Economy
@@ -61,8 +62,20 @@ class GameState(Enum):
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
     # non-final floor's results (same board frozen behind it VICTORY/GAME_
-    # OVER already do), DRAFT offers the next floor's tower choice. See
-    # Game._advance_run_floor/_enter_draft.
+    # OVER already do), DRAFT is the Shop -- see Game._advance_run_floor/
+    # _enter_draft.
+    #
+    # DRAFT is a naming fossil, kept deliberately: this state (and
+    # _enter_draft/_handle_draft_click/draft_choices/draft_choice_rects/
+    # ui.draw_draft_screen alongside it) used to be a single free pick from
+    # exactly one card type. It's now a priced, multi-purchase Shop
+    # offering both tower and relic cards together every floor (see
+    # shop.py/CLAUDE.md's "Two currencies" section) -- but renaming this
+    # whole family of identifiers would touch this module, ui.py, and every
+    # test that exercises a run's draft/shop screen for no functional gain,
+    # the same "not worth the blast radius" call save_state.py's own
+    # "session" naming already documents making. The prose everywhere below
+    # says "shop"; the code still says "draft."
     FLOOR_CLEARED = auto()
     DRAFT = auto()
 
@@ -134,19 +147,25 @@ class Game:
         # real run, see _start_daily_challenge). Same reset-inside-
         # _load_level_object shape as _resumed_from_save above --
         # _load_floor() is the one caller that sets it back afterward,
-        # once per floor, so a run's own lives/gold survive across each
-        # floor's fresh _load_level_object() call.
+        # once per floor, so a run's own lives survive across each floor's
+        # fresh _load_level_object() call.
         self.active_run = None
-        # This floor-clear's draft choices/rects/kind (see _enter_draft) --
-        # only meaningful while self.state == GameState.DRAFT, rebuilt from
+        # This floor-clear's shop offer (see _enter_draft) -- only
+        # meaningful while self.state == GameState.DRAFT, rebuilt from
         # scratch every time that screen is (re-)entered, same "computed
         # fresh, not a persistent cache" spirit as level_select_entries.
-        # draft_kind ("tower" or "relic") is what tells _handle_draft_click/
-        # ui.draw_draft_screen which registry draft_choices' keys are from
-        # and how a pick gets applied -- see _is_relic_floor.
+        # draft_choices is a list of shop.ShopItem now (each carrying its
+        # own kind -- "tower"/"relic" -- rather than one shared kind for the
+        # whole screen, since a shop visit mixes both); draft_choice_rects
+        # is one Rect per item, same length/order. shop_purchased_indices
+        # tracks which of this visit's items are already bought (so a
+        # second click on one is a no-op and price_for's escalation knows
+        # how many purchases deep this visit is) -- reset every time
+        # _enter_draft runs, same as the offer itself.
         self.draft_choices = []
         self.draft_choice_rects = []
-        self.draft_kind = "tower"
+        self.shop_purchased_indices = set()
+        self.shop_continue_button_rect = ui.build_shop_continue_button_rect()
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -353,16 +372,20 @@ class Game:
         via _load_level_object exactly like any other level load -- towers,
         the grid, and wave state are always rebuilt fresh per floor, the
         same way a deckbuilder run doesn't carry board state between
-        combats. Only the run's own lives/gold carry across floor loads
-        (floor 0 is the one exception: RunState starts with lives=gold=0
-        as a placeholder, captured for real from floor 0's own
-        freshly-loaded Economy just below -- the same starting_gold/
-        starting_lives every other level load already uses, just also
-        saved off for floor 1 onward to carry forward). The sequence's last
-        floor always loads endless=True (see WaveManager's own endless
-        tail) -- a run only ever ends by permadeath, never by "finishing"
-        the last floor; see update()'s win-check for the other half of
-        that.
+        combats. Only the run's own lives carry across floor loads (floor 0
+        is the one exception: RunState starts with lives=0 as a
+        placeholder, captured for real from floor 0's own freshly-loaded
+        Economy just below -- the same starting_lives every other level
+        load already uses, just also saved off for floor 1 onward to carry
+        forward). Battle gold is never carried -- every floor's Economy
+        gets a fresh starting_gold via _load_level_object's own
+        construction (relic-adjustable via starting_gold_multiplier the
+        same as any other floor), same as if this were the very first
+        floor of the run every time; see CLAUDE.md's "Two currencies"
+        section for why. The sequence's last floor always loads
+        endless=True (see WaveManager's own endless tail) -- a run only
+        ever ends by permadeath, never by "finishing" the last floor; see
+        update()'s win-check for the other half of that.
 
         run is passed straight through to _load_level_object()'s own
         `active_run` parameter -- see its docstring for why that already
@@ -373,8 +396,8 @@ class Game:
         Also doubles as the restart path for the current floor of an
         active run (see reset()) -- called again with the same floor_index
         it's already on, which is exactly "reload this floor from scratch"
-        since run.gold/run.lives (what floor_index != 0 restores from)
-        don't change again until either this floor actually clears (see
+        since run.lives (what floor_index != 0 restores from) doesn't
+        change again until either this floor actually clears (see
         _advance_run_floor) or its own next draft picks a one-time relic
         bonus (_apply_one_time_relic_bonus) -- neither reachable mid-floor.
 
@@ -395,35 +418,37 @@ class Game:
             active_run=run, resumed_from_save=self._resumed_from_save,
         )
         self.current_level_id = level_id
-        # gold_per_floor_bonus is meant to apply on every floor -- added
-        # once below, after floor 1+'s restore but before floor 0's own
-        # capture, so run.gold is never briefly stale (missing a bonus
-        # that's already been credited to self.economy.gold). A relic's
-        # own one-time bonus (starting_gold_multiplier/starting_lives_bonus)
-        # never reaches here at all -- see Game._apply_one_time_relic_bonus
-        # for why that's applied once, directly, at the moment the card is
-        # drafted instead.
         if floor_index == 0:
             run.lives = self.economy.lives
         else:
             self.economy.lives = run.lives
-            self.economy.gold = run.gold
+        # gold_per_floor_bonus is meant to apply on top of every floor's
+        # freshly-constructed starting gold -- added here rather than
+        # folded into _load_level_object's own Economy construction, since
+        # it's a flat bonus, not part of the starting-gold formula itself
+        # (see relic_modifiers.starting_gold_multiplier, which IS folded in
+        # there instead). Unlike gold itself, there's no floor_index == 0
+        # special case left to worry about here now that gold never carries
+        # forward -- every floor gets this bonus exactly once, the instant
+        # it loads.
         self.economy.add_gold(relic_modifiers.gold_per_floor_bonus)
-        if floor_index == 0:
-            run.gold = self.economy.gold
         self.state = GameState.PLAYING
 
     def _advance_run_floor(self):
         """One floor of self.active_run just cleared (see update()'s
-        win-check) -- carry gold/lives forward and show the floor-cleared
-        results screen. self.towers/self.economy are still this just-
-        cleared floor's own live state at this point (the next floor isn't
-        loaded until the player picks a card -- see _enter_draft/
-        _handle_draft_click), so _tower_results() still has something real
-        to show."""
+        win-check) -- carry lives forward, convert this floor's own
+        leftover battle gold into shop currency (see shop.income_for_floor;
+        battle gold itself is never carried, see _load_floor), and show the
+        floor-cleared results screen. self.towers/self.economy are still
+        this just-cleared floor's own live state at this point (the next
+        floor isn't loaded until the player leaves the shop -- see
+        _enter_draft/_handle_draft_click), so _tower_results() still has
+        something real to show, and self.economy.gold here is genuinely
+        this floor's own final leftover amount, not yet reset for the next
+        one."""
         run = self.active_run
-        run.gold = self.economy.gold
         run.lives = self.economy.lives
+        run.shop_currency += shop.income_for_floor(run.floor_index, self.economy.gold)
         self._record_meta_progress("total_floors_cleared")
         self._cache_tower_results()
         self.state = GameState.FLOOR_CLEARED
@@ -455,100 +480,88 @@ class Game:
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
 
-    def _is_relic_floor(self, floor_index):
-        """Whether floor_index's own draft (see _enter_draft) offers relics
-        instead of a tower -- every other floor transition, so a 6-floor
-        run's 5 draft screens (one per floor cleared; the 6th floor loads
-        endless=True and never "clears") alternate 3 tower / 2 relic
-        (floors 2 and 4 relic), never both on the same floor. A relic floor
-        still falls back to a tower draft if every relic is already held (see
-        _enter_draft) -- the alternation is about which draft *usually*
-        shows up, not a hard guarantee either card type is ever offered on
-        a given floor."""
-        return floor_index % relics.RELIC_FLOOR_INTERVAL == 0
-
     def _enter_draft(self):
-        """Advance from FLOOR_CLEARED into the draft screen -- computes
-        this floor-clear's card choices (relics on alternating floors, see
-        _is_relic_floor; towers otherwise) and switches to GameState.DRAFT.
-        A relic floor with every relic already held falls back to a tower
-        draft on the same rng/floor instead of offering nothing (matching
-        _is_relic_floor's own documented contract -- unreachable at the
-        current RELICS/RELIC_FLOOR_INTERVAL tuning, since a run can never
-        hold more relics than it has relic-draft floors for, but a real
-        fallback rather than a documented-but-unbuilt one costs nothing and
-        stays correct if that tuning ever changes). Only skips straight to
-        the next floor with no draft at all if *that* also comes up empty
-        -- the tower pool itself exhausted too."""
+        """Advance from FLOOR_CLEARED into the Shop screen (see GameState.
+        DRAFT's own naming note for why the code still says "draft") --
+        computes this floor-clear's shop offer (both tower and relic cards
+        together now, see shop.build_offer) and switches to GameState.
+        DRAFT. Skips straight to the next floor with no shop at all only if
+        that offer comes back completely empty (both pools exhausted --
+        every tower unlocked and every relic held), same as the old draft
+        screen's own empty-offer skip."""
         next_floor = self.active_run.floor_index + 1
         rng = self._run_rng(self.active_run, _DRAFT_RNG_STREAM, next_floor)
-        self.draft_kind = "relic" if self._is_relic_floor(next_floor) else "tower"
-        if self.draft_kind == "relic":
-            self.draft_choices = relics.relic_offer(rng, self.active_run)
-            if not self.draft_choices:
-                self.draft_kind = "tower"
-        if self.draft_kind == "tower":
-            self.draft_choices = card_pool.draft_offer(
-                rng, self.active_run, meta_progression_path=self.meta_progression_path,
-            )
+        self.draft_choices = shop.build_offer(rng, self.active_run, meta_progression_path=self.meta_progression_path)
         if not self.draft_choices:
             self._load_floor(next_floor)
             return
         self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
+        self.shop_purchased_indices = set()
         self.state = GameState.DRAFT
 
     def _handle_draft_click(self, pos):
-        index = ui.get_clicked_draft_choice(pos, self.draft_choice_rects)
-        if index is None:
+        """A click anywhere on the Shop screen -- either the Continue
+        button (leave the shop and load the next floor, buying nothing
+        else) or one of this visit's item cards (attempt to buy it)."""
+        if self.shop_continue_button_rect.collidepoint(pos):
+            self._load_floor(self.active_run.floor_index + 1)
             return
-        next_floor = self.active_run.floor_index + 1
-        picked = self.draft_choices[index]
-        if self.draft_kind == "relic":
-            self.active_run.relics.append(picked)
-            self._apply_one_time_relic_bonus(relics.RELICS[picked])
+        index = ui.get_clicked_draft_choice(pos, self.draft_choice_rects)
+        if index is None or index in self.shop_purchased_indices:
+            return
+        self._try_buy_shop_item(index)
+
+    def _try_buy_shop_item(self, index):
+        """Attempt to buy this visit's item at `index` -- a silent no-op if
+        it's unaffordable, same "click does nothing" precedent try_place_
+        tower's own unbuildable-spot case already sets, rather than a
+        rejection the player has to notice and dismiss. Price escalates
+        with how many items this same visit has already bought (see shop.
+        price_for) -- self.unlimited_gold/sandbox's own "every purchase
+        always succeeds, nothing actually deducted" precedent (see
+        economy.py's own docstring) covers shop currency the same way it
+        already covers battle gold, via self.economy.unlimited_gold, which
+        is already exactly `self.unlimited_gold or sandbox`."""
+        run = self.active_run
+        item = self.draft_choices[index]
+        price = shop.price_for(item, len(self.shop_purchased_indices))
+        if not self.economy.unlimited_gold and run.shop_currency < price:
+            return
+        if not self.economy.unlimited_gold:
+            run.shop_currency -= price
+        if item.kind == "relic":
+            run.relics.append(item.key)
+            self._apply_one_time_relic_bonus(relics.RELICS[item.key])
         else:
-            self.active_run.unlocked_towers.append(picked)
-        self._load_floor(next_floor)
+            run.unlocked_towers.append(item.key)
+        self.shop_purchased_indices.add(index)
 
     def _scaled_starting_gold(self, level, mode, extra_multiplier=1.0):
         """`level.starting_gold` scaled by `mode.starting_gold_multiplier`
-        (and, for _apply_one_time_relic_bonus's own use below,
-        `extra_multiplier` too) -- the exact formula _load_level_object()
-        uses to construct a fresh floor's own starting Economy, factored
-        out here so that computation and the relic bonus's own baseline
-        can't silently drift apart. `extra_multiplier` is folded into the
-        same single `round()` call rather than applied as a separate step
-        afterward, so a relic's own bonus is computed with the identical
-        rounding _load_level_object() itself would have produced had the
-        relic's multiplier been present from the start, not
-        round(round(x) * y) double-rounding to a different result."""
+        and `extra_multiplier` (a relic's own starting_gold_multiplier, see
+        RelicModifiers) -- the exact formula _load_level_object() uses to
+        construct every floor's own fresh starting Economy.
+        `extra_multiplier` is folded into the same single `round()` call
+        rather than applied as a separate step afterward, so the result
+        matches what a single combined multiplier would have rounded to,
+        not round(round(x) * y) double-rounding to a different result."""
         return round(level.starting_gold * mode.starting_gold_multiplier * extra_multiplier)
 
     def _apply_one_time_relic_bonus(self, relic):
-        """War Chest/Sturdy Gate (relics.py's own RelicModifiers docstring
-        for the full reasoning) can structurally never be drafted before
-        floor 0 -- the earliest possible relic draft is floor 2 (see
-        _is_relic_floor), by which point floor 0's Economy is long gone
-        and every later floor's gold/lives comes from the run's own
-        carried-forward values instead (see _load_floor). Baking the
-        bonus into Economy construction the way every other relic modifier
-        works would make these two permanently inert no matter when they're
-        picked -- so instead, apply it directly onto the run's carried
-        gold/lives the instant the card is picked, computed against what
-        this run's own starter floor's baseline would have been (its own
-        Level's starting_gold, scaled by the run's own difficulty mode via
-        _scaled_starting_gold -- the exact same formula floor 0's own
-        Economy construction used, called a second time with the relic's
-        own multiplier folded in as its `extra_multiplier` so both figures
-        round the identical way before taking their difference), so
-        "+25% starting gold for this run" still means a fixed amount tied
-        to this run's own starting point, not an unpredictable multiplier
-        on whatever gold the player happens to be carrying at pick time."""
-        starter_level = LEVELS[self.active_run.floor_sequence[0]]
-        mode = difficulty.DIFFICULTY_MODES[self.active_run.difficulty]
-        base_gold = self._scaled_starting_gold(starter_level, mode)
-        bonused_gold = self._scaled_starting_gold(starter_level, mode, relic.starting_gold_multiplier)
-        self.active_run.gold += bonused_gold - base_gold
+        """Sturdy Gate (relics.py's own RelicModifiers docstring for the
+        full reasoning) can structurally never be bought before floor 0's
+        Shop screen -- the earliest possible shop visit is after floor 0
+        clears, offering floor 1 (see _enter_draft), by which point floor
+        0's Economy is long gone and every later floor's lives comes from
+        the run's own carried-forward value instead (see _load_floor).
+        Baking the bonus into Economy
+        construction the way every other relic modifier works would make
+        it permanently inert no matter when it's picked -- so instead,
+        apply it directly onto the run's carried lives the instant the card
+        is picked. War Chest used to need this same treatment for gold, but
+        no longer does -- see relics.py's own module docstring for why its
+        starting_gold_multiplier is a normal per-floor RelicModifiers field
+        now instead."""
         self.active_run.lives += relic.starting_lives_bonus
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
@@ -617,19 +630,20 @@ class Game:
         # of a run this is and what relics that run has drafted. Composed
         # into the same construction `mode`'s own multipliers already
         # occupy, same "extra factor, never replacing" rule difficulty.py's
-        # own docstring states. Only enemy_gold_multiplier (below, folded
-        # into WaveManager) and gold_per_floor_bonus (not applied here at
-        # all -- _load_floor adds it after this method returns, see its own
-        # comment, since it's meant to apply on top of every floor's
-        # economy, not just what's constructed fresh here) actually reach
-        # this construction -- relic_modifiers has no starting_gold/lives
-        # fields at all, since a relic can never be held this early (see
-        # Game._apply_one_time_relic_bonus, where their own one-time bonus
-        # is applied instead, directly onto the run's carried gold/lives at
-        # the moment the card is drafted).
+        # own docstring states. gold_per_floor_bonus is the one relic_
+        # modifiers field NOT applied here -- _load_floor adds it after this
+        # method returns, see its own comment, since it's meant to apply on
+        # top of every floor's economy, not just what's constructed fresh
+        # here. relic_modifiers has no starting_lives field at all, since a
+        # relic can never be held this early (see Game._apply_one_time_
+        # relic_bonus, where sturdy_gate's own one-time bonus is applied
+        # instead, directly onto the run's carried lives at the moment the
+        # card is drafted) -- starting_gold_multiplier has no such
+        # restriction, since battle gold is rebuilt fresh from this same
+        # construction every floor, not just floor 0.
         mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
-            self._scaled_starting_gold(level, mode),
+            self._scaled_starting_gold(level, mode, relic_modifiers.starting_gold_multiplier),
             round(level.starting_lives * mode.starting_lives_multiplier),
             unlimited_gold=self.unlimited_gold or sandbox,
             invulnerable=sandbox,
@@ -2055,6 +2069,7 @@ class Game:
             self.skip_button_rect, self.selected_tower_name,
             self.time_scale, self.speed_button_rect,
             self.wave_manager.next_wave_preview(),
+            shop_currency=self.active_run.shop_currency if self.active_run is not None else None,
         )
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
@@ -2085,10 +2100,17 @@ class Game:
                 self.active_run.floor_index + 1, len(self.active_run.floor_sequence),
                 self._cached_tower_results,
             )
-        elif self.state == GameState.DRAFT:
+        elif self.state == GameState.DRAFT and self.active_run is not None:
+            # active_run is None only ever happens by force-setting state
+            # directly (e.g. the render() smoke test's blanket sweep across
+            # every GameState) -- same guard, same reasoning, as FLOOR_
+            # CLEARED just above (this screen now reads self.active_run.
+            # shop_currency, so it can no longer render with none active).
             ui.draw_draft_screen(
                 self.screen, self.font, self.small_font,
-                self.draft_choices, self.draft_choice_rects, self.draft_kind, self._hovered_draft_choice(),
+                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
+                self.shop_purchased_indices, self.active_run.shop_currency,
+                self.shop_continue_button_rect, self.economy.unlimited_gold,
             )
 
         pygame.display.flip()

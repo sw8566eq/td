@@ -21,12 +21,14 @@ import meta_progression
 import progress
 import run_history
 import save_state
+import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
 from relics import RELICS
+from shop import ShopItem
 from tower import TOWER_TYPES
 
 from conftest import (
@@ -50,11 +52,12 @@ def test_start_new_run_populates_active_run_and_loads_floor_zero(game):
     assert game.state == GameState.PLAYING
 
 
-def test_start_new_run_captures_floor_zeros_starting_economy(game):
+def test_start_new_run_captures_floor_zeros_starting_lives(game):
+    # No equivalent gold assertion -- battle gold is never captured onto
+    # RunState at all any more (see CLAUDE.md's "Two currencies" section).
     game.start_new_run(seed=1)
 
     assert game.active_run.lives == game.economy.lives
-    assert game.active_run.gold == game.economy.gold
 
 
 def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
@@ -164,11 +167,15 @@ def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
 # --- Clearing a floor ---
 
 
-def test_floor_clear_enters_floor_cleared_and_captures_gold_lives(game):
+def test_floor_clear_enters_floor_cleared_and_captures_lives_and_shop_currency(game):
     game.start_new_run(seed=1)
-    # Distinct from whatever floor 1's own authored starting_gold/
-    # starting_lives happen to be -- proves these came from the run, not
-    # from _load_level_object's usual per-level defaults.
+    # Distinct from whatever floor 0's own authored starting_lives happens
+    # to be -- proves this came from the run, not from _load_level_object's
+    # usual per-level defaults. Battle gold is deliberately NOT carried the
+    # same way (see CLAUDE.md's "Two currencies" section) -- instead it
+    # converts into shop currency (see shop.income_for_floor), asserted
+    # below via that exact formula rather than a hardcoded number, so this
+    # test doesn't silently drift from shop.py's own tuning.
     game.economy.gold = 9999
     game.economy.lives = 3
     finish_all_waves(game)
@@ -176,12 +183,12 @@ def test_floor_clear_enters_floor_cleared_and_captures_gold_lives(game):
     game.update(dt=0.01)
 
     # The next floor isn't loaded yet -- that only happens once the player
-    # advances through FLOOR_CLEARED and picks a draft choice (see below) --
-    # so floor_index/self.economy still reflect the floor just cleared.
+    # leaves the shop (see below) -- so floor_index/self.economy still
+    # reflect the floor just cleared.
     assert game.state == GameState.FLOOR_CLEARED
     assert game.active_run.floor_index == 0
-    assert game.active_run.gold == 9999
     assert game.active_run.lives == 3
+    assert game.active_run.shop_currency == shop.income_for_floor(0, 9999)
 
 
 def test_floor_clear_never_reaches_classic_victory(game):
@@ -340,12 +347,14 @@ def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run
 
 def test_restarting_mid_run_restores_the_floors_own_starting_gold_and_lives(playing_game):
     # A restart discards whatever was spent/earned since this floor began,
-    # same as any other "Restart Level" -- but restores to the run's own
-    # carried-forward gold/lives for this floor, not the level's raw
-    # starting_gold/starting_lives a classic reload would use.
+    # same as any other "Restart Level" -- reloading a floor recomputes its
+    # own starting gold fresh every time now (see CLAUDE.md's "Two
+    # currencies" section: battle gold never carries between floor loads at
+    # all any more), and restores lives from the run's own carried-forward
+    # value, not the level's raw starting_lives a classic reload would use.
     playing_game.start_new_run(seed=1)
     playing_game._load_floor(1)
-    gold_at_floor_start = playing_game.active_run.gold
+    gold_at_floor_start = playing_game.economy.gold
     lives_at_floor_start = playing_game.active_run.lives
     playing_game.economy.gold = 1
     playing_game.economy.lives = 1
@@ -375,31 +384,109 @@ def test_restarting_after_permadeath_does_not_resurrect_the_run(playing_game):
     assert playing_game.active_run is None
 
 
-# --- The draft: picking a tower card between floors ---
+# --- The Shop: buying tower/relic cards between floors ---
 
 
-def test_picking_a_draft_choice_advances_to_the_next_floor(game):
+def _force_relic_draft(game, relic_key):
+    """Overrides whatever shop.build_offer() actually offered with a
+    single forced relic choice, for tests that need to verify one specific
+    relic's math rather than accept whichever ones a given seed happened to
+    draw. Priced at 0 so the forced pick is always affordable regardless of
+    shop_currency -- these tests are about the relic's own effect, not the
+    shop's own economy (see tests/test_shop.py for that)."""
+    game.draft_choices = [ShopItem("relic", relic_key, 0)]
+    game.draft_choice_rects = ui.build_draft_choice_rects(1)
+    game.shop_purchased_indices = set()
+
+
+def test_buying_a_shop_item_then_continuing_advances_to_the_next_floor(game):
     game.start_new_run(seed=1)
-    game.economy.gold = 9999
     game.economy.lives = 3
     finish_all_waves(game)
     game.update(dt=0.01)
     game._enter_draft()
     picked = game.draft_choices[0]
-    rect = game.draft_choice_rects[0]
+    game.active_run.shop_currency = 9999  # affordability isn't this test's own concern
 
-    game._handle_draft_click(rect.center)
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
+
+    assert 0 in game.shop_purchased_indices
+    assert game.state == GameState.DRAFT  # buying alone doesn't leave the shop
+    if picked.kind == "relic":
+        assert picked.key in game.active_run.relics
+    else:
+        assert picked.key in game.active_run.unlocked_towers
+
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # leave the shop
 
     assert game.state == GameState.PLAYING
     assert game.active_run.floor_index == 1
-    assert picked in game.active_run.unlocked_towers
-    # Carried from the just-cleared floor, not floor 1's own authored
-    # starting_gold/starting_lives -- same proof test_floor_clear_enters_
-    # floor_cleared_and_captures_gold_lives makes for the FLOOR_CLEARED
-    # step, extended through the rest of the flow.
-    assert game.economy.gold == 9999
-    assert game.economy.lives == 3
-    assert picked in game.button_rects  # menu reflects the newly-drafted tower too
+    assert game.economy.lives == 3  # lives still carry from the just-cleared floor
+    if picked.kind == "tower":
+        assert picked.key in game.button_rects  # next floor's menu reflects the newly-bought tower
+
+
+def test_buying_a_shop_item_deducts_its_escalated_price(game):
+    game.start_new_run(seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_draft()
+    assert len(game.draft_choices) >= 2  # a run this fresh always has at least 2 items to offer
+    game.active_run.shop_currency = 9999
+    first_price = shop.price_for(game.draft_choices[0], 0)
+    second_price = shop.price_for(game.draft_choices[1], 1)  # escalated -- one purchase already made
+    currency_before = game.active_run.shop_currency
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+    assert game.active_run.shop_currency == currency_before - first_price
+
+    game._handle_draft_click(game.draft_choice_rects[1].center)
+    assert game.active_run.shop_currency == currency_before - first_price - second_price
+
+
+def test_buying_an_unaffordable_shop_item_does_nothing(game):
+    game.start_new_run(seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_draft()
+    game.active_run.shop_currency = 0
+    unlocked_before = list(game.active_run.unlocked_towers)
+    relics_before = list(game.active_run.relics)
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    assert game.shop_purchased_indices == set()
+    assert game.active_run.shop_currency == 0
+    assert game.active_run.unlocked_towers == unlocked_before
+    assert game.active_run.relics == relics_before
+
+
+def test_unlimited_gold_makes_every_shop_item_free(game):
+    game.start_new_run(seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_draft()
+    game.economy.unlimited_gold = True
+    game.active_run.shop_currency = 0
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    assert 0 in game.shop_purchased_indices
+    assert game.active_run.shop_currency == 0  # never actually deducted, same as battle gold
+
+
+def test_clicking_a_purchased_item_again_does_nothing(game):
+    game.start_new_run(seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_draft()
+    game.active_run.shop_currency = 9999
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
+    currency_after_first_buy = game.active_run.shop_currency
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # click the same, now-SOLD card again
+
+    assert game.active_run.shop_currency == currency_after_first_buy
 
 
 def test_clicking_off_a_draft_card_does_nothing(game):
@@ -409,10 +496,26 @@ def test_clicking_off_a_draft_card_does_nothing(game):
     game._enter_draft()
     unlocked_before = list(game.active_run.unlocked_towers)
 
-    game._handle_draft_click((0, 0))  # nowhere near any card
+    game._handle_draft_click((0, 0))  # nowhere near any card or the Continue button
 
     assert game.state == GameState.DRAFT
     assert game.active_run.unlocked_towers == unlocked_before
+
+
+def test_continue_button_advances_without_buying_anything(game):
+    game.start_new_run(seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_draft()
+    unlocked_before = list(game.active_run.unlocked_towers)
+    relics_before = list(game.active_run.relics)
+
+    game._handle_draft_click(game.shop_continue_button_rect.center)
+
+    assert game.state == GameState.PLAYING
+    assert game.active_run.floor_index == 1
+    assert game.active_run.unlocked_towers == unlocked_before
+    assert game.active_run.relics == relics_before
 
 
 def test_draft_escape_quits(game):
@@ -427,9 +530,10 @@ def test_draft_escape_quits(game):
     assert game.running is False
 
 
-def test_enter_draft_skips_the_draft_screen_once_the_pool_is_exhausted(game):
+def test_enter_draft_skips_the_shop_screen_once_both_pools_are_exhausted(game):
     game.start_new_run(seed=1)
-    game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already drafted
+    game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
+    game.active_run.relics = list(RELICS.keys())  # every relic already held
     finish_all_waves(game)
     game.update(dt=0.01)
 
@@ -439,12 +543,28 @@ def test_enter_draft_skips_the_draft_screen_once_the_pool_is_exhausted(game):
     assert game.active_run.floor_index == 1
 
 
-def test_run_seed_reproduces_the_same_draft_offer(game):
+def test_enter_draft_still_shows_up_with_only_relics_left_to_offer(game):
+    # Regression guard: the old draft screen could fall all the way through
+    # to PLAYING if towers specifically were exhausted (see _is_relic_floor's
+    # former fallback logic) -- the Shop must still show up as long as
+    # *either* pool has something left, since it offers both together now.
+    game.start_new_run(seed=1)
+    game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
+    finish_all_waves(game)
+    game.update(dt=0.01)
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert all(item.kind == "relic" for item in game.draft_choices)
+
+
+def test_run_seed_reproduces_the_same_shop_offer(game):
     # Floor-sequence reproducibility for a fixed seed is already covered by
     # test_start_new_run_is_deterministic_for_a_fixed_seed above -- this
-    # covers the one additional fact that test can't: the draft offer
-    # itself (derived via _run_rng, only reachable through Game)
-    # reproduces too, so two players on the same seed see the same cards.
+    # covers the one additional fact that test can't: the shop offer itself
+    # (derived via _run_rng, only reachable through Game) reproduces too, so
+    # two players on the same seed see the same items.
     game.start_new_run(seed=99)
     finish_all_waves(game)
     game.update(dt=0.01)
@@ -458,6 +578,22 @@ def test_run_seed_reproduces_the_same_draft_offer(game):
     second_offer = list(game.draft_choices)
 
     assert first_offer == second_offer
+
+
+def test_enter_draft_uses_shop_build_offer(game, monkeypatch):
+    # A thin wiring test: _enter_draft delegates entirely to shop.
+    # build_offer for what to show, rather than assembling its own list --
+    # towers and relics can come back mixed together in one offer now (see
+    # shop.build_offer's own tests for that mixing behavior in isolation).
+    game.start_new_run(seed=1)
+    fake_offer = [ShopItem("tower", "sniper", 8), ShopItem("relic", "war_chest", 10)]
+    monkeypatch.setattr(shop, "build_offer", lambda rng, run, meta_progression_path=None: fake_offer)
+
+    game._enter_draft()
+
+    assert game.state == GameState.DRAFT
+    assert game.draft_choices == fake_offer
+    assert len(game.draft_choice_rects) == len(fake_offer)
 
 
 def test_floor_and_draft_rng_streams_dont_collide_even_for_a_zero_seed(game):
@@ -476,91 +612,19 @@ def test_floor_and_draft_rng_streams_dont_collide_even_for_a_zero_seed(game):
     assert floor_rng.random() != draft_rng.random()
 
 
-# --- The draft: relic cards, and the modifiers they compose in ---
-
-
-def test_relic_floor_offers_relics_instead_of_towers(game):
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1  # next_floor = 2, an even (relic) floor
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "relic"
-    assert set(game.draft_choices).issubset(RELICS.keys())
-
-
-def test_relic_floor_falls_back_to_a_tower_draft_once_every_relic_is_held(game):
-    # Matches _is_relic_floor's own documented contract: unreachable at the
-    # current RELICS/RELIC_FLOOR_INTERVAL tuning in real play (a run can
-    # never hold more relics than it has relic-draft floors for), but
-    # _enter_draft() used to skip the screen entirely here instead of
-    # actually falling back, contradicting what it claimed to do.
-    # (Same meta-progression bump test_non_relic_floor_offers_towers needs
-    # and explains above -- without it there's nothing beyond STARTER_
-    # TOWERS to fall back to either, and this test would prove nothing.)
-    meta_progression.bump("total_floors_cleared", 1, game.meta_progression_path)
-    game.start_new_run(seed=1)
-    game.active_run.relics = list(RELICS.keys())  # every relic already held
-    game.active_run.floor_index = 1  # next_floor = 2, a relic floor
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "tower"
-    assert game.draft_choices  # STARTER_TOWERS isn't the whole registry yet
-
-
-def test_non_relic_floor_offers_towers(game):
-    # Unlike a relic draft (never gated), a tower draft needs something
-    # meta-progression-unlocked beyond STARTER_TOWERS to actually offer --
-    # real gameplay always has this by the time _enter_draft runs
-    # (_advance_run_floor bumps total_floors_cleared first), but this test
-    # skips straight to _enter_draft without ever clearing a floor.
-    meta_progression.bump("total_floors_cleared", 1, game.meta_progression_path)
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 0  # next_floor = 1, an odd (tower) floor
-
-    game._enter_draft()
-
-    assert game.state == GameState.DRAFT
-    assert game.draft_kind == "tower"
-
-
-def test_picking_a_relic_adds_it_to_the_runs_relics_and_advances(game):
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
-    game._enter_draft()
-    picked = game.draft_choices[0]
-
-    game._handle_draft_click(game.draft_choice_rects[0].center)
-
-    assert picked in game.active_run.relics
-    assert game.active_run.floor_index == 2
-    assert game.state == GameState.PLAYING
+# --- Relic effects bought from the shop, and the modifiers they compose in ---
 
 
 def test_relic_gold_per_floor_bonus_is_applied_on_every_floor_load(game):
     game.start_new_run(seed=1)
-    game.active_run.relics = ["prospectors_charm"]
-    gold_before = game.active_run.gold
-
     game._load_floor(1)
+    gold_without_relic = game.economy.gold
 
-    assert game.economy.gold == gold_before + RELICS["prospectors_charm"].gold_per_floor_bonus
-
-
-def test_relic_gold_per_floor_bonus_is_reflected_in_run_gold_at_floor_zero(game):
-    # Regression guard: run.gold is captured *after* the bonus is applied
-    # at floor 0, not before -- otherwise the very next floor's carried-
-    # forward gold would silently lose whatever bonus floor 0 already
-    # credited to the live economy.
     game.start_new_run(seed=1)
     game.active_run.relics = ["prospectors_charm"]
+    game._load_floor(1)
 
-    game._load_floor(0)
-
-    assert game.active_run.gold == game.economy.gold
+    assert game.economy.gold == gold_without_relic + RELICS["prospectors_charm"].gold_per_floor_bonus
 
 
 def test_misers_coffer_bonus_stops_after_the_runs_first_spend(game):
@@ -580,48 +644,33 @@ def test_misers_coffer_bonus_stops_after_the_runs_first_spend(game):
     assert game.economy.gold == gold_with_bonus - RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
 
 
-def _force_relic_draft(game, relic_key):
-    """Overrides whatever relic_offer() actually offered with a single
-    forced choice, for tests that need to verify one specific relic's math
-    rather than accept whichever ones a given seed happened to draw."""
-    game.draft_choices = [relic_key]
-    game.draft_choice_rects = ui.build_draft_choice_rects(1)
-
-
-def test_war_chest_grants_a_one_time_gold_bonus_when_drafted(game):
-    # war_chest can never be drafted before floor 2 (see _is_relic_floor),
-    # by which point floor 0's own Economy construction -- the only place
-    # a starting_gold_multiplier could otherwise act -- is long gone (see
-    # relics.RelicModifiers' own docstring for the full reasoning). Its
-    # bonus is applied directly, once, the instant the card is drafted
-    # (Game._apply_one_time_relic_bonus), computed against what this run's
-    # own starter floor's baseline actually was -- not whatever gold the
-    # player happens to be carrying at pick time.
+def test_war_chest_multiplies_starting_gold_on_every_floor_not_just_once(game):
+    # Regression guard for the redesign: war_chest used to be a one-time
+    # bonus applied only at the moment it was bought (see relics.py's own
+    # module docstring for the "why" -- back when battle gold carried
+    # forward, "starting gold" only existed once, at floor 0). Now that
+    # battle gold resets fresh every floor instead, it has to keep applying
+    # on every single floor load, not just the one right after it's bought.
     game.start_new_run(seed=1)
-    game.active_run.floor_index = 1  # next_floor = 2, a relic floor
     game._enter_draft()
     _force_relic_draft(game, "war_chest")
-    starter_level = LEVELS[game.active_run.floor_sequence[0]]
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1
+    gold_floor_1 = game.economy.gold
+
+    game._load_floor(2)
+    gold_floor_2 = game.economy.gold
+
     mode = DIFFICULTY_MODES[game.active_run.difficulty]
-    base_gold = round(starter_level.starting_gold * mode.starting_gold_multiplier)
-    gold_before = game.active_run.gold
-
-    game._handle_draft_click(game.draft_choice_rects[0].center)
-
-    # One combined round(), not round(base_gold * (multiplier - 1.0)) --
-    # see test_war_chests_bonus_matches_a_single_combined_rounding below
-    # for why the two formulas can disagree once a difficulty multiplier
-    # makes base_gold itself not already a whole number.
-    expected_bonus = (
-        round(starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier)
-        - base_gold
-    )
-    assert game.active_run.gold == gold_before + expected_bonus
+    multiplier = RELICS["war_chest"].starting_gold_multiplier
+    level_1 = LEVELS[game.active_run.floor_sequence[1]]
+    level_2 = LEVELS[game.active_run.floor_sequence[2]]
+    assert gold_floor_1 == round(level_1.starting_gold * mode.starting_gold_multiplier * multiplier)
+    assert gold_floor_2 == round(level_2.starting_gold * mode.starting_gold_multiplier * multiplier)
 
 
-def test_sturdy_gate_grants_a_one_time_lives_bonus_when_drafted(game):
+def test_sturdy_gate_grants_a_one_time_lives_bonus_when_bought(game):
     game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
     game._enter_draft()
     _force_relic_draft(game, "sturdy_gate")
     lives_before = game.active_run.lives
@@ -629,56 +678,6 @@ def test_sturdy_gate_grants_a_one_time_lives_bonus_when_drafted(game):
     game._handle_draft_click(game.draft_choice_rects[0].center)
 
     assert game.active_run.lives == lives_before + RELICS["sturdy_gate"].starting_lives_bonus
-
-
-def test_war_chests_bonus_is_not_reapplied_on_a_later_floor_load(game):
-    # Regression guard for the bug this replaced: war_chest/sturdy_gate
-    # used to be folded into Economy construction, which only ever fires
-    # at floor 0 -- silently making them permanently inert, since no relic
-    # can ever be held that early. Now that the bonus is a one-time,
-    # direct addition at pick time instead, confirm it really is one-time:
-    # loading (or restarting) a later floor after the draft that picked it
-    # must not grant it again.
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
-    game._enter_draft()
-    _force_relic_draft(game, "war_chest")
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 2, bonus applied once
-    gold_after_draft = game.active_run.gold
-
-    game._load_floor(game.active_run.floor_index)  # restart the same floor
-
-    assert game.active_run.gold == gold_after_draft
-
-
-def test_war_chests_bonus_matches_a_single_combined_rounding(game):
-    # Regression guard: _apply_one_time_relic_bonus used to compute
-    # base_gold = round(starting_gold * mode_multiplier), then add
-    # round(base_gold * (relic_multiplier - 1.0)) on top -- two separate
-    # roundings that can disagree with the single round(starting_gold *
-    # mode_multiplier * relic_multiplier) _load_level_object's own Economy
-    # construction would produce had the relic's multiplier been present
-    # from the start. Hard's 0.85 starting_gold_multiplier is what
-    # actually exposes the gap (round(round(150*0.85)*1.25) == 160 vs.
-    # round(150*0.85*1.25) == 159) -- Normal's 1.0 multiplier leaves
-    # base_gold already a whole number, where both formulas coincide.
-    game.set_difficulty("hard")
-    game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
-    game._enter_draft()
-    _force_relic_draft(game, "war_chest")
-    starter_level = LEVELS[game.active_run.floor_sequence[0]]
-    mode = DIFFICULTY_MODES[game.active_run.difficulty]
-    gold_before = game.active_run.gold
-
-    game._handle_draft_click(game.draft_choice_rects[0].center)
-
-    single_rounding_gold = round(
-        starter_level.starting_gold * mode.starting_gold_multiplier * RELICS["war_chest"].starting_gold_multiplier
-    )
-    base_gold = round(starter_level.starting_gold * mode.starting_gold_multiplier)
-    assert single_rounding_gold != round(base_gold * RELICS["war_chest"].starting_gold_multiplier)  # the gap is real
-    assert game.active_run.gold == gold_before + (single_rounding_gold - base_gold)
 
 
 def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
@@ -706,10 +705,10 @@ def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
     # itself -- so drafting the card, then placing a tower on a later
     # floor, must still see the bonus with no extra plumbing in between.
     game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
     game._enter_draft()
     _force_relic_draft(game, "spyglass_array")
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 2, relic held
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1, relic_modifiers re-derived
 
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
@@ -1059,7 +1058,9 @@ def test_run_history_records_floors_cleared_at_time_of_death(game):
     finish_all_waves(game)
     game.update(dt=0.01)  # clears floor 0 -> FLOOR_CLEARED
     game._enter_draft()
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 1, PLAYING
+    game.active_run.shop_currency = 9999
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy an item
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1, PLAYING
     game.economy.lives = 1
     game.enemies = []
 
@@ -1119,7 +1120,7 @@ def test_first_floor_clear_unlocks_a_tower_and_it_appears_in_the_draft(game):
     game._enter_draft()
 
     assert game.state == GameState.DRAFT
-    assert "knockback" in game.draft_choices
+    assert any(item.key == "knockback" for item in game.draft_choices)
 
 
 def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
@@ -1145,20 +1146,21 @@ def test_saving_mid_run_captures_the_active_run(game):
     assert saved["run"].floor_sequence == run_before.floor_sequence
     assert saved["run"].unlocked_towers == run_before.unlocked_towers
     assert saved["run"].floor_index == run_before.floor_index
-    assert saved["run"].gold == run_before.gold
+    assert saved["run"].shop_currency == run_before.shop_currency
     assert saved["run"].lives == run_before.lives
 
 
 def test_resuming_a_saved_run_restores_active_run(game):
     game.start_new_run(seed=1)
     game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
-    # active_run.gold/lives are only re-synced from economy at a floor's own
-    # clear (_advance_run_floor) -- not live every frame -- so a save taken
-    # mid-floor genuinely captures two different numbers here, same as it
-    # would with no save/resume involved at all. economy.gold (350 after
-    # this) is what a resume should restore live play to; active_run.gold
-    # (still floor 0's original 150) is what the *next* floor load would
-    # carry forward from, unaffected by this frame's spending.
+    game.active_run.shop_currency = 42  # a run-level field, distinct from economy.gold below
+    # economy.gold is never re-synced onto RunState at all now -- battle
+    # gold doesn't carry between floors any more (see CLAUDE.md's "Two
+    # currencies" section) -- so a save taken mid-floor genuinely captures
+    # numbers from two unrelated places here: economy.gold (350 after this)
+    # is what a resume should restore live play to; active_run.shop_
+    # currency (42) is this run's own separately-persisted currency,
+    # untouched by this frame's battle-gold spending.
     game.economy.gold += 200
     run_before = game.active_run
     game.save_run()
@@ -1171,7 +1173,7 @@ def test_resuming_a_saved_run_restores_active_run(game):
     assert game.active_run.floor_sequence == run_before.floor_sequence
     assert game.active_run.unlocked_towers == run_before.unlocked_towers
     assert game.active_run.floor_index == run_before.floor_index
-    assert game.active_run.gold == run_before.gold
+    assert game.active_run.shop_currency == run_before.shop_currency
     assert game.active_run.lives == run_before.lives
     assert game.economy.gold == 350
     assert game.state == GameState.PLAYING
@@ -1318,7 +1320,9 @@ def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
     finish_all_waves(game)
     game.update(dt=0.01)  # -> FLOOR_CLEARED
     game._enter_draft()
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> _load_floor(1), still same run
+    game.active_run.shop_currency = 9999
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy an item
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> _load_floor(1), still same run
     assert game._resumed_from_save is True
 
     game.economy.lives = 1
@@ -1472,9 +1476,8 @@ def test_render_draft_does_not_crash(game):
 
 def test_render_relic_draft_does_not_crash(game):
     game.start_new_run(seed=1)
-    game.active_run.floor_index = 1
     game._enter_draft()
+    _force_relic_draft(game, "war_chest")
     assert game.state == GameState.DRAFT
-    assert game.draft_kind == "relic"
 
     game.render()

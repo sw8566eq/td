@@ -69,7 +69,10 @@ def _run_to_dict(run):
     """One RunState -> the plain-JSON dict _run_from_dict() reconstructs it
     from. floor_sequence/unlocked_towers/relics are all plain lists on the
     way out -- RunState.floor_sequence is a tuple, the one field here JSON
-    can't round-trip byte-for-byte, so _run_from_dict() converts it back."""
+    can't round-trip byte-for-byte, so _run_from_dict() converts it back.
+    No "gold" key -- battle gold (Economy.gold) resets fresh every floor
+    now and was never part of RunState to begin with (see run_state.py's
+    own docstring); shop_currency is the field that persists here instead."""
     return {
         "seed": run.seed,
         "floor_sequence": list(run.floor_sequence),
@@ -77,7 +80,7 @@ def _run_to_dict(run):
         "unlocked_towers": list(run.unlocked_towers),
         "floor_index": run.floor_index,
         "lives": run.lives,
-        "gold": run.gold,
+        "shop_currency": run.shop_currency,
         "relics": list(run.relics),
         "is_daily": run.is_daily,
         "has_spent_gold": run.has_spent_gold,
@@ -93,7 +96,11 @@ def _run_from_dict(data):
         unlocked_towers=list(data["unlocked_towers"]),
         floor_index=data["floor_index"],
         lives=data["lives"],
-        gold=data["gold"],
+        # .get() with a default, not data["shop_currency"] -- a save
+        # written before this field existed (back when "gold" was the key
+        # here instead) should still load, just with no shop currency
+        # banked yet, same spirit as sold_towers' own .get() below.
+        shop_currency=data.get("shop_currency", 0),
         relics=list(data["relics"]),
         is_daily=data["is_daily"],
         has_spent_gold=data["has_spent_gold"],
