@@ -1705,6 +1705,10 @@ class Game:
         tower.relic_chain_chance = self.relic_modifiers.chain_chance
         tower.relic_chain_effect = self.relic_modifiers.chain_effect
         tower.relic_last_stand_bonus_multiplier = self.relic_modifiers.last_stand_damage_multiplier
+        tower.relic_upgrade_cost_multiplier = self.relic_modifiers.tower_upgrade_cost_multiplier
+        tower.relic_sell_refund_bonus = self.relic_modifiers.sell_refund_bonus
+        tower.relic_aura_range_bonus_multiplier = self.relic_modifiers.support_aura_range_multiplier
+        tower.relic_aura_strength_bonus_multiplier = self.relic_modifiers.support_aura_strength_multiplier
         return tower
 
     def _current_footprint_subtiles(self):

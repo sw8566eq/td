@@ -242,6 +242,23 @@ def test_guardians_reprieve_contributes_nothing_to_composed_modifiers():
     assert compose_relic_modifiers(["guardians_reprieve"]) == RelicModifiers()
 
 
+def test_compose_relic_modifiers_multiplies_tower_upgrade_cost_multiplier():
+    modifiers = compose_relic_modifiers(["quartermasters_favor", "quartermasters_favor"])
+    assert modifiers.tower_upgrade_cost_multiplier == RELICS["quartermasters_favor"].tower_upgrade_cost_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_sell_refund_bonus():
+    modifiers = compose_relic_modifiers(["liquidation_rights", "liquidation_rights"])
+    assert modifiers.sell_refund_bonus == RELICS["liquidation_rights"].sell_refund_bonus * 2
+
+
+def test_compose_relic_modifiers_multiplies_support_aura_multipliers():
+    modifiers = compose_relic_modifiers(["resonant_field", "resonant_field"])
+    relic = RELICS["resonant_field"]
+    assert modifiers.support_aura_range_multiplier == relic.support_aura_range_multiplier ** 2
+    assert modifiers.support_aura_strength_multiplier == relic.support_aura_strength_multiplier ** 2
+
+
 def test_compose_relic_modifiers_is_order_independent():
     forward = compose_relic_modifiers(["prospectors_charm", "war_chest", "sturdy_gate"])
     backward = compose_relic_modifiers(["sturdy_gate", "war_chest", "prospectors_charm"])

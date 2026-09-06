@@ -370,6 +370,31 @@ def test_support_tower_buffs_an_attacking_tower_in_range():
     assert attacker.aura_range_multiplier == SupportTower.buff_range_multiplier
 
 
+def test_resonant_field_widens_a_support_towers_broadcast_reach():
+    support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    just_outside_base_reach = BasicTower(
+        anchor_col=1, anchor_row=1, pixel_pos=(support.range + 10, 0),
+    )
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, just_outside_base_reach])
+    assert just_outside_base_reach.aura_damage_multiplier == 1.0  # not yet buffed
+
+    support.relic_aura_range_bonus_multiplier = 1.20
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, just_outside_base_reach])
+
+    assert just_outside_base_reach.aura_damage_multiplier == SupportTower.buff_damage_multiplier
+
+
+def test_resonant_field_strengthens_a_support_towers_own_buff():
+    support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    attacker = BasicTower(anchor_col=1, anchor_row=1, pixel_pos=(60, 50))
+    support.relic_aura_strength_bonus_multiplier = 1.20
+
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, attacker])
+
+    assert attacker.aura_damage_multiplier == pytest.approx(SupportTower.buff_damage_multiplier * 1.20)
+    assert attacker.aura_range_multiplier == pytest.approx(SupportTower.buff_range_multiplier * 1.20)
+
+
 def test_support_tower_does_not_buff_a_tower_out_of_range():
     support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
     far_attacker = BasicTower(anchor_col=10, anchor_row=10, pixel_pos=(10_000, 10_000))

@@ -105,6 +105,18 @@ class Relic:
     # crit_damage_multiplier already makes, since it's dormant today (only
     # one such relic exists).
     last_stand_damage_multiplier: float = 1.0
+    # quartermasters_favor's own discount -- see Tower.upgrade_cost()/
+    # specialization_cost().
+    tower_upgrade_cost_multiplier: float = 1.0
+    # liquidation_rights' own bonus -- added to (not multiplied against)
+    # settings.SELL_REFUND_FRACTION, see Tower.sell_value().
+    sell_refund_bonus: float = 0.0
+    # resonant_field's own pair -- see RelicModifiers' matching fields and
+    # SupportTower.update() for where they actually apply. Deliberately
+    # separate from tower_range_multiplier above -- see that method's own
+    # comment for why.
+    support_aura_range_multiplier: float = 1.0
+    support_aura_strength_multiplier: float = 1.0
 
 
 RELICS = {
@@ -214,6 +226,21 @@ RELICS = {
         "+30% damage for every tower while you're down to your last life.",
         last_stand_damage_multiplier=1.30,
     ),
+    "quartermasters_favor": Relic(
+        "quartermasters_favor", "Quartermaster's Favor",
+        "Tower upgrades and specializations cost 15% less gold, every floor.",
+        tower_upgrade_cost_multiplier=0.85,
+    ),
+    "liquidation_rights": Relic(
+        "liquidation_rights", "Liquidation Rights",
+        "Selling a tower refunds an extra 15% of what you paid for it, every floor.",
+        sell_refund_bonus=0.15,
+    ),
+    "resonant_field": Relic(
+        "resonant_field", "Resonant Field",
+        "Support tower auras reach 20% further and buff 20% more, every floor.",
+        support_aura_range_multiplier=1.20, support_aura_strength_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -299,6 +326,10 @@ class RelicModifiers:
     chain_chance: float = 0.0
     chain_effect: tuple = None
     last_stand_damage_multiplier: float = 1.0
+    tower_upgrade_cost_multiplier: float = 1.0
+    sell_refund_bonus: float = 0.0
+    support_aura_range_multiplier: float = 1.0
+    support_aura_strength_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -345,12 +376,20 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     chain_chance = 0.0
     chain_effect = None
     last_stand_damage_multiplier = 1.0
+    tower_upgrade_cost_multiplier = 1.0
+    sell_refund_bonus = 0.0
+    support_aura_range_multiplier = 1.0
+    support_aura_strength_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
         if not has_spent_gold:
             gold_per_floor_bonus += relic.gold_per_floor_bonus_while_unspent
         last_stand_damage_multiplier = max(last_stand_damage_multiplier, relic.last_stand_damage_multiplier)
+        tower_upgrade_cost_multiplier *= relic.tower_upgrade_cost_multiplier
+        sell_refund_bonus += relic.sell_refund_bonus
+        support_aura_range_multiplier *= relic.support_aura_range_multiplier
+        support_aura_strength_multiplier *= relic.support_aura_strength_multiplier
         enemy_gold_multiplier *= relic.enemy_gold_multiplier
         enemy_speed_multiplier *= relic.enemy_speed_multiplier
         tower_range_multiplier *= relic.tower_range_multiplier
@@ -398,4 +437,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         chain_chance=chain_chance,
         chain_effect=chain_effect,
         last_stand_damage_multiplier=last_stand_damage_multiplier,
+        tower_upgrade_cost_multiplier=tower_upgrade_cost_multiplier,
+        sell_refund_bonus=sell_refund_bonus,
+        support_aura_range_multiplier=support_aura_range_multiplier,
+        support_aura_strength_multiplier=support_aura_strength_multiplier,
     )

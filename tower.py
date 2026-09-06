@@ -208,10 +208,14 @@ class Tower:
         return self.level >= self.MAX_LEVEL
 
     def upgrade_cost(self):
-        """Gold cost to reach the next level, or None if already maxed."""
+        """Gold cost to reach the next level, or None if already maxed.
+        Folds in relic_upgrade_cost_multiplier (a Quartermaster's Favor-
+        style relic's own discount, set once at construction like every
+        other relic_* field -- see Game._construct_tower) the same way
+        specialization_cost() below does."""
         if self.is_max_level:
             return None
-        return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1])
+        return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1] * self.relic_upgrade_cost_multiplier)
 
     def _multiplier_table_for(self, name):
         """The level->multiplier table that applies to stat `name` -- its
@@ -233,9 +237,11 @@ class Tower:
 
     def sell_value(self):
         """Gold refunded if this tower is sold right now -- a fraction
-        (settings.SELL_REFUND_FRACTION) of everything spent on it, base
-        cost plus any upgrades, not just the base cost."""
-        return round(self.total_invested * settings.SELL_REFUND_FRACTION)
+        (settings.SELL_REFUND_FRACTION, plus a Liquidation Rights-style
+        relic's own additive bonus -- relic_sell_refund_bonus, set once at
+        construction) of everything spent on it, base cost plus any
+        upgrades, not just the base cost."""
+        return round(self.total_invested * (settings.SELL_REFUND_FRACTION + self.relic_sell_refund_bonus))
 
     @property
     def can_specialize(self):
@@ -243,10 +249,12 @@ class Tower:
 
     def specialization_cost(self):
         """Gold cost to choose a specialization, or None if not eligible
-        right now (not maxed yet, or already specialized)."""
+        right now (not maxed yet, or already specialized). Folds in
+        relic_upgrade_cost_multiplier the same way upgrade_cost() above
+        does -- a Quartermaster's Favor-style relic discounts both."""
         if not self.can_specialize:
             return None
-        return round(self.cost * self.SPECIALIZATION_COST_MULTIPLIER)
+        return round(self.cost * self.SPECIALIZATION_COST_MULTIPLIER * self.relic_upgrade_cost_multiplier)
 
     def specialize(self, key):
         """Choose specialization `key` -- the one-time branching upgrade
@@ -959,12 +967,24 @@ class SupportTower(Tower):
         # also fold in aura_range_multiplier -- see relic_adjusted_range()'s
         # own docstring for why that specifically causes a same-frame,
         # order-dependent buff chain between Support towers.
-        broadcast_range = self.relic_adjusted_range()
+        # relic_aura_range_bonus_multiplier/relic_aura_strength_bonus_
+        # multiplier (a Resonant Field-style relic) multiply straight onto
+        # the already-resolved values below -- combining two SAME-kind
+        # multipliers, unlike relic_adjusted_range()'s own additive
+        # combination of DIFFERENT-origin bonuses (see that method's own
+        # docstring). Deliberately separate fields from tower_range_
+        # multiplier/relic_range_bonus_multiplier above -- a general Range
+        # relic already widens this tower's own broadcast reach via
+        # relic_adjusted_range(); Resonant Field scales specifically the
+        # aura math on top of that, not instead of it.
+        broadcast_range = self.relic_adjusted_range() * self.relic_aura_range_bonus_multiplier
+        buffed_damage_multiplier = self.buff_damage_multiplier * self.relic_aura_strength_bonus_multiplier
+        buffed_range_multiplier = self.buff_range_multiplier * self.relic_aura_strength_bonus_multiplier
         for other in (towers or ()):
             if other is self:
                 continue
             if self.pos.distance_to(other.pos) <= broadcast_range:
-                other.receive_aura(self.buff_damage_multiplier, self.buff_range_multiplier)
+                other.receive_aura(buffed_damage_multiplier, buffed_range_multiplier)
 
     def create_projectile(self, target):
         raise NotImplementedError("SupportTower never fires -- see update()")

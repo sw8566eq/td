@@ -927,6 +927,48 @@ def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
     assert tower.relic_crit_damage_multiplier == relic.crit_damage_multiplier
 
 
+def test_quartermasters_favor_discount_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["quartermasters_favor"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_upgrade_cost_multiplier == RELICS["quartermasters_favor"].tower_upgrade_cost_multiplier
+
+
+def test_liquidation_rights_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["liquidation_rights"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_sell_refund_bonus == RELICS["liquidation_rights"].sell_refund_bonus
+
+
+def test_resonant_field_bonus_reaches_a_freshly_placed_support_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["resonant_field"]
+    game.active_run.unlocked_towers.append("support")  # a drafted card, not a starter tower
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "support"
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["resonant_field"]
+    assert tower.relic_aura_range_bonus_multiplier == relic.support_aura_range_multiplier
+    assert tower.relic_aura_strength_bonus_multiplier == relic.support_aura_strength_multiplier
+
+
 def test_compact_framework_shrinks_a_freshly_placed_towers_footprint(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["compact_framework"]
