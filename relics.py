@@ -97,7 +97,7 @@ class Relic:
     # RelicModifiers' shared gold_per_floor_bonus accumulator by
     # compose_relic_modifiers, gated on the new has_spent_gold parameter
     # rather than on anything this dataclass itself tracks -- see
-    # Game._note_gold_spent for where that flag actually gets set.
+    # Game._spend_gold for where that flag actually gets set.
     gold_per_floor_bonus_while_unspent: int = 0
     # last_stand_charm's own bonus -- see RelicModifiers' matching field
     # and Tower.set_last_stand_multiplier/effective_damage() for where it
@@ -207,7 +207,7 @@ RELICS = {
     ),
     # Bigger than prospectors_charm's flat +20 since it's conditional --
     # closer to Slay the Spire's actual Maw Bank than a per-floor reset:
-    # one run-long deactivation (Game._note_gold_spent/RunState.has_spent_
+    # one run-long deactivation (Game._spend_gold/RunState.has_spent_
     # gold), not something that comes back next floor.
     "misers_coffer": Relic(
         "misers_coffer", "Miser's Coffer",
@@ -306,7 +306,7 @@ class RelicModifiers:
     it's held" framing above either, and are resolved elsewhere entirely:
     misers_coffer's gold_per_floor_bonus_while_unspent folds into
     gold_per_floor_bonus above, but only conditionally (see compose_relic_
-    modifiers' has_spent_gold parameter and Game._note_gold_spent) --
+    modifiers' has_spent_gold parameter and Game._spend_gold) --
     once revoked, it stays revoked for the rest of the run, unlike every
     other field here which stays constant for as long as the relic is
     held. guardians_reprieve has no field here at all (see RELICS' own
