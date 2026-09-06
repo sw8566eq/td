@@ -199,6 +199,49 @@ def test_compose_relic_modifiers_no_chain_relic_leaves_chain_fields_neutral():
     assert modifiers.chain_effect is None
 
 
+def test_compose_relic_modifiers_grants_misers_coffer_bonus_when_nothing_spent():
+    modifiers = compose_relic_modifiers(["misers_coffer"], has_spent_gold=False)
+    assert modifiers.gold_per_floor_bonus == RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
+
+
+def test_compose_relic_modifiers_revokes_misers_coffer_bonus_once_gold_is_spent():
+    modifiers = compose_relic_modifiers(["misers_coffer"], has_spent_gold=True)
+    assert modifiers.gold_per_floor_bonus == 0
+
+
+def test_compose_relic_modifiers_default_has_spent_gold_matches_false():
+    # No has_spent_gold passed at all (every pre-existing call site's
+    # shape) must behave identically to has_spent_gold=False.
+    assert compose_relic_modifiers(["misers_coffer"]) == compose_relic_modifiers(
+        ["misers_coffer"], has_spent_gold=False
+    )
+
+
+def test_compose_relic_modifiers_misers_coffer_combines_with_prospectors_charm():
+    modifiers = compose_relic_modifiers(["prospectors_charm", "misers_coffer"], has_spent_gold=False)
+    assert modifiers.gold_per_floor_bonus == (
+        RELICS["prospectors_charm"].gold_per_floor_bonus + RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
+    )
+
+
+def test_compose_relic_modifiers_takes_the_max_last_stand_damage_multiplier(monkeypatch):
+    weaker_last_stand = Relic("test_weaker_last_stand", "", "", last_stand_damage_multiplier=1.1)
+    monkeypatch.setitem(RELICS, "test_weaker_last_stand", weaker_last_stand)
+    modifiers = compose_relic_modifiers(["last_stand_charm", "test_weaker_last_stand"])
+    assert modifiers.last_stand_damage_multiplier == RELICS["last_stand_charm"].last_stand_damage_multiplier
+
+
+def test_compose_relic_modifiers_no_last_stand_relic_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.last_stand_damage_multiplier == 1.0
+
+
+def test_guardians_reprieve_contributes_nothing_to_composed_modifiers():
+    # No numeric fields at all -- checked directly against run.relics in
+    # Game._lose_a_life instead, same shape as war_chest/sturdy_gate.
+    assert compose_relic_modifiers(["guardians_reprieve"]) == RelicModifiers()
+
+
 def test_compose_relic_modifiers_is_order_independent():
     forward = compose_relic_modifiers(["prospectors_charm", "war_chest", "sturdy_gate"])
     backward = compose_relic_modifiers(["sturdy_gate", "war_chest", "prospectors_charm"])

@@ -105,6 +105,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
         seed=42, floor_sequence=(1, 2, 3), difficulty="hard",
         unlocked_towers=["basic", "cannon", "frost"], floor_index=1,
         lives=15, gold=80, relics=["prospectors_charm"], is_daily=True,
+        has_spent_gold=True, used_guardians_reprieve=True,
     )
     game = _FakeGame(level, [], active_run=run)
 
@@ -121,6 +122,8 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     assert loaded_run.gold == 80
     assert loaded_run.relics == ["prospectors_charm"]
     assert loaded_run.is_daily is True
+    assert loaded_run.has_spent_gold is True
+    assert loaded_run.used_guardians_reprieve is True
 
 
 def test_load_run_with_a_saved_run_predating_the_run_key_still_resumes(tmp_path):

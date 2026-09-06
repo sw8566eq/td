@@ -1667,6 +1667,7 @@ class Game:
             return False
 
         self.economy.spend(tower_cls.cost)
+        self._note_gold_spent()
         tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
         self._register_tower(tower)
         self._record_achievement("towers_built")
@@ -1703,6 +1704,7 @@ class Game:
         tower.relic_damage_bonus_multiplier = self.relic_modifiers.tower_damage_multiplier
         tower.relic_chain_chance = self.relic_modifiers.chain_chance
         tower.relic_chain_effect = self.relic_modifiers.chain_effect
+        tower.relic_last_stand_bonus_multiplier = self.relic_modifiers.last_stand_damage_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
@@ -1737,6 +1739,7 @@ class Game:
             return False
 
         self.economy.spend(cost)
+        self._note_gold_spent()
         tower.upgrade()
         # Fires exactly once per tower, the moment it actually reaches
         # MAX_LEVEL -- try_upgrade_tower's own cost-is-None guard above
@@ -1757,6 +1760,7 @@ class Game:
             return False
 
         self.economy.spend(cost)
+        self._note_gold_spent()
         tower.specialize(key)
         self._record_achievement("towers_specialized")
         return True
@@ -1791,6 +1795,42 @@ class Game:
 
     # --- Update ---
 
+    def _lose_a_life(self):
+        """The one call site for losing a life to a leaked enemy --
+        Guardian's Reprieve's interception point. If this run holds the
+        relic, hasn't used its one-time save yet, isn't already
+        invulnerable (sandbox/Creative mode -- nothing to save there,
+        lives never actually drop anyway), and this loss would otherwise
+        zero self.economy.lives out, spend the relic's charge instead of
+        the life: lives is left exactly where it is (1) rather than
+        calling lose_life() at all. Every other case falls straight
+        through to a normal loss. Re-checking lives <= 1 fresh per call
+        (not once per frame) correctly handles several enemies leaking on
+        the same frame: the first one that would actually zero lives out
+        consumes the charge, any others that frame proceed normally
+        against the still-nonzero lives."""
+        run = self.active_run
+        if (
+            run is not None and "guardians_reprieve" in run.relics
+            and not run.used_guardians_reprieve and not self.economy.invulnerable
+            and self.economy.lives <= 1
+        ):
+            run.used_guardians_reprieve = True
+            return
+        self.economy.lose_life()
+
+    def _note_gold_spent(self):
+        """Miser's Coffer's own gate (relics.py) -- called from every
+        Economy.spend() call site (try_place_tower/try_upgrade_tower/
+        try_specialize_tower, the only three ways a player can spend gold
+        today) rather than hooking Economy itself, which stays pure
+        Python with no relic/game awareness per its own module docstring.
+        Tracked unconditionally regardless of whether the relic is even
+        held -- simplest, and reusable by any future relic wanting the
+        same "before this run's first spend" gate."""
+        if self.active_run is not None:
+            self.active_run.has_spent_gold = True
+
     def update(self, dt):
         if self.state != GameState.PLAYING:
             return
@@ -1806,9 +1846,14 @@ class Game:
         # (support or attacking) does its own per-frame work, so which
         # order Game happens to iterate self.towers in can never matter --
         # a support tower later in the list still gets to (re-)buff a
-        # tower earlier in the list within the same frame.
+        # tower earlier in the list within the same frame. A Last Stand
+        # Charm-style relic's live check rides the same first pass --
+        # it's one global condition (not a per-tower proximity check like
+        # the aura), so no second full iteration is needed.
+        last_stand_active = self.economy.lives <= 1
         for tower in self.towers:
             tower.reset_aura()
+            tower.set_last_stand_multiplier(last_stand_active)
         for tower in self.towers:
             tower.update(dt, self.enemies, self.projectiles, self.towers)
 
@@ -1871,7 +1916,7 @@ class Game:
                 # Enemy.pending_spawns).
                 still_alive.extend(enemy.pending_spawns)
             elif enemy.reached_goal:
-                self.economy.lose_life()
+                self._lose_a_life()
             else:
                 still_alive.append(enemy)
         self.enemies = still_alive

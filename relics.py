@@ -93,6 +93,18 @@ class Relic:
     chain_chance: float = 0.0
     chain_damage_fraction: float = 0.0
     chain_range: float = 0.0
+    # Relic-only -- misers_coffer's own conditional bonus. Folded into
+    # RelicModifiers' shared gold_per_floor_bonus accumulator by
+    # compose_relic_modifiers, gated on the new has_spent_gold parameter
+    # rather than on anything this dataclass itself tracks -- see
+    # Game._note_gold_spent for where that flag actually gets set.
+    gold_per_floor_bonus_while_unspent: int = 0
+    # last_stand_charm's own bonus -- see RelicModifiers' matching field
+    # and Tower.set_last_stand_multiplier/effective_damage() for where it
+    # actually applies; aggregated via max(), the same conservative choice
+    # crit_damage_multiplier already makes, since it's dormant today (only
+    # one such relic exists).
+    last_stand_damage_multiplier: float = 1.0
 
 
 RELICS = {
@@ -181,6 +193,27 @@ RELICS = {
         "arcing_rounds", "Arcing Rounds", "20% chance for any hit to also strike a nearby enemy for 50% damage.",
         chain_chance=0.20, chain_damage_fraction=0.5, chain_range=70,
     ),
+    # Bigger than prospectors_charm's flat +20 since it's conditional --
+    # closer to Slay the Spire's actual Maw Bank than a per-floor reset:
+    # one run-long deactivation (Game._note_gold_spent/RunState.has_spent_
+    # gold), not something that comes back next floor.
+    "misers_coffer": Relic(
+        "misers_coffer", "Miser's Coffer",
+        "+40 gold at the start of every floor -- until you spend any gold, then never again this run.",
+        gold_per_floor_bonus_while_unspent=40,
+    ),
+    # No numeric fields at all -- same shape as war_chest/sturdy_gate,
+    # checked directly against run.relics rather than through RelicModifiers
+    # (see Game._lose_a_life). There's nothing here to aggregate.
+    "guardians_reprieve": Relic(
+        "guardians_reprieve", "Guardian's Reprieve",
+        "The first time you'd lose your last life this run, survive with 1 life instead.",
+    ),
+    "last_stand_charm": Relic(
+        "last_stand_charm", "Last Stand Charm",
+        "+30% damage for every tower while you're down to your last life.",
+        last_stand_damage_multiplier=1.30,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -240,7 +273,18 @@ class RelicModifiers:
     a later floor's own load. Folding it in here would either double-apply
     it on every subsequent floor or require this type to start tracking
     which relics it's already "spent," neither of which this simple
-    aggregate-and-reuse shape is built for."""
+    aggregate-and-reuse shape is built for.
+
+    Two more fields don't fit the "recurs every floor, for as long as
+    it's held" framing above either, and are resolved elsewhere entirely:
+    misers_coffer's gold_per_floor_bonus_while_unspent folds into
+    gold_per_floor_bonus above, but only conditionally (see compose_relic_
+    modifiers' has_spent_gold parameter and Game._note_gold_spent) --
+    once revoked, it stays revoked for the rest of the run, unlike every
+    other field here which stays constant for as long as the relic is
+    held. guardians_reprieve has no field here at all (see RELICS' own
+    comment on it) -- checked directly against run.relics in
+    Game._lose_a_life instead."""
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
     enemy_speed_multiplier: float = 1.0
@@ -254,6 +298,7 @@ class RelicModifiers:
     tower_damage_multiplier: float = 1.0
     chain_chance: float = 0.0
     chain_effect: tuple = None
+    last_stand_damage_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -299,9 +344,13 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     tower_damage_multiplier = 1.0
     chain_chance = 0.0
     chain_effect = None
+    last_stand_damage_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
+        if not has_spent_gold:
+            gold_per_floor_bonus += relic.gold_per_floor_bonus_while_unspent
+        last_stand_damage_multiplier = max(last_stand_damage_multiplier, relic.last_stand_damage_multiplier)
         enemy_gold_multiplier *= relic.enemy_gold_multiplier
         enemy_speed_multiplier *= relic.enemy_speed_multiplier
         tower_range_multiplier *= relic.tower_range_multiplier
@@ -348,4 +397,5 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         tower_damage_multiplier=tower_damage_multiplier,
         chain_chance=chain_chance,
         chain_effect=chain_effect,
+        last_stand_damage_multiplier=last_stand_damage_multiplier,
     )

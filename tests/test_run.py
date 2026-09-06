@@ -563,6 +563,23 @@ def test_relic_gold_per_floor_bonus_is_reflected_in_run_gold_at_floor_zero(game)
     assert game.active_run.gold == game.economy.gold
 
 
+def test_misers_coffer_bonus_stops_after_the_runs_first_spend(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["misers_coffer"]
+    game._load_floor(0)
+    gold_with_bonus = game.economy.gold
+
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)  # this run's first spend
+
+    assert game.active_run.has_spent_gold is True
+
+    game._load_floor(0)  # restart the same floor -- re-derives relic_modifiers fresh
+
+    assert game.economy.gold == gold_with_bonus - RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
+
+
 def _force_relic_draft(game, relic_key):
     """Overrides whatever relic_offer() actually offered with a single
     forced choice, for tests that need to verify one specific relic's math
@@ -818,6 +835,81 @@ def test_arcing_rounds_chain_chance_reaches_a_freshly_placed_towers_shots(game):
     relic = RELICS["arcing_rounds"]
     assert tower.relic_chain_chance == relic.chain_chance
     assert tower.relic_chain_effect == (relic.chain_damage_fraction, relic.chain_range)
+
+
+def test_last_stand_charms_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["last_stand_charm"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_last_stand_bonus_multiplier == RELICS["last_stand_charm"].last_stand_damage_multiplier
+
+
+def test_last_stand_charm_only_boosts_damage_while_down_to_the_last_life(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["last_stand_charm"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    base_damage = tower.effective_damage()
+
+    game.economy.lives = 2
+    game.update(dt=0.01)
+    assert tower.effective_damage() == base_damage  # not yet down to the last life
+
+    game.economy.lives = 1
+    game.update(dt=0.01)
+    assert tower.effective_damage() == pytest.approx(
+        base_damage * RELICS["last_stand_charm"].last_stand_damage_multiplier
+    )
+
+    game.economy.lives = 3  # a life regained turns the bonus back off
+    game.update(dt=0.01)
+    assert tower.effective_damage() == base_damage
+
+
+def test_guardians_reprieve_saves_the_run_from_permadeath_once(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["guardians_reprieve"]
+    game.economy.lives = 1
+    game.wave_manager.skip_delay()
+    game.update(dt=0.01)
+    game.update(dt=0.1)
+    enemy = game.enemies[0]
+
+    enemy.wp_index = len(enemy.waypoints)  # force it to the end of the path
+    game.update(dt=0.01)
+
+    assert game.economy.lives == 1  # saved, not zeroed
+    assert game.active_run.used_guardians_reprieve is True
+    assert game.state != GameState.GAME_OVER
+
+    # The charge is spent -- a second loss proceeds normally.
+    game._lose_a_life()
+    assert game.economy.lives == 0
+
+
+def test_guardians_reprieve_does_nothing_in_sandbox_mode(game):
+    # Sandbox's own invulnerable flag already makes lives never actually
+    # drop -- Guardian's Reprieve has nothing to save there, and must not
+    # burn its one-time charge on a leak that was never going to cost
+    # anything anyway.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["guardians_reprieve"]
+    game.economy.invulnerable = True
+    game.economy.lives = 1
+
+    game._lose_a_life()
+
+    assert game.economy.lives == 1
+    assert game.active_run.used_guardians_reprieve is False
 
 
 def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
