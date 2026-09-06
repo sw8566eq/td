@@ -329,7 +329,7 @@ class Game:
         three values and risk drifting apart if a future change alters
         what a floor-load needs derived from a RunState."""
         return (
-            relics.compose_relic_modifiers(run.relics),
+            relics.compose_relic_modifiers(run.relics, floor_index, run.has_spent_gold),
             run_escalation.escalation_for_floor(floor_index),
             self._run_rng(run, _FLOOR_RNG_STREAM, floor_index),
         )
@@ -1700,6 +1700,7 @@ class Game:
         tower.relic_poison_effect = self.relic_modifiers.poison_effect
         tower.relic_crit_chance = self.relic_modifiers.crit_chance
         tower.relic_crit_damage_multiplier = self.relic_modifiers.crit_damage_multiplier
+        tower.relic_damage_bonus_multiplier = self.relic_modifiers.tower_damage_multiplier
         return tower
 
     def _current_footprint_subtiles(self):

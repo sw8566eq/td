@@ -14,6 +14,7 @@ fixtures and helpers for both are in conftest.py.
 """
 
 import pygame
+import pytest
 
 import achievements
 import meta_progression
@@ -728,6 +729,49 @@ def test_quickfire_rounds_fire_rate_bonus_reaches_a_freshly_placed_tower(game):
 
     tower = game.grid.get_tower(anchor_col, anchor_row)
     assert tower.relic_fire_rate_bonus_multiplier == RELICS["quickfire_rounds"].tower_fire_rate_multiplier
+
+
+def test_overdrive_coils_damage_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overdrive_coils"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_damage_bonus_multiplier == RELICS["overdrive_coils"].tower_damage_multiplier
+    assert tower.relic_fire_rate_bonus_multiplier == RELICS["overdrive_coils"].tower_fire_rate_multiplier
+
+
+def test_snipers_discipline_damage_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["snipers_discipline"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_damage_bonus_multiplier == RELICS["snipers_discipline"].tower_damage_multiplier
+    assert tower.relic_fire_rate_bonus_multiplier == RELICS["snipers_discipline"].tower_fire_rate_multiplier
+
+
+def test_veterans_momentum_damage_bonus_grows_with_floor_index(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["veterans_momentum"]
+    game.active_run.floor_index = 3
+    game._load_floor(3)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    growth = RELICS["veterans_momentum"].tower_damage_growth_per_floor
+    assert tower.relic_damage_bonus_multiplier == pytest.approx(1.0 + growth * 3)
 
 
 def test_venomous_coating_poison_chance_reaches_a_freshly_placed_towers_shots(game):

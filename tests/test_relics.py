@@ -1,5 +1,7 @@
 import random
 
+import pytest
+
 from relics import RELICS, Relic, RelicModifiers, compose_relic_modifiers, relic_offer
 from run_state import RunState
 
@@ -133,6 +135,41 @@ def test_compose_relic_modifiers_ignores_crit_damage_multiplier_from_a_relic_wit
 def test_compose_relic_modifiers_sums_tower_footprint_shrink():
     modifiers = compose_relic_modifiers(["compact_framework", "compact_framework"])
     assert modifiers.tower_footprint_shrink == RELICS["compact_framework"].tower_footprint_shrink * 2
+
+
+def test_compose_relic_modifiers_multiplies_tower_damage_multiplier():
+    modifiers = compose_relic_modifiers(["overdrive_coils", "overdrive_coils"])
+    assert modifiers.tower_damage_multiplier == RELICS["overdrive_coils"].tower_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_combines_opposite_damage_trade_relics():
+    modifiers = compose_relic_modifiers(["overdrive_coils", "snipers_discipline"])
+    assert modifiers.tower_damage_multiplier == (
+        RELICS["overdrive_coils"].tower_damage_multiplier * RELICS["snipers_discipline"].tower_damage_multiplier
+    )
+    assert modifiers.tower_fire_rate_multiplier == (
+        RELICS["overdrive_coils"].tower_fire_rate_multiplier * RELICS["snipers_discipline"].tower_fire_rate_multiplier
+    )
+
+
+def test_compose_relic_modifiers_veterans_momentum_is_a_noop_on_floor_zero():
+    modifiers = compose_relic_modifiers(["veterans_momentum"], floor_index=0)
+    assert modifiers.tower_damage_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_veterans_momentum_scales_with_floor_index():
+    modifiers = compose_relic_modifiers(["veterans_momentum"], floor_index=5)
+    growth = RELICS["veterans_momentum"].tower_damage_growth_per_floor
+    assert modifiers.tower_damage_multiplier == pytest.approx(1.0 + growth * 5)
+
+
+def test_compose_relic_modifiers_default_floor_index_matches_floor_zero():
+    # No floor_index passed at all (every pre-existing call site's shape)
+    # must behave identically to floor_index=0 -- veterans_momentum
+    # contributes nothing until at least one floor has actually cleared.
+    assert compose_relic_modifiers(["veterans_momentum"]) == compose_relic_modifiers(
+        ["veterans_momentum"], floor_index=0
+    )
 
 
 def test_compose_relic_modifiers_is_order_independent():

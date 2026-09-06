@@ -19,6 +19,19 @@ relic's numeric effect is one of three shapes:
   RelicModifiers' own docstring for why a one-time bonus can't be folded
   into the per-floor composition above.
 
+A later batch added three more shapes that don't fit either bullet above:
+escalating-per-floor (veterans_momentum's tower_damage_growth_per_floor,
+folded into RelicModifiers.tower_damage_multiplier via compose_relic_
+modifiers' new floor_index parameter -- the per-floor bucket above is a
+flat constant every floor, this one grows with floors_cleared instead),
+conditionally-revocable (misers_coffer's gold_per_floor_bonus_while_
+unspent, gated on the new has_spent_gold parameter -- a per-floor bonus
+that can permanently stop applying partway through a run), and
+live-reactive (last_stand_charm's last_stand_damage_multiplier, the only
+relic effect resolved every frame against changing game state --
+Economy.lives -- rather than once at floor-load or tower-construction
+time; see Tower.set_last_stand_multiplier/Game.update()).
+
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are
 few enough relics, and few enough relic-draft floors per run, that
@@ -63,6 +76,13 @@ class Relic:
     # it has to be resolved *before* a Tower's pixel_pos is even computed,
     # not after the tower object already exists.
     tower_footprint_shrink: int = 0
+    tower_damage_multiplier: float = 1.0
+    # Relic-only -- never appears on RelicModifiers itself. Folded into
+    # RelicModifiers.tower_damage_multiplier by compose_relic_modifiers via
+    # `*= (1.0 + tower_damage_growth_per_floor * floor_index)`, so a relic
+    # granting this escalates every floor instead of being a flat constant
+    # like every tower_*_multiplier field above.
+    tower_damage_growth_per_floor: float = 0.0
 
 
 RELICS = {
@@ -128,6 +148,25 @@ RELICS = {
         "compact_framework", "Compact Framework", "Towers take up about 44% less space on the grid, every floor.",
         tower_footprint_shrink=2,
     ),
+    "overdrive_coils": Relic(
+        "overdrive_coils", "Overdrive Coils", "+20% fire rate for every tower, but -15% damage, every floor.",
+        tower_fire_rate_multiplier=1.20, tower_damage_multiplier=0.85,
+    ),
+    # The inverse trade of overdrive_coils above -- reuses the same
+    # tower_damage_multiplier field tuned the opposite direction, so the
+    # two together are a real fire-rate/damage build axis, not two
+    # unrelated numbers.
+    "snipers_discipline": Relic(
+        "snipers_discipline", "Sniper's Discipline", "+25% damage for every tower, but -20% fire rate, every floor.",
+        tower_damage_multiplier=1.25, tower_fire_rate_multiplier=0.80,
+    ),
+    # Escalating, not flat -- see compose_relic_modifiers' floor_index
+    # parameter and relics.py's own module docstring for why this doesn't
+    # fit the "every floor"/"for this run" description convention above.
+    "veterans_momentum": Relic(
+        "veterans_momentum", "Veteran's Momentum", "+2% tower damage for every floor cleared this run.",
+        tower_damage_growth_per_floor=0.02,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -164,14 +203,18 @@ class RelicModifiers:
       WaveManager's own constructor kwargs in _load_level_object, and
       WaveManager itself is always rebuilt fresh every floor, so these
       need no special per-floor handling to keep applying.
-    - tower_range_multiplier/tower_fire_rate_multiplier/poison_chance/
-      poison_effect/crit_chance/crit_damage_multiplier/
+    - tower_range_multiplier/tower_fire_rate_multiplier/tower_damage_multiplier/
+      poison_chance/poison_effect/crit_chance/crit_damage_multiplier/
       tower_footprint_shrink: read once per tower, at construction time
       (Game._construct_tower/_current_footprint_subtiles), rather than
       through WaveManager/Economy -- see Tower.effective_range()/
-      effective_fire_rate() and Projectile._apply_hit_effects() for where
-      the tower-facing ones actually apply, and _current_footprint_
-      subtiles() for the footprint one.
+      effective_fire_rate()/effective_damage() and Projectile.
+      _apply_hit_effects() for where the tower-facing ones actually apply,
+      and _current_footprint_subtiles() for the footprint one.
+      tower_damage_multiplier is itself composed from two different Relic
+      fields (see compose_relic_modifiers) -- a flat per-relic multiplier
+      and an escalating-per-floor one, since a run-long stacking bonus
+      like veterans_momentum has nowhere else to live but this same field.
 
     A Relic's own starting_gold_multiplier/starting_lives_bonus (a
     genuinely one-time bonus, not a per-floor one -- see RELICS' own
@@ -194,12 +237,19 @@ class RelicModifiers:
     crit_chance: float = 0.0
     crit_damage_multiplier: float = 1.0
     tower_footprint_shrink: int = 0
+    tower_damage_multiplier: float = 1.0
 
 
-def compose_relic_modifiers(relic_keys):
+def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     """Aggregate every relic in `relic_keys` into one RelicModifiers bundle
     -- flat bonuses add, multipliers multiply, so composing several relics
     is order-independent regardless of which was drafted first.
+
+    `floor_index` and `has_spent_gold` both default so every pre-existing
+    call site (and every existing test) is unaffected -- they only matter
+    to veterans_momentum's escalating bonus and misers_coffer's
+    conditionally-revoked one, respectively; see relics.py's own module
+    docstring for both.
 
     poison_effect and crit_damage_multiplier are the two fields that aren't
     a plain sum/multiply, and both are gated on the relic actually
@@ -230,6 +280,7 @@ def compose_relic_modifiers(relic_keys):
     crit_chance = 0.0
     crit_damage_multiplier = 1.0
     tower_footprint_shrink = 0
+    tower_damage_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
@@ -238,6 +289,11 @@ def compose_relic_modifiers(relic_keys):
         tower_range_multiplier *= relic.tower_range_multiplier
         tower_fire_rate_multiplier *= relic.tower_fire_rate_multiplier
         tower_footprint_shrink += relic.tower_footprint_shrink
+        # Neutral defaults (1.0 / 0.0) make both lines a no-op for a relic
+        # that doesn't grant either -- no gating needed, unlike the
+        # chance-gated fields below.
+        tower_damage_multiplier *= relic.tower_damage_multiplier
+        tower_damage_multiplier *= 1.0 + relic.tower_damage_growth_per_floor * floor_index
         if relic.crit_chance > 0:
             crit_chance += relic.crit_chance
             crit_damage_multiplier = max(crit_damage_multiplier, relic.crit_damage_multiplier)
@@ -262,4 +318,5 @@ def compose_relic_modifiers(relic_keys):
         crit_chance=crit_chance,
         crit_damage_multiplier=crit_damage_multiplier,
         tower_footprint_shrink=tower_footprint_shrink,
+        tower_damage_multiplier=tower_damage_multiplier,
     )

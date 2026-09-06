@@ -421,6 +421,44 @@ def test_reset_aura_clears_a_previously_applied_buff():
     assert attacker.aura_range_multiplier == 1.0
 
 
+def test_effective_damage_reflects_the_relic_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_damage_bonus_multiplier = 1.25
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.25)
+
+
+def test_effective_damage_stacks_aura_relic_and_last_stand_bonuses_additively():
+    # Regression guard mirroring effective_range()'s own additive-stack
+    # test: three independent bonus sources must ADD, not multiply and not
+    # max() -- see effective_damage()'s own docstring.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.aura_damage_multiplier = 1.5
+    tower.relic_damage_bonus_multiplier = 1.25
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    tower.set_last_stand_multiplier(True)
+
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 2.05)  # 1 + .5 + .25 + .3
+    assert tower.effective_damage() != pytest.approx(BasicTower.damage * 1.5 * 1.25 * 1.3)  # not multiplicative
+    assert tower.effective_damage() != pytest.approx(BasicTower.damage * max(1.5, 1.25, 1.3))  # not max()
+
+
+def test_set_last_stand_multiplier_is_inactive_by_default():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    assert tower.effective_damage() == BasicTower.damage
+
+
+def test_set_last_stand_multiplier_toggles_the_bonus_on_and_off():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_bonus_multiplier = 1.3
+
+    tower.set_last_stand_multiplier(True)
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.3)
+
+    tower.set_last_stand_multiplier(False)
+    assert tower.effective_damage() == BasicTower.damage
+
+
 def test_effective_range_stacks_the_relic_bonus_additively_with_the_aura():
     # Regression guard: a Spyglass Array-style relic's bonus must ADD to a
     # Support tower's own per-frame aura buff, not multiply with it and

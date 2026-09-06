@@ -180,6 +180,23 @@ class Tower:
         self.relic_poison_effect = None
         self.relic_crit_chance = 0.0
         self.relic_crit_damage_multiplier = 1.0
+        self.relic_damage_bonus_multiplier = 1.0
+        self.relic_chain_chance = 0.0
+        self.relic_chain_effect = None
+        self.relic_upgrade_cost_multiplier = 1.0
+        self.relic_sell_refund_bonus = 0.0
+        self.relic_aura_range_bonus_multiplier = 1.0
+        self.relic_aura_strength_bonus_multiplier = 1.0
+        # The configured strength of a Last Stand Charm-style relic, set
+        # once at construction like every relic_* field above -- but
+        # relic_last_stand_multiplier below it is the one relic-driven
+        # value on this whole class that ISN'T constant for the tower's
+        # lifetime: Game.update() recomputes it every frame from live
+        # Economy.lives (see Tower.set_last_stand_multiplier), since
+        # "down to your last life" can turn on and off within a single
+        # run, unlike any other relic effect here.
+        self.relic_last_stand_bonus_multiplier = 1.0
+        self.relic_last_stand_multiplier = 1.0
         # Always one tile's worth of area (settings.SUBTILES_PER_TILE)
         # unless a Compact Framework-style relic shrinks it -- see
         # tile_rect()/upgrade_badge_center()/draw() below and
@@ -402,11 +419,38 @@ class Tower:
         return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
 
     def effective_damage(self):
-        """self.damage scaled by any currently-active aura buff (see
-        reset_aura()/receive_aura()) -- every create_projectile() below
-        reads this instead of self.damage directly, so a buffed tower's
-        shots reflect it without each subclass repeating the multiplication."""
-        return self.damage * self.aura_damage_multiplier
+        """self.damage scaled by three independent bonus sources, stacked
+        ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus) --
+        the same "sources don't multiply or max()" rule effective_range()
+        already establishes for its own two sources, generalized to a
+        third here: the transient per-frame aura buff (aura_damage_
+        multiplier, reset every frame -- see reset_aura()/receive_aura()),
+        this tower's persistent relic-driven bonus (relic_damage_bonus_
+        multiplier, set once at construction -- see Game._construct_tower),
+        and a Last Stand Charm-style relic's live, per-frame-recomputed
+        bonus (relic_last_stand_multiplier -- see
+        set_last_stand_multiplier()). Every create_projectile() below reads
+        this instead of self.damage directly, so a buffed tower's shots
+        reflect it without each subclass repeating the multiplication."""
+        return self.damage * (
+            1.0
+            + (self.aura_damage_multiplier - 1.0)
+            + (self.relic_damage_bonus_multiplier - 1.0)
+            + (self.relic_last_stand_multiplier - 1.0)
+        )
+
+    def set_last_stand_multiplier(self, active):
+        """Called every frame by Game.update() (alongside reset_aura(), in
+        the same first pass) with `active` = whether Economy.lives is down
+        to the last one -- the one relic-driven value on this class that
+        reacts to live, changing game state rather than resolving once at
+        floor-load/construction time. relic_last_stand_bonus_multiplier is
+        the relic's own configured strength (constant, from
+        Game._construct_tower); this just switches whether effective_
+        damage() currently applies it."""
+        self.relic_last_stand_multiplier = (
+            self.relic_last_stand_bonus_multiplier if active else 1.0
+        )
 
     def effective_fire_rate(self):
         """self.fire_rate scaled by this tower's own persistent,
