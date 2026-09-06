@@ -12,11 +12,14 @@ Two coordinate systems coexist:
     cells, and rendering all work at this granularity, unchanged from
     before subtile placement existed.
   - Subtile coords (sub_col, sub_row; unit = subtile_size) -- a finer grid
-    used only for tower placement. A tower's footprint is a
+    used only for tower placement. A tower's footprint is normally a
     subtiles_per_tile x subtiles_per_tile block of subtiles (the same
     pixel area as one coarse tile), anchored at its top-left subtile
-    (anchor_col, anchor_row). Anchors don't need to align to coarse tile
-    boundaries, which is what gives placement its finer granularity.
+    (anchor_col, anchor_row) -- smaller for a relic-shrunk footprint (see
+    Game._current_footprint_subtiles; every footprint-touching method
+    below takes an optional footprint_subtiles, defaulting to a full
+    tile). Anchors don't need to align to coarse tile boundaries, which is
+    what gives placement its finer granularity.
 """
 
 import pygame
@@ -62,6 +65,14 @@ class Grid:
         # whether their anchors happen to be tile-aligned.
         self.occupied_subtiles = set()
         self.towers_by_anchor = {}
+        # What footprint size occupy() actually reserved at each anchor --
+        # populated by occupy(), consulted by remove() -- so a Compact
+        # Framework-style relic's smaller footprint (see
+        # Game._current_footprint_subtiles) frees exactly what it
+        # reserved without remove() needing the size passed back in, or
+        # needing to introspect the tower object itself (several tests
+        # occupy anchors with a bare placeholder, not a real Tower).
+        self._footprint_size_by_anchor = {}
         # Lazily built and cached by draw() -- see _build_background.
         self._background = None
 
@@ -90,36 +101,69 @@ class Grid:
     def pixel_to_subtile(self, x, y):
         return int(x // self.subtile_size), int(y // self.subtile_size)
 
-    def placement_anchor(self, x, y):
+    def resolve_footprint_size(self, footprint_subtiles=None):
+        """A tower's footprint size in subtiles -- `footprint_subtiles`
+        itself if given, else a full tile's worth (subtiles_per_tile). The
+        one place every footprint-aware method below (and
+        ui.draw_footprint_preview, which has no other way to reach this
+        default) resolves it, so the default can never drift between
+        them."""
+        return self.subtiles_per_tile if footprint_subtiles is None else footprint_subtiles
+
+    def placement_anchor(self, x, y, footprint_subtiles=None):
         """Top-left subtile of the tower-sized footprint centered on pixel
-        (x, y). Not clamped to the grid -- a hover/click near the edge (or
-        entirely outside the grid, e.g. over the stats panel) can produce
-        an anchor whose footprint is partly or fully out of bounds; that's
-        left for is_buildable() to reject rather than silently clamped
-        into a valid spot the player didn't actually point at."""
+        (x, y) -- `footprint_subtiles` defaults to a full tile
+        (subtiles_per_tile), or a smaller value for a relic-shrunk
+        footprint (see Game._current_footprint_subtiles). Not clamped to
+        the grid -- a hover/click near the edge (or entirely outside the
+        grid, e.g. over the stats panel) can produce an anchor whose
+        footprint is partly or fully out of bounds; that's left for
+        is_buildable() to reject rather than silently clamped into a
+        valid spot the player didn't actually point at."""
         sub_col, sub_row = self.pixel_to_subtile(x, y)
-        half = self.subtiles_per_tile // 2
+        size = self.resolve_footprint_size(footprint_subtiles)
+        half = size // 2
         return sub_col - half, sub_row - half
 
-    def anchor_to_pixel_center(self, anchor_col, anchor_row):
+    def anchor_to_pixel_center(self, anchor_col, anchor_row, footprint_subtiles=None):
+        size = self.resolve_footprint_size(footprint_subtiles)
+        footprint_pixels = size * self.subtile_size
         return pygame.Vector2(
-            anchor_col * self.subtile_size + self.tile_size / 2,
-            anchor_row * self.subtile_size + self.tile_size / 2,
+            anchor_col * self.subtile_size + footprint_pixels / 2,
+            anchor_row * self.subtile_size + footprint_pixels / 2,
         )
 
-    def _footprint_subtiles(self, anchor_col, anchor_row):
-        for dr in range(self.subtiles_per_tile):
-            for dc in range(self.subtiles_per_tile):
+    def _footprint_subtiles(self, anchor_col, anchor_row, size):
+        """Subtiles covered by a `size` x `size` footprint anchored at
+        (anchor_col, anchor_row). `size` is taken as already resolved
+        (see resolve_footprint_size) -- every caller below resolves it
+        itself first, so this never re-defaults and never runs at all for
+        a non-positive size, rather than silently yielding nothing and
+        leaving a caller like is_buildable() to mistake "nothing to
+        check" for "everything checked out"."""
+        for dr in range(size):
+            for dc in range(size):
                 yield anchor_col + dc, anchor_row + dr
 
-    def is_buildable(self, anchor_col, anchor_row):
-        """True if the subtiles_per_tile x subtiles_per_tile footprint
-        anchored at (anchor_col, anchor_row) is entirely in bounds, off
-        the path, unblocked, and doesn't overlap any placed tower's
-        footprint."""
-        for sub_col, sub_row in self._footprint_subtiles(anchor_col, anchor_row):
+    def is_buildable(self, anchor_col, anchor_row, footprint_subtiles=None):
+        """True if the footprint_subtiles x footprint_subtiles footprint
+        (a full tile, subtiles_per_tile, unless a smaller size is passed --
+        see Game._current_footprint_subtiles) anchored at (anchor_col,
+        anchor_row) is entirely in bounds, off the path, unblocked, and
+        doesn't overlap any placed tower's footprint. A non-positive size
+        is never buildable -- _footprint_subtiles() would otherwise yield
+        no cells at all to check, and an empty check vacuously returns
+        True for any anchor, path/blocked/occupied cells included."""
+        size = self.resolve_footprint_size(footprint_subtiles)
+        if size <= 0:
+            return False
+        for sub_col, sub_row in self._footprint_subtiles(anchor_col, anchor_row, size):
             if not (0 <= sub_col < self.sub_cols and 0 <= sub_row < self.sub_rows):
                 return False
+            # Always the map's own fixed tile/subtile ratio here, regardless
+            # of footprint_subtiles -- is_path/is_blocked are properties of
+            # the coarse map grid, unrelated to any one tower's own
+            # (possibly relic-shrunk) footprint size.
             coarse = (sub_col // self.subtiles_per_tile, sub_row // self.subtiles_per_tile)
             if self.is_path(*coarse) or self.is_blocked(*coarse):
                 return False
@@ -127,18 +171,23 @@ class Grid:
                 return False
         return True
 
-    def occupy(self, anchor_col, anchor_row, tower):
-        for cell in self._footprint_subtiles(anchor_col, anchor_row):
+    def occupy(self, anchor_col, anchor_row, tower, footprint_subtiles=None):
+        size = self.resolve_footprint_size(footprint_subtiles)
+        for cell in self._footprint_subtiles(anchor_col, anchor_row, size):
             self.occupied_subtiles.add(cell)
         self.towers_by_anchor[(anchor_col, anchor_row)] = tower
+        self._footprint_size_by_anchor[(anchor_col, anchor_row)] = size
 
     def remove(self, anchor_col, anchor_row):
         """Free the footprint anchored at (anchor_col, anchor_row) -- the
         inverse of occupy(), used when a tower is sold. No-op if nothing
-        is anchored there."""
+        is anchored there. Frees exactly the footprint size occupy() was
+        given (see _footprint_size_by_anchor) -- the caller never needs to
+        pass it again."""
         if (anchor_col, anchor_row) not in self.towers_by_anchor:
             return
-        for cell in self._footprint_subtiles(anchor_col, anchor_row):
+        size = self._footprint_size_by_anchor.pop((anchor_col, anchor_row), self.subtiles_per_tile)
+        for cell in self._footprint_subtiles(anchor_col, anchor_row, size):
             self.occupied_subtiles.discard(cell)
         del self.towers_by_anchor[(anchor_col, anchor_row)]
 

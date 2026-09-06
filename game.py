@@ -561,6 +561,11 @@ class Game:
         # Economy construction below and the win-check in update()).
         self.endless = endless
         self.sandbox = sandbox
+        # Stored (not just used inline below for WaveManager's own
+        # enemy_gold/speed_multiplier kwargs) so _construct_tower can read
+        # whatever this floor's relics resolve to when building a fresh
+        # tower -- see its own comment for which fields that means today.
+        self.relic_modifiers = relic_modifiers
         # False (the default) for every loader except _load_floor/
         # resume_saved_run, mirroring active_run just below -- taken as an
         # explicit parameter, not set after the fact, so resume_saved_run()
@@ -632,7 +637,10 @@ class Game:
         self.wave_manager = WaveManager(
             level, self.grid.tile_to_pixel_center,
             enemy_hp_multiplier=mode.enemy_hp_multiplier * escalation.enemy_hp_multiplier,
-            enemy_speed_multiplier=mode.enemy_speed_multiplier * escalation.enemy_speed_multiplier,
+            enemy_speed_multiplier=(
+                mode.enemy_speed_multiplier * escalation.enemy_speed_multiplier
+                * relic_modifiers.enemy_speed_multiplier
+            ),
             enemy_gold_multiplier=(
                 mode.enemy_gold_multiplier * escalation.enemy_gold_multiplier * relic_modifiers.enemy_gold_multiplier
             ),
@@ -1576,7 +1584,7 @@ class Game:
                 return
 
         if self.selected_tower_name is not None:
-            anchor_col, anchor_row = self.grid.placement_anchor(*pos)
+            anchor_col, anchor_row = self.grid.placement_anchor(*pos, footprint_subtiles=self._current_footprint_subtiles())
             self.try_place_tower(anchor_col, anchor_row)
         else:
             self.selected_tower = None  # clicked empty ground -> deselect
@@ -1651,7 +1659,7 @@ class Game:
         # mainly guards against a future path setting it some other way.
         if self.selected_tower_name not in self._active_tower_names():
             return False
-        if not self.grid.is_buildable(anchor_col, anchor_row):
+        if not self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=self._current_footprint_subtiles()):
             return False
 
         tower_cls = TOWER_TYPES[self.selected_tower_name]
@@ -1669,9 +1677,43 @@ class Game:
         (anchor_col, anchor_row) -- shared by a fresh placement
         (try_place_tower, above) and rebuilding a tower from a save file
         (_tower_from_save_data, below), which then applies its own saved
-        level/specialization/stats before the tower is ever registered."""
-        pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
-        return tower_cls(anchor_col, anchor_row, pixel_pos)
+        level/specialization/stats before the tower is ever registered.
+
+        Also the one place every relic-driven, per-tower bonus gets
+        resolved -- from self.relic_modifiers, itself re-derived fresh
+        from the active run's relics on every floor load (see
+        _load_level_object) -- and copied onto the new tower's own
+        instance attributes (see Tower.__init__'s matching defaults).
+        Both callers above go through here, so a fresh placement and a
+        resumed tower can never disagree about what a held relic grants.
+        footprint_subtiles has to be resolved *before* pixel_pos itself
+        (a smaller footprint centers differently), unlike every other
+        relic-driven attribute, which only needs to exist on the tower
+        object once it already does."""
+        footprint_subtiles = self._current_footprint_subtiles()
+        pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
+        tower = tower_cls(anchor_col, anchor_row, pixel_pos)
+        tower.footprint_subtiles = footprint_subtiles
+        tower.relic_range_bonus_multiplier = self.relic_modifiers.tower_range_multiplier
+        tower.relic_fire_rate_bonus_multiplier = self.relic_modifiers.tower_fire_rate_multiplier
+        tower.relic_poison_chance = self.relic_modifiers.poison_chance
+        tower.relic_poison_effect = self.relic_modifiers.poison_effect
+        tower.relic_crit_chance = self.relic_modifiers.crit_chance
+        tower.relic_crit_damage_multiplier = self.relic_modifiers.crit_damage_multiplier
+        return tower
+
+    def _current_footprint_subtiles(self):
+        """How many subtiles square a freshly-constructed tower's
+        footprint spans this floor -- settings.SUBTILES_PER_TILE (one full
+        tile) unless a Compact Framework-style relic shrinks it, clamped
+        to settings.MIN_TOWER_FOOTPRINT_SUBTILES so a relic (or several
+        summed together, see relics.compose_relic_modifiers) can never
+        collapse it to zero or negative. The clamp lives here, not on
+        RelicModifiers.tower_footprint_shrink itself, which stays a plain
+        unclamped sum like every other composed field -- any other future
+        reader of that raw field would need to remember this same clamp."""
+        shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
+        return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
 
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --
@@ -1682,7 +1724,7 @@ class Game:
         case that deliberately skips this: it no longer occupies any
         space, so it only ever goes into self.sold_towers."""
         self.towers.append(tower)
-        self.grid.occupy(tower.anchor_col, tower.anchor_row, tower)
+        self.grid.occupy(tower.anchor_col, tower.anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
 
     def try_upgrade_tower(self, tower):
         if tower not in self.towers:
@@ -2007,10 +2049,11 @@ class Game:
         if mouse_pos[0] >= settings.PLAY_WIDTH:
             return  # hovering the stats panel, not the grid
         tower_cls = TOWER_TYPES[self.selected_tower_name]
-        anchor_col, anchor_row = self.grid.placement_anchor(*mouse_pos)
-        preview_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row)
-        buildable = self.grid.is_buildable(anchor_col, anchor_row)
-        ui.draw_footprint_preview(self.screen, self.grid, anchor_col, anchor_row, buildable)
+        footprint_subtiles = self._current_footprint_subtiles()
+        anchor_col, anchor_row = self.grid.placement_anchor(*mouse_pos, footprint_subtiles=footprint_subtiles)
+        preview_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
+        buildable = self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
+        ui.draw_footprint_preview(self.screen, self.grid, anchor_col, anchor_row, buildable, footprint_subtiles=footprint_subtiles)
         ui.draw_range_preview(self.screen, tower_cls, preview_pos)
 
     def _hovered_tower(self):

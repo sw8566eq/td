@@ -672,6 +672,142 @@ def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
     assert game.wave_manager.enemy_gold_multiplier == RELICS["bounty_hunters_ledger"].enemy_gold_multiplier
 
 
+def test_relic_enemy_speed_multiplier_composes_into_wave_manager(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["tangled_roots"]
+
+    game._load_floor(0)
+
+    assert game.wave_manager.enemy_speed_multiplier == RELICS["tangled_roots"].enemy_speed_multiplier
+
+
+def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
+    # Regression guard for the "no save_state.py schema changes needed"
+    # claim: a tower-facing relic's bonus is re-derived fresh at
+    # construction time (Game._construct_tower), not stored on RunState
+    # itself -- so drafting the card, then placing a tower on a later
+    # floor, must still see the bonus with no extra plumbing in between.
+    game.start_new_run(seed=1)
+    game.active_run.floor_index = 1
+    game._enter_draft()
+    _force_relic_draft(game, "spyglass_array")
+    game._handle_draft_click(game.draft_choice_rects[0].center)  # -> floor 2, relic held
+
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_range_bonus_multiplier == RELICS["spyglass_array"].tower_range_multiplier
+
+
+def test_resuming_a_run_rederives_a_placed_towers_relic_range_bonus(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["spyglass_array"]
+    game._load_floor(0)  # re-derives self.relic_modifiers from the relics just set
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_range_bonus_multiplier == RELICS["spyglass_array"].tower_range_multiplier
+
+
+def test_quickfire_rounds_fire_rate_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["quickfire_rounds"]
+    game._load_floor(0)  # re-derives self.relic_modifiers from the relics just set
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_fire_rate_bonus_multiplier == RELICS["quickfire_rounds"].tower_fire_rate_multiplier
+
+
+def test_venomous_coating_poison_chance_reaches_a_freshly_placed_towers_shots(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["venomous_coating"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["venomous_coating"]
+    assert tower.relic_poison_chance == relic.poison_chance
+    assert tower.relic_poison_effect == (relic.poison_damage_per_tick, relic.poison_tick_interval, relic.poison_duration)
+
+
+def test_resuming_a_run_rederives_a_placed_towers_relic_poison_chance(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["venomous_coating"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_poison_chance == RELICS["venomous_coating"].poison_chance
+
+
+def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["lucky_strikes"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["lucky_strikes"]
+    assert tower.relic_crit_chance == relic.crit_chance
+    assert tower.relic_crit_damage_multiplier == relic.crit_damage_multiplier
+
+
+def test_compact_framework_shrinks_a_freshly_placed_towers_footprint(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["compact_framework"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    expected_size = 8 - RELICS["compact_framework"].tower_footprint_shrink
+    assert tower.footprint_subtiles == expected_size
+    assert len(game.grid.occupied_subtiles) == expected_size * expected_size
+
+
+def test_resuming_a_run_rederives_a_placed_towers_footprint_size(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["compact_framework"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    expected_size = 8 - RELICS["compact_framework"].tower_footprint_shrink
+    assert tower.footprint_subtiles == expected_size
+
+
 # --- Permadeath: the only way a run ends ---
 
 
@@ -934,6 +1070,20 @@ def test_resuming_a_run_reapplies_its_held_relics_enemy_gold_multiplier(game):
     game._continue_saved_run()
 
     assert game.wave_manager.enemy_gold_multiplier == expected_gold_multiplier
+
+
+def test_resuming_a_run_reapplies_its_held_relics_enemy_speed_multiplier(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["tangled_roots"]
+    game._load_floor(2)
+    expected_speed_multiplier = game.wave_manager.enemy_speed_multiplier
+    assert expected_speed_multiplier != 1.0  # relic + escalation both contribute -- not a vacuous assertion
+    game.save_run()
+    game.state = GameState.MENU
+
+    game._continue_saved_run()
+
+    assert game.wave_manager.enemy_speed_multiplier == expected_speed_multiplier
 
 
 def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_live_setting(game):

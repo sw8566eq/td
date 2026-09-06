@@ -211,3 +211,88 @@ def test_non_overlapping_footprints_do_not_collide():
     # Offset by exactly N subtiles in x -> footprints are adjacent, not
     # overlapping.
     assert grid.is_buildable(N, 0)
+
+
+# --- Configurable footprint size (see Game._current_footprint_subtiles) ---
+#
+# Every footprint-touching method takes an optional footprint_subtiles,
+# defaulting to a full tile (subtiles_per_tile) -- the tests above already
+# cover that default exhaustively, so these only cover a *different* size
+# actually being respected.
+
+def test_is_buildable_respects_a_smaller_footprint_subtiles():
+    grid = make_grid()
+    grid.occupy(0, 0, tower="fake-tower", footprint_subtiles=6)
+    # A full-size footprint at N-1 (7) would collide with the smaller one
+    # occupied above (6 subtiles); a shrunk footprint of the same size no
+    # longer does, since the two footprints now sit exactly adjacent.
+    assert not grid.is_buildable(5, 0, footprint_subtiles=6)
+    assert grid.is_buildable(6, 0, footprint_subtiles=6)
+
+
+def test_is_buildable_rejects_a_non_positive_footprint_subtiles():
+    # Regression: _footprint_subtiles() yields no cells at all for a
+    # non-positive size, so without an explicit guard is_buildable()'s
+    # for-loop never runs and vacuously returns True -- for ANY anchor,
+    # path/blocked/out-of-bounds/already-occupied included. A relic-driven
+    # shrink is clamped well above zero (settings.MIN_TOWER_FOOTPRINT_
+    # SUBTILES) before it ever reaches Grid, but Grid must not silently
+    # rely on that one caller's discipline to stay correct.
+    grid = make_grid()
+    on_path_col, on_path_row = 4 * N, 4 * N  # tile (4, 4) is on the path
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=8)
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=0)
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=-1)
+
+
+def test_occupy_with_a_smaller_footprint_only_occupies_that_many_subtiles():
+    grid = make_grid()
+    grid.occupy(0, 0, tower="fake-tower", footprint_subtiles=6)
+    assert len(grid.occupied_subtiles) == 6 * 6
+    assert (5, 5) in grid.occupied_subtiles
+    assert (6, 5) not in grid.occupied_subtiles  # one past the shrunk footprint's own edge
+
+
+def test_remove_frees_exactly_the_footprint_size_it_was_occupied_with():
+    grid = make_grid()
+    grid.occupy(0, 0, tower="fake-tower", footprint_subtiles=6)
+
+    grid.remove(0, 0)
+
+    assert grid.occupied_subtiles == set()
+    assert grid.is_buildable(0, 0)  # a full-size footprint fits again, not just a shrunk one
+
+
+def test_two_towers_unbuildable_at_full_size_become_buildable_at_a_smaller_one():
+    # Same anchor pair either way -- unbuildable when both towers occupy a
+    # full 8-subtile footprint (7 overlaps 0's own footprint at column 7),
+    # buildable once both are shrunk to 6 (0 only reaches column 5, so a
+    # 6-wide footprint starting at 7 no longer overlaps it at all).
+    full = make_grid()
+    full.occupy(0, 0, tower="fake-tower")
+    assert not full.is_buildable(7, 0)
+
+    shrunk = make_grid()
+    shrunk.occupy(0, 0, tower="fake-tower", footprint_subtiles=6)
+    assert shrunk.is_buildable(7, 0, footprint_subtiles=6)
+
+
+def test_placement_anchor_centers_a_smaller_footprint_on_the_cursor():
+    grid = make_grid()
+    x, y = 100, 100
+    full_anchor = grid.placement_anchor(x, y)
+    shrunk_anchor = grid.placement_anchor(x, y, footprint_subtiles=6)
+    # A smaller footprint's own half-width is smaller, so its centering
+    # anchor sits closer to the cursor than the full-size one does.
+    assert shrunk_anchor != full_anchor
+    assert shrunk_anchor == (full_anchor[0] + 1, full_anchor[1] + 1)  # half of (8 - 6)
+
+
+def test_anchor_to_pixel_center_centers_within_the_smaller_footprint_not_a_full_tile():
+    grid = make_grid()
+    full_center = grid.anchor_to_pixel_center(0, 0)
+    shrunk_center = grid.anchor_to_pixel_center(0, 0, footprint_subtiles=6)
+    # Same top-left anchor, but the shrunk footprint's own center sits
+    # closer to that anchor than a full tile's center would.
+    assert shrunk_center.x < full_center.x
+    assert shrunk_center.y < full_center.y
