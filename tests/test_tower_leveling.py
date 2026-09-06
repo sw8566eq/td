@@ -72,6 +72,18 @@ def test_upgrade_cost_scales_with_base_cost():
     assert tower.upgrade_cost() == expected_level_2_cost
 
 
+def test_upgrade_cost_reflects_a_quartermasters_favor_style_relic_discount():
+    tower = make_tower()
+    tower.relic_upgrade_cost_multiplier = 0.85
+    expected_level_2_cost = round(BasicTower.cost * BasicTower.UPGRADE_COST_MULTIPLIERS[2] * 0.85)
+    assert tower.upgrade_cost() == expected_level_2_cost
+
+
+def test_upgrade_cost_matches_base_cost_with_no_relic_discount():
+    tower = make_tower()
+    assert tower.upgrade_cost() == round(BasicTower.cost * BasicTower.UPGRADE_COST_MULTIPLIERS[2])
+
+
 def test_sell_value_starts_as_a_fraction_of_base_cost():
     tower = make_tower()
     assert tower.total_invested == BasicTower.cost
@@ -100,6 +112,17 @@ def test_sell_value_is_less_than_total_invested():
     assert tower.sell_value() < tower.total_invested
 
 
+def test_sell_value_reflects_a_liquidation_rights_style_relic_bonus():
+    tower = make_tower()
+    tower.relic_sell_refund_bonus = 0.15
+    assert tower.sell_value() == round(BasicTower.cost * (settings.SELL_REFUND_FRACTION + 0.15))
+
+
+def test_sell_value_matches_base_fraction_with_no_relic_bonus():
+    tower = make_tower()
+    assert tower.sell_value() == round(BasicTower.cost * settings.SELL_REFUND_FRACTION)
+
+
 # --- Specialization ---
 
 def _max_out(tower):
@@ -119,6 +142,13 @@ def test_can_specialize_once_maxed():
     tower = _max_out(make_tower())
     assert tower.can_specialize
     assert tower.specialization_cost() == round(BasicTower.cost * BasicTower.SPECIALIZATION_COST_MULTIPLIER)
+
+
+def test_specialization_cost_reflects_a_quartermasters_favor_style_relic_discount():
+    tower = _max_out(make_tower())
+    tower.relic_upgrade_cost_multiplier = 0.85
+    expected = round(BasicTower.cost * BasicTower.SPECIALIZATION_COST_MULTIPLIER * 0.85)
+    assert tower.specialization_cost() == expected
 
 
 def test_specialize_applies_its_stat_multipliers():

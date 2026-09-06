@@ -19,6 +19,19 @@ relic's numeric effect is one of three shapes:
   RelicModifiers' own docstring for why a one-time bonus can't be folded
   into the per-floor composition above.
 
+A later batch added three more shapes that don't fit either bullet above:
+escalating-per-floor (veterans_momentum's tower_damage_growth_per_floor,
+folded into RelicModifiers.tower_damage_multiplier via compose_relic_
+modifiers' new floor_index parameter -- the per-floor bucket above is a
+flat constant every floor, this one grows with floors_cleared instead),
+conditionally-revocable (misers_coffer's gold_per_floor_bonus_while_
+unspent, gated on the new has_spent_gold parameter -- a per-floor bonus
+that can permanently stop applying partway through a run), and
+live-reactive (last_stand_charm's last_stand_damage_multiplier, the only
+relic effect resolved every frame against changing game state --
+Economy.lives -- rather than once at floor-load or tower-construction
+time; see Tower.set_last_stand_multiplier/Game.update()).
+
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are
 few enough relics, and few enough relic-draft floors per run, that
@@ -63,6 +76,47 @@ class Relic:
     # it has to be resolved *before* a Tower's pixel_pos is even computed,
     # not after the tower object already exists.
     tower_footprint_shrink: int = 0
+    tower_damage_multiplier: float = 1.0
+    # Relic-only -- never appears on RelicModifiers itself. Folded into
+    # RelicModifiers.tower_damage_multiplier by compose_relic_modifiers via
+    # `*= (1.0 + tower_damage_growth_per_floor * floor_index)`, so a relic
+    # granting this escalates every floor instead of being a flat constant
+    # like every tower_*_multiplier field above.
+    tower_damage_growth_per_floor: float = 0.0
+    # chain_chance follows poison_chance's exact shape (chance-gated,
+    # summed, no "every floor"/"for this run" suffix in its description --
+    # see RELICS' own comment on venomous_coating/lucky_strikes).
+    # chain_damage_fraction/chain_range are Relic-only, folded into
+    # RelicModifiers.chain_effect the same way poison's own raw per-tick
+    # fields fold into poison_effect. See Projectile._apply_hit_effects/
+    # _find_chain_target for where this actually applies.
+    chain_chance: float = 0.0
+    chain_damage_fraction: float = 0.0
+    chain_range: float = 0.0
+    # Relic-only -- misers_coffer's own conditional bonus. Folded into
+    # RelicModifiers' shared gold_per_floor_bonus accumulator by
+    # compose_relic_modifiers, gated on the new has_spent_gold parameter
+    # rather than on anything this dataclass itself tracks -- see
+    # Game._spend_gold for where that flag actually gets set.
+    gold_per_floor_bonus_while_unspent: int = 0
+    # last_stand_charm's own bonus -- see RelicModifiers' matching field
+    # and Tower.set_last_stand_multiplier/effective_damage() for where it
+    # actually applies; aggregated via max(), the same conservative choice
+    # crit_damage_multiplier already makes, since it's dormant today (only
+    # one such relic exists).
+    last_stand_damage_multiplier: float = 1.0
+    # quartermasters_favor's own discount -- see Tower.upgrade_cost()/
+    # specialization_cost().
+    tower_upgrade_cost_multiplier: float = 1.0
+    # liquidation_rights' own bonus -- added to (not multiplied against)
+    # settings.SELL_REFUND_FRACTION, see Tower.sell_value().
+    sell_refund_bonus: float = 0.0
+    # resonant_field's own pair -- see RelicModifiers' matching fields and
+    # SupportTower.update() for where they actually apply. Deliberately
+    # separate from tower_range_multiplier above -- see that method's own
+    # comment for why.
+    support_aura_range_multiplier: float = 1.0
+    support_aura_strength_multiplier: float = 1.0
 
 
 RELICS = {
@@ -128,6 +182,65 @@ RELICS = {
         "compact_framework", "Compact Framework", "Towers take up about 44% less space on the grid, every floor.",
         tower_footprint_shrink=2,
     ),
+    "overdrive_coils": Relic(
+        "overdrive_coils", "Overdrive Coils", "+20% fire rate for every tower, but -15% damage, every floor.",
+        tower_fire_rate_multiplier=1.20, tower_damage_multiplier=0.85,
+    ),
+    # The inverse trade of overdrive_coils above -- reuses the same
+    # tower_damage_multiplier field tuned the opposite direction, so the
+    # two together are a real fire-rate/damage build axis, not two
+    # unrelated numbers.
+    "snipers_discipline": Relic(
+        "snipers_discipline", "Sniper's Discipline", "+25% damage for every tower, but -20% fire rate, every floor.",
+        tower_damage_multiplier=1.25, tower_fire_rate_multiplier=0.80,
+    ),
+    # Escalating, not flat -- see compose_relic_modifiers' floor_index
+    # parameter and relics.py's own module docstring for why this doesn't
+    # fit the "every floor"/"for this run" description convention above.
+    "veterans_momentum": Relic(
+        "veterans_momentum", "Veteran's Momentum", "+2% tower damage for every floor cleared this run.",
+        tower_damage_growth_per_floor=0.02,
+    ),
+    "arcing_rounds": Relic(
+        "arcing_rounds", "Arcing Rounds", "20% chance for any hit to also strike a nearby enemy for 50% damage.",
+        chain_chance=0.20, chain_damage_fraction=0.5, chain_range=70,
+    ),
+    # Bigger than prospectors_charm's flat +20 since it's conditional --
+    # closer to Slay the Spire's actual Maw Bank than a per-floor reset:
+    # one run-long deactivation (Game._spend_gold/RunState.has_spent_
+    # gold), not something that comes back next floor.
+    "misers_coffer": Relic(
+        "misers_coffer", "Miser's Coffer",
+        "+40 gold at the start of every floor -- until you spend any gold, then never again this run.",
+        gold_per_floor_bonus_while_unspent=40,
+    ),
+    # No numeric fields at all -- same shape as war_chest/sturdy_gate,
+    # checked directly against run.relics rather than through RelicModifiers
+    # (see Game._lose_a_life). There's nothing here to aggregate.
+    "guardians_reprieve": Relic(
+        "guardians_reprieve", "Guardian's Reprieve",
+        "The first time you'd lose your last life this run, survive with 1 life instead.",
+    ),
+    "last_stand_charm": Relic(
+        "last_stand_charm", "Last Stand Charm",
+        "+30% damage for every tower while you're down to your last life.",
+        last_stand_damage_multiplier=1.30,
+    ),
+    "quartermasters_favor": Relic(
+        "quartermasters_favor", "Quartermaster's Favor",
+        "Tower upgrades and specializations cost 15% less gold, every floor.",
+        tower_upgrade_cost_multiplier=0.85,
+    ),
+    "liquidation_rights": Relic(
+        "liquidation_rights", "Liquidation Rights",
+        "Selling a tower refunds an extra 15% of what you paid for it, every floor.",
+        sell_refund_bonus=0.15,
+    ),
+    "resonant_field": Relic(
+        "resonant_field", "Resonant Field",
+        "Support tower auras reach 20% further and buff 20% more, every floor.",
+        support_aura_range_multiplier=1.20, support_aura_strength_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -164,14 +277,18 @@ class RelicModifiers:
       WaveManager's own constructor kwargs in _load_level_object, and
       WaveManager itself is always rebuilt fresh every floor, so these
       need no special per-floor handling to keep applying.
-    - tower_range_multiplier/tower_fire_rate_multiplier/poison_chance/
-      poison_effect/crit_chance/crit_damage_multiplier/
-      tower_footprint_shrink: read once per tower, at construction time
+    - tower_range_multiplier/tower_fire_rate_multiplier/tower_damage_multiplier/
+      poison_chance/poison_effect/crit_chance/crit_damage_multiplier/
+      chain_chance/chain_effect/tower_footprint_shrink: read once per tower, at construction time
       (Game._construct_tower/_current_footprint_subtiles), rather than
       through WaveManager/Economy -- see Tower.effective_range()/
-      effective_fire_rate() and Projectile._apply_hit_effects() for where
-      the tower-facing ones actually apply, and _current_footprint_
-      subtiles() for the footprint one.
+      effective_fire_rate()/effective_damage() and Projectile.
+      _apply_hit_effects() for where the tower-facing ones actually apply,
+      and _current_footprint_subtiles() for the footprint one.
+      tower_damage_multiplier is itself composed from two different Relic
+      fields (see compose_relic_modifiers) -- a flat per-relic multiplier
+      and an escalating-per-floor one, since a run-long stacking bonus
+      like veterans_momentum has nowhere else to live but this same field.
 
     A Relic's own starting_gold_multiplier/starting_lives_bonus (a
     genuinely one-time bonus, not a per-floor one -- see RELICS' own
@@ -183,7 +300,18 @@ class RelicModifiers:
     a later floor's own load. Folding it in here would either double-apply
     it on every subsequent floor or require this type to start tracking
     which relics it's already "spent," neither of which this simple
-    aggregate-and-reuse shape is built for."""
+    aggregate-and-reuse shape is built for.
+
+    Two more fields don't fit the "recurs every floor, for as long as
+    it's held" framing above either, and are resolved elsewhere entirely:
+    misers_coffer's gold_per_floor_bonus_while_unspent folds into
+    gold_per_floor_bonus above, but only conditionally (see compose_relic_
+    modifiers' has_spent_gold parameter and Game._spend_gold) --
+    once revoked, it stays revoked for the rest of the run, unlike every
+    other field here which stays constant for as long as the relic is
+    held. guardians_reprieve has no field here at all (see RELICS' own
+    comment on it) -- checked directly against run.relics in
+    Game._lose_a_life instead."""
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
     enemy_speed_multiplier: float = 1.0
@@ -194,12 +322,26 @@ class RelicModifiers:
     crit_chance: float = 0.0
     crit_damage_multiplier: float = 1.0
     tower_footprint_shrink: int = 0
+    tower_damage_multiplier: float = 1.0
+    chain_chance: float = 0.0
+    chain_effect: tuple = None
+    last_stand_damage_multiplier: float = 1.0
+    tower_upgrade_cost_multiplier: float = 1.0
+    sell_refund_bonus: float = 0.0
+    support_aura_range_multiplier: float = 1.0
+    support_aura_strength_multiplier: float = 1.0
 
 
-def compose_relic_modifiers(relic_keys):
+def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     """Aggregate every relic in `relic_keys` into one RelicModifiers bundle
     -- flat bonuses add, multipliers multiply, so composing several relics
     is order-independent regardless of which was drafted first.
+
+    `floor_index` and `has_spent_gold` both default so every pre-existing
+    call site (and every existing test) is unaffected -- they only matter
+    to veterans_momentum's escalating bonus and misers_coffer's
+    conditionally-revoked one, respectively; see relics.py's own module
+    docstring for both.
 
     poison_effect and crit_damage_multiplier are the two fields that aren't
     a plain sum/multiply, and both are gated on the relic actually
@@ -230,14 +372,34 @@ def compose_relic_modifiers(relic_keys):
     crit_chance = 0.0
     crit_damage_multiplier = 1.0
     tower_footprint_shrink = 0
+    tower_damage_multiplier = 1.0
+    chain_chance = 0.0
+    chain_effect = None
+    last_stand_damage_multiplier = 1.0
+    tower_upgrade_cost_multiplier = 1.0
+    sell_refund_bonus = 0.0
+    support_aura_range_multiplier = 1.0
+    support_aura_strength_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
+        if not has_spent_gold:
+            gold_per_floor_bonus += relic.gold_per_floor_bonus_while_unspent
+        last_stand_damage_multiplier = max(last_stand_damage_multiplier, relic.last_stand_damage_multiplier)
+        tower_upgrade_cost_multiplier *= relic.tower_upgrade_cost_multiplier
+        sell_refund_bonus += relic.sell_refund_bonus
+        support_aura_range_multiplier *= relic.support_aura_range_multiplier
+        support_aura_strength_multiplier *= relic.support_aura_strength_multiplier
         enemy_gold_multiplier *= relic.enemy_gold_multiplier
         enemy_speed_multiplier *= relic.enemy_speed_multiplier
         tower_range_multiplier *= relic.tower_range_multiplier
         tower_fire_rate_multiplier *= relic.tower_fire_rate_multiplier
         tower_footprint_shrink += relic.tower_footprint_shrink
+        # Neutral defaults (1.0 / 0.0) make both lines a no-op for a relic
+        # that doesn't grant either -- no gating needed, unlike the
+        # chance-gated fields below.
+        tower_damage_multiplier *= relic.tower_damage_multiplier
+        tower_damage_multiplier *= 1.0 + relic.tower_damage_growth_per_floor * floor_index
         if relic.crit_chance > 0:
             crit_chance += relic.crit_chance
             crit_damage_multiplier = max(crit_damage_multiplier, relic.crit_damage_multiplier)
@@ -251,6 +413,15 @@ def compose_relic_modifiers(relic_keys):
                     relic.poison_tick_interval,
                     max(poison_effect[2], relic.poison_duration),
                 )
+        if relic.chain_chance > 0:
+            chain_chance += relic.chain_chance
+            if chain_effect is None:
+                chain_effect = (relic.chain_damage_fraction, relic.chain_range)
+            else:
+                chain_effect = (
+                    max(chain_effect[0], relic.chain_damage_fraction),
+                    max(chain_effect[1], relic.chain_range),
+                )
     return RelicModifiers(
         gold_per_floor_bonus=gold_per_floor_bonus,
         enemy_gold_multiplier=enemy_gold_multiplier,
@@ -262,4 +433,12 @@ def compose_relic_modifiers(relic_keys):
         crit_chance=crit_chance,
         crit_damage_multiplier=crit_damage_multiplier,
         tower_footprint_shrink=tower_footprint_shrink,
+        tower_damage_multiplier=tower_damage_multiplier,
+        chain_chance=chain_chance,
+        chain_effect=chain_effect,
+        last_stand_damage_multiplier=last_stand_damage_multiplier,
+        tower_upgrade_cost_multiplier=tower_upgrade_cost_multiplier,
+        sell_refund_bonus=sell_refund_bonus,
+        support_aura_range_multiplier=support_aura_range_multiplier,
+        support_aura_strength_multiplier=support_aura_strength_multiplier,
     )

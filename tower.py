@@ -180,6 +180,23 @@ class Tower:
         self.relic_poison_effect = None
         self.relic_crit_chance = 0.0
         self.relic_crit_damage_multiplier = 1.0
+        self.relic_damage_bonus_multiplier = 1.0
+        self.relic_chain_chance = 0.0
+        self.relic_chain_effect = None
+        self.relic_upgrade_cost_multiplier = 1.0
+        self.relic_sell_refund_bonus = 0.0
+        self.relic_aura_range_bonus_multiplier = 1.0
+        self.relic_aura_strength_bonus_multiplier = 1.0
+        # The configured strength of a Last Stand Charm-style relic, set
+        # once at construction like every relic_* field above -- but
+        # relic_last_stand_multiplier below it is the one relic-driven
+        # value on this whole class that ISN'T constant for the tower's
+        # lifetime: Game.update() recomputes it every frame from live
+        # Economy.lives (see Tower.set_last_stand_multiplier), since
+        # "down to your last life" can turn on and off within a single
+        # run, unlike any other relic effect here.
+        self.relic_last_stand_bonus_multiplier = 1.0
+        self.relic_last_stand_multiplier = 1.0
         # Always one tile's worth of area (settings.SUBTILES_PER_TILE)
         # unless a Compact Framework-style relic shrinks it -- see
         # tile_rect()/upgrade_badge_center()/draw() below and
@@ -191,10 +208,14 @@ class Tower:
         return self.level >= self.MAX_LEVEL
 
     def upgrade_cost(self):
-        """Gold cost to reach the next level, or None if already maxed."""
+        """Gold cost to reach the next level, or None if already maxed.
+        Folds in relic_upgrade_cost_multiplier (a Quartermaster's Favor-
+        style relic's own discount, set once at construction like every
+        other relic_* field -- see Game._construct_tower) the same way
+        specialization_cost() below does."""
         if self.is_max_level:
             return None
-        return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1])
+        return round(self.cost * self.UPGRADE_COST_MULTIPLIERS[self.level + 1] * self.relic_upgrade_cost_multiplier)
 
     def _multiplier_table_for(self, name):
         """The level->multiplier table that applies to stat `name` -- its
@@ -216,9 +237,11 @@ class Tower:
 
     def sell_value(self):
         """Gold refunded if this tower is sold right now -- a fraction
-        (settings.SELL_REFUND_FRACTION) of everything spent on it, base
-        cost plus any upgrades, not just the base cost."""
-        return round(self.total_invested * settings.SELL_REFUND_FRACTION)
+        (settings.SELL_REFUND_FRACTION, plus a Liquidation Rights-style
+        relic's own additive bonus -- relic_sell_refund_bonus, set once at
+        construction) of everything spent on it, base cost plus any
+        upgrades, not just the base cost."""
+        return round(self.total_invested * (settings.SELL_REFUND_FRACTION + self.relic_sell_refund_bonus))
 
     @property
     def can_specialize(self):
@@ -226,10 +249,12 @@ class Tower:
 
     def specialization_cost(self):
         """Gold cost to choose a specialization, or None if not eligible
-        right now (not maxed yet, or already specialized)."""
+        right now (not maxed yet, or already specialized). Folds in
+        relic_upgrade_cost_multiplier the same way upgrade_cost() above
+        does -- a Quartermaster's Favor-style relic discounts both."""
         if not self.can_specialize:
             return None
-        return round(self.cost * self.SPECIALIZATION_COST_MULTIPLIER)
+        return round(self.cost * self.SPECIALIZATION_COST_MULTIPLIER * self.relic_upgrade_cost_multiplier)
 
     def specialize(self, key):
         """Choose specialization `key` -- the one-time branching upgrade
@@ -304,6 +329,8 @@ class Tower:
         projectile.relic_poison_effect = self.relic_poison_effect
         projectile.relic_crit_chance = self.relic_crit_chance
         projectile.relic_crit_damage_multiplier = self.relic_crit_damage_multiplier
+        projectile.relic_chain_chance = self.relic_chain_chance
+        projectile.relic_chain_effect = self.relic_chain_effect
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
@@ -402,11 +429,38 @@ class Tower:
         return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
 
     def effective_damage(self):
-        """self.damage scaled by any currently-active aura buff (see
-        reset_aura()/receive_aura()) -- every create_projectile() below
-        reads this instead of self.damage directly, so a buffed tower's
-        shots reflect it without each subclass repeating the multiplication."""
-        return self.damage * self.aura_damage_multiplier
+        """self.damage scaled by three independent bonus sources, stacked
+        ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus) --
+        the same "sources don't multiply or max()" rule effective_range()
+        already establishes for its own two sources, generalized to a
+        third here: the transient per-frame aura buff (aura_damage_
+        multiplier, reset every frame -- see reset_aura()/receive_aura()),
+        this tower's persistent relic-driven bonus (relic_damage_bonus_
+        multiplier, set once at construction -- see Game._construct_tower),
+        and a Last Stand Charm-style relic's live, per-frame-recomputed
+        bonus (relic_last_stand_multiplier -- see
+        set_last_stand_multiplier()). Every create_projectile() below reads
+        this instead of self.damage directly, so a buffed tower's shots
+        reflect it without each subclass repeating the multiplication."""
+        return self.damage * (
+            1.0
+            + (self.aura_damage_multiplier - 1.0)
+            + (self.relic_damage_bonus_multiplier - 1.0)
+            + (self.relic_last_stand_multiplier - 1.0)
+        )
+
+    def set_last_stand_multiplier(self, active):
+        """Called every frame by Game.update() (alongside reset_aura(), in
+        the same first pass) with `active` = whether Economy.lives is down
+        to the last one -- the one relic-driven value on this class that
+        reacts to live, changing game state rather than resolving once at
+        floor-load/construction time. relic_last_stand_bonus_multiplier is
+        the relic's own configured strength (constant, from
+        Game._construct_tower); this just switches whether effective_
+        damage() currently applies it."""
+        self.relic_last_stand_multiplier = (
+            self.relic_last_stand_bonus_multiplier if active else 1.0
+        )
 
     def effective_fire_rate(self):
         """self.fire_rate scaled by this tower's own persistent,
@@ -913,12 +967,24 @@ class SupportTower(Tower):
         # also fold in aura_range_multiplier -- see relic_adjusted_range()'s
         # own docstring for why that specifically causes a same-frame,
         # order-dependent buff chain between Support towers.
-        broadcast_range = self.relic_adjusted_range()
+        # relic_aura_range_bonus_multiplier/relic_aura_strength_bonus_
+        # multiplier (a Resonant Field-style relic) multiply straight onto
+        # the already-resolved values below -- combining two SAME-kind
+        # multipliers, unlike relic_adjusted_range()'s own additive
+        # combination of DIFFERENT-origin bonuses (see that method's own
+        # docstring). Deliberately separate fields from tower_range_
+        # multiplier/relic_range_bonus_multiplier above -- a general Range
+        # relic already widens this tower's own broadcast reach via
+        # relic_adjusted_range(); Resonant Field scales specifically the
+        # aura math on top of that, not instead of it.
+        broadcast_range = self.relic_adjusted_range() * self.relic_aura_range_bonus_multiplier
+        buffed_damage_multiplier = self.buff_damage_multiplier * self.relic_aura_strength_bonus_multiplier
+        buffed_range_multiplier = self.buff_range_multiplier * self.relic_aura_strength_bonus_multiplier
         for other in (towers or ()):
             if other is self:
                 continue
             if self.pos.distance_to(other.pos) <= broadcast_range:
-                other.receive_aura(self.buff_damage_multiplier, self.buff_range_multiplier)
+                other.receive_aura(buffed_damage_multiplier, buffed_range_multiplier)
 
     def create_projectile(self, target):
         raise NotImplementedError("SupportTower never fires -- see update()")

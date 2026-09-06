@@ -74,23 +74,53 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
-  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Ten relics,
-  three effect shapes: **per-floor** (composed into `RelicModifiers`, threaded into
-  `WaveManager`/`Economy` construction every floor -- `gold_per_floor_bonus`/`enemy_gold_multiplier`/
-  `enemy_speed_multiplier`); **one-time** (`starting_gold_multiplier`/`starting_lives_bonus`, applied
-  directly at draft-pick time instead, see `Game._apply_one_time_relic_bonus` -- `RelicModifiers` has
-  no fields for these); and **per-tower** (`tower_range_multiplier`/`tower_fire_rate_multiplier`/
-  `poison_chance`+`poison_effect`/`crit_chance`+`crit_damage_multiplier`/`tower_footprint_shrink`,
-  read once per tower at construction time -- see `Game._construct_tower`/`_current_footprint_
-  subtiles`, and `Tower.effective_range()`/`effective_fire_rate()`/`Projectile._apply_hit_effects()`
-  for where each actually applies). `compose_relic_modifiers()`'s per-tower fields aggregate the same
-  "flat sums, multipliers multiply" way as the per-floor ones, except `crit_damage_multiplier` (`max()`
-  across relics, not multiplied -- two crit relics compounding multiplicatively would spike far faster
-  than two flat +chance relics summing) and `poison_effect`: composing two poison-granting relics
-  combines their `(damage_per_tick, tick_interval, duration)` tuples the exact same way
-  `Enemy.apply_poison()` already combines two poison *hits* on one enemy (keep the harsher tick damage
-  and longer duration, last-write on interval), so drafting a second poison relic behaves exactly like
-  landing a second poison hit already does.
+  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Twenty relics
+  across six effect shapes -- the original three, plus three more a later batch added: **per-floor**
+  (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
+  `gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`); **one-time**
+  (`starting_gold_multiplier`/`starting_lives_bonus`, applied directly at draft-pick time instead, see
+  `Game._apply_one_time_relic_bonus` -- `RelicModifiers` has no fields for these); **per-tower**
+  (`tower_range_multiplier`/`tower_fire_rate_multiplier`/`tower_damage_multiplier`/`poison_chance`+
+  `poison_effect`/`crit_chance`+`crit_damage_multiplier`/`chain_chance`+`chain_effect`/
+  `tower_footprint_shrink`/`tower_upgrade_cost_multiplier`/`sell_refund_bonus`/`support_aura_range_
+  multiplier`+`support_aura_strength_multiplier`, read once per tower at construction time -- see
+  `Game._construct_tower`/`_current_footprint_subtiles`, and `Tower.effective_range()`/
+  `effective_fire_rate()`/`effective_damage()`/`upgrade_cost()`/`specialization_cost()`/`sell_value()`/
+  `SupportTower.update()`/`Projectile._apply_hit_effects()` for where each actually applies);
+  **escalating-per-floor** (`veterans_momentum`'s `tower_damage_growth_per_floor`, folded into
+  `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- grows with floors
+  cleared instead of being a flat per-floor constant); **conditionally-revocable** (`misers_coffer`'s
+  `gold_per_floor_bonus_while_unspent`, folded into `gold_per_floor_bonus` gated on the new
+  `has_spent_gold` parameter -- `RunState.has_spent_gold` flips permanently true the run's first
+  successful spend, tracked via `Game._spend_gold()`, the one choke point `try_place_tower`/
+  `try_upgrade_tower`/`try_specialize_tower` all route through instead of calling `Economy.spend()`
+  directly);
+  and **live-reactive** (`last_stand_charm`'s `last_stand_damage_multiplier`, the one relic effect
+  resolved every frame against changing game state -- `Economy.is_on_last_life` -- rather than once at
+  floor-load/construction time, via `Tower.set_last_stand_multiplier()` called from `Game.update()`'s
+  existing two-pass tower loop). `guardians_reprieve` has no `RelicModifiers` field at all (same shape
+  as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in `Game._lose_a_life()`,
+  the interception point for the enemy-reached-goal life loss, gated on `RunState.
+  used_guardians_reprieve` (a one-time-per-run charge) and a no-op under `Economy.invulnerable`
+  (sandbox/Creative -- nothing to save there); `Economy.is_on_last_life` is the one shared answer to
+  "is this run on its last life" both relics ask, rather than each re-deriving `lives <= 1` on its own.
+  `compose_relic_modifiers()`'s per-tower fields aggregate
+  the same "flat sums, multipliers multiply" way as the per-floor ones, except `crit_damage_multiplier`
+  and `last_stand_damage_multiplier` (both `max()` across relics, not multiplied -- two such relics
+  compounding multiplicatively would spike far faster than two flat +chance relics summing),
+  `poison_effect`/`chain_effect` (each a tuple combined via `max()`/`max()`, `poison_effect` with one
+  last-write field -- see below), and `tower_damage_multiplier` (composed from *two* different `Relic`
+  fields, a flat per-relic multiplier and the escalating-per-floor one, since a run-long stacking bonus
+  like `veterans_momentum` has nowhere else to live). Composing two poison-granting relics combines
+  their `(damage_per_tick, tick_interval, duration)` tuples the exact same way `Enemy.apply_poison()`
+  already combines two poison *hits* on one enemy (keep the harsher tick damage and longer duration,
+  last-write on interval), so drafting a second poison relic behaves exactly like landing a second
+  poison hit already does; `chain_effect` (`damage_fraction, chain_range`) combines via plain `max()`
+  on both elements, the same conservative choice. `arcing_rounds`' chain-on-hit bounce
+  (`Projectile._apply_hit_effects`/`_find_chain_target`/`_apply_direct_damage`) is a separate,
+  independent mechanism from `LightningTower`'s own tower-driven `chain_range`/`max_chain_targets` --
+  it fires on any hit via a chance roll and is always exactly one non-recursive bounce, never a
+  multi-link chain.
 - `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
   precisely because `floor_index` is unbounded once the final floor's endless tail runs.
 - `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.

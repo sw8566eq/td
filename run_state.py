@@ -45,6 +45,18 @@ class RunState:
     # run-history browse screen wanting that distinction would need
     # record_run_result to start accepting/persisting it too.
     is_daily: bool = False
+    # Miser's Coffer's own gate (relics.py) -- flips true the instant this
+    # run ever spends any gold (Game._spend_gold, the one choke point
+    # every gold-spending call site routes through) and stays true
+    # forever after, tracked unconditionally regardless of whether the
+    # relic is even held, the same "always tracked, only some relics read
+    # it" precedent floor_index/floors_cleared already sets for
+    # veterans_momentum.
+    has_spent_gold: bool = False
+    # Guardian's Reprieve's one-time charge (relics.py) -- flips true the
+    # first time it actually saves the run from losing its last life
+    # (Game._lose_a_life), and never resets for the rest of the run.
+    used_guardians_reprieve: bool = False
 
     @property
     def current_level_id(self):

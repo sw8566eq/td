@@ -80,6 +80,8 @@ def _run_to_dict(run):
         "gold": run.gold,
         "relics": list(run.relics),
         "is_daily": run.is_daily,
+        "has_spent_gold": run.has_spent_gold,
+        "used_guardians_reprieve": run.used_guardians_reprieve,
     }
 
 
@@ -94,6 +96,8 @@ def _run_from_dict(data):
         gold=data["gold"],
         relics=list(data["relics"]),
         is_daily=data["is_daily"],
+        has_spent_gold=data["has_spent_gold"],
+        used_guardians_reprieve=data["used_guardians_reprieve"],
     )
 
 

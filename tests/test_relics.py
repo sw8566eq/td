@@ -1,5 +1,7 @@
 import random
 
+import pytest
+
 from relics import RELICS, Relic, RelicModifiers, compose_relic_modifiers, relic_offer
 from run_state import RunState
 
@@ -133,6 +135,128 @@ def test_compose_relic_modifiers_ignores_crit_damage_multiplier_from_a_relic_wit
 def test_compose_relic_modifiers_sums_tower_footprint_shrink():
     modifiers = compose_relic_modifiers(["compact_framework", "compact_framework"])
     assert modifiers.tower_footprint_shrink == RELICS["compact_framework"].tower_footprint_shrink * 2
+
+
+def test_compose_relic_modifiers_multiplies_tower_damage_multiplier():
+    modifiers = compose_relic_modifiers(["overdrive_coils", "overdrive_coils"])
+    assert modifiers.tower_damage_multiplier == RELICS["overdrive_coils"].tower_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_combines_opposite_damage_trade_relics():
+    modifiers = compose_relic_modifiers(["overdrive_coils", "snipers_discipline"])
+    assert modifiers.tower_damage_multiplier == (
+        RELICS["overdrive_coils"].tower_damage_multiplier * RELICS["snipers_discipline"].tower_damage_multiplier
+    )
+    assert modifiers.tower_fire_rate_multiplier == (
+        RELICS["overdrive_coils"].tower_fire_rate_multiplier * RELICS["snipers_discipline"].tower_fire_rate_multiplier
+    )
+
+
+def test_compose_relic_modifiers_veterans_momentum_is_a_noop_on_floor_zero():
+    modifiers = compose_relic_modifiers(["veterans_momentum"], floor_index=0)
+    assert modifiers.tower_damage_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_veterans_momentum_scales_with_floor_index():
+    modifiers = compose_relic_modifiers(["veterans_momentum"], floor_index=5)
+    growth = RELICS["veterans_momentum"].tower_damage_growth_per_floor
+    assert modifiers.tower_damage_multiplier == pytest.approx(1.0 + growth * 5)
+
+
+def test_compose_relic_modifiers_default_floor_index_matches_floor_zero():
+    # No floor_index passed at all (every pre-existing call site's shape)
+    # must behave identically to floor_index=0 -- veterans_momentum
+    # contributes nothing until at least one floor has actually cleared.
+    assert compose_relic_modifiers(["veterans_momentum"]) == compose_relic_modifiers(
+        ["veterans_momentum"], floor_index=0
+    )
+
+
+def test_compose_relic_modifiers_sums_chain_chance():
+    modifiers = compose_relic_modifiers(["arcing_rounds", "arcing_rounds"])
+    assert modifiers.chain_chance == RELICS["arcing_rounds"].chain_chance * 2
+
+
+def test_compose_relic_modifiers_builds_chain_effect_from_the_relics_own_fields():
+    modifiers = compose_relic_modifiers(["arcing_rounds"])
+    relic = RELICS["arcing_rounds"]
+    assert modifiers.chain_effect == (relic.chain_damage_fraction, relic.chain_range)
+
+
+def test_compose_relic_modifiers_combines_two_chain_relics_via_max(monkeypatch):
+    weak_chain = Relic("test_weak_chain", "", "", chain_chance=0.1, chain_damage_fraction=0.3, chain_range=40)
+    strong_chain = Relic("test_strong_chain", "", "", chain_chance=0.2, chain_damage_fraction=0.6, chain_range=80)
+    monkeypatch.setitem(RELICS, "test_weak_chain", weak_chain)
+    monkeypatch.setitem(RELICS, "test_strong_chain", strong_chain)
+    modifiers = compose_relic_modifiers(["test_weak_chain", "test_strong_chain"])
+    assert modifiers.chain_chance == pytest.approx(0.3)
+    assert modifiers.chain_effect == (0.6, 80)
+
+
+def test_compose_relic_modifiers_no_chain_relic_leaves_chain_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.chain_chance == 0.0
+    assert modifiers.chain_effect is None
+
+
+def test_compose_relic_modifiers_grants_misers_coffer_bonus_when_nothing_spent():
+    modifiers = compose_relic_modifiers(["misers_coffer"], has_spent_gold=False)
+    assert modifiers.gold_per_floor_bonus == RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
+
+
+def test_compose_relic_modifiers_revokes_misers_coffer_bonus_once_gold_is_spent():
+    modifiers = compose_relic_modifiers(["misers_coffer"], has_spent_gold=True)
+    assert modifiers.gold_per_floor_bonus == 0
+
+
+def test_compose_relic_modifiers_default_has_spent_gold_matches_false():
+    # No has_spent_gold passed at all (every pre-existing call site's
+    # shape) must behave identically to has_spent_gold=False.
+    assert compose_relic_modifiers(["misers_coffer"]) == compose_relic_modifiers(
+        ["misers_coffer"], has_spent_gold=False
+    )
+
+
+def test_compose_relic_modifiers_misers_coffer_combines_with_prospectors_charm():
+    modifiers = compose_relic_modifiers(["prospectors_charm", "misers_coffer"], has_spent_gold=False)
+    assert modifiers.gold_per_floor_bonus == (
+        RELICS["prospectors_charm"].gold_per_floor_bonus + RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
+    )
+
+
+def test_compose_relic_modifiers_takes_the_max_last_stand_damage_multiplier(monkeypatch):
+    weaker_last_stand = Relic("test_weaker_last_stand", "", "", last_stand_damage_multiplier=1.1)
+    monkeypatch.setitem(RELICS, "test_weaker_last_stand", weaker_last_stand)
+    modifiers = compose_relic_modifiers(["last_stand_charm", "test_weaker_last_stand"])
+    assert modifiers.last_stand_damage_multiplier == RELICS["last_stand_charm"].last_stand_damage_multiplier
+
+
+def test_compose_relic_modifiers_no_last_stand_relic_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.last_stand_damage_multiplier == 1.0
+
+
+def test_guardians_reprieve_contributes_nothing_to_composed_modifiers():
+    # No numeric fields at all -- checked directly against run.relics in
+    # Game._lose_a_life instead, same shape as war_chest/sturdy_gate.
+    assert compose_relic_modifiers(["guardians_reprieve"]) == RelicModifiers()
+
+
+def test_compose_relic_modifiers_multiplies_tower_upgrade_cost_multiplier():
+    modifiers = compose_relic_modifiers(["quartermasters_favor", "quartermasters_favor"])
+    assert modifiers.tower_upgrade_cost_multiplier == RELICS["quartermasters_favor"].tower_upgrade_cost_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_sell_refund_bonus():
+    modifiers = compose_relic_modifiers(["liquidation_rights", "liquidation_rights"])
+    assert modifiers.sell_refund_bonus == RELICS["liquidation_rights"].sell_refund_bonus * 2
+
+
+def test_compose_relic_modifiers_multiplies_support_aura_multipliers():
+    modifiers = compose_relic_modifiers(["resonant_field", "resonant_field"])
+    relic = RELICS["resonant_field"]
+    assert modifiers.support_aura_range_multiplier == relic.support_aura_range_multiplier ** 2
+    assert modifiers.support_aura_strength_multiplier == relic.support_aura_strength_multiplier ** 2
 
 
 def test_compose_relic_modifiers_is_order_independent():

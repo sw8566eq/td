@@ -370,6 +370,31 @@ def test_support_tower_buffs_an_attacking_tower_in_range():
     assert attacker.aura_range_multiplier == SupportTower.buff_range_multiplier
 
 
+def test_resonant_field_widens_a_support_towers_broadcast_reach():
+    support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    just_outside_base_reach = BasicTower(
+        anchor_col=1, anchor_row=1, pixel_pos=(support.range + 10, 0),
+    )
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, just_outside_base_reach])
+    assert just_outside_base_reach.aura_damage_multiplier == 1.0  # not yet buffed
+
+    support.relic_aura_range_bonus_multiplier = 1.20
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, just_outside_base_reach])
+
+    assert just_outside_base_reach.aura_damage_multiplier == SupportTower.buff_damage_multiplier
+
+
+def test_resonant_field_strengthens_a_support_towers_own_buff():
+    support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    attacker = BasicTower(anchor_col=1, anchor_row=1, pixel_pos=(60, 50))
+    support.relic_aura_strength_bonus_multiplier = 1.20
+
+    support.update(dt=1.0, enemies=[], projectiles=[], towers=[support, attacker])
+
+    assert attacker.aura_damage_multiplier == pytest.approx(SupportTower.buff_damage_multiplier * 1.20)
+    assert attacker.aura_range_multiplier == pytest.approx(SupportTower.buff_range_multiplier * 1.20)
+
+
 def test_support_tower_does_not_buff_a_tower_out_of_range():
     support = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
     far_attacker = BasicTower(anchor_col=10, anchor_row=10, pixel_pos=(10_000, 10_000))
@@ -419,6 +444,44 @@ def test_reset_aura_clears_a_previously_applied_buff():
     attacker.reset_aura()
     assert attacker.aura_damage_multiplier == 1.0
     assert attacker.aura_range_multiplier == 1.0
+
+
+def test_effective_damage_reflects_the_relic_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_damage_bonus_multiplier = 1.25
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.25)
+
+
+def test_effective_damage_stacks_aura_relic_and_last_stand_bonuses_additively():
+    # Regression guard mirroring effective_range()'s own additive-stack
+    # test: three independent bonus sources must ADD, not multiply and not
+    # max() -- see effective_damage()'s own docstring.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.aura_damage_multiplier = 1.5
+    tower.relic_damage_bonus_multiplier = 1.25
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    tower.set_last_stand_multiplier(True)
+
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 2.05)  # 1 + .5 + .25 + .3
+    assert tower.effective_damage() != pytest.approx(BasicTower.damage * 1.5 * 1.25 * 1.3)  # not multiplicative
+    assert tower.effective_damage() != pytest.approx(BasicTower.damage * max(1.5, 1.25, 1.3))  # not max()
+
+
+def test_set_last_stand_multiplier_is_inactive_by_default():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    assert tower.effective_damage() == BasicTower.damage
+
+
+def test_set_last_stand_multiplier_toggles_the_bonus_on_and_off():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_bonus_multiplier = 1.3
+
+    tower.set_last_stand_multiplier(True)
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.3)
+
+    tower.set_last_stand_multiplier(False)
+    assert tower.effective_damage() == BasicTower.damage
 
 
 def test_effective_range_stacks_the_relic_bonus_additively_with_the_aura():

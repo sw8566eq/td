@@ -46,6 +46,21 @@ def test_is_out_of_lives_false_while_lives_remain():
     assert not economy.is_out_of_lives
 
 
+def test_is_on_last_life_true_at_exactly_one():
+    economy = Economy(starting_gold=0, starting_lives=1)
+    assert economy.is_on_last_life
+
+
+def test_is_on_last_life_false_with_more_than_one_life():
+    economy = Economy(starting_gold=0, starting_lives=2)
+    assert not economy.is_on_last_life
+
+
+def test_is_on_last_life_true_at_zero_too():
+    economy = Economy(starting_gold=0, starting_lives=0)
+    assert economy.is_on_last_life
+
+
 # --- Debug flag: unlimited gold ---
 
 def test_unlimited_gold_can_afford_anything():
