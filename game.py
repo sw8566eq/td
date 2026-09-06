@@ -1666,8 +1666,7 @@ class Game:
         if not self.economy.can_afford(tower_cls.cost):
             return False
 
-        self.economy.spend(tower_cls.cost)
-        self._note_gold_spent()
+        self._spend_gold(tower_cls.cost)
         tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
         self._register_tower(tower)
         self._record_achievement("towers_built")
@@ -1742,8 +1741,7 @@ class Game:
         if cost is None or not self.economy.can_afford(cost):
             return False
 
-        self.economy.spend(cost)
-        self._note_gold_spent()
+        self._spend_gold(cost)
         tower.upgrade()
         # Fires exactly once per tower, the moment it actually reaches
         # MAX_LEVEL -- try_upgrade_tower's own cost-is-None guard above
@@ -1763,8 +1761,7 @@ class Game:
         if not self.economy.can_afford(cost):
             return False
 
-        self.economy.spend(cost)
-        self._note_gold_spent()
+        self._spend_gold(cost)
         tower.specialize(key)
         self._record_achievement("towers_specialized")
         return True
@@ -1808,30 +1805,34 @@ class Game:
         zero self.economy.lives out, spend the relic's charge instead of
         the life: lives is left exactly where it is (1) rather than
         calling lose_life() at all. Every other case falls straight
-        through to a normal loss. Re-checking lives <= 1 fresh per call
-        (not once per frame) correctly handles several enemies leaking on
-        the same frame: the first one that would actually zero lives out
-        consumes the charge, any others that frame proceed normally
-        against the still-nonzero lives."""
+        through to a normal loss. Re-checking is_on_last_life fresh per
+        call (not once per frame) correctly handles several enemies
+        leaking on the same frame: the first one that would actually zero
+        lives out consumes the charge, any others that frame proceed
+        normally against the still-nonzero lives."""
         run = self.active_run
         if (
             run is not None and "guardians_reprieve" in run.relics
             and not run.used_guardians_reprieve and not self.economy.invulnerable
-            and self.economy.lives <= 1
+            and self.economy.is_on_last_life
         ):
             run.used_guardians_reprieve = True
             return
         self.economy.lose_life()
 
-    def _note_gold_spent(self):
-        """Miser's Coffer's own gate (relics.py) -- called from every
-        Economy.spend() call site (try_place_tower/try_upgrade_tower/
+    def _spend_gold(self, amount):
+        """The one choke point for actually spending gold -- every place
+        that debits self.economy (try_place_tower/try_upgrade_tower/
         try_specialize_tower, the only three ways a player can spend gold
-        today) rather than hooking Economy itself, which stays pure
-        Python with no relic/game awareness per its own module docstring.
-        Tracked unconditionally regardless of whether the relic is even
-        held -- simplest, and reusable by any future relic wanting the
-        same "before this run's first spend" gate."""
+        today) routes through here instead of calling self.economy.spend()
+        directly, so a future gold sink can't forget the second half of
+        this pairing. Also flips Miser's Coffer's own gate (relics.py) --
+        tracked unconditionally regardless of whether the relic is even
+        held, rather than hooking Economy itself (which stays pure Python
+        with no relic/game awareness per its own module docstring) --
+        simplest, and reusable by any future relic wanting the same
+        "before this run's first spend" gate."""
+        self.economy.spend(amount)
         if self.active_run is not None:
             self.active_run.has_spent_gold = True
 
@@ -1854,7 +1855,7 @@ class Game:
         # Charm-style relic's live check rides the same first pass --
         # it's one global condition (not a per-tower proximity check like
         # the aura), so no second full iteration is needed.
-        last_stand_active = self.economy.lives <= 1
+        last_stand_active = self.economy.is_on_last_life
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)

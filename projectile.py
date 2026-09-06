@@ -182,21 +182,30 @@ class Projectile:
         return next_target
 
     def _apply_direct_damage(self, enemy, amount):
-        """Damage-only hit application, no crit/poison/chain rolls -- used
-        for an Arcing Rounds-style relic's own bonus hit (see
-        _apply_hit_effects below), which is deliberately a single, simple,
-        damage-only jump rather than a full second application of every
-        hit effect. Keeping it non-recursive means the bounce needs no
-        recursion guard and can never cascade."""
+        """Apply `amount` to `enemy` and attribute it back to self.source
+        (damage_dealt/kills) -- no crit/poison/chain rolls of its own,
+        just the damage-and-bookkeeping core every hit needs. Shared by
+        _apply_hit_effects below (which layers crit/slow/knockback/
+        poison/chain around this for the projectile's own primary hit)
+        and an Arcing Rounds-style relic's bonus bounce (which uses only
+        this, deliberately not a second full _apply_hit_effects() call --
+        a single, simple, damage-only jump rather than a full second
+        application of every hit effect. Keeping it non-recursive means
+        the bounce needs no recursion guard and can never cascade)."""
         was_alive = not enemy.is_dead
+        # take_damage() returns however much of `amount` actually reached
+        # hp -- usually all of it, but a shielded or armored enemy
+        # (ShieldedEnemy/BossEnemy) can absorb part of a hit first, and
+        # damage_dealt should reflect what was really done, not the full
+        # nominal amount regardless of what landed.
         applied = enemy.take_damage(amount)
         if self.source is not None:
             self.source.damage_dealt += applied
             if was_alive and enemy.is_dead:
                 self.source.kills += 1
+        return applied
 
     def _apply_hit_effects(self, enemy, enemies):
-        was_alive = not enemy.is_dead
         # A Lucky Strikes-style relic's crit roll happens here, once per
         # enemy this projectile actually hits (see this method's own call
         # sites -- once for a direct hit, once per enemy in a splash
@@ -208,16 +217,7 @@ class Projectile:
         damage = self.damage
         if self.relic_crit_chance and random.random() < self.relic_crit_chance:
             damage *= self.relic_crit_damage_multiplier
-        # take_damage() returns however much of the above actually
-        # reached hp -- usually all of it, but a shielded or armored
-        # enemy (ShieldedEnemy/BossEnemy) can absorb part of a hit first,
-        # and damage_dealt should reflect what was really done, not the
-        # full nominal shot damage regardless of what landed.
-        applied = enemy.take_damage(damage)
-        if self.source is not None:
-            self.source.damage_dealt += applied
-            if was_alive and enemy.is_dead:
-                self.source.kills += 1
+        self._apply_direct_damage(enemy, damage)
         if self.slow_effect is not None:
             enemy.apply_slow(*self.slow_effect)
         if self.knockback_duration:

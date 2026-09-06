@@ -39,3 +39,13 @@ class Economy:
     @property
     def is_out_of_lives(self):
         return not self.invulnerable and self.lives <= 0
+
+    @property
+    def is_on_last_life(self):
+        """True once lives is down to its last one -- the single answer
+        to "is this run on its last life", shared by two independent
+        relics that each ask it their own way (Game._lose_a_life's
+        Guardian's Reprieve interception, Game.update()'s Last Stand
+        Charm check) so a future tuning change to the threshold can't
+        leave them silently disagreeing."""
+        return self.lives <= 1

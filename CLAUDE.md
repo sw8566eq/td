@@ -92,15 +92,19 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   cleared instead of being a flat per-floor constant); **conditionally-revocable** (`misers_coffer`'s
   `gold_per_floor_bonus_while_unspent`, folded into `gold_per_floor_bonus` gated on the new
   `has_spent_gold` parameter -- `RunState.has_spent_gold` flips permanently true the run's first
-  successful `Economy.spend()`, tracked via `Game._note_gold_spent()` at all three spend call sites);
+  successful spend, tracked via `Game._spend_gold()`, the one choke point `try_place_tower`/
+  `try_upgrade_tower`/`try_specialize_tower` all route through instead of calling `Economy.spend()`
+  directly);
   and **live-reactive** (`last_stand_charm`'s `last_stand_damage_multiplier`, the one relic effect
-  resolved every frame against changing game state -- `Economy.lives` -- rather than once at
+  resolved every frame against changing game state -- `Economy.is_on_last_life` -- rather than once at
   floor-load/construction time, via `Tower.set_last_stand_multiplier()` called from `Game.update()`'s
   existing two-pass tower loop). `guardians_reprieve` has no `RelicModifiers` field at all (same shape
   as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in `Game._lose_a_life()`,
   the interception point for the enemy-reached-goal life loss, gated on `RunState.
   used_guardians_reprieve` (a one-time-per-run charge) and a no-op under `Economy.invulnerable`
-  (sandbox/Creative -- nothing to save there). `compose_relic_modifiers()`'s per-tower fields aggregate
+  (sandbox/Creative -- nothing to save there); `Economy.is_on_last_life` is the one shared answer to
+  "is this run on its last life" both relics ask, rather than each re-deriving `lives <= 1` on its own.
+  `compose_relic_modifiers()`'s per-tower fields aggregate
   the same "flat sums, multipliers multiply" way as the per-floor ones, except `crit_damage_multiplier`
   and `last_stand_damage_multiplier` (both `max()` across relics, not multiplied -- two such relics
   compounding multiplicatively would spike far faster than two flat +chance relics summing),
