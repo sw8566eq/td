@@ -805,6 +805,21 @@ def test_resuming_a_run_rederives_a_placed_towers_relic_poison_chance(game):
     assert tower.relic_poison_chance == RELICS["venomous_coating"].poison_chance
 
 
+def test_arcing_rounds_chain_chance_reaches_a_freshly_placed_towers_shots(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["arcing_rounds"]
+    game._load_floor(0)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["arcing_rounds"]
+    assert tower.relic_chain_chance == relic.chain_chance
+    assert tower.relic_chain_effect == (relic.chain_damage_fraction, relic.chain_range)
+
+
 def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["lucky_strikes"]

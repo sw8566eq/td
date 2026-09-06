@@ -83,6 +83,16 @@ class Relic:
     # granting this escalates every floor instead of being a flat constant
     # like every tower_*_multiplier field above.
     tower_damage_growth_per_floor: float = 0.0
+    # chain_chance follows poison_chance's exact shape (chance-gated,
+    # summed, no "every floor"/"for this run" suffix in its description --
+    # see RELICS' own comment on venomous_coating/lucky_strikes).
+    # chain_damage_fraction/chain_range are Relic-only, folded into
+    # RelicModifiers.chain_effect the same way poison's own raw per-tick
+    # fields fold into poison_effect. See Projectile._apply_hit_effects/
+    # _find_chain_target for where this actually applies.
+    chain_chance: float = 0.0
+    chain_damage_fraction: float = 0.0
+    chain_range: float = 0.0
 
 
 RELICS = {
@@ -167,6 +177,10 @@ RELICS = {
         "veterans_momentum", "Veteran's Momentum", "+2% tower damage for every floor cleared this run.",
         tower_damage_growth_per_floor=0.02,
     ),
+    "arcing_rounds": Relic(
+        "arcing_rounds", "Arcing Rounds", "20% chance for any hit to also strike a nearby enemy for 50% damage.",
+        chain_chance=0.20, chain_damage_fraction=0.5, chain_range=70,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -205,7 +219,7 @@ class RelicModifiers:
       need no special per-floor handling to keep applying.
     - tower_range_multiplier/tower_fire_rate_multiplier/tower_damage_multiplier/
       poison_chance/poison_effect/crit_chance/crit_damage_multiplier/
-      tower_footprint_shrink: read once per tower, at construction time
+      chain_chance/chain_effect/tower_footprint_shrink: read once per tower, at construction time
       (Game._construct_tower/_current_footprint_subtiles), rather than
       through WaveManager/Economy -- see Tower.effective_range()/
       effective_fire_rate()/effective_damage() and Projectile.
@@ -238,6 +252,8 @@ class RelicModifiers:
     crit_damage_multiplier: float = 1.0
     tower_footprint_shrink: int = 0
     tower_damage_multiplier: float = 1.0
+    chain_chance: float = 0.0
+    chain_effect: tuple = None
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -281,6 +297,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     crit_damage_multiplier = 1.0
     tower_footprint_shrink = 0
     tower_damage_multiplier = 1.0
+    chain_chance = 0.0
+    chain_effect = None
     for key in relic_keys:
         relic = RELICS[key]
         gold_per_floor_bonus += relic.gold_per_floor_bonus
@@ -307,6 +325,15 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
                     relic.poison_tick_interval,
                     max(poison_effect[2], relic.poison_duration),
                 )
+        if relic.chain_chance > 0:
+            chain_chance += relic.chain_chance
+            if chain_effect is None:
+                chain_effect = (relic.chain_damage_fraction, relic.chain_range)
+            else:
+                chain_effect = (
+                    max(chain_effect[0], relic.chain_damage_fraction),
+                    max(chain_effect[1], relic.chain_range),
+                )
     return RelicModifiers(
         gold_per_floor_bonus=gold_per_floor_bonus,
         enemy_gold_multiplier=enemy_gold_multiplier,
@@ -319,4 +346,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         crit_damage_multiplier=crit_damage_multiplier,
         tower_footprint_shrink=tower_footprint_shrink,
         tower_damage_multiplier=tower_damage_multiplier,
+        chain_chance=chain_chance,
+        chain_effect=chain_effect,
     )

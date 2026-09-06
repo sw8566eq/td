@@ -254,6 +254,126 @@ def test_relic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
     assert normal.damage_taken == 10
 
 
+def test_relic_chain_always_bounces_at_chance_one():
+    target = FakeEnemy((0, 0))
+    nearby = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert target.damage_taken == 10
+    assert nearby.damage_taken == 5  # 50% of the direct hit's damage
+
+
+def test_relic_chain_never_bounces_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    nearby = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=0.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert nearby.damage_taken == 0
+
+
+def test_relic_chain_chance_never_rolls_when_no_relic_is_held():
+    # relic_chain_chance defaults to 0.0 -- must not call random.random()
+    # at all, matching relic_poison/relic_crit's own precedent.
+    target = FakeEnemy((0, 0))
+    nearby = FakeEnemy((10, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert nearby.damage_taken == 0
+
+
+def test_relic_chain_with_no_effect_does_not_crash():
+    # Same defensive shape as relic_poison_chance_with_no_effect above:
+    # relic_chain_chance/relic_chain_effect are always set together by
+    # Game._construct_tower/Tower.update(), but nothing local enforces it.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=1.0, relic_chain_effect=None,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10  # no crash
+
+
+def test_relic_chain_finds_no_bounce_target_when_none_in_range():
+    target = FakeEnemy((0, 0))
+    far = FakeEnemy((1000, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, far])
+
+    assert far.damage_taken == 0
+
+
+def test_relic_chain_finds_the_nearest_unvisited_enemy():
+    target = FakeEnemy((0, 0))
+    near = FakeEnemy((10, 0))
+    far = FakeEnemy((40, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, far, near])
+
+    assert near.damage_taken == 5
+    assert far.damage_taken == 0
+
+
+def test_relic_chain_bounce_does_not_trigger_further_relic_effects():
+    # Regression: the bounce is a plain damage-only hit (_apply_direct_
+    # damage), not a recursive _apply_hit_effects() -- the bounced-to
+    # enemy must not also roll its own crit/poison/chain.
+    target = FakeEnemy((0, 0))
+    bounce_target = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+        relic_crit_chance=1.0, relic_crit_damage_multiplier=2.0,
+        relic_poison_chance=1.0, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bounce_target])
+
+    assert target.damage_taken == 20  # direct hit still crits
+    assert bounce_target.damage_taken == 10  # 50% of the CRIT'd damage, no crit of its own
+    assert bounce_target.poison_applied is None  # no poison roll on the bounce
+
+
+def test_relic_chain_applies_independently_to_every_enemy_in_a_splash():
+    target = FakeEnemy((0, 0))
+    bystander = FakeEnemy((10, 0))
+    far_bounce_target = FakeEnemy((60, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bystander, far_bounce_target])
+
+    # Each of the two splash-hit enemies (target, bystander) bounces to
+    # the other -- both are within chain_range=50 of each other.
+    assert target.damage_taken == 10 + 5  # direct hit + bounce from bystander
+    assert bystander.damage_taken == 10 + 5  # direct hit + bounce from target
+    assert far_bounce_target.damage_taken == 0  # out of chain_range from both
+
+
 def test_update_on_an_already_dead_projectile_is_a_no_op():
     target = FakeEnemy((100, 0))
     projectile = Projectile(pos=(0, 0), target=target, speed=10, damage=10)

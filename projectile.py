@@ -14,6 +14,14 @@ to combine casually (a splash hit already hits every enemy in the blast
 radius by iterating `enemies` directly, so chaining "from" that impact
 raises its own questions about who counts as already-hit that a single-
 target chain doesn't have to answer).
+
+An Arcing Rounds-style relic's chain bounce (relic_chain_chance/
+relic_chain_effect) is a separate, independent mechanism from the
+tower-driven chain_range/max_chain_targets above -- it fires on ANY hit
+(splash included) via a chance roll in _apply_hit_effects, and is always
+exactly one non-recursive bounce via _apply_direct_damage, never a
+multi-link chain. See _find_chain_target for the nearest-unvisited-enemy
+lookup both mechanisms share.
 """
 
 import random
@@ -26,7 +34,8 @@ class Projectile:
                  knockback_duration=0.0, chain_range=0.0, max_chain_targets=1,
                  poison_effect=None, sprite_name="", source=None,
                  relic_poison_chance=0.0, relic_poison_effect=None,
-                 relic_crit_chance=0.0, relic_crit_damage_multiplier=1.0):
+                 relic_crit_chance=0.0, relic_crit_damage_multiplier=1.0,
+                 relic_chain_chance=0.0, relic_chain_effect=None):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -56,6 +65,14 @@ class Projectile:
         self.relic_poison_effect = relic_poison_effect
         self.relic_crit_chance = relic_crit_chance
         self.relic_crit_damage_multiplier = relic_crit_damage_multiplier
+        # An Arcing Rounds-style relic's own bonus hit -- (damage_fraction,
+        # chain_range) or None. Independent of self.chain_range/
+        # max_chain_targets above (Lightning's own signature mechanic):
+        # this fires on ANY hit, splash or single-target alike, and is a
+        # single non-recursive bounce, not a multi-link chain -- see
+        # _apply_hit_effects/_apply_direct_damage.
+        self.relic_chain_chance = relic_chain_chance
+        self.relic_chain_effect = relic_chain_effect
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -115,10 +132,10 @@ class Projectile:
                 if enemy.is_dead or enemy.reached_goal:
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
-                    self._apply_hit_effects(enemy)
+                    self._apply_hit_effects(enemy, enemies)
                     hit_anything = True
         else:
-            self._apply_hit_effects(self.target)
+            self._apply_hit_effects(self.target, enemies)
             hit_anything = True
             if self.chain_range > 0:
                 self._resolve_chain(enemies)
@@ -140,22 +157,45 @@ class Projectile:
         hit = {self.target}
         current = self.target
         while len(hit) < self.max_chain_targets:
-            next_target = None
-            next_distance = None
-            for enemy in enemies:
-                if enemy.is_dead or enemy.reached_goal or enemy in hit:
-                    continue
-                distance = current.pos.distance_to(enemy.pos)
-                if distance <= self.chain_range and (next_target is None or distance < next_distance):
-                    next_target = enemy
-                    next_distance = distance
+            next_target = self._find_chain_target(current, hit, self.chain_range, enemies)
             if next_target is None:
                 break
-            self._apply_hit_effects(next_target)
+            self._apply_hit_effects(next_target, enemies)
             hit.add(next_target)
             current = next_target
 
-    def _apply_hit_effects(self, enemy):
+    def _find_chain_target(self, current, excluded, chain_range, enemies):
+        """Nearest live, not-yet-`excluded` enemy within `chain_range` of
+        `current`, or None -- the nearest-unvisited-hop lookup shared by
+        _resolve_chain()'s own multi-link chain above and an Arcing
+        Rounds-style relic's single bonus hit (_apply_hit_effects
+        below)."""
+        next_target = None
+        next_distance = None
+        for enemy in enemies:
+            if enemy.is_dead or enemy.reached_goal or enemy in excluded:
+                continue
+            distance = current.pos.distance_to(enemy.pos)
+            if distance <= chain_range and (next_target is None or distance < next_distance):
+                next_target = enemy
+                next_distance = distance
+        return next_target
+
+    def _apply_direct_damage(self, enemy, amount):
+        """Damage-only hit application, no crit/poison/chain rolls -- used
+        for an Arcing Rounds-style relic's own bonus hit (see
+        _apply_hit_effects below), which is deliberately a single, simple,
+        damage-only jump rather than a full second application of every
+        hit effect. Keeping it non-recursive means the bounce needs no
+        recursion guard and can never cascade."""
+        was_alive = not enemy.is_dead
+        applied = enemy.take_damage(amount)
+        if self.source is not None:
+            self.source.damage_dealt += applied
+            if was_alive and enemy.is_dead:
+                self.source.kills += 1
+
+    def _apply_hit_effects(self, enemy, enemies):
         was_alive = not enemy.is_dead
         # A Lucky Strikes-style relic's crit roll happens here, once per
         # enemy this projectile actually hits (see this method's own call
@@ -202,6 +242,22 @@ class Projectile:
             and random.random() < self.relic_poison_chance
         ):
             enemy.apply_poison(*self.relic_poison_effect)
+        # An Arcing Rounds-style relic's chain roll -- same "once per enemy
+        # actually hit" shape as crit/poison above, but the resulting
+        # bounce is a plain _apply_direct_damage() call, not a recursive
+        # _apply_hit_effects() -- see that method's own docstring for why
+        # (no re-rolling crit/poison/another bounce on the bounced-to
+        # enemy, and no recursion guard needed). Uses the local `damage`
+        # value above (post-crit-roll), so a crit'd hit's bounce is
+        # proportionally stronger too -- a minor, deliberate synergy.
+        if (
+            self.relic_chain_chance and self.relic_chain_effect is not None
+            and random.random() < self.relic_chain_chance
+        ):
+            damage_fraction, chain_range = self.relic_chain_effect
+            bounce_target = self._find_chain_target(enemy, {enemy}, chain_range, enemies)
+            if bounce_target is not None:
+                self._apply_direct_damage(bounce_target, damage * damage_fraction)
 
     def draw(self, surface, assets):
         size = (12, 12)

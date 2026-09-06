@@ -1701,6 +1701,8 @@ class Game:
         tower.relic_crit_chance = self.relic_modifiers.crit_chance
         tower.relic_crit_damage_multiplier = self.relic_modifiers.crit_damage_multiplier
         tower.relic_damage_bonus_multiplier = self.relic_modifiers.tower_damage_multiplier
+        tower.relic_chain_chance = self.relic_modifiers.chain_chance
+        tower.relic_chain_effect = self.relic_modifiers.chain_effect
         return tower
 
     def _current_footprint_subtiles(self):

@@ -172,6 +172,33 @@ def test_compose_relic_modifiers_default_floor_index_matches_floor_zero():
     )
 
 
+def test_compose_relic_modifiers_sums_chain_chance():
+    modifiers = compose_relic_modifiers(["arcing_rounds", "arcing_rounds"])
+    assert modifiers.chain_chance == RELICS["arcing_rounds"].chain_chance * 2
+
+
+def test_compose_relic_modifiers_builds_chain_effect_from_the_relics_own_fields():
+    modifiers = compose_relic_modifiers(["arcing_rounds"])
+    relic = RELICS["arcing_rounds"]
+    assert modifiers.chain_effect == (relic.chain_damage_fraction, relic.chain_range)
+
+
+def test_compose_relic_modifiers_combines_two_chain_relics_via_max(monkeypatch):
+    weak_chain = Relic("test_weak_chain", "", "", chain_chance=0.1, chain_damage_fraction=0.3, chain_range=40)
+    strong_chain = Relic("test_strong_chain", "", "", chain_chance=0.2, chain_damage_fraction=0.6, chain_range=80)
+    monkeypatch.setitem(RELICS, "test_weak_chain", weak_chain)
+    monkeypatch.setitem(RELICS, "test_strong_chain", strong_chain)
+    modifiers = compose_relic_modifiers(["test_weak_chain", "test_strong_chain"])
+    assert modifiers.chain_chance == pytest.approx(0.3)
+    assert modifiers.chain_effect == (0.6, 80)
+
+
+def test_compose_relic_modifiers_no_chain_relic_leaves_chain_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.chain_chance == 0.0
+    assert modifiers.chain_effect is None
+
+
 def test_compose_relic_modifiers_is_order_independent():
     forward = compose_relic_modifiers(["prospectors_charm", "war_chest", "sturdy_gate"])
     backward = compose_relic_modifiers(["sturdy_gate", "war_chest", "prospectors_charm"])

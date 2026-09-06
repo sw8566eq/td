@@ -321,6 +321,8 @@ class Tower:
         projectile.relic_poison_effect = self.relic_poison_effect
         projectile.relic_crit_chance = self.relic_crit_chance
         projectile.relic_crit_damage_multiplier = self.relic_crit_damage_multiplier
+        projectile.relic_chain_chance = self.relic_chain_chance
+        projectile.relic_chain_effect = self.relic_chain_effect
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
