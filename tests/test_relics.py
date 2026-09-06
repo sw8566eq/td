@@ -115,6 +115,21 @@ def test_compose_relic_modifiers_takes_the_max_crit_damage_multiplier(monkeypatc
     assert modifiers.crit_damage_multiplier == RELICS["lucky_strikes"].crit_damage_multiplier
 
 
+def test_compose_relic_modifiers_ignores_crit_damage_multiplier_from_a_relic_with_no_crit_chance(monkeypatch):
+    # Regression: crit_damage_multiplier is gated on the relic actually
+    # granting crit_chance > 0, the same way poison_effect is gated on
+    # poison_chance > 0 -- a hypothetical relic with a crit_damage_
+    # multiplier set but crit_chance == 0 must not silently overwrite the
+    # multiplier a real crit-granting relic contributes.
+    no_chance_but_a_multiplier = Relic(
+        "test_no_crit_chance", "", "", crit_chance=0.0, crit_damage_multiplier=99.0,
+    )
+    monkeypatch.setitem(RELICS, "test_no_crit_chance", no_chance_but_a_multiplier)
+    modifiers = compose_relic_modifiers(["lucky_strikes", "test_no_crit_chance"])
+    assert modifiers.crit_damage_multiplier == RELICS["lucky_strikes"].crit_damage_multiplier
+    assert modifiers.crit_chance == RELICS["lucky_strikes"].crit_chance  # unaffected too
+
+
 def test_compose_relic_modifiers_sums_tower_footprint_shrink():
     modifiers = compose_relic_modifiers(["compact_framework", "compact_framework"])
     assert modifiers.tower_footprint_shrink == RELICS["compact_framework"].tower_footprint_shrink * 2

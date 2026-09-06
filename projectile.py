@@ -190,8 +190,17 @@ class Projectile:
         # max()/max()/last-write semantics mean a successful roll here on
         # a hit that's ALSO already poisoning (e.g. from PoisonTower
         # itself) just refreshes/strengthens the stronger of the two,
-        # never stacks a second concurrent DoT.
-        if self.relic_poison_chance and random.random() < self.relic_poison_chance:
+        # never stacks a second concurrent DoT. The explicit `is not None`
+        # guard (mirroring poison_effect's own check above) matters here:
+        # relic_poison_chance/relic_poison_effect are always set together
+        # by Game._construct_tower/Tower.update(), but nothing local
+        # enforces that pairing, so a projectile built with a chance but
+        # no effect (a test double, a future call site) fails the roll
+        # instead of crashing on `*None`.
+        if (
+            self.relic_poison_chance and self.relic_poison_effect is not None
+            and random.random() < self.relic_poison_chance
+        ):
             enemy.apply_poison(*self.relic_poison_effect)
 
     def draw(self, surface, assets):

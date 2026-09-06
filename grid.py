@@ -133,8 +133,14 @@ class Grid:
             anchor_row * self.subtile_size + footprint_pixels / 2,
         )
 
-    def _footprint_subtiles(self, anchor_col, anchor_row, footprint_subtiles=None):
-        size = self.resolve_footprint_size(footprint_subtiles)
+    def _footprint_subtiles(self, anchor_col, anchor_row, size):
+        """Subtiles covered by a `size` x `size` footprint anchored at
+        (anchor_col, anchor_row). `size` is taken as already resolved
+        (see resolve_footprint_size) -- every caller below resolves it
+        itself first, so this never re-defaults and never runs at all for
+        a non-positive size, rather than silently yielding nothing and
+        leaving a caller like is_buildable() to mistake "nothing to
+        check" for "everything checked out"."""
         for dr in range(size):
             for dc in range(size):
                 yield anchor_col + dc, anchor_row + dr
@@ -144,8 +150,14 @@ class Grid:
         (a full tile, subtiles_per_tile, unless a smaller size is passed --
         see Game._current_footprint_subtiles) anchored at (anchor_col,
         anchor_row) is entirely in bounds, off the path, unblocked, and
-        doesn't overlap any placed tower's footprint."""
-        for sub_col, sub_row in self._footprint_subtiles(anchor_col, anchor_row, footprint_subtiles):
+        doesn't overlap any placed tower's footprint. A non-positive size
+        is never buildable -- _footprint_subtiles() would otherwise yield
+        no cells at all to check, and an empty check vacuously returns
+        True for any anchor, path/blocked/occupied cells included."""
+        size = self.resolve_footprint_size(footprint_subtiles)
+        if size <= 0:
+            return False
+        for sub_col, sub_row in self._footprint_subtiles(anchor_col, anchor_row, size):
             if not (0 <= sub_col < self.sub_cols and 0 <= sub_row < self.sub_rows):
                 return False
             # Always the map's own fixed tile/subtile ratio here, regardless

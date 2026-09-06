@@ -327,8 +327,7 @@ class Tower:
         effective_range = self.effective_range()
         candidates = [
             e for e in enemies
-            if not e.is_dead and not e.reached_goal
-            and self.pos.distance_to(e.pos) <= effective_range
+            if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
             and (self.can_target_flying or not getattr(e, "is_flying", False))
         ]
         if not candidates:
@@ -363,8 +362,15 @@ class Tower:
         "closest": _target_closest,
     }
 
-    def in_range(self, enemy):
-        return self.pos.distance_to(enemy.pos) <= self.effective_range()
+    def in_range(self, enemy, effective_range=None):
+        """`effective_range` lets a caller that already computed it once
+        (e.g. acquire_target(), scanning every enemy in the wave) pass it
+        straight through instead of this method re-deriving the same
+        tower-constant value per call; omit it and this just resolves its
+        own effective_range()."""
+        if effective_range is None:
+            effective_range = self.effective_range()
+        return self.pos.distance_to(enemy.pos) <= effective_range
 
     def effective_range(self):
         """self.range scaled by both the transient per-frame aura buff
@@ -380,6 +386,20 @@ class Tower:
         return self.range * (
             1.0 + (self.aura_range_multiplier - 1.0) + (self.relic_range_bonus_multiplier - 1.0)
         )
+
+    def relic_adjusted_range(self):
+        """self.range scaled by only this tower's own persistent,
+        relic-driven range bonus -- effective_range() minus its transient
+        aura_range_multiplier term. SupportTower.update() uses this for
+        its own broadcast reach instead of effective_range(): folding in
+        aura_range_multiplier there would let one Support tower's buff on
+        another feed into that other tower's own broadcast decision
+        within the same frame (Game.update()'s two-pass loop runs every
+        tower's own update() in list order, all sharing one frame), an
+        order-dependent chain reaction with no equivalent before relics
+        existed -- a Support tower's own reach was always immune to
+        aura buffs, only ever widened by a relic held all run."""
+        return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
 
     def effective_damage(self):
         """self.damage scaled by any currently-active aura buff (see
@@ -886,15 +906,18 @@ class SupportTower(Tower):
     }
 
     def update(self, dt, enemies, projectiles, towers=None):
-        # effective_range(), not raw self.range -- a Spyglass Array-style
-        # relic widens a Support tower's own reach too, same as every
-        # other tower's range, since no relic in this codebase singles
-        # out one tower type.
-        effective_range = self.effective_range()
+        # relic_adjusted_range(), not effective_range() -- a Spyglass
+        # Array-style relic still widens a Support tower's own reach too,
+        # same as every other tower's range, since no relic in this
+        # codebase singles out one tower type, but effective_range() would
+        # also fold in aura_range_multiplier -- see relic_adjusted_range()'s
+        # own docstring for why that specifically causes a same-frame,
+        # order-dependent buff chain between Support towers.
+        broadcast_range = self.relic_adjusted_range()
         for other in (towers or ()):
             if other is self:
                 continue
-            if self.pos.distance_to(other.pos) <= effective_range:
+            if self.pos.distance_to(other.pos) <= broadcast_range:
                 other.receive_aura(self.buff_damage_multiplier, self.buff_range_multiplier)
 
     def create_projectile(self, target):

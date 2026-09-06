@@ -120,8 +120,12 @@ RELICS = {
         "lucky_strikes", "Lucky Strikes", "12% chance for any hit to deal double damage.",
         crit_chance=0.12, crit_damage_multiplier=2.0,
     ),
+    # tower_footprint_shrink=2 drops the footprint from 8x8 to 6x6 subtiles
+    # -- 75% of the width/height, but 75%^2 = 56.25% of the *area*, so the
+    # card text below describes the actual ~44% space reduction, not the
+    # smaller 25% per-side shrink the raw field name might suggest.
     "compact_framework": Relic(
-        "compact_framework", "Compact Framework", "Towers take up 25% less space on the grid, every floor.",
+        "compact_framework", "Compact Framework", "Towers take up about 44% less space on the grid, every floor.",
         tower_footprint_shrink=2,
     ),
 }
@@ -198,19 +202,24 @@ def compose_relic_modifiers(relic_keys):
     is order-independent regardless of which was drafted first.
 
     poison_effect and crit_damage_multiplier are the two fields that aren't
-    a plain sum/multiply. crit_damage_multiplier takes the max() across
-    relics rather than multiplying -- two crit relics compounding
-    multiplicatively would spike far faster than two flat +chance relics
-    summing, the same conservative choice poison's own tick damage below
-    already makes. poison_effect's aggregation is the more involved one:
-    each
-    poison-granting relic (poison_chance > 0) contributes its own
+    a plain sum/multiply, and both are gated on the relic actually
+    granting the chance that uses them (poison_chance > 0 / crit_chance >
+    0 respectively) -- a relic with a nonzero damage/multiplier field but
+    zero chance of its own contributes nothing, the same way a relic with
+    zero of everything already contributes nothing. crit_damage_multiplier
+    takes the max() across relics rather than multiplying -- two crit
+    relics compounding multiplicatively would spike far faster than two
+    flat +chance relics summing, the same conservative choice poison's own
+    tick damage below already makes. poison_effect's aggregation is the
+    more involved one: each poison-granting relic contributes its own
     (damage_per_tick, tick_interval, duration), folded together the exact
     same way Enemy.apply_poison() itself already combines two *hits* of
     poison on the same enemy -- keep the harsher tick damage and the
-    longer duration (max()), last-write on tick interval -- so composing
-    two poison relics behaves exactly like landing two poison hits does,
-    order-independent either way."""
+    longer duration (max(), so composing two poison relics is
+    order-independent on those two), last-write on tick interval (the one
+    genuinely order-dependent piece of this whole function -- dormant
+    today since only one poison-granting relic exists, so no two-relic
+    ordering can yet actually differ)."""
     gold_per_floor_bonus = 0
     enemy_gold_multiplier = 1.0
     enemy_speed_multiplier = 1.0
@@ -228,9 +237,10 @@ def compose_relic_modifiers(relic_keys):
         enemy_speed_multiplier *= relic.enemy_speed_multiplier
         tower_range_multiplier *= relic.tower_range_multiplier
         tower_fire_rate_multiplier *= relic.tower_fire_rate_multiplier
-        crit_chance += relic.crit_chance
-        crit_damage_multiplier = max(crit_damage_multiplier, relic.crit_damage_multiplier)
         tower_footprint_shrink += relic.tower_footprint_shrink
+        if relic.crit_chance > 0:
+            crit_chance += relic.crit_chance
+            crit_damage_multiplier = max(crit_damage_multiplier, relic.crit_damage_multiplier)
         if relic.poison_chance > 0:
             poison_chance += relic.poison_chance
             if poison_effect is None:

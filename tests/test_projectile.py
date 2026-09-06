@@ -148,6 +148,23 @@ def test_relic_poison_chance_never_rolls_when_no_relic_is_held():
     assert target.poison_applied is None
 
 
+def test_relic_poison_chance_with_no_effect_does_not_crash():
+    # Regression: relic_poison_chance/relic_poison_effect are always set
+    # together by Game._construct_tower/Tower.update(), but nothing local
+    # enforces that pairing -- a projectile built with a chance but no
+    # effect (a test double, a future call site) must fail the roll
+    # rather than crash unpacking None.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_poison_chance=1.0, relic_poison_effect=None,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied is None
+
+
 def test_relic_poison_applies_independently_to_every_enemy_in_a_splash():
     target = FakeEnemy((0, 0))
     bystander = FakeEnemy((10, 0))

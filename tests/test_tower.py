@@ -484,6 +484,31 @@ def test_support_towers_own_aura_range_widens_with_a_relic_bonus_too():
     assert other.aura_range_multiplier == support.buff_range_multiplier
 
 
+def test_support_towers_own_broadcast_reach_ignores_a_buff_it_just_received():
+    # Regression: SupportTower.update() must NOT use effective_range() for
+    # its own broadcast check, since effective_range() folds in
+    # aura_range_multiplier -- and Game.update()'s two-pass loop runs every
+    # tower's own update() in list order, all sharing one frame, so a
+    # Support tower earlier in the list can buff a later one *before* that
+    # later one's own update() runs. If the later one's own broadcast
+    # reach then also reflected that buff, one relic-widened Support tower
+    # could chain-buff a second one into reaching further than its own
+    # un-buffed range ever would, purely as an accident of placement
+    # order -- see relic_adjusted_range()'s own docstring.
+    a = SupportTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    b = SupportTower(anchor_col=1, anchor_row=0, pixel_pos=(a.range - 5, 0))  # within A's own reach
+    c = SupportTower(anchor_col=2, anchor_row=0, pixel_pos=(a.range - 5 + b.range + 10, 0))  # outside B's un-buffed reach
+
+    towers = [a, b, c]
+    for tower in towers:
+        tower.reset_aura()
+    for tower in towers:
+        tower.update(dt=0.0, enemies=[], projectiles=[], towers=towers)
+
+    assert b.aura_range_multiplier == a.buff_range_multiplier  # A did buff B
+    assert c.aura_range_multiplier == 1.0  # but B must not then chain the buff on to C
+
+
 def test_receive_aura_keeps_the_stronger_buff_not_stacked():
     attacker = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
     attacker.receive_aura(damage_multiplier=1.5, range_multiplier=1.5)

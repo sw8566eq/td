@@ -230,6 +230,21 @@ def test_is_buildable_respects_a_smaller_footprint_subtiles():
     assert grid.is_buildable(6, 0, footprint_subtiles=6)
 
 
+def test_is_buildable_rejects_a_non_positive_footprint_subtiles():
+    # Regression: _footprint_subtiles() yields no cells at all for a
+    # non-positive size, so without an explicit guard is_buildable()'s
+    # for-loop never runs and vacuously returns True -- for ANY anchor,
+    # path/blocked/out-of-bounds/already-occupied included. A relic-driven
+    # shrink is clamped well above zero (settings.MIN_TOWER_FOOTPRINT_
+    # SUBTILES) before it ever reaches Grid, but Grid must not silently
+    # rely on that one caller's discipline to stay correct.
+    grid = make_grid()
+    on_path_col, on_path_row = 4 * N, 4 * N  # tile (4, 4) is on the path
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=8)
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=0)
+    assert not grid.is_buildable(on_path_col, on_path_row, footprint_subtiles=-1)
+
+
 def test_occupy_with_a_smaller_footprint_only_occupies_that_many_subtiles():
     grid = make_grid()
     grid.occupy(0, 0, tower="fake-tower", footprint_subtiles=6)
