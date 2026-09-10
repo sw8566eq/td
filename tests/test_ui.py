@@ -4,6 +4,7 @@ import settings
 from editor import TOOL_ORDER
 from enemy import ENEMY_TYPES
 from levels import Level
+from shop import ShopItem
 from tower import TOWER_TYPES
 from ui import (
     ACHIEVEMENTS_TOP,
@@ -38,6 +39,7 @@ from ui import (
     build_level_thumbnail,
     build_sell_button_rect,
     build_settings_rects,
+    build_shop_continue_button_rect,
     build_skip_button_rect,
     build_speed_button_rect,
     build_specialize_button_rects,
@@ -399,9 +401,14 @@ def test_draw_draft_screen_does_not_raise():
     font = pygame.font.SysFont(None, 32)
     small_font = pygame.font.SysFont(None, 22)
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
-    choices = ["basic", "cannon", "support"]  # support exercises the IS_SUPPORT branch too
+    # "support" exercises the IS_SUPPORT branch too; one already-purchased
+    # item exercises the SOLD path, one unaffordable item the greyed-out one.
+    choices = [
+        ShopItem("tower", "basic", 8), ShopItem("tower", "cannon", 8), ShopItem("tower", "support", 8),
+    ]
     rects = build_draft_choice_rects(len(choices))
-    draw_draft_screen(surface, font, small_font, choices, rects, "tower", hovered_index=1)
+    continue_rect = build_shop_continue_button_rect()
+    draw_draft_screen(surface, font, small_font, choices, rects, 1, {0}, 5, continue_rect)
 
 
 def test_draw_draft_screen_with_relics_does_not_raise():
@@ -410,9 +417,10 @@ def test_draw_draft_screen_with_relics_does_not_raise():
     small_font = pygame.font.SysFont(None, 22)
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     from relics import RELICS
-    choices = list(RELICS.keys())[:2]
+    choices = [ShopItem("relic", key, 10) for key in list(RELICS.keys())[:2]]
     rects = build_draft_choice_rects(len(choices))
-    draw_draft_screen(surface, font, small_font, choices, rects, "relic", hovered_index=0)
+    continue_rect = build_shop_continue_button_rect()
+    draw_draft_screen(surface, font, small_font, choices, rects, 0, set(), 3, continue_rect, unlimited_gold=True)
 
 
 def test_format_wave_preview_orders_by_registry_order_not_dict_order():

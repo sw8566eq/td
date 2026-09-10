@@ -1,7 +1,7 @@
 """Run-wide passive modifier cards ("relics") -- a second, genuinely
-optional card type alongside tower cards (see card_pool.py), offered via
-the exact same draft screen (see Game._enter_draft/_is_relic_floor). Every
-relic's numeric effect is one of three shapes:
+optional card type alongside tower cards (see card_pool.py), offered
+together with them in the same Shop visit (see shop.build_offer/Game.
+_enter_draft). Every relic's numeric effect is one of three shapes:
 
 - Per-floor (RelicModifiers' own fields), composed into a run's
   floor-load the same way difficulty.DIFFICULTY_MODES/
@@ -13,11 +13,17 @@ relic's numeric effect is one of three shapes:
   tower_fire_rate_multiplier/poison_chance/poison_effect/crit_chance/
   crit_damage_multiplier/tower_footprint_shrink) -- see RelicModifiers'
   own docstring and Game._construct_tower/_current_footprint_subtiles.
-- One-time (war_chest/sturdy_gate's starting_gold_multiplier/
-  starting_lives_bonus), applied once instead, directly, the instant the
-  card is drafted (Game._apply_one_time_relic_bonus) -- see
-  RelicModifiers' own docstring for why a one-time bonus can't be folded
-  into the per-floor composition above.
+- One-time (sturdy_gate's starting_lives_bonus), applied once instead,
+  directly, the instant the card is drafted (Game._apply_one_time_relic_
+  bonus) -- see RelicModifiers' own docstring for why a one-time bonus
+  can't be folded into the per-floor composition above. war_chest's own
+  starting_gold_multiplier *used* to need this same one-time treatment,
+  back when battle gold carried forward across floors and "starting gold"
+  only existed once, at floor 0 -- now that battle gold resets fresh every
+  floor instead (see CLAUDE.md's "Two currencies" section), it's just
+  another per-floor RelicModifiers field like gold_per_floor_bonus, applied
+  by Game._load_level_object's own Economy construction on every floor,
+  not a special case anymore.
 
 A later batch added three more shapes that don't fit either bullet above:
 escalating-per-floor (veterans_momentum's tower_damage_growth_per_floor,
@@ -124,19 +130,18 @@ RELICS = {
         "prospectors_charm", "Prospector's Charm", "+20 gold at the start of every floor.",
         gold_per_floor_bonus=20,
     ),
-    # war_chest/sturdy_gate are deliberately one-time bonuses, not per-floor
-    # ones -- their description text says so honestly, rather than
-    # promising a recurring effect a carried-forward economy has no natural
-    # way to keep granting. Applied directly onto the run's carried gold/
-    # lives the instant the card is drafted (Game._apply_one_time_relic_
-    # bonus), not folded into Economy construction the way every other
-    # relic modifier is -- no relic can ever be drafted before floor 2 (see
-    # Game._is_relic_floor), by which point floor 0's Economy construction
-    # (the only place a starting_gold_multiplier/starting_lives_bonus could
-    # otherwise act) is long gone, so that route would make these two
-    # permanently inert regardless of when they're picked.
+    # sturdy_gate is a deliberately one-time bonus, not a per-floor one --
+    # its description text says so honestly, rather than promising a
+    # recurring effect. Applied directly onto the run's carried lives the
+    # instant the card is drafted (Game._apply_one_time_relic_bonus), not
+    # folded into Economy construction the way every other relic modifier
+    # is (see RelicModifiers' own docstring for why a one-time bonus can't
+    # be folded into the per-floor composition above). war_chest used to
+    # need this same one-time treatment -- see this module's own docstring
+    # above for why it's now a normal per-floor RelicModifiers field
+    # instead.
     "war_chest": Relic(
-        "war_chest", "War Chest", "+25% extra starting gold for this run.",
+        "war_chest", "War Chest", "+25% starting gold, every floor.",
         starting_gold_multiplier=1.25,
     ),
     "sturdy_gate": Relic(
@@ -245,14 +250,6 @@ RELICS = {
 
 DEFAULT_RELIC_OFFER_COUNT = 3
 
-# Every RELIC_FLOOR_INTERVAL-th floor transition offers relics instead of a
-# tower (see Game._is_relic_floor) -- named here, next to RELICS/DEFAULT_
-# RELIC_OFFER_COUNT, rather than left as a bare literal at its one call
-# site, matching how every other balance number in this milestone
-# (run_escalation.py's growth rates, meta_progression.py's thresholds) gets
-# named and commented.
-RELIC_FLOOR_INTERVAL = 2
-
 
 def relic_offer(rng, run, count=DEFAULT_RELIC_OFFER_COUNT):
     """`count` relic keys offered as a relic draft's choices, drawn from
@@ -269,10 +266,17 @@ class RelicModifiers:
     """Aggregated per-floor modifiers -- everything a Relic can contribute
     that genuinely recurs, every floor, for as long as it's held:
 
+    - starting_gold_multiplier: folded into Game._load_level_object's own
+      Economy construction (the same _scaled_starting_gold() call every
+      floor already uses), since battle gold is freshly constructed from
+      scratch every floor now -- see CLAUDE.md's "Two currencies" section.
     - gold_per_floor_bonus: Game._load_floor adds it to self.economy.gold
-      on every floor load, explicitly, since a floor's economy is either
-      freshly constructed (floor 0) or carried forward from the previous
-      floor (floor 1+) either way.
+      on every floor load, explicitly, on top of whatever starting_gold_
+      multiplier above already produced -- a flat bonus and a multiplier
+      on the same currency, kept as two separate fields/relics rather than
+      merged, the same way tower_damage_multiplier and tower_range_
+      multiplier stay separate fields below despite both being tower
+      multipliers.
     - enemy_gold_multiplier/enemy_speed_multiplier: threaded into
       WaveManager's own constructor kwargs in _load_level_object, and
       WaveManager itself is always rebuilt fresh every floor, so these
@@ -290,17 +294,19 @@ class RelicModifiers:
       and an escalating-per-floor one, since a run-long stacking bonus
       like veterans_momentum has nowhere else to live but this same field.
 
-    A Relic's own starting_gold_multiplier/starting_lives_bonus (a
-    genuinely one-time bonus, not a per-floor one -- see RELICS' own
-    comment on war_chest/sturdy_gate) is deliberately NOT one of these
-    fields: this type only ever gets composed once, from whatever relics a
-    run holds *at floor-load time*, and reused across every floor of that
-    load -- but a one-time bonus has to fire exactly once, the instant the
-    card is drafted (Game._apply_one_time_relic_bonus), never re-applied on
-    a later floor's own load. Folding it in here would either double-apply
-    it on every subsequent floor or require this type to start tracking
-    which relics it's already "spent," neither of which this simple
-    aggregate-and-reuse shape is built for.
+    A Relic's own starting_lives_bonus (a genuinely one-time bonus, not a
+    per-floor one -- see RELICS' own comment on sturdy_gate) is
+    deliberately NOT one of these fields: this type only ever gets composed
+    once, from whatever relics a run holds *at floor-load time*, and reused
+    across every floor of that load -- but a one-time bonus has to fire
+    exactly once, the instant the card is drafted (Game._apply_one_time_
+    relic_bonus), never re-applied on a later floor's own load. Folding it
+    in here would either double-apply it on every subsequent floor or
+    require this type to start tracking which relics it's already "spent,"
+    neither of which this simple aggregate-and-reuse shape is built for.
+    starting_gold_multiplier isn't in this category despite the name it
+    shares with starting_lives_bonus -- see this field's own comment above
+    for why it's a normal per-floor field instead.
 
     Two more fields don't fit the "recurs every floor, for as long as
     it's held" framing above either, and are resolved elsewhere entirely:
@@ -312,6 +318,7 @@ class RelicModifiers:
     held. guardians_reprieve has no field here at all (see RELICS' own
     comment on it) -- checked directly against run.relics in
     Game._lose_a_life instead."""
+    starting_gold_multiplier: float = 1.0
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
     enemy_speed_multiplier: float = 1.0
@@ -362,6 +369,7 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     genuinely order-dependent piece of this whole function -- dormant
     today since only one poison-granting relic exists, so no two-relic
     ordering can yet actually differ)."""
+    starting_gold_multiplier = 1.0
     gold_per_floor_bonus = 0
     enemy_gold_multiplier = 1.0
     enemy_speed_multiplier = 1.0
@@ -382,6 +390,7 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     support_aura_strength_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
+        starting_gold_multiplier *= relic.starting_gold_multiplier
         gold_per_floor_bonus += relic.gold_per_floor_bonus
         if not has_spent_gold:
             gold_per_floor_bonus += relic.gold_per_floor_bonus_while_unspent
@@ -423,6 +432,7 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
                     max(chain_effect[1], relic.chain_range),
                 )
     return RelicModifiers(
+        starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
         enemy_gold_multiplier=enemy_gold_multiplier,
         enemy_speed_multiplier=enemy_speed_multiplier,

@@ -55,8 +55,10 @@ main path is a run. Read the next section before anything else here.
 A **run** is a seeded, ordered sequence of floors, each floor one full `_load_level_object()` pass
 on one `Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load
 always did. What's new is `RunState` (`run_state.py`), the small bundle that survives *across* those
-resets: seed, `floor_sequence`, `floor_index`, `difficulty`, lives, gold, `unlocked_towers`, and
-`relics`. Placed towers and the grid stay floor-scoped, deliberately -- a deckbuilder doesn't carry
+resets: seed, `floor_sequence`, `floor_index`, `difficulty`, lives, `shop_currency`, `unlocked_towers`,
+and `relics`. Battle gold (`Economy.gold`) is deliberately *not* one of these -- see "Two currencies:
+battle gold and the Shop" below for the split this reflects. Placed towers and the grid stay
+floor-scoped, deliberately -- a deckbuilder doesn't carry
 board state between combats, only your deck and your HP. `Game.active_run` holds it, and is reset to
 `None` inside `_load_level_object()` itself (not at each call site), so any loader that doesn't know
 about runs -- `resume_saved_run()` for a classic save, say -- structurally can't leak a stale
@@ -77,9 +79,12 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Twenty relics
   across six effect shapes -- the original three, plus three more a later batch added: **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
-  `gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`); **one-time**
-  (`starting_gold_multiplier`/`starting_lives_bonus`, applied directly at draft-pick time instead, see
-  `Game._apply_one_time_relic_bonus` -- `RelicModifiers` has no fields for these); **per-tower**
+  `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
+  **one-time** (`starting_lives_bonus`, applied directly at draft-pick time instead, see
+  `Game._apply_one_time_relic_bonus` -- `RelicModifiers` has no field for this one). `starting_gold_
+  multiplier` (`war_chest`) used to be one-time too, back when battle gold carried forward and
+  "starting gold" only existed once, at floor 0 -- see "Two currencies: battle gold and the Shop"
+  below for why it's a normal per-floor field now instead; **per-tower**
   (`tower_range_multiplier`/`tower_fire_rate_multiplier`/`tower_damage_multiplier`/`poison_chance`+
   `poison_effect`/`crit_chance`+`crit_damage_multiplier`/`chain_chance`+`chain_effect`/
   `tower_footprint_shrink`/`tower_upgrade_cost_multiplier`/`sell_refund_bonus`/`support_aura_range_
@@ -129,23 +134,16 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
 `_load_floor` composes *three* independent extra factors into the one `_load_level_object()` call --
 the run's snapshotted `difficulty`, `escalation_for_floor(floor_index)`, and
 `compose_relic_modifiers(run.relics)` -- each an extra multiplier on top of what's already there,
-never a replacement, per `difficulty.py`'s own rule. Floor 0 is the one asymmetric case: `RunState`
-starts with `lives=gold=0` as a placeholder and *captures* floor 0's freshly-loaded `Economy`,
-while floor 1 onward *restores* into it instead.
+never a replacement, per `difficulty.py`'s own rule. Floor 0 is the one asymmetric case for lives:
+`RunState` starts with `lives=0` as a placeholder and *captures* floor 0's freshly-loaded `Economy`'s
+lives, while floor 1 onward *restores* into it instead. Battle gold has no such asymmetry -- see "Two
+currencies" below, it's rebuilt fresh from the same construction on every floor, floor 0 included.
 
 Clearing a floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameState.FLOOR_CLEARED`
--> (any key) `_enter_draft()` -> `GameState.DRAFT` -> (click) `_handle_draft_click()` ->
-`_load_floor(next)`. Two details worth knowing:
-
-- `_enter_draft` picks the draft's *kind* by floor (`_is_relic_floor`: every
-  `relics.RELIC_FLOOR_INTERVAL`-th, so a 6-floor run's 5 draft screens -- one per floor cleared, the
-  6th never clears once it's loaded `endless=True` -- alternate 3 tower / 2 relic, never both at
-  once). A relic floor with nothing left to offer (every relic already held -- unreachable at the
-  current `RELICS`/`RELIC_FLOOR_INTERVAL` tuning, since a run can never hold more relics than it has
-  relic-draft floors for) falls back to a tower draft on the same rng/floor instead; only skips the
-  screen entirely -- straight to the next floor -- if that also comes up empty.
-- The next floor isn't loaded until a card is actually picked, which is what leaves
-  `self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
+-> (any key) `_enter_draft()` -> `GameState.DRAFT` (the Shop -- see "Two currencies" below) ->
+(a click per purchase) `_handle_draft_click()` -> (Continue) `_load_floor(next)`. One detail worth
+knowing: the next floor isn't loaded until the player leaves the shop, which is what leaves
+`self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
 A run ends **only** by permadeath. The last floor always loads `endless=True`, so
 `all_waves_complete` structurally can never fire for it, and `update()`'s win-check routes a run to
@@ -153,7 +151,7 @@ A run ends **only** by permadeath. The last floor always loads `endless=True`, s
 construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
 `run_history.py` and bumps the meta-progression counters.
 
-Both RNG streams a floor needs (its own enemy routing, and its draft offer) are re-derived from
+Both RNG streams a floor needs (its own enemy routing, and its shop offer) are re-derived from
 `(run.seed, floor_index)` on demand via `Game._run_rng(run, stream, floor_index)` rather than
 carried as one continuously-consumed `random.Random`. That's what lets `save_state.py` serialize a
 run without serializing any RNG state at all -- a resumed run just re-derives the identical objects
@@ -168,6 +166,53 @@ A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
 snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.
 `run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
 needs no special handling anywhere.
+
+### Two currencies: battle gold and the Shop
+
+A run tracks two independent currencies, deliberately never convertible into each other: **battle
+gold** (`Economy.gold`, unchanged as a concept -- what places/upgrades/specializes/sells towers
+mid-floor) resets fresh every floor rather than carrying forward, and **shop currency**
+(`RunState.shop_currency`) persists across the whole run and is what actually buys cards at the Shop
+(`GameState.DRAFT` -- see its own naming note in `game.py` for why the code still says "draft"
+throughout even though the screen is a shop now). Before this split, `RunState.gold` carried battle
+gold forward the same unconditional way `lives` still does; there is no such field any more --
+`_load_floor` never restores or captures battle gold, it's simply rebuilt fresh by every floor's own
+`_load_level_object()` call (relic-adjustable via `RelicModifiers.starting_gold_multiplier`/
+`gold_per_floor_bonus`, both applied every floor now with no floor-0 special case left).
+
+`shop.py` is where the Shop's own logic lives, mirroring `card_pool.py`/`relics.py`'s own
+registry-and-bare-function shape:
+
+- `build_offer(rng, run, meta_progression_path=None)` -- this shop visit's items, mixing both card
+  types together in one offer (`TOWER_OFFER_COUNT` towers via `card_pool.draft_offer`, then
+  `RELIC_OFFER_COUNT` relics via `relics.relic_offer`, same exclude-what's-already-held rules as
+  before) rather than alternating floor-to-floor the way the old single-pick draft did
+  (`_is_relic_floor`/`RELIC_FLOOR_INTERVAL` no longer exist). Either half can come back shorter once
+  its own pool is exhausted, same as the old draft; `Game._enter_draft()` still skips the screen
+  entirely only if the *combined* offer is empty.
+- `price_for(item, purchases_this_visit)` -- an item's actual cost, escalated by `PRICE_ESCALATION`
+  for every other item this same shop visit has already bought (0 for the first purchase). Kept as a
+  pure function of a purchase *count*, not mutable per-item state, so `ui.draw_draft_screen` (showing
+  what the *next* purchase would cost) and `Game._try_buy_shop_item` (actually charging it) can't
+  drift apart on what "the current price" means.
+- `income_for_floor(floor_index, leftover_gold)` -- shop currency earned at a floor clear
+  (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (mirroring
+  `run_escalation.py`'s own per-floor growth, on a much smaller scale) plus `LEFTOVER_GOLD_
+  CONVERSION_RATE` of whatever battle gold was still unspent at that moment -- since battle gold
+  itself never carries forward (see above), this is what makes hoarding it in an already-won fight
+  pay off instead of the surplus just vanishing when the floor resets.
+
+Buying is `Game._try_buy_shop_item(index)`: a silent no-op if unaffordable (same "click does nothing"
+precedent `try_place_tower`'s own unbuildable-spot case sets), otherwise it deducts the escalated
+price, records the index in `self.shop_purchased_indices` (drawn as SOLD and no longer clickable --
+see `ui.draw_draft_screen`), and applies the card exactly like the old draft did: a tower name onto
+`run.unlocked_towers`, or a relic key onto `run.relics` plus `Game._apply_one_time_relic_bonus()`.
+Buying never advances the floor by itself any more -- the player can buy several items (or none) in
+one visit, then explicitly clicks Continue (`ui.build_shop_continue_button_rect()`) to load the next
+floor, the one genuinely new state-machine wrinkle this added over the old always-one-click-advances
+draft. `self.economy.unlimited_gold` (already exactly `self.unlimited_gold or sandbox`, see "Economy
+debug flag" below) makes every shop item free the same way it already makes battle gold spending
+free -- there's no separate sandbox flag for shop currency.
 
 ### Content is registries, not conditionals
 
@@ -682,7 +727,8 @@ untouched -- every purchase path (place/upgrade/specialize a tower) needed no ch
 it. `ui.py`'s HUD shows `"Gold: unlimited"` while it's set. Sandbox mode (see "Difficulty modes,
 Sandbox mode, and player settings" above) reuses this exact flag for its own unlimited-gold behavior
 (`unlimited_gold=self.unlimited_gold or sandbox`) rather than introducing a second, parallel
-concept -- `Economy.invulnerable` is the one genuinely new flag Sandbox needed.
+concept -- `Economy.invulnerable` is the one genuinely new flag Sandbox needed. The Shop (see "Two
+currencies" above) reuses this same flag for shop currency too, rather than a third parallel concept.
 
 ### Release binary
 

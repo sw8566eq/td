@@ -265,9 +265,18 @@ def test_compose_relic_modifiers_is_order_independent():
     assert forward == backward
 
 
-def test_war_chest_and_sturdy_gate_contribute_nothing_to_composed_modifiers():
-    # Their bonuses are one-time, applied directly at draft-pick time
+def test_sturdy_gate_contributes_nothing_to_composed_modifiers():
+    # Its bonus is one-time, applied directly at draft-pick time
     # (Game._apply_one_time_relic_bonus) rather than through this per-floor
     # aggregate -- see RelicModifiers' own docstring for why a one-time
     # bonus can't be folded into per-floor composition.
-    assert compose_relic_modifiers(["war_chest", "sturdy_gate"]) == RelicModifiers()
+    assert compose_relic_modifiers(["sturdy_gate"]) == RelicModifiers()
+
+
+def test_war_chest_contributes_its_starting_gold_multiplier():
+    # Unlike sturdy_gate above, war_chest's own bonus IS a normal per-floor
+    # field now -- battle gold resets fresh every floor, so there's no
+    # longer a one-time-only floor-0 special case for it to need (see
+    # relics.py's own module docstring).
+    modifiers = compose_relic_modifiers(["war_chest"])
+    assert modifiers.starting_gold_multiplier == pytest.approx(1.25)

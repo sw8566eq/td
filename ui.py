@@ -17,6 +17,7 @@ from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
 from relics import RELICS
+from shop import can_afford, price_for
 from tower import TOWER_TYPES
 from waves import WaveState
 
@@ -171,9 +172,17 @@ def build_sell_button_rect():
     return _action_button_rect(SELL_BUTTON_TOP)
 
 
+def _format_currency(value, unlimited):
+    """Shared "unlimited" display idiom for any gold-like value gated on
+    Economy.unlimited_gold -- battle gold and shop currency both read this
+    way (see draw_hud/draw_draft_screen) rather than each spelling out its
+    own copy of the same ternary."""
+    return "unlimited" if unlimited else str(value)
+
+
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
-             wave_preview=None):
+             wave_preview=None, shop_currency=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -209,8 +218,18 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     # the gold/lives/wave text needs to sit right after however many
     # buttons are actually drawn, not always past all 9 registered towers.
     info_x = BUTTON_MARGIN + len(button_rects) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
-    gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
-    gold_text = font.render(f"Gold: {gold_display}", True, settings.COLOR_GOLD)
+    gold_display = _format_currency(economy.gold, economy.unlimited_gold)
+    gold_label = f"Gold: {gold_display}"
+    # shop_currency is None outside of an active run (classic/Practice
+    # play, an editor playtest) -- nothing to show there, since only a
+    # run's own Shop screen (see draw_draft_screen) ever spends it. Shown
+    # on the same line as battle gold, rather than a HUD row of its own,
+    # since HUD_HEIGHT has no headroom left for a fourth line under Gold/
+    # Lives/Wave (see settings.HUD_HEIGHT).
+    if shop_currency is not None:
+        shop_display = _format_currency(shop_currency, economy.unlimited_gold)
+        gold_label += f"   Shop: {shop_display}"
+    gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
     lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
     wave_text = font.render(_format_wave_label(wave_manager), True, settings.COLOR_TEXT)
@@ -458,21 +477,36 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         y += PANEL_ROW_HEIGHT
 
 
-# --- Draft screen (a roguelike run's between-floors tower choice) ---
+# --- Draft screen (a roguelike run's own between-floors Shop -- see
+# game.py's GameState.DRAFT for why the code still says "draft") ---
 
 DRAFT_CARD_WIDTH = settings.PANEL_WIDTH  # matches the sidebar's own visual width
 DRAFT_CARD_HEIGHT = 260
 DRAFT_CARD_GAP = 24
 DRAFT_CARDS_TOP = 200
 
+SHOP_CONTINUE_BUTTON_WIDTH = 220
+SHOP_CONTINUE_BUTTON_HEIGHT = 48
+
+
+def build_shop_continue_button_rect():
+    """Rect for the Shop screen's 'Continue' button (see Game._handle_
+    draft_click) -- leaves the shop and loads the next floor without
+    buying anything else this visit. Centered under the item cards, same
+    "just a Rect, no state of its own" shape build_skip_button_rect
+    already sets."""
+    x = (settings.SCREEN_WIDTH - SHOP_CONTINUE_BUTTON_WIDTH) // 2
+    y = DRAFT_CARDS_TOP + DRAFT_CARD_HEIGHT + 30
+    return pygame.Rect(x, y, SHOP_CONTINUE_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
 
 def build_draft_choice_rects(count):
-    """`count` rects for the draft screen's card choices, laid out as a
+    """`count` rects for the Shop screen's item choices, laid out as a
     centered horizontal row -- generalizes build_specialize_button_rects's
-    fixed-2-rect pattern to however many candidates card_pool.draft_offer
-    actually returned (usually its own default count, but fewer once a
-    run's pool is nearly exhausted). Empty for count == 0 (nothing left to
-    draft -- see Game._enter_draft, which skips this screen entirely in
+    fixed-2-rect pattern to however many items shop.build_offer actually
+    returned (usually its own default count, but fewer once a run's tower/
+    relic pools are nearly exhausted). Empty for count == 0 (nothing left
+    to offer -- see Game._enter_draft, which skips this screen entirely in
     that case) since range(0) below already yields nothing."""
     total_width = count * DRAFT_CARD_WIDTH + (count - 1) * DRAFT_CARD_GAP
     start_x = (settings.SCREEN_WIDTH - total_width) // 2
@@ -486,44 +520,56 @@ def build_draft_choice_rects(count):
 def get_clicked_draft_choice(pos, draft_choice_rects):
     """Index into `choices`/`draft_choice_rects` (see draw_draft_screen)
     the click landed on, or None -- draft_choice_rects is a list, not a
-    dict keyed by name, since card_pool.draft_offer can offer the same
-    tower name at most once but nothing stops a future draft variant
-    (relics, Milestone 4) from wanting duplicate entries; index is the
-    only identifier guaranteed unique."""
+    dict keyed by name, since a shop visit's own tower and relic offers
+    can each repeat a key across different visits (a still-unbought tower
+    stays offerable next time); index is the only identifier guaranteed
+    unique within one visit."""
     for index, rect in enumerate(draft_choice_rects):
         if rect.collidepoint(pos):
             return index
     return None
 
 
-def _draw_card_frame(surface, rect, hovered):
-    """The fill+border every draft card (tower or relic) shares -- pulled
-    out so the two card kinds' own content-drawing can't drift apart on
-    hover color/border width/radius the way two independent copies of
-    this would. Returns the x each card's own content should start
-    drawing at."""
-    fill_color = settings.COLOR_BUTTON_SELECTED if hovered else settings.COLOR_HUD_BG
+def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price):
+    """The fill+border every shop card (tower or relic) shares, plus its
+    price tag/SOLD badge -- pulled out so the two card kinds' own
+    content-drawing can't drift apart on hover color/border width/radius,
+    or on how a price renders, the way two independent copies of this
+    would. Returns the x each card's own content should start drawing at."""
+    fill_color = settings.COLOR_BUTTON_SELECTED if (hovered and not purchased) else settings.COLOR_HUD_BG
     pygame.draw.rect(surface, fill_color, rect, border_radius=8)
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+    border_color = settings.COLOR_BUTTON if (purchased or affordable) else settings.COLOR_BUTTON_DISABLED
+    pygame.draw.rect(surface, border_color, rect, width=2, border_radius=8)
+
+    if purchased:
+        tag_text, tag_color = "SOLD", settings.COLOR_TEXT_DIM
+    else:
+        tag_text = str(price)
+        tag_color = settings.COLOR_GOLD if affordable else settings.COLOR_TEXT_DIM
+    tag = small_font.render(tag_text, True, tag_color)
+    surface.blit(tag, tag.get_rect(topright=(rect.right - PANEL_PADDING, rect.y + PANEL_PADDING)))
     return rect.x + PANEL_PADDING
 
 
-def _draw_draft_card(surface, font, small_font, rect, name, hovered):
+def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, affordable, price):
     tower_cls = TOWER_TYPES[name]
-    x = _draw_card_frame(surface, rect, hovered)
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price)
     # Reuses the sidebar's own class-subject header+stats rendering
-    # verbatim (a draft card is exactly a build-menu selection's
+    # verbatim (a shop card is exactly a build-menu selection's
     # not-yet-built display, just laid out in its own rect instead of the
     # fixed sidebar slot) -- see _draw_panel_header's own docstring for why
-    # it takes y as a parameter rather than hardcoding PANEL_PADDING.
+    # it takes y as a parameter rather than hardcoding PANEL_PADDING. Its
+    # own "Cost: N" line is tower_cls.cost, the *battle gold* it'll take to
+    # place once unlocked -- a different number from (and drawn well away
+    # from) this card's own shop-currency price tag in the corner.
     y = _draw_panel_header(surface, font, small_font, x, rect.y + PANEL_PADDING,
                             tower_cls, False, tower_cls, None)
     _draw_panel_stats(surface, small_font, x, y, tower_cls, tower_cls, False)
 
 
-def _draw_relic_card(surface, font, small_font, rect, key, hovered):
+def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price):
     relic = RELICS[key]
-    x = _draw_card_frame(surface, rect, hovered)
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price)
     y = rect.y + PANEL_PADDING
     title = font.render(relic.display_name, True, settings.COLOR_TEXT)
     surface.blit(title, (x, y))
@@ -536,25 +582,50 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered):
         y += PANEL_ROW_HEIGHT
 
 
-def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, draft_kind, hovered_index=None):
-    """`choices` is a list of TOWER_TYPES names (see card_pool.draft_offer)
-    or RELICS keys (see relics.relic_offer), depending on `draft_kind`
-    ("tower" or "relic" -- see Game._is_relic_floor); `draft_choice_rects`
-    is one Rect per choice, same length/order (see build_draft_choice_
-    rects). The board underneath (grid/towers/HUD) is left drawn by the
-    caller -- same "frozen board behind a dark overlay" look draw_victory_
-    screen/draw_game_over_screen already use, for visual continuity
-    between the floor that was just cleared and the choice that's about
-    to shape the next one."""
+def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, hovered_index,
+                       purchased_indices, shop_currency, continue_button_rect, unlimited_gold=False):
+    """`choices` is a list of shop.ShopItem, mixing both card kinds
+    together now that one shop visit offers towers and relics at once (see
+    shop.build_offer) -- each item carries its own `kind` ("tower"/
+    "relic") rather than the whole screen sharing one, unlike the single-
+    type draft this replaced. `draft_choice_rects` is one Rect per item,
+    same length/order (see build_draft_choice_rects). `purchased_indices`
+    is the set of indices already bought this visit (see Game._try_buy_
+    shop_item) -- drawn as SOLD and greyed out rather than removed from
+    the layout, so the row doesn't reflow while shopping. `unlimited_gold`
+    (see economy.py's own docstring) makes every item read as affordable
+    regardless of `shop_currency`, mirroring how it already does for
+    battle gold in the build menu (see draw_hud). The board underneath
+    (grid/towers/HUD) is left drawn by the caller -- same "frozen board
+    behind a dark overlay" look draw_victory_screen/draw_game_over_screen
+    already use, for visual continuity between the floor that was just
+    cleared and the shop that's about to shape the next one."""
     _draw_dim_overlay(surface)
 
-    title_text = "Choose a relic" if draft_kind == "relic" else "Choose a new tower"
-    title = font.render(title_text, True, settings.COLOR_GOLD)
+    title = font.render("Shop: spend shop currency on towers and relics", True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 40)))
 
-    draw_card = _draw_relic_card if draft_kind == "relic" else _draw_draft_card
-    for index, key in enumerate(choices):
-        draw_card(surface, font, small_font, draft_choice_rects[index], key, index == hovered_index)
+    for index, item in enumerate(choices):
+        purchased = index in purchased_indices
+        # Every item still for sale costs the same "next purchase" price
+        # right now -- price_for's escalation is keyed on how many this
+        # visit has already bought in total, not on which item it is (see
+        # Game._try_buy_shop_item, which computes the identical value at
+        # the moment of an actual purchase).
+        price = price_for(item, len(purchased_indices))
+        affordable = can_afford(shop_currency, price, unlimited_gold)
+        draw_card = _draw_relic_card if item.kind == "relic" else _draw_draft_card
+        draw_card(surface, font, small_font, draft_choice_rects[index], item.key,
+                  index == hovered_index, purchased, affordable, price)
+
+    currency_display = _format_currency(shop_currency, unlimited_gold)
+    currency_text = small_font.render(f"Shop currency: {currency_display}", True, settings.COLOR_GOLD)
+    surface.blit(currency_text, currency_text.get_rect(
+        midbottom=(settings.SCREEN_WIDTH // 2, continue_button_rect.y - 12)))
+
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
+    continue_label = small_font.render("Continue", True, settings.COLOR_GOLD)
+    surface.blit(continue_label, continue_label.get_rect(center=continue_button_rect.center))
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---

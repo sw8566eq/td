@@ -104,7 +104,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     run = RunState(
         seed=42, floor_sequence=(1, 2, 3), difficulty="hard",
         unlocked_towers=["basic", "cannon", "frost"], floor_index=1,
-        lives=15, gold=80, relics=["prospectors_charm"], is_daily=True,
+        lives=15, shop_currency=80, relics=["prospectors_charm"], is_daily=True,
         has_spent_gold=True, used_guardians_reprieve=True,
     )
     game = _FakeGame(level, [], active_run=run)
@@ -119,7 +119,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     assert loaded_run.unlocked_towers == ["basic", "cannon", "frost"]
     assert loaded_run.floor_index == 1
     assert loaded_run.lives == 15
-    assert loaded_run.gold == 80
+    assert loaded_run.shop_currency == 80
     assert loaded_run.relics == ["prospectors_charm"]
     assert loaded_run.is_daily is True
     assert loaded_run.has_spent_gold is True
@@ -141,6 +141,24 @@ def test_load_run_with_a_saved_run_predating_the_run_key_still_resumes(tmp_path)
     loaded = save_state.load_run(path=path)
 
     assert loaded["run"] is None
+
+
+def test_load_run_with_a_run_predating_shop_currency_still_resumes(tmp_path):
+    # An older save's own "run" dict (written back when "gold" was its
+    # carried-currency key instead of "shop_currency") has no such key at
+    # all -- must still load, defaulting to 0, same .get()-defaults spirit
+    # as the "run"-key-itself precedent just above.
+    path = tmp_path / "save_state.json"
+    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
+    game = _FakeGame(make_level(), [], active_run=run)
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    del data["run"]["shop_currency"]
+    path.write_text(json.dumps(data))
+
+    loaded = save_state.load_run(path=path)
+
+    assert loaded["run"].shop_currency == 0
 
 
 def test_load_run_with_a_run_referencing_an_unrecognized_level_id_returns_none(tmp_path):
