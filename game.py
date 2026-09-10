@@ -521,13 +521,17 @@ class Game:
         always succeeds, nothing actually deducted" precedent (see
         economy.py's own docstring) covers shop currency the same way it
         already covers battle gold, via self.economy.unlimited_gold, which
-        is already exactly `self.unlimited_gold or sandbox`."""
+        is already exactly `self.unlimited_gold or sandbox`. Routed through
+        shop.can_afford (the same check ui.draw_draft_screen renders a card
+        as affordable with) rather than reimplementing it here, so the two
+        can't drift."""
         run = self.active_run
         item = self.draft_choices[index]
         price = shop.price_for(item, len(self.shop_purchased_indices))
-        if not self.economy.unlimited_gold and run.shop_currency < price:
+        unlimited = self.economy.unlimited_gold
+        if not shop.can_afford(run.shop_currency, price, unlimited):
             return
-        if not self.economy.unlimited_gold:
+        if not unlimited:
             run.shop_currency -= price
         if item.kind == "relic":
             run.relics.append(item.key)

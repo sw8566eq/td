@@ -17,7 +17,7 @@ from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
 from relics import RELICS
-from shop import price_for
+from shop import can_afford, price_for
 from tower import TOWER_TYPES
 from waves import WaveState
 
@@ -172,6 +172,14 @@ def build_sell_button_rect():
     return _action_button_rect(SELL_BUTTON_TOP)
 
 
+def _format_currency(value, unlimited):
+    """Shared "unlimited" display idiom for any gold-like value gated on
+    Economy.unlimited_gold -- battle gold and shop currency both read this
+    way (see draw_hud/draw_draft_screen) rather than each spelling out its
+    own copy of the same ternary."""
+    return "unlimited" if unlimited else str(value)
+
+
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None):
@@ -210,7 +218,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     # the gold/lives/wave text needs to sit right after however many
     # buttons are actually drawn, not always past all 9 registered towers.
     info_x = BUTTON_MARGIN + len(button_rects) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
-    gold_display = "unlimited" if economy.unlimited_gold else str(economy.gold)
+    gold_display = _format_currency(economy.gold, economy.unlimited_gold)
     gold_label = f"Gold: {gold_display}"
     # shop_currency is None outside of an active run (classic/Practice
     # play, an editor playtest) -- nothing to show there, since only a
@@ -219,7 +227,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     # since HUD_HEIGHT has no headroom left for a fourth line under Gold/
     # Lives/Wave (see settings.HUD_HEIGHT).
     if shop_currency is not None:
-        shop_display = "unlimited" if economy.unlimited_gold else str(shop_currency)
+        shop_display = _format_currency(shop_currency, economy.unlimited_gold)
         gold_label += f"   Shop: {shop_display}"
     gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
@@ -528,12 +536,7 @@ def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, 
     content-drawing can't drift apart on hover color/border width/radius,
     or on how a price renders, the way two independent copies of this
     would. Returns the x each card's own content should start drawing at."""
-    if purchased:
-        fill_color = settings.COLOR_HUD_BG
-    elif hovered:
-        fill_color = settings.COLOR_BUTTON_SELECTED
-    else:
-        fill_color = settings.COLOR_HUD_BG
+    fill_color = settings.COLOR_BUTTON_SELECTED if (hovered and not purchased) else settings.COLOR_HUD_BG
     pygame.draw.rect(surface, fill_color, rect, border_radius=8)
     border_color = settings.COLOR_BUTTON if (purchased or affordable) else settings.COLOR_BUTTON_DISABLED
     pygame.draw.rect(surface, border_color, rect, width=2, border_radius=8)
@@ -610,12 +613,12 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
         # Game._try_buy_shop_item, which computes the identical value at
         # the moment of an actual purchase).
         price = price_for(item, len(purchased_indices))
-        affordable = unlimited_gold or shop_currency >= price
+        affordable = can_afford(shop_currency, price, unlimited_gold)
         draw_card = _draw_relic_card if item.kind == "relic" else _draw_draft_card
         draw_card(surface, font, small_font, draft_choice_rects[index], item.key,
                   index == hovered_index, purchased, affordable, price)
 
-    currency_display = "unlimited" if unlimited_gold else str(shop_currency)
+    currency_display = _format_currency(shop_currency, unlimited_gold)
     currency_text = small_font.render(f"Shop currency: {currency_display}", True, settings.COLOR_GOLD)
     surface.blit(currency_text, currency_text.get_rect(
         midbottom=(settings.SCREEN_WIDTH // 2, continue_button_rect.y - 12)))

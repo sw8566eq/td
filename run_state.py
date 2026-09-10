@@ -39,10 +39,10 @@ class RunState:
     # and spent at the Shop screen between floors (see shop.py/Game.
     # _enter_draft's own "Shop, not draft" naming note).
     shop_currency: int = 0
-    # Run-wide passive modifier cards -- see relics.py. Grows via a
-    # relic-flavored draft offered instead of a tower draft on alternating
-    # floors (see Game._is_relic_floor), the same "drafted into a list"
-    # shape unlocked_towers already has -- though unlike unlocked_towers
+    # Run-wide passive modifier cards -- see relics.py. Grows via relic
+    # cards offered together with tower cards in the same Shop visit (see
+    # shop.build_offer), the same "drafted into a list" shape
+    # unlocked_towers already has -- though unlike unlocked_towers
     # (a required field, no default of its own to get wrong), this one
     # does need field(default_factory=list) rather than a bare `= []`, the
     # same mutable-default-arg precedent levels.py's own Level.

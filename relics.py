@@ -1,7 +1,7 @@
 """Run-wide passive modifier cards ("relics") -- a second, genuinely
-optional card type alongside tower cards (see card_pool.py), offered via
-the exact same draft screen (see Game._enter_draft/_is_relic_floor). Every
-relic's numeric effect is one of three shapes:
+optional card type alongside tower cards (see card_pool.py), offered
+together with them in the same Shop visit (see shop.build_offer/Game.
+_enter_draft). Every relic's numeric effect is one of three shapes:
 
 - Per-floor (RelicModifiers' own fields), composed into a run's
   floor-load the same way difficulty.DIFFICULTY_MODES/
@@ -130,17 +130,16 @@ RELICS = {
         "prospectors_charm", "Prospector's Charm", "+20 gold at the start of every floor.",
         gold_per_floor_bonus=20,
     ),
-    # war_chest/sturdy_gate are deliberately one-time bonuses, not per-floor
-    # ones -- their description text says so honestly, rather than
-    # promising a recurring effect a carried-forward economy has no natural
-    # way to keep granting. Applied directly onto the run's carried gold/
-    # lives the instant the card is drafted (Game._apply_one_time_relic_
-    # bonus), not folded into Economy construction the way every other
-    # relic modifier is -- no relic can ever be drafted before floor 2 (see
-    # Game._is_relic_floor), by which point floor 0's Economy construction
-    # (the only place a starting_gold_multiplier/starting_lives_bonus could
-    # otherwise act) is long gone, so that route would make these two
-    # permanently inert regardless of when they're picked.
+    # sturdy_gate is a deliberately one-time bonus, not a per-floor one --
+    # its description text says so honestly, rather than promising a
+    # recurring effect. Applied directly onto the run's carried lives the
+    # instant the card is drafted (Game._apply_one_time_relic_bonus), not
+    # folded into Economy construction the way every other relic modifier
+    # is (see RelicModifiers' own docstring for why a one-time bonus can't
+    # be folded into the per-floor composition above). war_chest used to
+    # need this same one-time treatment -- see this module's own docstring
+    # above for why it's now a normal per-floor RelicModifiers field
+    # instead.
     "war_chest": Relic(
         "war_chest", "War Chest", "+25% starting gold, every floor.",
         starting_gold_multiplier=1.25,
@@ -250,14 +249,6 @@ RELICS = {
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
-
-# Every RELIC_FLOOR_INTERVAL-th floor transition offers relics instead of a
-# tower (see Game._is_relic_floor) -- named here, next to RELICS/DEFAULT_
-# RELIC_OFFER_COUNT, rather than left as a bare literal at its one call
-# site, matching how every other balance number in this milestone
-# (run_escalation.py's growth rates, meta_progression.py's thresholds) gets
-# named and commented.
-RELIC_FLOOR_INTERVAL = 2
 
 
 def relic_offer(rng, run, count=DEFAULT_RELIC_OFFER_COUNT):

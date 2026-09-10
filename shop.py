@@ -83,6 +83,17 @@ def price_for(item, purchases_this_visit):
     return round(item.base_price * PRICE_ESCALATION ** purchases_this_visit)
 
 
+def can_afford(shop_currency, price, unlimited=False):
+    """Same shape as Economy.can_afford, for shop currency -- shared by
+    Game._try_buy_shop_item (the actual purchase gate) and
+    ui.draw_draft_screen (what a card renders as affordable), so the two
+    can't drift on what "affordable" means. `unlimited` is passed in rather
+    than read off a bundled flag the way Economy.gold's own check reads
+    self.unlimited_gold, since shop currency lives on RunState while the
+    unlimited-purchases debug flag lives on Economy."""
+    return unlimited or shop_currency >= price
+
+
 def income_for_floor(floor_index, leftover_gold):
     """Shop currency earned when floor_index's floor clears, given
     `leftover_gold` battle gold still unspent at that moment -- the flat,
