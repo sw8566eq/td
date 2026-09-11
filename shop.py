@@ -28,8 +28,7 @@ RELIC_OFFER_COUNT = 2
 
 # Relics priced higher than towers -- a relic is a run-long passive, a
 # tower card is a one-time unlock into the build menu; placeholder numbers,
-# tunable once there's real playtesting to tune against (see the loose
-# draft this shipped from, please-look-at-the-jiggly-cake.md).
+# tunable once there's real playtesting to tune against.
 TOWER_PRICE = 8
 RELIC_PRICE = 10
 
