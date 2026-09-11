@@ -47,9 +47,18 @@ EVENTS = {
         "A merchant offers to trade a relic for some of your shop currency.",
         options=(
             EventOption(
-                "trade", "Trade 15 shop currency for a relic",
+                # Priced at shop.RELIC_PRICE (10), not above it -- an
+                # earlier draft charged 15, pricier than just buying a
+                # relic at the Shop itself (base price 10, only escalating
+                # with *other* purchases the same visit), which made this
+                # option strictly worse value than waiting for a Shop node.
+                # Playtesting-driven pricing review caught the mismatch;
+                # par with the Shop's own base price is what makes taking
+                # the guaranteed, off-cycle deal here a genuine option
+                # rather than a trap.
+                "trade", "Trade 10 shop currency for a relic",
                 "You hand over the currency; the merchant hands over a relic.",
-                shop_currency_delta=-15, grant_relic=True,
+                shop_currency_delta=-10, grant_relic=True,
             ),
             EventOption("walk_away", "Walk away", "You keep your currency and move on."),
         ),

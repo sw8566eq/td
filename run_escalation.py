@@ -26,14 +26,30 @@ _SPEED_GROWTH_PER_FLOOR = 0.02
 _GOLD_GROWTH_PER_FLOOR = 0.05
 
 # An Elite map node's own extra bump on top of whatever its row already
-# escalates to (see apply_elite_multiplier below) -- placeholder numbers,
-# tunable once there's real playtesting to tune against, same spirit as
-# shop.py's own TOWER_PRICE/RELIC_PRICE comment. Gold scales with hp (a
+# escalates to (see apply_elite_multiplier below). Gold scales with hp (a
 # tougher fight should pay out more in the fight itself too, on top of
 # shop.ELITE_INCOME_MULTIPLIER's own bonus at the *floor-clear* level) --
 # speed barely moves, since a faster-*and* tankier enemy compounds harder
 # than either alone.
-ELITE_HP_MULTIPLIER = 1.5
+#
+# ELITE_HP_MULTIPLIER tuned down from an original 1.5 after headless
+# playtesting (a coverage-greedy simulated build, same level/row/starting
+# resources for Combat vs Elite) showed 1.5 turning "harder floor" into
+# "near-total wipe" even on a run's very first Elite-eligible floor --
+# HP is by far the most cliff-inducing stat here (wave arrival is on a
+# fixed clock regardless of whether earlier enemies are dead, so once
+# per-enemy HP outpaces tower DPS enough to fall behind schedule, losses
+# cascade fast), with a real, sharp playability cliff between 1.3 and 1.4
+# multiplier for this game's wave/DPS balance -- 1.25 sits comfortably
+# below it: a real fight (Elite clearly costs more lives than Combat at
+# the same row -- roughly 30% of a fresh run's lives at row 0, escalating
+# to a genuine near-wipe risk by the earliest row Elite can appear even
+# with one Shop visit's worth of upgrades already bought), not a coin
+# flip. ELITE_GOLD_MULTIPLIER stayed at its original value -- removing it
+# in the same playtest made even a modest HP bump unsurvivable, since it's
+# what lets a mid-fight economy snowball (more kills -> more gold -> more
+# towers) keep pace with the added toughness at all.
+ELITE_HP_MULTIPLIER = 1.25
 ELITE_SPEED_MULTIPLIER = 1.1
 ELITE_GOLD_MULTIPLIER = 1.5
 

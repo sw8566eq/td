@@ -52,7 +52,14 @@ LEFTOVER_GOLD_CONVERSION_RATE = 0.10
 # An Elite map node's own reward bonus, on top of the normal formula above --
 # the risk/reward half of run_escalation.apply_elite_multiplier's own extra
 # difficulty: clearing the harder fight pays out more shop currency than an
-# ordinary Combat node at the same floor would have.
+# ordinary Combat node at the same floor would have. Kept at its original
+# value when ELITE_HP_MULTIPLIER was tuned down after playtesting (see that
+# constant's own comment) -- the *realized* payout is already higher than
+# this multiplier alone suggests, since more elite enemies killed mid-fight
+# (run_escalation.ELITE_GOLD_MULTIPLIER) also inflates the leftover-gold
+# term this multiplies, and that compounded reward (~1.9x a same-row Combat
+# clear, in the same playtest) already read as proportionate to the
+# now-real-but-not-catastrophic risk.
 ELITE_INCOME_MULTIPLIER = 1.5
 
 
