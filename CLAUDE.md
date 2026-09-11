@@ -123,11 +123,15 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `Tower.set_last_stand_multiplier()` call, called from `Game.update()`'s existing two-pass tower
   loop, that sets both live values together since both relics key off the exact same condition); and
   **per-tower-density (live-reactive)** (`overcrowded_circuits`' `tower_density_radius`/
-  `tower_density_damage_bonus_per_neighbor`/`tower_density_damage_bonus_cap`, resolved every frame
-  too, but from each tower's own live neighbor count rather than one global condition -- folded into
-  the same two-pass loop's first pass as a nested scan, skipped entirely for a tower with no such
-  relic held; see `Tower.set_nearby_tower_bonus()` and `Game.update()`'s own comment on why this is a
-  nested scan in pass 1, not a third pass). `guardians_reprieve` has no `RelicModifiers` field at all
+  `tower_density_damage_bonus_per_neighbor`/`tower_density_damage_bonus_cap`, resolved from each
+  tower's own live neighbor count rather than one global condition -- but, unlike the other
+  live-reactive fields above, event-driven rather than re-resolved every frame: a tower's own `.pos`
+  never moves once placed, so `Game._recompute_tower_density_bonuses()` only needs to call
+  `Tower.set_nearby_tower_bonus(self.towers)` -- which does its own neighbor scan over the list it's
+  handed, the same shape `SupportTower.update()` already uses for its own aura broadcast, rather than
+  a caller reducing it to a bare count first -- for every tower whenever the board's own tower set
+  actually changes (`try_place_tower`/`try_sell_tower`/`resume_saved_run`), not from `Game.update()`'s
+  per-frame loop at all). `guardians_reprieve` has no `RelicModifiers` field at all
   (same shape as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in
   `Game._lose_a_life()`, the interception point for the enemy-reached-goal life loss, gated on
   `RunState.used_guardians_reprieve` (a one-time-per-run charge) and a no-op under

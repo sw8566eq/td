@@ -39,12 +39,15 @@ Economy.lives -- rather than once at floor-load or tower-construction
 time; see Tower.set_last_stand_multiplier/Game.update()).
 
 A further batch added a 7th shape, per-tower-density (also live-reactive,
-but per-tower rather than global): overcrowded_circuits' tower_density_
-radius/tower_density_damage_bonus_per_neighbor/tower_density_damage_bonus_cap,
-resolved every frame from each tower's own live neighbor count (folded
-into Game.update()'s existing two-pass tower loop -- see Tower.
-set_nearby_tower_bonus()) rather than from one global condition the way
-last_stand_damage_multiplier's own live check is.
+but per-tower rather than global, and event-driven rather than every
+frame): overcrowded_circuits' tower_density_radius/tower_density_damage_
+bonus_per_neighbor/tower_density_damage_bonus_cap, resolved from each
+tower's own live neighbor count (see Tower.set_nearby_tower_bonus())
+whenever the board's tower set actually changes -- a placement, a sale, a
+save restore (Game._recompute_tower_density_bonuses()) -- rather than
+continuously every frame the way last_stand_damage_multiplier's own live
+check is: a tower's position never changes once placed, so nothing about
+its neighbor count can change between one of those events and the next.
 
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are

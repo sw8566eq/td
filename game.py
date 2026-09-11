@@ -1141,6 +1141,7 @@ class Game:
             self._register_tower(self._tower_from_save_data(tower_data))
         for tower_data in save_data.get("sold_towers", []):
             self.sold_towers.append(self._tower_from_save_data(tower_data))
+        self._recompute_tower_density_bonuses()  # once, after every restored tower is in place
 
         self.state = GameState.PLAYING
 
@@ -1962,6 +1963,7 @@ class Game:
         self._spend_gold(tower_cls.cost)
         tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
         self._register_tower(tower)
+        self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
         return True
 
@@ -2027,6 +2029,20 @@ class Game:
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
 
+    def _recompute_tower_density_bonuses(self):
+        """Refresh every placed tower's own Overcrowded Circuits-style
+        density bonus (Tower.set_nearby_tower_bonus(), which does its own
+        neighbor scan over the list handed to it -- see that method's own
+        docstring) -- called only from the handful of places self.towers
+        itself changes (a placement, a sale, or restoring a whole save),
+        not every frame from Game.update(): a Tower's own .pos is fixed
+        once at construction and never moves, so nothing about any
+        tower's neighbor count can change between one of those events and
+        the next -- recomputing it 60x/sec regardless would just repeat
+        an unchanged answer 59 times out of 60."""
+        for tower in self.towers:
+            tower.set_nearby_tower_bonus(self.towers)
+
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --
         the exact registration step shared by try_place_tower (a freshly
@@ -2078,6 +2094,7 @@ class Game:
         self.towers.remove(tower)
         self.sold_towers.append(tower)  # see _tower_results()
         self.grid.remove(tower.anchor_col, tower.anchor_row)
+        self._recompute_tower_density_bonuses()  # a removed neighbor may affect others' counts too
         if self.selected_tower is tower:
             self.selected_tower = None
         return True
@@ -2163,24 +2180,6 @@ class Game:
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
-            # An Overcrowded Circuits-style relic's own live density check
-            # -- folds into this same first pass rather than a third one,
-            # unlike the aura: this only reads already-known static .pos
-            # values, with no dependency on anything pass 2 below does
-            # (the aura genuinely needs every reset_aura() done first,
-            # since receive_aura() is called from inside another tower's
-            # own update()). Skipped entirely for a relic-less run (or any
-            # tower with no such relic held) via the radius guard, so the
-            # O(n) neighbor scan below costs nothing when it's unused.
-            # "Every other tower" here includes SupportTower instances too
-            # -- the relic's own text says "tower," not "attacking tower."
-            nearby_count = 0
-            if tower.relic_tower_density_radius > 0:
-                nearby_count = sum(
-                    1 for other in self.towers
-                    if other is not tower and tower.pos.distance_to(other.pos) <= tower.relic_tower_density_radius
-                )
-            tower.set_nearby_tower_bonus(nearby_count)
         for tower in self.towers:
             tower.update(dt, self.enemies, self.projectiles, self.towers)
 

@@ -214,9 +214,11 @@ class Tower:
         # Overcrowded Circuits-style relic -- relic_tower_density_radius/
         # _per_neighbor/_cap are its own configured strength (set once at
         # construction); relic_tower_density_bonus_multiplier is the live
-        # value Game.update() recomputes every frame from this tower's own
-        # current neighbor count (see set_nearby_tower_bonus() below) --
-        # the "per-tower-density (live-reactive)" shape relics.py's own
+        # value recomputed from this tower's own current neighbor count
+        # whenever the board's tower set actually changes -- a placement,
+        # a sale, or a save restore (see set_nearby_tower_bonus() below
+        # and Game._recompute_tower_density_bonuses()) -- the
+        # "per-tower-density (live-reactive)" shape relics.py's own
         # module docstring names.
         self.relic_tower_density_radius = 0.0
         self.relic_tower_density_damage_bonus_per_neighbor = 0.0
@@ -487,11 +489,12 @@ class Tower:
         Game._construct_tower), a Last Stand Charm-style relic's live,
         per-frame-recomputed bonus (relic_last_stand_multiplier -- see
         set_last_stand_multiplier()), and an Overcrowded Circuits-style
-        relic's own live, per-frame-recomputed density bonus
-        (relic_tower_density_bonus_multiplier -- see
-        set_nearby_tower_bonus()). Every create_projectile() below reads
-        this instead of self.damage directly, so a buffed tower's shots
-        reflect it without each subclass repeating the multiplication."""
+        relic's own live density bonus, recomputed whenever the board's
+        tower set changes rather than every frame (relic_tower_density_
+        bonus_multiplier -- see set_nearby_tower_bonus()). Every
+        create_projectile() below reads this instead of self.damage
+        directly, so a buffed tower's shots reflect it without each
+        subclass repeating the multiplication."""
         return self.damage * (
             1.0
             + (self.aura_damage_multiplier - 1.0)
@@ -518,15 +521,33 @@ class Tower:
             self.relic_last_stand_fire_rate_bonus_multiplier if active else 1.0
         )
 
-    def set_nearby_tower_bonus(self, nearby_count):
-        """Called every frame by Game.update() (same first pass as
-        reset_aura()/set_last_stand_multiplier()) with how many other
-        towers are currently within relic_tower_density_radius of this one
-        -- computes and stores the live Overcrowded Circuits-style density
-        bonus read by effective_damage(), capped at relic_tower_density_
-        damage_bonus_cap. Zero neighbors (or no such relic held, leaving
-        relic_tower_density_radius at 0) leaves this at 1.0, a no-op in
-        effective_damage()'s additive stack."""
+    def set_nearby_tower_bonus(self, towers):
+        """Called with the board's full current towers list (`self`
+        included) whenever that set actually changes -- a placement, a
+        sale, or restoring a whole save (see Game._recompute_tower_
+        density_bonuses) -- mirroring how SupportTower.update() already
+        receives and scans this same list for its own aura broadcast,
+        rather than a caller reducing it to a bare count first. Computes
+        and stores the live Overcrowded Circuits-style density bonus read
+        by effective_damage(), capped at relic_tower_density_damage_bonus_
+        cap. No such relic held (relic_tower_density_radius left at 0) or
+        no other tower actually within it leaves this at 1.0, a no-op in
+        effective_damage()'s additive stack -- and skips the scan itself
+        entirely in the no-relic case, the common one. 'Every other
+        tower' counts SupportTower instances too -- the relic's own text
+        says 'tower,' not 'attacking tower.' This is deliberately NOT
+        re-resolved every frame the way aura_damage_multiplier is: unlike
+        an aura buff (broadcast fresh each frame by whichever SupportTower
+        is currently in range), a tower's own .pos never moves once
+        placed, so nothing about this count can change between one of the
+        events above and the next."""
+        nearby_count = 0
+        if self.relic_tower_density_radius > 0:
+            radius_sq = self.relic_tower_density_radius ** 2
+            nearby_count = sum(
+                1 for other in towers
+                if other is not self and self.pos.distance_squared_to(other.pos) <= radius_sq
+            )
         bonus = min(
             nearby_count * self.relic_tower_density_damage_bonus_per_neighbor,
             self.relic_tower_density_damage_bonus_cap,

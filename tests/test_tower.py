@@ -625,36 +625,60 @@ def test_support_tower_specializations_do_not_touch_a_permanently_zero_damage():
 
 
 # --- Overcrowded Circuits' own live density bonus (set_nearby_tower_bonus) ---
+# set_nearby_tower_bonus() takes the board's own current towers list and
+# scans it itself -- mirroring SupportTower.update()'s own precedent for
+# "which other towers are near this one" -- rather than a caller reducing
+# it to a bare count first, so these tests build small towers lists
+# instead of passing pre-computed counts.
+
+def _other_towers_at(count, distance):
+    """`count` bare BasicTower instances, all `distance` px from the
+    origin -- stand-ins for "other towers on the board"."""
+    return [BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(distance, 0)) for _ in range(count)]
+
 
 def test_set_nearby_tower_bonus_defaults_to_no_bonus():
-    # Neutral relic_* defaults (0.0 per-neighbor rate and cap) make this a
-    # no-op regardless of neighbor count -- the relic-less-run case.
+    # Neutral relic_* defaults (radius 0) make this a no-op regardless of
+    # how many other towers are on the board -- the relic-less-run case.
     tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
-    tower.set_nearby_tower_bonus(5)
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(5, distance=10))
     assert tower.relic_tower_density_bonus_multiplier == 1.0
 
 
 def test_set_nearby_tower_bonus_scales_with_neighbor_count():
     tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 100
     tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
     tower.relic_tower_density_damage_bonus_cap = 0.20
-    tower.set_nearby_tower_bonus(3)
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
     assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.06)  # 1 + 3 * 0.02
+
+
+def test_set_nearby_tower_bonus_ignores_towers_outside_the_radius():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 100
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    towers = [tower] + _other_towers_at(3, distance=10) + _other_towers_at(2, distance=1000)
+    tower.set_nearby_tower_bonus(towers)
+    assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.06)  # the 2 far ones excluded
 
 
 def test_set_nearby_tower_bonus_is_capped():
     tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 100
     tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
     tower.relic_tower_density_damage_bonus_cap = 0.20
-    tower.set_nearby_tower_bonus(50)  # far beyond what the cap allows
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(50, distance=10))  # far beyond the cap
     assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.20)
 
 
 def test_effective_damage_reflects_the_density_bonus():
     tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 100
     tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
     tower.relic_tower_density_damage_bonus_cap = 0.20
-    tower.set_nearby_tower_bonus(3)
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
     assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.06)
 
 
@@ -667,9 +691,10 @@ def test_effective_damage_stacks_density_bonus_additively_with_everything_else()
     tower.relic_damage_bonus_multiplier = 1.25
     tower.relic_last_stand_bonus_multiplier = 1.3
     tower.set_last_stand_multiplier(True)
+    tower.relic_tower_density_radius = 100
     tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
     tower.relic_tower_density_damage_bonus_cap = 0.20
-    tower.set_nearby_tower_bonus(5)  # +0.10, under the cap
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(5, distance=10))  # +0.10, under the cap
 
     assert tower.effective_damage() == pytest.approx(BasicTower.damage * 2.15)  # 1 + .5 + .25 + .3 + .10
     assert tower.effective_damage() != pytest.approx(BasicTower.damage * 1.5 * 1.25 * 1.3 * 1.10)  # not multiplicative
