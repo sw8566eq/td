@@ -1,8 +1,10 @@
 import random
 
 from relics import RELICS
+from run_map import generate_run_map
 from run_state import RunState
 from shop import (
+    ELITE_INCOME_MULTIPLIER,
     RELIC_OFFER_COUNT,
     RELIC_PRICE,
     TOWER_OFFER_COUNT,
@@ -16,9 +18,13 @@ from tower import TOWER_TYPES
 
 
 def _run(unlocked_towers=(), relics=()):
+    # build_offer only ever reads run.unlocked_towers/run.relics -- the map
+    # itself is irrelevant here, just a real one RunState now requires.
+    game_map = generate_run_map(random.Random(1))
     return RunState(
-        seed=1, floor_sequence=(1,), difficulty="normal",
+        seed=1, map=game_map, difficulty="normal",
         unlocked_towers=list(unlocked_towers), relics=list(relics),
+        current_node_id=game_map.start_node_ids[0],
     )
 
 
@@ -109,3 +115,10 @@ def test_income_for_floor_grows_with_leftover_gold_alone():
 
 def test_income_for_floor_is_deterministic():
     assert income_for_floor(3, leftover_gold=120) == income_for_floor(3, leftover_gold=120)
+
+
+def test_income_for_floor_elite_bonus_pays_out_more_than_normal():
+    normal = income_for_floor(2, leftover_gold=50, is_elite=False)
+    elite = income_for_floor(2, leftover_gold=50, is_elite=True)
+    assert elite == round(normal * ELITE_INCOME_MULTIPLIER)
+    assert elite > normal

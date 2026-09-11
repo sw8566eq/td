@@ -8,10 +8,10 @@ bad file).
 This is a *record*, not a gate. It used to also decide which levels were
 playable (a sequential is_unlocked(): the lowest id always open, every
 other one needing its immediate predecessor cleared), but the roguelike
-run loop retired that idea outright -- a run's floor sequence picks its own
-levels (see run_floors.py), meta_progression.py gates what the draft can
-offer, and Practice mode plays any level immediately. What survives is the
-{level_id: best_lives_remaining} tally itself, written by
+run loop retired that idea outright -- a run's own branching map picks its
+combat/elite nodes' levels (see run_map.py), meta_progression.py gates what
+the shop can offer, and Practice mode plays any level immediately. What
+survives is the {level_id: best_lives_remaining} tally itself, written by
 Game._record_level_cleared() on every non-sandbox floor/level clear and
 read back for the "Campaign Complete" achievement's distinct-levels count.
 Custom (editor-authored) levels are never recorded here -- they have no

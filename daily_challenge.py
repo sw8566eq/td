@@ -1,5 +1,5 @@
 """Daily Run's own seed: a UTC-date-derived int, so every player gets the
-exact same roguelike run (floor_sequence, draft offers -- see run_floors.py/
+exact same roguelike run (branching map, shop offers -- see run_map.py/
 card_pool.py) on a given day, and their own skill/picks are the only
 variable. Everything else Daily Run needs is general run machinery, not
 anything specific to "daily" -- see Game.start_new_run's own docstring for

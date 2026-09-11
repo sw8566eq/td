@@ -3,9 +3,33 @@ import json
 import save_state
 import settings
 from levels import Level
+from run_map import MapNode, RunMap
 from run_state import RunState
 from tower import BasicTower, LightningTower
 from waves import WaveState
+
+# A small, hand-built map (not a real generate_run_map() output) shared by
+# every test below that needs a real RunState -- combat node "0-0" (level 1)
+# -> shop node "1-0" -> boss combat node "2-0" (level 2, the final row).
+# Deliberately includes one non-combat node (the shop) so tests can exercise
+# _parse_and_validate_active_run's "current_node_id must be a combat/elite
+# node" check.
+_MAP = RunMap(
+    rows=(
+        (MapNode("0-0", row=0, col=0, node_type="combat", level_id=1),),
+        (MapNode("1-0", row=1, col=0, node_type="shop"),),
+        (MapNode("2-0", row=2, col=0, node_type="combat", level_id=2),),
+    ),
+    edges={"0-0": ("1-0",), "1-0": ("2-0",)},
+)
+
+
+def make_run(**overrides):
+    kwargs = dict(
+        seed=1, map=_MAP, difficulty="normal", unlocked_towers=["basic"], current_node_id="0-0",
+    )
+    kwargs.update(overrides)
+    return RunState(**kwargs)
 
 
 def make_level(name="Test Level", **overrides):
@@ -101,9 +125,9 @@ def test_save_and_load_run_round_trips(tmp_path):
 def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     path = tmp_path / "save_state.json"
     level = make_level()
-    run = RunState(
-        seed=42, floor_sequence=(1, 2, 3), difficulty="hard",
-        unlocked_towers=["basic", "cannon", "frost"], floor_index=1,
+    run = make_run(
+        seed=42, difficulty="hard", unlocked_towers=["basic", "cannon", "frost"],
+        visited_node_ids=["0-0", "1-0"], current_node_id="2-0",
         lives=15, shop_currency=80, relics=["prospectors_charm"], is_daily=True,
         has_spent_gold=True, used_guardians_reprieve=True,
     )
@@ -114,10 +138,11 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
 
     loaded_run = loaded["run"]
     assert loaded_run.seed == 42
-    assert loaded_run.floor_sequence == (1, 2, 3)  # round-trips back to a tuple, not a list
+    assert loaded_run.map == _MAP
     assert loaded_run.difficulty == "hard"
     assert loaded_run.unlocked_towers == ["basic", "cannon", "frost"]
-    assert loaded_run.floor_index == 1
+    assert loaded_run.current_node_id == "2-0"
+    assert loaded_run.visited_node_ids == ["0-0", "1-0"]
     assert loaded_run.lives == 15
     assert loaded_run.shop_currency == 80
     assert loaded_run.relics == ["prospectors_charm"]
@@ -143,14 +168,34 @@ def test_load_run_with_a_saved_run_predating_the_run_key_still_resumes(tmp_path)
     assert loaded["run"] is None
 
 
+def test_load_run_with_an_old_pre_map_run_format_returns_none(tmp_path):
+    # Clean break, not a migration (see save_state.py's own docstring on
+    # _parse_and_validate_active_run): a save from before the run loop's
+    # branching map (schema_version 1 -- "floor_sequence"/"floor_index",
+    # no "map"/"current_node_id" at all) has no meaningful way to become a
+    # map, so the whole save is treated as "nothing to resume," same as
+    # any other corrupt/incompatible file.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    del data["run"]["map"]
+    del data["run"]["current_node_id"]
+    del data["run"]["visited_node_ids"]
+    data["run"]["floor_sequence"] = [1]
+    data["run"]["floor_index"] = 0
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
 def test_load_run_with_a_run_predating_shop_currency_still_resumes(tmp_path):
     # An older save's own "run" dict (written back when "gold" was its
     # carried-currency key instead of "shop_currency") has no such key at
     # all -- must still load, defaulting to 0, same .get()-defaults spirit
     # as the "run"-key-itself precedent just above.
     path = tmp_path / "save_state.json"
-    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
-    game = _FakeGame(make_level(), [], active_run=run)
+    game = _FakeGame(make_level(), [], active_run=make_run())
     save_state.save_run(game, path=path)
     data = json.loads(path.read_text())
     del data["run"]["shop_currency"]
@@ -163,29 +208,78 @@ def test_load_run_with_a_run_predating_shop_currency_still_resumes(tmp_path):
 
 def test_load_run_with_a_run_referencing_an_unrecognized_level_id_returns_none(tmp_path):
     path = tmp_path / "save_state.json"
-    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
-    game = _FakeGame(make_level(), [], active_run=run)
+    game = _FakeGame(make_level(), [], active_run=make_run())
     save_state.save_run(game, path=path)
     data = json.loads(path.read_text())
-    data["run"]["floor_sequence"] = [999999]
+    data["run"]["map"]["rows"][0][0]["level_id"] = 999999
     path.write_text(json.dumps(data))
 
     assert save_state.load_run(path=path) is None
 
 
-def test_load_run_with_a_run_floor_index_out_of_range_returns_none(tmp_path):
+def test_load_run_with_a_run_referencing_an_unrecognized_node_type_returns_none(tmp_path):
     path = tmp_path / "save_state.json"
-    run = RunState(seed=1, floor_sequence=(1, 2), difficulty="normal", unlocked_towers=["basic"], floor_index=5)
-    game = _FakeGame(make_level(), [], active_run=run)
+    game = _FakeGame(make_level(), [], active_run=make_run())
     save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["map"]["rows"][0][0]["node_type"] = "no_such_type"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_current_node_id_not_in_its_own_map_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["current_node_id"] = "9-9"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_current_node_that_isnt_combat_or_elite_returns_none(tmp_path):
+    # A resumable save is always mid-PLAYING (see Game.can_save_run()) --
+    # the current node should structurally always be combat/elite, never a
+    # Shop/Event/Rest/Treasure screen -- this proves the defensive check
+    # catches it if a hand-edited (or otherwise corrupted) save claims
+    # otherwise.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["current_node_id"] = "1-0"  # the shop node in _MAP
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_referencing_an_unrecognized_visited_node_id_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["visited_node_ids"] = ["9-9"]
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_referencing_an_unrecognized_edge_target_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    data["run"]["map"]["edges"]["0-0"] = ["9-9"]
+    path.write_text(json.dumps(data))
 
     assert save_state.load_run(path=path) is None
 
 
 def test_load_run_with_a_run_referencing_an_unrecognized_tower_returns_none(tmp_path):
     path = tmp_path / "save_state.json"
-    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
-    game = _FakeGame(make_level(), [], active_run=run)
+    game = _FakeGame(make_level(), [], active_run=make_run())
     save_state.save_run(game, path=path)
     data = json.loads(path.read_text())
     data["run"]["unlocked_towers"] = ["no_such_tower"]
@@ -196,8 +290,7 @@ def test_load_run_with_a_run_referencing_an_unrecognized_tower_returns_none(tmp_
 
 def test_load_run_with_a_run_referencing_an_unrecognized_relic_returns_none(tmp_path):
     path = tmp_path / "save_state.json"
-    run = RunState(seed=1, floor_sequence=(1,), difficulty="normal", unlocked_towers=["basic"])
-    game = _FakeGame(make_level(), [], active_run=run)
+    game = _FakeGame(make_level(), [], active_run=make_run())
     save_state.save_run(game, path=path)
     data = json.loads(path.read_text())
     data["run"]["relics"] = ["no_such_relic"]

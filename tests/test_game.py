@@ -133,7 +133,7 @@ def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_ea
 
 def test_menu_any_key_starts_a_new_run(game):
     game._handle_keydown(pygame.K_SPACE)  # not one of the menu's own bound keys (E/L/S/A)
-    assert game.state == GameState.PLAYING
+    assert game.state == GameState.MAP  # shows the run's own map -- see Game.start_new_run
     assert game.active_run is not None
 
 
@@ -1745,7 +1745,7 @@ def test_every_special_cased_menu_key_has_an_on_screen_hint(game):
     list today's known keys (exactly the kind of second copy that drifted
     unnoticed before), this *behaviorally discovers* every letter
     _handle_keydown treats specially from the menu -- anything that routes
-    somewhere other than the default "start playing" catch-all -- and
+    somewhere other than the default "start a run" catch-all -- and
     checks ui.menu_options() actually has a hint for it. A future special-
     cased menu key added with no matching hint line fails here on its own,
     without anyone having to remember this test exists."""
@@ -1758,7 +1758,10 @@ def test_every_special_cased_menu_key_has_an_on_screen_hint(game):
     for letter in string.ascii_lowercase:
         game.state = GameState.MENU
         game._handle_keydown(pygame.key.key_code(letter))
-        if game.state not in (GameState.MENU, GameState.PLAYING):
+        # MAP is the default "start a run" catch-all's own outcome now
+        # (see Game.start_new_run), same as PLAYING used to be alone --
+        # not itself something that needs its own on-screen hint.
+        if game.state not in (GameState.MENU, GameState.PLAYING, GameState.MAP):
             assert letter.upper() in hinted_letters, (
                 f"{letter.upper()} silently routes the menu to {game.state} but has no "
                 "on-screen hint in ui.menu_options() -- add one there."
@@ -2053,7 +2056,7 @@ def test_s_key_while_paused_is_a_no_op_mid_wave(playing_game):
 def test_c_key_at_the_menu_is_a_no_op_without_a_saved_run(game):
     assert game.has_saved_run is False
     game._handle_keydown(pygame.K_c)
-    assert game.state == GameState.PLAYING  # falls through to the generic "any key" case
+    assert game.state == GameState.MAP  # falls through to the generic "any key" (start a run) case
 
 
 def test_a_fresh_game_instance_picks_up_an_existing_save_file(tmp_path):

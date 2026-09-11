@@ -1,13 +1,14 @@
 """Tests for the roguelike run loop -- the game's primary mode.
 
-A run is a seeded sequence of floors (run_floors.py) played with a
-run-scoped tower pool grown by drafting between floors, carrying gold and
-lives forward, ending only by permadeath. This module covers that whole
-lifecycle end to end: starting a run, loading and clearing floors, the
-tower and relic drafts, permadeath and the run history it records,
+A run is a full branching map (run_map.py) shown from the start, played
+node by node with a run-scoped tower pool grown by shopping between combat
+floors, carrying lives and shop currency forward, ending only by permadeath.
+This module covers that whole lifecycle end to end: starting a run, picking
+map nodes, loading and clearing combat/elite floors, the Shop/Event/Rest/
+Treasure node types, permadeath and the run history it records,
 meta-progression accumulating across runs, saving and resuming a run
-mid-flight, the Daily Run, and Practice mode (the standalone,
-deliberately run-less way to play a single level).
+mid-flight, the Daily Run, and Practice mode (the standalone, deliberately
+run-less way to play a single level).
 
 Game's own state machine/input/render tests are in test_game.py; shared
 fixtures and helpers for both are in conftest.py.
@@ -25,68 +26,166 @@ import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
+from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
 from relics import RELICS
+from run_map import MapNode, RunMap
+from run_state import RunState
 from shop import ShopItem
 from tower import TOWER_TYPES
 
 from conftest import (
     finish_all_waves,
     find_buildable_anchor,
+    make_linear_run_map,
     mock_mouse_pos,
     clear_mouse_mock,
+    start_first_floor,
 )
+
+
+def _begin_run_with_map(game, node_types, seed=1, level_id=1, difficulty=None, **run_overrides):
+    """Install a controlled, linear RunState (see conftest.
+    make_linear_run_map) as game.active_run and show the map -- bypasses
+    start_new_run()'s real map generation, for tests that need a specific
+    node-type sequence at specific rows rather than whatever a real seed
+    happens to produce (e.g. a guaranteed Shop/Event/Rest/Treasure node, or
+    a guaranteed row depth without hunting for a seed)."""
+    kwargs = dict(
+        seed=seed, map=make_linear_run_map(node_types, level_id=level_id),
+        difficulty=difficulty if difficulty is not None else game.difficulty,
+        unlocked_towers=list(STARTER_TOWERS),
+    )
+    kwargs.update(run_overrides)
+    game.active_run = RunState(**kwargs)
+    game._enter_map()
+    return game.active_run
+
+
+def _enter_first_node(game):
+    """Enter the first available row-0 node of game.active_run -- for tests
+    that set up game.active_run.relics/etc. themselves first, then just
+    want the run's very first node specifically (unlike start_first_floor,
+    which starts the run itself too)."""
+    game._enter_node(game.active_run.map.start_node_ids[0])
+
+
+def _reload_current_node(game):
+    """Reload whatever node game.active_run is already on, fresh -- the
+    node-based equivalent of the old _load_floor(same_index) "restart this
+    floor" idiom, used by tests that want to re-derive relic_modifiers/
+    escalation after changing something about the run."""
+    run = game.active_run
+    game._load_combat_node(run.map.node(run.current_node_id))
+
+
+def _enter_run_shop(game, seed=1):
+    """Navigate `game` to a Shop screen via a controlled, guaranteed-shop
+    map (row 0 combat -> row 1 shop -> row 2 boss combat) -- a real seeded
+    map doesn't guarantee a Shop node is reachable at any particular row
+    (see CLAUDE.md's "Shop cadence" design note), so tests exercising the
+    shop screen's own mechanics use this fixed layout instead of hunting
+    for a seed that happens to produce one."""
+    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=seed)
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._enter_node("1-0")
+    return game.active_run
+
+
+def _force_relic_draft(game, relic_key):
+    """Overrides whatever shop.build_offer() actually offered with a
+    single forced relic choice, for tests that need to verify one specific
+    relic's math rather than accept whichever ones a given seed happened to
+    draw. Priced at 0 so the forced pick is always affordable regardless of
+    shop_currency -- these tests are about the relic's own effect, not the
+    shop's own economy (see tests/test_shop.py for that)."""
+    game.draft_choices = [ShopItem("relic", relic_key, 0)]
+    game.draft_choice_rects = ui.build_draft_choice_rects(1)
+    game.shop_purchased_indices = set()
 
 
 # --- Starting a run ---
 
 
-def test_start_new_run_populates_active_run_and_loads_floor_zero(game):
+def test_start_new_run_populates_active_run_and_shows_the_map(game):
     game.start_new_run(seed=1)
 
     assert game.active_run is not None
-    assert game.active_run.floor_index == 0
+    assert game.active_run.current_node_id is None
     assert game.active_run.unlocked_towers == list(STARTER_TOWERS)
-    assert game.current_level_id == game.active_run.floor_sequence[0]
+    assert game.state == GameState.MAP
+
+
+def test_picking_a_row_zero_node_starts_playing_it(game):
+    game.start_new_run(seed=1)
+    node_id = game.active_run.map.start_node_ids[0]
+
+    game._handle_map_click(game.map_node_rects[node_id].center)
+
     assert game.state == GameState.PLAYING
+    assert game.active_run.current_node_id == node_id
+    assert game.current_level_id == game.active_run.map.node(node_id).level_id
 
 
-def test_start_new_run_captures_floor_zeros_starting_lives(game):
+def test_clicking_an_unavailable_node_does_nothing(game):
+    game.start_new_run(seed=1)
+    # Row 1 is never available before any row-0 node has been picked.
+    row_1_node_id = game.active_run.map.rows[1][0].id
+
+    game._handle_map_click(game.map_node_rects[row_1_node_id].center)
+
+    assert game.active_run.current_node_id is None
+    assert game.state == GameState.MAP
+
+
+def test_clicking_off_any_node_does_nothing(game):
+    game.start_new_run(seed=1)
+
+    game._handle_map_click((0, 0))
+
+    assert game.active_run.current_node_id is None
+    assert game.state == GameState.MAP
+
+
+def test_start_new_run_captures_its_first_floors_starting_lives(game):
     # No equivalent gold assertion -- battle gold is never captured onto
     # RunState at all any more (see CLAUDE.md's "Two currencies" section).
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
 
     assert game.active_run.lives == game.economy.lives
 
 
 def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
     game.start_new_run(seed=1234)
-    first_sequence = game.active_run.floor_sequence
+    first_map = game.active_run.map
 
     game.start_new_run(seed=1234)
-    second_sequence = game.active_run.floor_sequence
+    second_map = game.active_run.map
 
-    assert first_sequence == second_sequence
+    assert first_map == second_map
 
 
 def test_start_new_run_without_a_seed_still_produces_a_playable_run(game):
     game.start_new_run()
 
     assert game.active_run.seed is not None
-    assert game.state == GameState.PLAYING
+    assert game.state == GameState.MAP
 
 
 # --- The run-scoped tower pool (what the build menu offers) ---
 
 
 def test_starting_a_run_restricts_the_build_menu_to_the_starter_towers(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     assert set(game.button_rects.keys()) == set(STARTER_TOWERS)
 
 
 def test_try_place_tower_rejects_a_tower_not_in_the_active_runs_pool(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     anchor_col, anchor_row = find_buildable_anchor(game)
     # Bypasses the build menu entirely -- selected_tower_name would never
     # actually reach this value through a real click, since button_rects
@@ -99,7 +198,7 @@ def test_try_place_tower_rejects_a_tower_not_in_the_active_runs_pool(game):
 
 
 def test_a_classic_level_load_restores_the_full_build_menu(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.load_level(1)
     assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
 
@@ -110,9 +209,9 @@ def test_any_direct_load_level_object_call_restores_the_full_build_menu(game):
     # calls it -- so this holds even for reset()/advance_or_replay_level()'s
     # own direct _load_level_object() calls for a custom/playtested level,
     # not just the load_level/load_custom_level/resume_saved_run/
-    # _start_daily_challenge/_load_floor call sites that have their own
-    # test coverage above.
-    game.start_new_run(seed=1)
+    # _start_daily_challenge/_load_combat_node call sites that have their
+    # own test coverage above.
+    start_first_floor(game, seed=1)
     game._load_level_object(LEVELS[1])
     assert set(game.button_rects.keys()) == set(TOWER_TYPES.keys())
 
@@ -168,31 +267,32 @@ def test_resuming_a_saved_classic_run_clears_any_active_run(playing_game):
 
 
 def test_floor_clear_enters_floor_cleared_and_captures_lives_and_shop_currency(game):
-    game.start_new_run(seed=1)
-    # Distinct from whatever floor 0's own authored starting_lives happens
-    # to be -- proves this came from the run, not from _load_level_object's
-    # usual per-level defaults. Battle gold is deliberately NOT carried the
-    # same way (see CLAUDE.md's "Two currencies" section) -- instead it
-    # converts into shop currency (see shop.income_for_floor), asserted
-    # below via that exact formula rather than a hardcoded number, so this
-    # test doesn't silently drift from shop.py's own tuning.
+    start_first_floor(game, seed=1)
+    # Distinct from whatever this floor's own authored starting_lives
+    # happens to be -- proves this came from the run, not from
+    # _load_level_object's usual per-level defaults. Battle gold is
+    # deliberately NOT carried the same way (see CLAUDE.md's "Two
+    # currencies" section) -- instead it converts into shop currency (see
+    # shop.income_for_floor), asserted below via that exact formula rather
+    # than a hardcoded number, so this test doesn't silently drift from
+    # shop.py's own tuning.
     game.economy.gold = 9999
     game.economy.lives = 3
     finish_all_waves(game)
 
     game.update(dt=0.01)
 
-    # The next floor isn't loaded yet -- that only happens once the player
-    # leaves the shop (see below) -- so floor_index/self.economy still
-    # reflect the floor just cleared.
+    # The map isn't shown again until the player leaves this results
+    # screen (see below) -- so self.economy still reflects the floor just
+    # cleared.
     assert game.state == GameState.FLOOR_CLEARED
-    assert game.active_run.floor_index == 0
+    assert game.active_run.current_row == 0
     assert game.active_run.lives == 3
-    assert game.active_run.shop_currency == shop.income_for_floor(0, 9999)
+    assert game.active_run.shop_currency == shop.income_for_floor(0, 9999, is_elite=False)
 
 
 def test_floor_clear_never_reaches_classic_victory(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
 
     game.update(dt=0.01)
@@ -201,20 +301,18 @@ def test_floor_clear_never_reaches_classic_victory(game):
     assert game.state == GameState.FLOOR_CLEARED
 
 
-def test_floor_cleared_any_key_enters_draft(game):
-    game.start_new_run(seed=1)
+def test_floor_cleared_any_key_returns_to_the_map(game):
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
     game.update(dt=0.01)
 
     game._handle_keydown(pygame.K_SPACE)
 
-    assert game.state == GameState.DRAFT
-    assert len(game.draft_choices) == len(game.draft_choice_rects)
-    assert game.draft_choices  # STARTER_TOWERS isn't the whole registry yet
+    assert game.state == GameState.MAP
 
 
 def test_floor_cleared_escape_quits(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
     game.update(dt=0.01)
     assert game.state == GameState.FLOOR_CLEARED
@@ -224,11 +322,11 @@ def test_floor_cleared_escape_quits(game):
     assert game.running is False
 
 
-def test_last_floor_of_a_run_loads_endless(game):
+def test_boss_node_of_a_run_loads_endless(game):
     game.start_new_run(seed=1)
-    last_index = len(game.active_run.floor_sequence) - 1
+    boss_id = game.active_run.map.boss_node_id
 
-    game._load_floor(last_index)
+    game._enter_node(boss_id)
 
     assert game.wave_manager.endless is True
 
@@ -242,8 +340,9 @@ def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
     # increasing after) is already exhaustively covered by
     # tests/test_run_escalation.py, so it isn't re-proven here.
     game.difficulty = "hard"
-    game.start_new_run(seed=1)
-    game._load_floor(3)
+    _begin_run_with_map(game, ["combat"] * 4)
+
+    game._enter_node("3-0")
 
     from run_escalation import escalation_for_floor
 
@@ -262,7 +361,7 @@ def test_clearing_a_floor_records_the_level_as_cleared(game):
     # always sandbox (see that section below), so before
     # Game._record_level_cleared() existed, nothing recorded progress at
     # all.
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     level_id = game.current_level_id
     game.economy.lives = 7
     finish_all_waves(game)
@@ -273,7 +372,7 @@ def test_clearing_a_floor_records_the_level_as_cleared(game):
 
 
 def test_clearing_a_floor_bumps_the_level_clear_achievement_counters(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
 
     game.update(dt=0.01)
@@ -287,11 +386,12 @@ def test_distinct_levels_cleared_counts_a_repeated_level_once_across_runs(game):
     # levels_cleared is a naive +1 per clear; distinct_levels_cleared is
     # re-derived from progress.py's own keys each time, which is what keeps
     # "Campaign Complete" from being farmable by replaying one floor -- see
-    # achievements.py's own note on the two counters. A fixed seed samples
-    # the same floor sequence twice (see run_floors.sample_floor_sequence),
-    # so both runs clear the identical level.
+    # achievements.py's own note on the two counters. A fixed seed produces
+    # the same map both times (see run_map.generate_run_map's own
+    # determinism), so picking the same row-0 node both times clears the
+    # identical level.
     for _ in range(2):
-        game.start_new_run(seed=1)
+        start_first_floor(game, seed=1)
         finish_all_waves(game)
         game.update(dt=0.01)
 
@@ -302,7 +402,7 @@ def test_distinct_levels_cleared_counts_a_repeated_level_once_across_runs(game):
 
 
 def test_progress_earned_in_a_run_persists_across_a_fresh_game_instance(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     level_id = game.current_level_id
     finish_all_waves(game)
     game.update(dt=0.01)
@@ -320,11 +420,11 @@ def test_progress_earned_in_a_run_persists_across_a_fresh_game_instance(game):
 def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run(playing_game):
     # Regression guard: reset() used to call _load_level_object() with no
     # active_run at all (its own default), silently discarding the entire
-    # run -- drafted tower pool, relics, carried gold/lives, floor
-    # position -- and dropping the player into a plain classic reload of
-    # whatever level they happened to be on, with no warning shown.
-    playing_game.start_new_run(seed=1)
-    playing_game._load_floor(2)
+    # run -- drafted tower pool, relics, carried gold/lives, map position
+    # -- and dropping the player into a plain classic reload of whatever
+    # level they happened to be on, with no warning shown.
+    _begin_run_with_map(playing_game, ["combat"] * 3)
+    playing_game._enter_node("2-0")
     run_before = playing_game.active_run
     playing_game.towers = ["fake"]
     playing_game.economy.gold = 999999
@@ -333,13 +433,13 @@ def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run
     playing_game.reset()
 
     assert playing_game.active_run is run_before  # same RunState, not discarded
-    assert playing_game.active_run.floor_index == 2  # still on the floor it restarted
-    assert playing_game.current_level_id == run_before.floor_sequence[2]
+    assert playing_game.active_run.current_node_id == "2-0"  # still on the node it restarted
+    assert playing_game.current_level_id == run_before.map.node("2-0").level_id
     assert playing_game.towers == []  # the floor itself still reloads fresh
     assert set(playing_game.button_rects.keys()) == set(run_before.unlocked_towers)  # menu stays run-narrowed
     # Regression guard: reset()'s own trailing "classic reload" branch
     # used to unconditionally set self.state = MENU afterward, clobbering
-    # _load_floor()'s own PLAYING right back to MENU -- harmless for
+    # _load_combat_node()'s own PLAYING right back to MENU -- harmless for
     # reset()'s two real callers (both reassign PLAYING themselves right
     # after), but wrong for a direct call like this one.
     assert playing_game.state == GameState.PLAYING
@@ -352,8 +452,10 @@ def test_restarting_mid_run_restores_the_floors_own_starting_gold_and_lives(play
     # currencies" section: battle gold never carries between floor loads at
     # all any more), and restores lives from the run's own carried-forward
     # value, not the level's raw starting_lives a classic reload would use.
-    playing_game.start_new_run(seed=1)
-    playing_game._load_floor(1)
+    run = _begin_run_with_map(playing_game, ["combat", "combat"])
+    run.visited_node_ids = ["0-0"]  # pretend the first floor already cleared
+    run.lives = 12
+    playing_game._enter_node("1-0")
     gold_at_floor_start = playing_game.economy.gold
     lives_at_floor_start = playing_game.active_run.lives
     playing_game.economy.gold = 1
@@ -372,7 +474,7 @@ def test_restarting_after_permadeath_does_not_resurrect_the_run(playing_game):
     # so GAME_OVER's own R still falls through to a plain, run-less reload,
     # same as it always has, rather than letting the player undo their
     # death for free.
-    playing_game.start_new_run(seed=1)
+    start_first_floor(playing_game, seed=1)
     playing_game.economy.lives = 1
     playing_game.economy.lose_life()
     playing_game.update(dt=0.01)
@@ -384,27 +486,17 @@ def test_restarting_after_permadeath_does_not_resurrect_the_run(playing_game):
     assert playing_game.active_run is None
 
 
-# --- The Shop: buying tower/relic cards between floors ---
+# --- The Shop: buying tower/relic cards from a Shop map node ---
 
 
-def _force_relic_draft(game, relic_key):
-    """Overrides whatever shop.build_offer() actually offered with a
-    single forced relic choice, for tests that need to verify one specific
-    relic's math rather than accept whichever ones a given seed happened to
-    draw. Priced at 0 so the forced pick is always affordable regardless of
-    shop_currency -- these tests are about the relic's own effect, not the
-    shop's own economy (see tests/test_shop.py for that)."""
-    game.draft_choices = [ShopItem("relic", relic_key, 0)]
-    game.draft_choice_rects = ui.build_draft_choice_rects(1)
-    game.shop_purchased_indices = set()
-
-
-def test_buying_a_shop_item_then_continuing_advances_to_the_next_floor(game):
-    game.start_new_run(seed=1)
+def test_buying_a_shop_item_then_continuing_returns_to_the_map(game):
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
     game.economy.lives = 3
     finish_all_waves(game)
     game.update(dt=0.01)
-    game._enter_draft()
+    game._enter_map()
+    game._enter_node("1-0")  # the shop node
     picked = game.draft_choices[0]
     game.active_run.shop_currency = 9999  # affordability isn't this test's own concern
 
@@ -419,18 +511,19 @@ def test_buying_a_shop_item_then_continuing_advances_to_the_next_floor(game):
 
     game._handle_draft_click(game.shop_continue_button_rect.center)  # leave the shop
 
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == ["0-0", "1-0"]
+
+    game._enter_node("2-0")  # the next (final) combat node
+
     assert game.state == GameState.PLAYING
-    assert game.active_run.floor_index == 1
     assert game.economy.lives == 3  # lives still carry from the just-cleared floor
     if picked.kind == "tower":
-        assert picked.key in game.button_rects  # next floor's menu reflects the newly-bought tower
+        assert picked.key in game.button_rects  # this floor's menu reflects the newly-bought tower
 
 
 def test_buying_a_shop_item_deducts_its_escalated_price(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     assert len(game.draft_choices) >= 2  # a run this fresh always has at least 2 items to offer
     game.active_run.shop_currency = 9999
     first_price = shop.price_for(game.draft_choices[0], 0)
@@ -445,10 +538,7 @@ def test_buying_a_shop_item_deducts_its_escalated_price(game):
 
 
 def test_buying_an_unaffordable_shop_item_does_nothing(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     game.active_run.shop_currency = 0
     unlocked_before = list(game.active_run.unlocked_towers)
     relics_before = list(game.active_run.relics)
@@ -462,10 +552,7 @@ def test_buying_an_unaffordable_shop_item_does_nothing(game):
 
 
 def test_unlimited_gold_makes_every_shop_item_free(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     game.economy.unlimited_gold = True
     game.active_run.shop_currency = 0
 
@@ -476,10 +563,7 @@ def test_unlimited_gold_makes_every_shop_item_free(game):
 
 
 def test_clicking_a_purchased_item_again_does_nothing(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     game.active_run.shop_currency = 9999
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
     currency_after_first_buy = game.active_run.shop_currency
@@ -490,10 +574,7 @@ def test_clicking_a_purchased_item_again_does_nothing(game):
 
 
 def test_clicking_off_a_draft_card_does_nothing(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     unlocked_before = list(game.active_run.unlocked_towers)
 
     game._handle_draft_click((0, 0))  # nowhere near any card or the Continue button
@@ -502,27 +583,20 @@ def test_clicking_off_a_draft_card_does_nothing(game):
     assert game.active_run.unlocked_towers == unlocked_before
 
 
-def test_continue_button_advances_without_buying_anything(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+def test_continue_button_returns_to_the_map_without_buying_anything(game):
+    _enter_run_shop(game)
     unlocked_before = list(game.active_run.unlocked_towers)
     relics_before = list(game.active_run.relics)
 
     game._handle_draft_click(game.shop_continue_button_rect.center)
 
-    assert game.state == GameState.PLAYING
-    assert game.active_run.floor_index == 1
+    assert game.state == GameState.MAP
     assert game.active_run.unlocked_towers == unlocked_before
     assert game.active_run.relics == relics_before
 
 
 def test_draft_escape_quits(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     assert game.state == GameState.DRAFT
 
     game._handle_keydown(pygame.K_ESCAPE)
@@ -530,66 +604,59 @@ def test_draft_escape_quits(game):
     assert game.running is False
 
 
-def test_enter_draft_skips_the_shop_screen_once_both_pools_are_exhausted(game):
-    game.start_new_run(seed=1)
+def test_enter_shop_node_skips_the_shop_screen_once_both_pools_are_exhausted(game):
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
     game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
     game.active_run.relics = list(RELICS.keys())  # every relic already held
+    game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
+    game._enter_map()
 
-    game._enter_draft()
+    game._enter_node("1-0")  # the shop node
 
-    assert game.state == GameState.PLAYING
-    assert game.active_run.floor_index == 1
+    assert game.state == GameState.MAP  # skipped straight through, no shop shown
+    assert game.active_run.visited_node_ids == ["0-0", "1-0"]
 
 
-def test_enter_draft_still_shows_up_with_only_relics_left_to_offer(game):
+def test_enter_shop_node_still_shows_up_with_only_relics_left_to_offer(game):
     # Regression guard: the old draft screen could fall all the way through
     # to PLAYING if towers specifically were exhausted (see _is_relic_floor's
     # former fallback logic) -- the Shop must still show up as long as
     # *either* pool has something left, since it offers both together now.
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
     game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
+    game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
+    game._enter_map()
 
-    game._enter_draft()
+    game._enter_node("1-0")
 
     assert game.state == GameState.DRAFT
     assert all(item.kind == "relic" for item in game.draft_choices)
 
 
 def test_run_seed_reproduces_the_same_shop_offer(game):
-    # Floor-sequence reproducibility for a fixed seed is already covered by
-    # test_start_new_run_is_deterministic_for_a_fixed_seed above -- this
-    # covers the one additional fact that test can't: the shop offer itself
-    # (derived via _run_rng, only reachable through Game) reproduces too, so
-    # two players on the same seed see the same items.
-    game.start_new_run(seed=99)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game, seed=99)
     first_offer = list(game.draft_choices)
 
-    game.start_new_run(seed=99)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game, seed=99)
     second_offer = list(game.draft_choices)
 
     assert first_offer == second_offer
 
 
-def test_enter_draft_uses_shop_build_offer(game, monkeypatch):
-    # A thin wiring test: _enter_draft delegates entirely to shop.
+def test_enter_shop_node_uses_shop_build_offer(game, monkeypatch):
+    # A thin wiring test: _enter_shop_node delegates entirely to shop.
     # build_offer for what to show, rather than assembling its own list --
     # towers and relics can come back mixed together in one offer now (see
     # shop.build_offer's own tests for that mixing behavior in isolation).
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat", "shop"])
     fake_offer = [ShopItem("tower", "sniper", 8), ShopItem("relic", "war_chest", 10)]
     monkeypatch.setattr(shop, "build_offer", lambda rng, run, meta_progression_path=None: fake_offer)
 
-    game._enter_draft()
+    game._enter_node("1-0")
 
     assert game.state == GameState.DRAFT
     assert game.draft_choices == fake_offer
@@ -598,11 +665,11 @@ def test_enter_draft_uses_shop_build_offer(game, monkeypatch):
 
 def test_floor_and_draft_rng_streams_dont_collide_even_for_a_zero_seed(game):
     # Regression guard: _run_rng used to derive both streams as
-    # seed * stream + floor_index, which degenerates to plain floor_index
-    # for *every* stream whenever seed == 0 -- start_new_run(seed=0) is
-    # directly reachable, and even an unseeded run has a real (if tiny)
-    # chance of drawing it -- silently collapsing the floor-routing and
-    # draft-pick rng onto the exact same sequence.
+    # seed * key + ..., which degenerates to plain `key` for *every* stream
+    # whenever seed == 0 -- start_new_run(seed=0) is directly reachable, and
+    # even an unseeded run has a real (if tiny) chance of drawing it --
+    # silently collapsing the floor-routing and draft-pick rng onto the
+    # exact same sequence.
     game.start_new_run(seed=0)
     run = game.active_run
 
@@ -612,17 +679,33 @@ def test_floor_and_draft_rng_streams_dont_collide_even_for_a_zero_seed(game):
     assert floor_rng.random() != draft_rng.random()
 
 
+def test_sibling_nodes_in_the_same_row_derive_different_rng(game):
+    # Regression guard for the row -> node-id rekey (see Game._run_rng's
+    # own docstring): two different nodes at the same row of one seeded map
+    # must not derive byte-identical routing rng, or branching would be
+    # cosmetic -- every fork would actually play out identically.
+    game.start_new_run(seed=1)
+    run = game.active_run
+    row_with_multiple_nodes = next(row for row in run.map.rows if len(row) > 1)
+    node_a, node_b = row_with_multiple_nodes[0], row_with_multiple_nodes[1]
+
+    rng_a = game._run_rng(run, _FLOOR_RNG_STREAM, node_a.id)
+    rng_b = game._run_rng(run, _FLOOR_RNG_STREAM, node_b.id)
+
+    assert rng_a.random() != rng_b.random()
+
+
 # --- Relic effects bought from the shop, and the modifiers they compose in ---
 
 
 def test_relic_gold_per_floor_bonus_is_applied_on_every_floor_load(game):
-    game.start_new_run(seed=1)
-    game._load_floor(1)
+    _begin_run_with_map(game, ["combat", "combat"])
+    game._enter_node("1-0")
     gold_without_relic = game.economy.gold
 
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat", "combat"])
     game.active_run.relics = ["prospectors_charm"]
-    game._load_floor(1)
+    game._enter_node("1-0")
 
     assert game.economy.gold == gold_without_relic + RELICS["prospectors_charm"].gold_per_floor_bonus
 
@@ -630,7 +713,7 @@ def test_relic_gold_per_floor_bonus_is_applied_on_every_floor_load(game):
 def test_misers_coffer_bonus_stops_after_the_runs_first_spend(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["misers_coffer"]
-    game._load_floor(0)
+    _enter_first_node(game)
     gold_with_bonus = game.economy.gold
 
     anchor_col, anchor_row = find_buildable_anchor(game)
@@ -639,7 +722,7 @@ def test_misers_coffer_bonus_stops_after_the_runs_first_spend(game):
 
     assert game.active_run.has_spent_gold is True
 
-    game._load_floor(0)  # restart the same floor -- re-derives relic_modifiers fresh
+    _reload_current_node(game)  # restart the same floor -- re-derives relic_modifiers fresh
 
     assert game.economy.gold == gold_with_bonus - RELICS["misers_coffer"].gold_per_floor_bonus_while_unspent
 
@@ -651,27 +734,44 @@ def test_war_chest_multiplies_starting_gold_on_every_floor_not_just_once(game):
     # forward, "starting gold" only existed once, at floor 0). Now that
     # battle gold resets fresh every floor instead, it has to keep applying
     # on every single floor load, not just the one right after it's bought.
-    game.start_new_run(seed=1)
-    game._enter_draft()
+    # Two different levels at the two floors checked below, proving the
+    # multiplier is re-applied fresh each time rather than only happening
+    # to look right for one specific level's own starting_gold.
+    custom_map = RunMap(
+        rows=(
+            (MapNode("0-0", row=0, col=0, node_type="combat", level_id=1),),
+            (MapNode("1-0", row=1, col=0, node_type="shop"),),
+            (MapNode("2-0", row=2, col=0, node_type="combat", level_id=2),),
+            (MapNode("3-0", row=3, col=0, node_type="combat", level_id=3),),
+        ),
+        edges={"0-0": ("1-0",), "1-0": ("2-0",), "2-0": ("3-0",)},
+    )
+    game.active_run = RunState(
+        seed=1, map=custom_map, difficulty=game.difficulty, unlocked_towers=list(STARTER_TOWERS),
+    )
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._enter_node("1-0")  # the shop node
     _force_relic_draft(game, "war_chest")
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
-    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1
-    gold_floor_1 = game.economy.gold
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map
 
-    game._load_floor(2)
+    game._enter_node("2-0")
     gold_floor_2 = game.economy.gold
+
+    game._enter_node("3-0")
+    gold_floor_3 = game.economy.gold
 
     mode = DIFFICULTY_MODES[game.active_run.difficulty]
     multiplier = RELICS["war_chest"].starting_gold_multiplier
-    level_1 = LEVELS[game.active_run.floor_sequence[1]]
-    level_2 = LEVELS[game.active_run.floor_sequence[2]]
-    assert gold_floor_1 == round(level_1.starting_gold * mode.starting_gold_multiplier * multiplier)
-    assert gold_floor_2 == round(level_2.starting_gold * mode.starting_gold_multiplier * multiplier)
+    assert gold_floor_2 == round(LEVELS[2].starting_gold * mode.starting_gold_multiplier * multiplier)
+    assert gold_floor_3 == round(LEVELS[3].starting_gold * mode.starting_gold_multiplier * multiplier)
 
 
 def test_sturdy_gate_grants_a_one_time_lives_bonus_when_bought(game):
-    game.start_new_run(seed=1)
-    game._enter_draft()
+    _enter_run_shop(game)
     _force_relic_draft(game, "sturdy_gate")
     lives_before = game.active_run.lives
 
@@ -684,7 +784,7 @@ def test_relic_enemy_gold_multiplier_composes_into_wave_manager(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["bounty_hunters_ledger"]
 
-    game._load_floor(0)
+    _enter_first_node(game)
 
     assert game.wave_manager.enemy_gold_multiplier == RELICS["bounty_hunters_ledger"].enemy_gold_multiplier
 
@@ -693,7 +793,7 @@ def test_relic_enemy_speed_multiplier_composes_into_wave_manager(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["tangled_roots"]
 
-    game._load_floor(0)
+    _enter_first_node(game)
 
     assert game.wave_manager.enemy_speed_multiplier == RELICS["tangled_roots"].enemy_speed_multiplier
 
@@ -704,11 +804,12 @@ def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
     # construction time (Game._construct_tower), not stored on RunState
     # itself -- so drafting the card, then placing a tower on a later
     # floor, must still see the bonus with no extra plumbing in between.
-    game.start_new_run(seed=1)
-    game._enter_draft()
+    _enter_run_shop(game)
     _force_relic_draft(game, "spyglass_array")
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
-    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1, relic_modifiers re-derived
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map
+
+    game._enter_node("2-0")  # the next combat node, relic_modifiers re-derived
 
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
@@ -721,7 +822,7 @@ def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
 def test_resuming_a_run_rederives_a_placed_towers_relic_range_bonus(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["spyglass_array"]
-    game._load_floor(0)  # re-derives self.relic_modifiers from the relics just set
+    _enter_first_node(game)  # re-derives self.relic_modifiers from the relics just set
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
     game.try_place_tower(anchor_col, anchor_row)
@@ -737,7 +838,7 @@ def test_resuming_a_run_rederives_a_placed_towers_relic_range_bonus(game):
 def test_quickfire_rounds_fire_rate_bonus_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["quickfire_rounds"]
-    game._load_floor(0)  # re-derives self.relic_modifiers from the relics just set
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -750,7 +851,7 @@ def test_quickfire_rounds_fire_rate_bonus_reaches_a_freshly_placed_tower(game):
 def test_overdrive_coils_damage_bonus_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["overdrive_coils"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -764,7 +865,7 @@ def test_overdrive_coils_damage_bonus_reaches_a_freshly_placed_tower(game):
 def test_snipers_discipline_damage_bonus_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["snipers_discipline"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -776,13 +877,13 @@ def test_snipers_discipline_damage_bonus_reaches_a_freshly_placed_tower(game):
 
 
 def test_veterans_momentum_damage_bonus_grows_with_floor_index(game):
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat"] * 4)
     game.active_run.relics = ["veterans_momentum"]
-    game.active_run.floor_index = 3
-    game._load_floor(3)
+
+    game._enter_node("3-0")
+
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
-
     game.try_place_tower(anchor_col, anchor_row)
 
     tower = game.grid.get_tower(anchor_col, anchor_row)
@@ -793,7 +894,7 @@ def test_veterans_momentum_damage_bonus_grows_with_floor_index(game):
 def test_venomous_coating_poison_chance_reaches_a_freshly_placed_towers_shots(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["venomous_coating"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -808,7 +909,7 @@ def test_venomous_coating_poison_chance_reaches_a_freshly_placed_towers_shots(ga
 def test_resuming_a_run_rederives_a_placed_towers_relic_poison_chance(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["venomous_coating"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
     game.try_place_tower(anchor_col, anchor_row)
@@ -824,7 +925,7 @@ def test_resuming_a_run_rederives_a_placed_towers_relic_poison_chance(game):
 def test_arcing_rounds_chain_chance_reaches_a_freshly_placed_towers_shots(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["arcing_rounds"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -839,7 +940,7 @@ def test_arcing_rounds_chain_chance_reaches_a_freshly_placed_towers_shots(game):
 def test_last_stand_charms_bonus_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["last_stand_charm"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -852,7 +953,7 @@ def test_last_stand_charms_bonus_reaches_a_freshly_placed_tower(game):
 def test_last_stand_charm_only_boosts_damage_while_down_to_the_last_life(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["last_stand_charm"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
     game.try_place_tower(anchor_col, anchor_row)
@@ -875,7 +976,7 @@ def test_last_stand_charm_only_boosts_damage_while_down_to_the_last_life(game):
 
 
 def test_guardians_reprieve_saves_the_run_from_permadeath_once(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.active_run.relics = ["guardians_reprieve"]
     game.economy.lives = 1
     game.wave_manager.skip_delay()
@@ -914,7 +1015,7 @@ def test_guardians_reprieve_does_nothing_in_sandbox_mode(game):
 def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["lucky_strikes"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -929,7 +1030,7 @@ def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
 def test_quartermasters_favor_discount_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["quartermasters_favor"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -942,7 +1043,7 @@ def test_quartermasters_favor_discount_reaches_a_freshly_placed_tower(game):
 def test_liquidation_rights_bonus_reaches_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["liquidation_rights"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -956,7 +1057,7 @@ def test_resonant_field_bonus_reaches_a_freshly_placed_support_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["resonant_field"]
     game.active_run.unlocked_towers.append("support")  # a drafted card, not a starter tower
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = "support"
 
@@ -971,7 +1072,7 @@ def test_resonant_field_bonus_reaches_a_freshly_placed_support_tower(game):
 def test_compact_framework_shrinks_a_freshly_placed_towers_footprint(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["compact_framework"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
 
@@ -986,7 +1087,7 @@ def test_compact_framework_shrinks_a_freshly_placed_towers_footprint(game):
 def test_resuming_a_run_rederives_a_placed_towers_footprint_size(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["compact_framework"]
-    game._load_floor(0)
+    _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
     game.selected_tower_name = game.active_run.unlocked_towers[0]
     game.try_place_tower(anchor_col, anchor_row)
@@ -1000,11 +1101,142 @@ def test_resuming_a_run_rederives_a_placed_towers_footprint_size(game):
     assert tower.footprint_subtiles == expected_size
 
 
+# --- Elite Combat nodes: harder, and a bigger payout ---
+
+
+def test_elite_node_escalation_is_harder_than_combat_at_the_same_row(game):
+    _begin_run_with_map(game, ["combat", "combat"])
+    game._enter_node("1-0")
+    normal_hp_multiplier = game.wave_manager.enemy_hp_multiplier
+
+    _begin_run_with_map(game, ["combat", "elite"])
+    game._enter_node("1-0")
+
+    assert game.wave_manager.enemy_hp_multiplier > normal_hp_multiplier
+
+
+def test_elite_node_clear_pays_out_more_shop_currency_than_combat(game):
+    _begin_run_with_map(game, ["combat", "combat"])
+    game._enter_node("1-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    normal_income = game.active_run.shop_currency
+
+    _begin_run_with_map(game, ["combat", "elite"])
+    game._enter_node("1-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    elite_income = game.active_run.shop_currency
+
+    assert elite_income > normal_income
+
+
+# --- Random Event nodes ---
+
+
+def test_event_node_shows_the_event_screen(game):
+    _begin_run_with_map(game, ["combat", "event"])
+
+    game._enter_node("1-0")
+
+    assert game.state == GameState.EVENT
+    assert game.current_event.key in EVENTS
+    assert game.event_phase == "choose"
+
+
+def test_choosing_an_event_option_applies_its_effects_and_resolves(game):
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+
+    game._handle_event_click(game.event_option_rects[0].center)
+
+    assert game.event_phase == "resolved"
+    assert game.event_chosen_option is game.current_event.options[0]
+    assert game.state == GameState.EVENT  # still on the event screen, showing the outcome
+
+
+def test_finishing_a_resolved_event_returns_to_the_map(game):
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+    game._handle_event_click(game.event_option_rects[0].center)
+
+    game._handle_event_click((0, 0))  # any click in the resolved phase finishes it
+
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == ["1-0"]
+
+
+def test_event_escape_quits(game):
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    assert game.running is False
+
+
+# --- Rest nodes ---
+
+
+def test_rest_node_heals_and_auto_resolves(game):
+    _begin_run_with_map(game, ["combat", "rest"])
+    game.active_run.lives = 10
+
+    game._enter_node("1-0")
+
+    assert game.state == GameState.REST
+    assert game.active_run.lives == 10 + game.rest_heal_amount
+
+
+def test_finishing_a_rest_node_returns_to_the_map(game):
+    _begin_run_with_map(game, ["combat", "rest"])
+    game._enter_node("1-0")
+
+    game._handle_keydown(pygame.K_SPACE)
+
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == ["1-0"]
+
+
+# --- Treasure nodes ---
+
+
+def test_treasure_node_grants_currency_and_a_relic(game):
+    _begin_run_with_map(game, ["combat", "treasure"])
+    game.active_run.shop_currency = 0
+
+    game._enter_node("1-0")
+
+    assert game.state == GameState.TREASURE
+    assert game.active_run.shop_currency == game.treasure_granted_currency
+    assert game.treasure_granted_relic in game.active_run.relics
+
+
+def test_treasure_node_relic_grant_degrades_once_exhausted(game):
+    _begin_run_with_map(game, ["combat", "treasure"])
+    game.active_run.relics = list(RELICS.keys())  # every relic already held
+
+    game._enter_node("1-0")
+
+    assert game.treasure_granted_relic is None
+    assert game.active_run.relics == list(RELICS.keys())  # unchanged
+
+
+def test_finishing_a_treasure_node_returns_to_the_map(game):
+    _begin_run_with_map(game, ["combat", "treasure"])
+    game._enter_node("1-0")
+
+    game._handle_keydown(pygame.K_SPACE)
+
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == ["1-0"]
+
+
 # --- Permadeath: the only way a run ends ---
 
 
 def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     seed = game.active_run.seed
     game.economy.lives = 1
     game.enemies = []
@@ -1026,7 +1258,7 @@ def test_permadeath_in_sandbox_mode_records_no_run_history_or_meta_progress(game
     # (_record_achievement/_record_meta_progress/_record_level_cleared)
     # rather than leaving one silent gap that would trivialize a sandboxed
     # run's outcome into real run history.
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.sandbox = True
     game.economy.lives = 1
 
@@ -1040,7 +1272,7 @@ def test_permadeath_in_sandbox_mode_records_no_run_history_or_meta_progress(game
 
 
 def test_permadeath_bumps_runs_played_and_records_run_history(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     seed = game.active_run.seed
     game.economy.lives = 1
     game.enemies = []
@@ -1053,14 +1285,13 @@ def test_permadeath_bumps_runs_played_and_records_run_history(game):
 
 
 def test_run_history_records_floors_cleared_at_time_of_death(game):
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat", "combat"])
+    game._enter_node("0-0")
     seed = game.active_run.seed
     finish_all_waves(game)
     game.update(dt=0.01)  # clears floor 0 -> FLOOR_CLEARED
-    game._enter_draft()
-    game.active_run.shop_currency = 9999
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy an item
-    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> floor 1, PLAYING
+    game._enter_map()
+    game._enter_node("1-0")  # floor 1, PLAYING
     game.economy.lives = 1
     game.enemies = []
 
@@ -1071,7 +1302,7 @@ def test_run_history_records_floors_cleared_at_time_of_death(game):
 
 
 def test_permadeath_on_a_non_final_floor_does_not_bump_runs_reached_endless(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.economy.lives = 1
     game.enemies = []
 
@@ -1084,8 +1315,8 @@ def test_permadeath_on_a_non_final_floor_does_not_bump_runs_reached_endless(game
 
 def test_permadeath_on_the_final_floor_bumps_runs_reached_endless(game):
     game.start_new_run(seed=1)
-    last_index = len(game.active_run.floor_sequence) - 1
-    game._load_floor(last_index)
+    boss_id = game.active_run.map.boss_node_id
+    game._enter_node(boss_id)
     game.economy.lives = 1
     game.enemies = []
 
@@ -1100,7 +1331,7 @@ def test_permadeath_on_the_final_floor_bumps_runs_reached_endless(game):
 
 
 def test_floor_clear_bumps_total_floors_cleared(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
 
     game.update(dt=0.01)
@@ -1109,22 +1340,24 @@ def test_floor_clear_bumps_total_floors_cleared(game):
     assert counters["total_floors_cleared"] == 1
 
 
-def test_first_floor_clear_unlocks_a_tower_and_it_appears_in_the_draft(game):
+def test_first_floor_clear_unlocks_a_tower_and_it_appears_in_the_shop(game):
     # Regression guard: unlock_knockback's goal is 1 specifically so a
     # brand new player's very first floor clear already has something to
-    # draft -- see meta_progression.py's own comment on why.
-    game.start_new_run(seed=1)
+    # buy -- see meta_progression.py's own comment on why.
+    _begin_run_with_map(game, ["combat", "shop"])
+    game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
+    game._enter_map()
 
-    game._enter_draft()
+    game._enter_node("1-0")  # the shop node
 
     assert game.state == GameState.DRAFT
     assert any(item.key == "knockback" for item in game.draft_choices)
 
 
 def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
 
     game.update(dt=0.01)
@@ -1136,22 +1369,22 @@ def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
 
 
 def test_saving_mid_run_captures_the_active_run(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     run_before = game.active_run
 
     assert game.save_run() is True
     saved = save_state.load_run(game.save_path)
 
     assert saved["run"].seed == run_before.seed
-    assert saved["run"].floor_sequence == run_before.floor_sequence
+    assert saved["run"].map == run_before.map
     assert saved["run"].unlocked_towers == run_before.unlocked_towers
-    assert saved["run"].floor_index == run_before.floor_index
+    assert saved["run"].current_node_id == run_before.current_node_id
     assert saved["run"].shop_currency == run_before.shop_currency
     assert saved["run"].lives == run_before.lives
 
 
 def test_resuming_a_saved_run_restores_active_run(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
     game.active_run.shop_currency = 42  # a run-level field, distinct from economy.gold below
     # economy.gold is never re-synced onto RunState at all now -- battle
@@ -1170,9 +1403,9 @@ def test_resuming_a_saved_run_restores_active_run(game):
 
     assert game.active_run is not run_before  # a fresh RunState, reconstructed from disk
     assert game.active_run.seed == run_before.seed
-    assert game.active_run.floor_sequence == run_before.floor_sequence
+    assert game.active_run.map == run_before.map
     assert game.active_run.unlocked_towers == run_before.unlocked_towers
-    assert game.active_run.floor_index == run_before.floor_index
+    assert game.active_run.current_node_id == run_before.current_node_id
     assert game.active_run.shop_currency == run_before.shop_currency
     assert game.active_run.lives == run_before.lives
     assert game.economy.gold == 350
@@ -1180,7 +1413,7 @@ def test_resuming_a_saved_run_restores_active_run(game):
 
 
 def test_resuming_a_saved_run_still_restricts_the_build_menu_to_its_unlocked_towers(game):
-    game.start_new_run(seed=1)
+    start_first_floor(game, seed=1)
     game.save_run()
     game.state = GameState.MENU
 
@@ -1204,26 +1437,24 @@ def test_saving_without_an_active_run_resumes_with_no_active_run(playing_game):
 
 def test_resuming_a_run_rederives_the_same_floor_routing_rng(game):
     # WaveManager's own routing rng is never serialized (see _run_rng's own
-    # docstring) -- resuming re-derives the identical (seed, floor_index)
-    # rng a *fresh* (never-saved) load of this same floor would get, not
-    # an unseeded random.Random() that would make routing non-deterministic
+    # docstring) -- resuming re-derives the identical (seed, node id) rng a
+    # *fresh* (never-saved) load of this same floor would get, not an
+    # unseeded random.Random() that would make routing non-deterministic
     # from the resume point on. This is narrower than "identical to an
     # uninterrupted playthrough" in general, though: since no rng state is
     # serialized, a save taken mid-floor -- after some waves have already
     # consumed draws from this same rng object -- resumes at that rng's
     # own start, not wherever the un-saved playthrough's consumption had
     # already left it. Later waves can route differently after such a
-    # resume than they would have without one; this test only covers a
-    # save taken before any wave (wave_index 0) has drawn anything, the
-    # one case where "identical to fresh" and "identical to uninterrupted"
-    # coincide. Serializing the rng's own consumed position would close
-    # this gap but means carrying real RNG state in the save file, which
-    # is the exact thing this whole re-derivation scheme exists to avoid.
-    game.start_new_run(seed=1)
-    game._load_floor(3)
+    # resume than they would have without one. Serializing the rng's own
+    # consumed position would close this gap but means carrying real RNG
+    # state in the save file, which is the exact thing this whole
+    # re-derivation scheme exists to avoid.
+    _begin_run_with_map(game, ["combat"] * 4)
+    game._enter_node("3-0")
     expected_first_draw = game.wave_manager.rng.random()
 
-    game._load_floor(3)  # reload floor 3 fresh -- re-derives the same un-consumed rng
+    game._enter_node("3-0")  # reload floor 3 fresh -- re-derives the same un-consumed rng
     game.save_run()
     game.state = GameState.MENU
     game._continue_saved_run()
@@ -1237,9 +1468,9 @@ def test_resuming_a_run_reapplies_this_floors_own_escalation(game):
     # are) -- leaving escalation at _load_level_object's own no-op default
     # would silently understate this floor's difficulty for the rest of
     # the floor, only self-correcting once the *next* floor's own
-    # _load_floor() call gets it right.
-    game.start_new_run(seed=1)
-    game._load_floor(3)
+    # _load_combat_node() call gets it right.
+    _begin_run_with_map(game, ["combat"] * 4)
+    game._enter_node("3-0")
     expected_hp_multiplier = game.wave_manager.enemy_hp_multiplier
     assert expected_hp_multiplier != 1.0  # floor 3 genuinely escalates -- not a vacuous assertion
     game.save_run()
@@ -1254,9 +1485,9 @@ def test_resuming_a_run_reapplies_its_held_relics_enemy_gold_multiplier(game):
     # Composed with floor 2's own escalation too (see run_escalation.py),
     # so the expected value is whatever this floor's multiplier actually
     # was just before saving, not the relic's own multiplier in isolation.
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat"] * 3)
     game.active_run.relics = ["bounty_hunters_ledger"]
-    game._load_floor(2)
+    game._enter_node("2-0")
     expected_gold_multiplier = game.wave_manager.enemy_gold_multiplier
     assert expected_gold_multiplier != 1.0  # relic + escalation both contribute -- not a vacuous assertion
     game.save_run()
@@ -1268,9 +1499,9 @@ def test_resuming_a_run_reapplies_its_held_relics_enemy_gold_multiplier(game):
 
 
 def test_resuming_a_run_reapplies_its_held_relics_enemy_speed_multiplier(game):
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat"] * 3)
     game.active_run.relics = ["tangled_roots"]
-    game._load_floor(2)
+    game._enter_node("2-0")
     expected_speed_multiplier = game.wave_manager.enemy_speed_multiplier
     assert expected_speed_multiplier != 1.0  # relic + escalation both contribute -- not a vacuous assertion
     game.save_run()
@@ -1291,6 +1522,7 @@ def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_li
     # resume time.
     game.set_difficulty("hard")
     game._start_daily_challenge(seed=20260903)
+    game._enter_node(game.active_run.map.start_node_ids[0])
     assert game.active_run.difficulty == "normal"
     game.save_run()
     game.state = GameState.MENU
@@ -1305,13 +1537,14 @@ def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_li
 def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
     # Regression guard: _load_level_object() resets _resumed_from_save to
     # False on every call, the right default for a genuinely new/unrelated
-    # load -- but _load_floor() (what every floor transition after a
+    # load -- but _load_combat_node() (what every floor transition after a
     # resume goes through) used to inherit that reset unconditionally too,
     # silently un-marking the run as resumed the moment its very next
     # floor loaded. That left _delete_save_if_this_run_was_resumed()
     # gated on an already-False flag by the time this run actually
     # concluded, so its now-stale save file was never cleaned up.
-    game.start_new_run(seed=1)
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
     game.save_run()
     game.state = GameState.MENU
     game._continue_saved_run()
@@ -1319,10 +1552,14 @@ def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
 
     finish_all_waves(game)
     game.update(dt=0.01)  # -> FLOOR_CLEARED
-    game._enter_draft()
+    game._enter_map()
+    game._enter_node("1-0")  # the shop node
     game.active_run.shop_currency = 9999
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy an item
-    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> _load_floor(1), still same run
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map, still same run
+    assert game._resumed_from_save is True
+
+    game._enter_node("2-0")  # the next combat node
     assert game._resumed_from_save is True
 
     game.economy.lives = 1
@@ -1338,18 +1575,20 @@ def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
 
 def test_menu_d_key_starts_daily_run(game):
     game._handle_keydown(pygame.K_d)
-    assert game.state == GameState.PLAYING
+    assert game.state == GameState.MAP
     assert game.active_run is not None
     assert game.active_run.is_daily is True
 
 
 def test_daily_run_seeds_reproducibly(game):
     game._start_daily_challenge(seed=20260903)
+    game._enter_node(game.active_run.map.start_node_ids[0])
     # Nothing has drawn from the rng yet at this point (no enemy spawned) --
     # a fresh run seeded the same way must produce the identical next value.
     first_draw = game.wave_manager.rng.random()
 
     game._start_daily_challenge(seed=20260903)
+    game._enter_node(game.active_run.map.start_node_ids[0])
     second_draw = game.wave_manager.rng.random()
 
     assert first_draw == second_draw
@@ -1359,6 +1598,7 @@ def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
     game.set_difficulty("hard")  # starting_gold_multiplier=0.85, see difficulty.py
 
     game._start_daily_challenge(seed=20260903)
+    game._enter_node(game.active_run.map.start_node_ids[0])
 
     assert game.active_run.difficulty == "normal"
     level = LEVELS[game.current_level_id]
@@ -1368,7 +1608,9 @@ def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
 def test_daily_run_records_floors_cleared_on_game_over_and_keeps_the_best_score(game):
     game._start_daily_challenge(seed=20260903)
     seed = game.active_run.seed
-    game.active_run.floor_index = 3  # simulate having cleared several floors
+    game.active_run.map = make_linear_run_map(["combat"] * 5)
+    game._enter_node("4-0")
+    game.active_run.visited_node_ids = ["0-0", "1-0", "2-0"]  # simulate having cleared 3 floors
     game.economy.lives = 1
     game.enemies = []
     game.economy.lose_life()
@@ -1382,6 +1624,7 @@ def test_daily_run_records_floors_cleared_on_game_over_and_keeps_the_best_score(
     # A second, worse attempt (dies on floor 0) must not overwrite the
     # better score already recorded.
     game._start_daily_challenge(seed=20260903)
+    game._enter_node(game.active_run.map.start_node_ids[0])
     game.economy.lives = 1
     game.enemies = []
     game.economy.lose_life()
@@ -1445,8 +1688,15 @@ def test_clearing_a_practice_level_earns_no_progress(game):
 # --- Rendering the run-specific screens ---
 
 
-def test_render_floor_cleared_does_not_crash(game):
+def test_render_map_does_not_crash(game):
     game.start_new_run(seed=1)
+    assert game.state == GameState.MAP
+
+    game.render()
+
+
+def test_render_floor_cleared_does_not_crash(game):
+    start_first_floor(game, seed=1)
     finish_all_waves(game)
     game.update(dt=0.01)
     assert game.state == GameState.FLOOR_CLEARED
@@ -1455,10 +1705,7 @@ def test_render_floor_cleared_does_not_crash(game):
 
 
 def test_render_draft_does_not_crash(game):
-    game.start_new_run(seed=1)
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_draft()
+    _enter_run_shop(game)
     assert game.state == GameState.DRAFT
 
     mock_mouse_pos((0, 0))  # exercises _hovered_draft_choice's "over nothing" path
@@ -1475,9 +1722,34 @@ def test_render_draft_does_not_crash(game):
 
 
 def test_render_relic_draft_does_not_crash(game):
-    game.start_new_run(seed=1)
-    game._enter_draft()
+    _begin_run_with_map(game, ["combat", "shop"])
+    game._enter_node("1-0")
     _force_relic_draft(game, "war_chest")
     assert game.state == GameState.DRAFT
+
+    game.render()
+
+
+def test_render_event_does_not_crash(game):
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+
+    game.render()  # the "choose" phase
+
+    game._handle_event_click(game.event_option_rects[0].center)
+
+    game.render()  # the "resolved" phase
+
+
+def test_render_rest_does_not_crash(game):
+    _begin_run_with_map(game, ["combat", "rest"])
+    game._enter_node("1-0")
+
+    game.render()
+
+
+def test_render_treasure_does_not_crash(game):
+    _begin_run_with_map(game, ["combat", "treasure"])
+    game._enter_node("1-0")
 
     game.render()

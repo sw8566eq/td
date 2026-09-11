@@ -1,17 +1,17 @@
-"""RunState: the small bundle of state that survives *across* floor loads
+"""RunState: the small bundle of state that survives *across* node loads
 within one roguelike run -- lives, shop currency, drafted tower pool,
-relics, seed, and floor position. Battle gold (Economy.gold) is
-deliberately *not* one of these fields -- it resets fresh every floor
-instead of carrying forward; see game.py's _load_floor and CLAUDE.md's
-"Two currencies" section for the split this reflects.
+relics, seed, and the run's own map/position within it. Battle gold
+(Economy.gold) is deliberately *not* one of these fields -- it resets fresh
+every floor instead of carrying forward; see game.py's _load_combat_node and
+CLAUDE.md's "Two currencies" section for the split this reflects.
 
 Everything else about a floor (Grid/Economy/WaveManager/towers/enemies) is
-fully rebuilt fresh by Game._load_level_object() on every floor load, exactly
-like a normal level load already works today -- a RunState is purely what a
-deckbuilder run carries between those resets, the same way a deckbuilder
-doesn't carry board state between combats, only your deck and HP. See
-run_floors.py for how floor_sequence is sampled and card_pool.py for the
-starter tower pool a run begins with.
+fully rebuilt fresh by Game._load_level_object() on every combat/elite node
+load, exactly like a normal level load already works today -- a RunState is
+purely what a deckbuilder run carries between those resets, the same way a
+deckbuilder doesn't carry board state between combats, only your deck and
+HP. See run_map.py for how the map itself is generated and card_pool.py for
+the starter tower pool a run begins with.
 """
 
 from dataclasses import dataclass, field
@@ -20,34 +20,58 @@ from dataclasses import dataclass, field
 @dataclass
 class RunState:
     seed: int
-    floor_sequence: tuple
+    # The run's whole branching map, generated once (run_map.generate_run_
+    # map) at start_new_run() and never regenerated or mutated afterward --
+    # replaces the old flat, ascending floor_sequence tuple entirely (see
+    # run_map.py's own module docstring for why a full map upfront is
+    # generated once rather than re-derived per floor the way _run_rng's
+    # streams are).
+    map: object
     difficulty: str
     unlocked_towers: list
-    floor_index: int = 0
-    # Placeholder until _load_floor(0) captures floor 0's own freshly-loaded
-    # Economy -- see _load_floor's docstring for why floor 0 is the one
-    # exception to "the run's own lives carry into a floor load." There is
-    # no equivalent `gold` field: battle gold (Economy.gold) resets fresh
-    # every floor now (see game.py's _load_floor and CLAUDE.md's "Two
-    # currencies" section) and so has nothing left to carry -- only lives
-    # still survives a floor transition.
+    # The node currently occupied -- None only before the player has picked
+    # one of the map's row-0 nodes yet (right after start_new_run(), while
+    # sitting on the map screen for the very first time). Replaces the old
+    # floor_index int: a branching map has no single "how far along" number
+    # that identifies a position the way a flat sequence's index did, only
+    # a specific node.
+    current_node_id: str = None
+    # Every node id resolved so far, in the order they were reached --
+    # combat/elite nodes append their own id in Game._advance_run_floor;
+    # every other node type appends via Game._finish_node once its own
+    # resolution (Shop's Continue, an Event's chosen option, Rest/Treasure's
+    # auto-resolve) completes. What RunState.floors_cleared below counts
+    # from.
+    visited_node_ids: list = field(default_factory=list)
+    # Placeholder until _load_combat_node captures the very first combat
+    # node's own freshly-loaded Economy -- see that method's own docstring
+    # for why the run's first-ever node is the one exception to "the run's
+    # own lives carry into a node load." There is no equivalent `gold`
+    # field: battle gold (Economy.gold) resets fresh every floor now (see
+    # game.py's _load_combat_node and CLAUDE.md's "Two currencies" section)
+    # and so has nothing left to carry -- only lives still survives a node
+    # transition.
     lives: int = 0
     # The run's own cross-floor currency -- unlike battle gold (Economy.
     # gold, reset fresh every floor), this persists exactly like
     # unlocked_towers/relics below, reset only at start_new_run. Earned at
-    # every floor clear (see shop.income_for_floor/Game._advance_run_floor)
-    # and spent at the Shop screen between floors (see shop.py/Game.
-    # _enter_draft's own "Shop, not draft" naming note).
+    # every combat/elite node clear (see shop.income_for_floor/Game.
+    # _advance_run_floor) and at every Treasure node (see run_map.
+    # treasure_shop_currency_for_row), spent at the Shop screen (see
+    # shop.py/game.py's GameState.DRAFT for why the code still says
+    # "draft" throughout even though the screen is a shop now, only
+    # reachable via a Shop map node rather than automatically now).
     shop_currency: int = 0
     # Run-wide passive modifier cards -- see relics.py. Grows via relic
-    # cards offered together with tower cards in the same Shop visit (see
-    # shop.build_offer), the same "drafted into a list" shape
-    # unlocked_towers already has -- though unlike unlocked_towers
-    # (a required field, no default of its own to get wrong), this one
-    # does need field(default_factory=list) rather than a bare `= []`, the
-    # same mutable-default-arg precedent levels.py's own Level.
-    # blocked_cells/branch_weights already establish, so this default is
-    # never shared/aliased across RunState instances.
+    # cards bought at the Shop (see shop.build_offer), granted by a
+    # Treasure node, or granted by a Random Event's own grant_relic option
+    # (see events.py) -- the same "appended to a list" shape unlocked_
+    # towers already has, though unlike unlocked_towers (a required field,
+    # no default of its own to get wrong), this one does need
+    # field(default_factory=list) rather than a bare `= []`, the same
+    # mutable-default-arg precedent levels.py's own Level.blocked_cells/
+    # branch_weights already establish, so this default is never shared/
+    # aliased across RunState instances.
     relics: list = field(default_factory=list)
     # Whether this is a Daily Run -- see Game.start_new_run's own docstring
     # for the one thing that actually branches on it (pinning difficulty
@@ -63,7 +87,7 @@ class RunState:
     # every gold-spending call site routes through) and stays true
     # forever after, tracked unconditionally regardless of whether the
     # relic is even held, the same "always tracked, only some relics read
-    # it" precedent floor_index/floors_cleared already sets for
+    # it" precedent floors_cleared/current_row already set for
     # veterans_momentum.
     has_spent_gold: bool = False
     # Guardian's Reprieve's one-time charge (relics.py) -- flips true the
@@ -73,20 +97,31 @@ class RunState:
 
     @property
     def current_level_id(self):
-        return self.floor_sequence[self.floor_index]
+        return self.map.node(self.current_node_id).level_id
+
+    @property
+    def current_row(self):
+        """Which row of the map the current node sits on -- the depth
+        value run_escalation.escalation_for_floor()/relics.
+        compose_relic_modifiers() read (see game.py's _floor_load_context),
+        the same role floor_index used to play when the run was a flat
+        sequence."""
+        return self.map.node(self.current_node_id).row
 
     @property
     def is_final_floor(self):
-        return self.floor_index == len(self.floor_sequence) - 1
+        return self.current_row == self.map.final_row_index
 
     @property
     def floors_cleared(self):
-        """How many floors have been fully cleared so far. Always equal to
-        floor_index -- floor_index only ever advances when a floor clears
-        (see Game._advance_run_floor), so a separate counter would just be
-        two numbers that can never actually disagree. Kept as its own named
-        property (rather than having callers read floor_index directly)
-        since "floors cleared" is the semantically meaningful thing a
-        summary screen or run_history entry (a future milestone) wants to
-        report, even though floor_index is what's actually stored."""
-        return self.floor_index
+        """How many Combat/Elite nodes have been fully cleared so far --
+        deliberately excludes Shop/Event/Rest/Treasure stops, so browsing a
+        handful of non-combat nodes on the way to the boss doesn't inflate
+        this the way visiting more nodes overall would. This is what
+        run_history.py/meta_progression.py's total_floors_cleared actually
+        mean by "a floor" -- a fight genuinely fought and won, not a stop
+        visited."""
+        return sum(
+            1 for node_id in self.visited_node_ids
+            if self.map.node(node_id).node_type in ("combat", "elite")
+        )

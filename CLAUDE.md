@@ -43,7 +43,7 @@ and the live `enemies`/`towers`/`projectiles` lists, and drives `handle_events()
 `update(dt)` -> `render()` each frame. `_load_level_object()` rebuilds all of that from a `Level`
 in one call -- it's the single choke point every way of starting a level funnels through
 (`load_level()` for a `LEVELS` id, `load_custom_level()` for an editor-authored one,
-`_load_floor()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
+`_load_combat_node()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
 `advance_or_replay_level()` are just "call it again."
 
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
@@ -52,13 +52,14 @@ main path is a run. Read the next section before anything else here.
 
 ### The roguelike run loop is the primary loop
 
-A **run** is a seeded, ordered sequence of floors, each floor one full `_load_level_object()` pass
-on one `Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load
-always did. What's new is `RunState` (`run_state.py`), the small bundle that survives *across* those
-resets: seed, `floor_sequence`, `floor_index`, `difficulty`, lives, `shop_currency`, `unlocked_towers`,
-and `relics`. Battle gold (`Economy.gold`) is deliberately *not* one of these -- see "Two currencies:
-battle gold and the Shop" below for the split this reflects. Placed towers and the grid stay
-floor-scoped, deliberately -- a deckbuilder doesn't carry
+A **run** is a seeded, full branching map of nodes (see "The run's branching map" below), shown to
+the player from the very start, each combat/elite node one full `_load_level_object()` pass on one
+`Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load always
+did. What's new is `RunState` (`run_state.py`), the small bundle that survives *across* those resets:
+seed, `map`, `current_node_id`, `visited_node_ids`, `difficulty`, lives, `shop_currency`,
+`unlocked_towers`, and `relics`. Battle gold (`Economy.gold`) is deliberately *not* one of these --
+see "Two currencies: battle gold and the Shop" below for the split this reflects. Placed towers and
+the grid stay floor-scoped, deliberately -- a deckbuilder doesn't carry
 board state between combats, only your deck and your HP. `Game.active_run` holds it, and is reset to
 `None` inside `_load_level_object()` itself (not at each call site), so any loader that doesn't know
 about runs -- `resume_saved_run()` for a classic save, say -- structurally can't leak a stale
@@ -66,9 +67,10 @@ about runs -- `resume_saved_run()` for a classic save, say -- structurally can't
 
 The pieces, each a small module in this codebase's registry-or-bare-function style:
 
-- `run_floors.py` -- `sample_floor_sequence(rng, count=6)`: ids sampled from `LEVELS` *without*
-  reordering. Deliberately not a shuffle: `LEVELS`' ids already read as an authored difficulty ramp,
-  so ascending order is what makes a run escalate rather than occasionally front-loading a hard map.
+- `run_map.py` -- `generate_run_map(rng)`: the whole branching map, generated once, up front (see
+  "The run's branching map" below for the full shape). Combat/elite level ids are still sampled from
+  `LEVELS`, but no longer read as a single flat ascending ramp the way the old, retired
+  `run_floors.sample_floor_sequence` did -- see that section for what replaced it.
 - `card_pool.py` -- a "card" is, for v1, exactly a `TOWER_TYPES` key. `STARTER_TOWERS` is what every
   run begins with; `draft_offer(rng, run, ...)` samples `count` names from the account-wide unlocked
   pool minus what the run already holds, returning *fewer* than `count` once exhausted rather than
@@ -93,8 +95,11 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `effective_fire_rate()`/`effective_damage()`/`upgrade_cost()`/`specialization_cost()`/`sell_value()`/
   `SupportTower.update()`/`Projectile._apply_hit_effects()` for where each actually applies);
   **escalating-per-floor** (`veterans_momentum`'s `tower_damage_growth_per_floor`, folded into
-  `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- grows with floors
-  cleared instead of being a flat per-floor constant); **conditionally-revocable** (`misers_coffer`'s
+  `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- fed the current
+  node's *row* now that a run is a branching map rather than a flat sequence (see `RunState.
+  current_row`), but still named `floor_index` throughout `relics.py` since the escalation math itself
+  doesn't care what kind of int it's handed; grows with the row reached instead of being a flat
+  per-floor constant); **conditionally-revocable** (`misers_coffer`'s
   `gold_per_floor_bonus_while_unspent`, folded into `gold_per_floor_bonus` gated on the new
   `has_spent_gold` parameter -- `RunState.has_spent_gold` flips permanently true the run's first
   successful spend, tracked via `Game._spend_gold()`, the one choke point `try_place_tower`/
@@ -127,45 +132,140 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   it fires on any hit via a chance roll and is always exactly one non-recursive bounce, never a
   multi-link chain.
 - `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
-  precisely because `floor_index` is unbounded once the final floor's endless tail runs.
+  precisely because `floor_index` (the current node's row) is unbounded once the boss node's endless
+  tail runs. `apply_elite_multiplier()` layers an Elite node's own extra bump on top -- the difficulty
+  half of the risk/reward trade an Elite node offers; see `shop.income_for_floor`'s own
+  `ELITE_INCOME_MULTIPLIER` for the reward half.
+- `events.py` -- `EVENTS`, a registry of Random Event nodes (a short prompt plus 2-3 options), plus
+  `pick_event()` (deterministic per node) and `resolve_event_option()`. See "The run's branching map"
+  below for the full node-type writeup.
 - `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.
 
-`Game.start_new_run(seed=None, is_daily=False)` builds the `RunState` and calls `_load_floor(0)`.
-`_load_floor` composes *three* independent extra factors into the one `_load_level_object()` call --
-the run's snapshotted `difficulty`, `escalation_for_floor(floor_index)`, and
-`compose_relic_modifiers(run.relics)` -- each an extra multiplier on top of what's already there,
-never a replacement, per `difficulty.py`'s own rule. Floor 0 is the one asymmetric case for lives:
-`RunState` starts with `lives=0` as a placeholder and *captures* floor 0's freshly-loaded `Economy`'s
-lives, while floor 1 onward *restores* into it instead. Battle gold has no such asymmetry -- see "Two
-currencies" below, it's rebuilt fresh from the same construction on every floor, floor 0 included.
+`Game.start_new_run(seed=None, is_daily=False)` builds the `RunState` (map generated once, up front,
+via `run_map.generate_run_map`) and calls `_enter_map()` -- unlike the old flat sequence, a run no
+longer auto-loads its first floor; the player's first act is picking one of the map's row-0 nodes
+(always Combat, see below) themselves. `Game._enter_node(node_id)` sets `run.current_node_id` and
+dispatches on that node's own type; for a Combat/Elite node that's `_load_combat_node(node)`, which
+composes *three* independent extra factors into the one `_load_level_object()` call -- the run's
+snapshotted `difficulty`, `escalation_for_floor(node.row)` (bumped further by
+`apply_elite_multiplier` for an Elite node), and `compose_relic_modifiers(run.relics, node.row, ...)`
+-- each an extra multiplier on top of what's already there, never a replacement, per `difficulty.py`'s
+own rule. The run's very first resolved node is the one asymmetric case for lives: `RunState` starts
+with `lives=0` as a placeholder and *captures* that node's freshly-loaded `Economy`'s lives (checked
+via `not run.visited_node_ids`), while every node after that *restores* into it instead. Battle gold
+has no such asymmetry -- see "Two currencies" below, it's rebuilt fresh from the same construction on
+every floor, the first node included.
 
-Clearing a floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameState.FLOOR_CLEARED`
--> (any key) `_enter_draft()` -> `GameState.DRAFT` (the Shop -- see "Two currencies" below) ->
-(a click per purchase) `_handle_draft_click()` -> (Continue) `_load_floor(next)`. One detail worth
-knowing: the next floor isn't loaded until the player leaves the shop, which is what leaves
-`self.towers`/`self.economy` intact for `FLOOR_CLEARED` to render real results from.
+Clearing a Combat/Elite floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameState.
+FLOOR_CLEARED` -> (any key) `_enter_map()` -> (a click on an available node) `_handle_map_click()` ->
+`_enter_node()`. `_advance_run_floor` appends the cleared node's own id onto `run.visited_node_ids`
+(what `RunState.floors_cleared` counts from -- see below) and converts leftover battle gold into shop
+currency (`shop.income_for_floor`, with an Elite bonus -- see above). One detail worth knowing: the
+next node isn't loaded until the player picks it from the map, which is what leaves `self.towers`/
+`self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
-A run ends **only** by permadeath. The last floor always loads `endless=True`, so
-`all_waves_complete` structurally can never fire for it, and `update()`'s win-check routes a run to
-`_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the run" event by
-construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
-`run_history.py` and bumps the meta-progression counters.
+A run ends **only** by permadeath. The map's boss node (the sole node in its final row) always loads
+`endless=True`, so `all_waves_complete` structurally can never fire for it, and `update()`'s win-check
+routes a run to `_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the
+run" event by construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
+`run_history.py` and bumps the meta-progression counters; `RunState.floors_cleared` (what both of
+those read) counts only visited Combat/Elite nodes, not every node stopped at -- a Shop/Event/Rest/
+Treasure detour doesn't inflate the score.
 
-Both RNG streams a floor needs (its own enemy routing, and its shop offer) are re-derived from
-`(run.seed, floor_index)` on demand via `Game._run_rng(run, stream, floor_index)` rather than
-carried as one continuously-consumed `random.Random`. That's what lets `save_state.py` serialize a
-run without serializing any RNG state at all -- a resumed run just re-derives the identical objects
-(`resume_saved_run()` is why `run` is a parameter here rather than read off `self.active_run`: it
-needs this derivation *before* `_load_level_object()` sets `self.active_run`). The seed itself is a
-string (`f"{run.seed}:{stream}:{floor_index}"`), not `run.seed * stream + floor_index` -- that
-integer scheme degenerated to plain `floor_index` for every stream whenever `run.seed == 0`,
-colliding the two streams; a string has no such degenerate case.
+Every rng a node needs (its own enemy routing, its Shop offer, a Random Event's own pick and its
+chosen option's item grant, a Treasure's own relic pick) is re-derived on demand via `Game._run_rng
+(run, stream, key)` rather than carried as one continuously-consumed `random.Random`. That's what
+lets `save_state.py` serialize a run without serializing any RNG state at all -- a resumed run just
+re-derives the identical objects (`resume_saved_run()` is why `run` is a parameter here rather than
+read off `self.active_run`: it needs this derivation *before* `_load_level_object()` sets `self.
+active_run`). The seed itself is a string (`f"{run.seed}:{stream}:{key}"`), not
+`run.seed * stream + key` -- that integer scheme degenerated to plain `key` for every stream whenever
+`run.seed == 0`, colliding every stream; a string has no such degenerate case. `key` is a node's own
+id (a string, unique within the run's map) for almost every stream -- critically, **never** a bare row
+number: two sibling nodes in the same row would otherwise derive byte-identical rng, silently
+defeating branching (both forks of a choice would route/offer/roll identically). A Shop's own offer
+and a Random Event's own item grant fold in one further piece of identity on top of the node id (the
+node id alone identifies *which visit*, not *which purchase* or *which option* -- see
+`Game._enter_shop_node`/`_resolve_event_choice`).
 
 A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
 `start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
 snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.
 `run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
-needs no special handling anywhere.
+needs no special handling anywhere. The whole map is generated from that same date-derived seed, so
+every player sees the identical branching map (and Shop/Event offers) on a given day too.
+
+### The run's branching map
+
+A run's map (`run_map.py`) is a Slay-the-Spire-style row-based DAG, generated once, up front (`Game.
+start_new_run`), and shown to the player in full from the start -- not fog-of-war, not revealed
+fork-by-fork. `ROW_COUNT` rows (6, unchanged from the old flat sequence's own floor count, which
+keeps `run_escalation.py`'s tuned growth constants meaning the same thing they always did); edges
+only ever run from one row to the next, never skip a row or point backward, which is what keeps
+"every node reachable, every node can reach the boss" provable by simple induction (see
+`_generate_edges`' own docstring) rather than needing a general graph-reachability pass after the
+fact (tests still verify it via BFS over many seeds anyway). Row 0 is a fixed-width, all-Combat
+choice (which of `START_ROW_WIDTH` same-difficulty layouts to open the run on, not a difficulty
+choice at all) -- the run's very first resolved node is always guaranteed to be a real level load,
+keeping the lives-capture special case above simple. The final row is always exactly one Combat
+node, the boss (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps `is_final_floor`/
+`endless=True` trivial, no "did every path converge" check needed.
+
+Every other row is a weighted-random mix of all six `NODE_TYPES` (`NODE_TYPE_WEIGHTS`), capped at
+half the row per type (`MAX_SAME_TYPE_PER_ROW_FRACTION`) so a wide row can't degenerate into one
+repeated type. `MIN_ELITE_ROW` keeps Elite off the run's opening rows; `GUARANTEED_REST_ROW` forces
+at least one Rest node onto that one row if the weighted draw didn't already produce one -- deliberately
+**not** mirrored for Shop, which stays pure chance (a run's Shop cadence is meant to vary, unlike Rest's
+"never go the whole back half with no way to recover lives" guarantee). A Combat/Elite node's own
+level id is drawn from whichever tier its row falls in (`_level_pool_for_row`, partitioned by
+structure -- single-spawn "corridor" levels for earlier rows, multi-spawn "multi-lane" ones for later
+rows including the boss -- not a hardcoded id list, so it stays self-maintaining as levels are added)
+rather than sampled freely across all of `LEVELS`, preserving the same corridor-then-multi-lane
+authored ramp the old flat, ascending `floor_sequence` used to give for free.
+
+The six node types:
+- **Combat**: a normal floor, exactly what a run's only node type used to be.
+- **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
+  escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
+  `ELITE_INCOME_MULTIPLIER`) -- risk/reward, not "harder for its own sake."
+- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `shop.py` verbatim, only
+  reached via a map node now rather than automatically after every floor clear (see "Two currencies"
+  below for what this replaced).
+- **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`events.py`), each a fixed,
+  honestly-described delta (shop currency, lives, a relic grant, a tower unlock) rather than a
+  hidden-odds gamble, same "say exactly what it does" precedent `relics.py`'s own registry sets.
+  Two-phase (`Game.event_phase`, "choose" then "resolved") -- `_handle_event_click`/
+  `_resolve_event_choice` apply the chosen option's effect and show what happened; any further
+  click/key then returns to the map.
+- **Rest**: `GameState.REST` -- auto-resolves the instant it's entered (`Game._enter_rest_node`), no
+  player choice, healing `run.lives` by `run_map.heal_amount_for_row(node.row)` and showing a static
+  confirmation screen.
+- **Treasure**: `GameState.TREASURE` -- also auto-resolves on entry (`Game._enter_treasure_node`): a
+  guaranteed shop-currency payout (`run_map.treasure_shop_currency_for_row`) plus one guaranteed relic
+  pick, degrading gracefully to currency-only once every relic is already held (`relics.relic_offer`'s
+  own empty-once-exhausted precedent).
+
+`Game._enter_map()` (re-)shows the map screen, rebuilding `self.map_node_rects` fresh every time
+(`ui.build_map_node_rects`) -- the same "computed fresh, not a persistent cache" spirit
+`draft_choices` already follows, though unlike a Shop visit's own offer this never needs a
+scroll-aware rebuild (the map never scrolls at `ROW_COUNT=6`). `Game._available_node_ids()` (`run.
+map.start_node_ids` if nothing's been picked yet, else the current node's own edges) is the single
+source of truth both `_handle_map_click`'s legality check and `ui.draw_map_screen`'s "available"
+visual state read from. `Game._enter_node(node_id)` sets `run.current_node_id` and dispatches to
+whichever `_enter_*_node`/`_load_combat_node` method that node type needs; `Game._finish_node
+(node_id)` is the shared terminal step every non-combat resolution (a Shop's Continue, an Event's
+chosen option, Rest/Treasure's auto-resolve) routes through -- mark the node visited, return to the
+map. A Combat/Elite node's own clear already appends its own id in `_advance_run_floor`, so it never
+goes through `_finish_node` -- there's no separate "leave the results screen" step distinct from
+pressing any key on `FLOOR_CLEARED`, which goes straight to `_enter_map()`.
+
+`GameState.MAP`/`DRAFT`/`EVENT`/`REST`/`TREASURE` are all full-screen states (like `LEVEL_SELECT`/
+`EDITOR` -- see `render()`'s early-return block), not overlays drawn atop a frozen board the way
+`PAUSED`/`GAME_OVER`/`VICTORY`/`FLOOR_CLEARED` are: `MAP` can be shown before any floor of the run has
+ever loaded (right after `start_new_run()`, before `self.grid`/`self.economy` exist at all), so
+there's structurally no board to freeze behind it -- the other four are reached from `MAP` and follow
+the same full-screen convention for consistency, even on a node sequence where a board technically
+still exists from an earlier floor.
 
 ### Two currencies: battle gold and the Shop
 
@@ -174,11 +274,15 @@ gold** (`Economy.gold`, unchanged as a concept -- what places/upgrades/specializ
 mid-floor) resets fresh every floor rather than carrying forward, and **shop currency**
 (`RunState.shop_currency`) persists across the whole run and is what actually buys cards at the Shop
 (`GameState.DRAFT` -- see its own naming note in `game.py` for why the code still says "draft"
-throughout even though the screen is a shop now). Before this split, `RunState.gold` carried battle
+throughout even though the screen is a shop now, only reached via a map node -- see "The run's
+branching map" above -- rather than automatically after every floor clear). A Treasure node and a
+Random Event's own `grant_relic`/`unlock_random_tower` options also grant cards/currency directly
+(see above), independent of the Shop entirely. Before this split, `RunState.gold` carried battle
 gold forward the same unconditional way `lives` still does; there is no such field any more --
-`_load_floor` never restores or captures battle gold, it's simply rebuilt fresh by every floor's own
-`_load_level_object()` call (relic-adjustable via `RelicModifiers.starting_gold_multiplier`/
-`gold_per_floor_bonus`, both applied every floor now with no floor-0 special case left).
+`_load_combat_node` never restores or captures battle gold, it's simply rebuilt fresh by every
+floor's own `_load_level_object()` call (relic-adjustable via `RelicModifiers.starting_gold_
+multiplier`/`gold_per_floor_bonus`, both applied every floor now with no first-node special case
+left).
 
 `shop.py` is where the Shop's own logic lives, mirroring `card_pool.py`/`relics.py`'s own
 registry-and-bare-function shape:
@@ -186,33 +290,34 @@ registry-and-bare-function shape:
 - `build_offer(rng, run, meta_progression_path=None)` -- this shop visit's items, mixing both card
   types together in one offer (`TOWER_OFFER_COUNT` towers via `card_pool.draft_offer`, then
   `RELIC_OFFER_COUNT` relics via `relics.relic_offer`, same exclude-what's-already-held rules as
-  before) rather than alternating floor-to-floor the way the old single-pick draft did
-  (`_is_relic_floor`/`RELIC_FLOOR_INTERVAL` no longer exist). Either half can come back shorter once
-  its own pool is exhausted, same as the old draft; `Game._enter_draft()` still skips the screen
-  entirely only if the *combined* offer is empty.
+  before). Either half can come back shorter once its own pool is exhausted; `Game._enter_shop_node()`
+  still skips the screen entirely only if the *combined* offer is empty.
 - `price_for(item, purchases_this_visit)` -- an item's actual cost, escalated by `PRICE_ESCALATION`
   for every other item this same shop visit has already bought (0 for the first purchase). Kept as a
   pure function of a purchase *count*, not mutable per-item state, so `ui.draw_draft_screen` (showing
   what the *next* purchase would cost) and `Game._try_buy_shop_item` (actually charging it) can't
   drift apart on what "the current price" means.
-- `income_for_floor(floor_index, leftover_gold)` -- shop currency earned at a floor clear
-  (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (mirroring
-  `run_escalation.py`'s own per-floor growth, on a much smaller scale) plus `LEFTOVER_GOLD_
-  CONVERSION_RATE` of whatever battle gold was still unspent at that moment -- since battle gold
-  itself never carries forward (see above), this is what makes hoarding it in an already-won fight
-  pay off instead of the surplus just vanishing when the floor resets.
+- `income_for_floor(floor_index, leftover_gold, is_elite=False)` -- shop currency earned at a floor
+  clear (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (the
+  cleared node's own row, mirroring `run_escalation.py`'s own per-floor growth on a much smaller
+  scale) plus `LEFTOVER_GOLD_CONVERSION_RATE` of whatever battle gold was still unspent at that
+  moment -- since battle gold itself never carries forward (see above), this is what makes hoarding
+  it in an already-won fight pay off instead of the surplus just vanishing when the floor resets.
+  `is_elite` scales the whole result up by `ELITE_INCOME_MULTIPLIER` -- an Elite node's own reward for
+  its extra risk (see "The run's branching map" above).
 
 Buying is `Game._try_buy_shop_item(index)`: a silent no-op if unaffordable (same "click does nothing"
 precedent `try_place_tower`'s own unbuildable-spot case sets), otherwise it deducts the escalated
 price, records the index in `self.shop_purchased_indices` (drawn as SOLD and no longer clickable --
-see `ui.draw_draft_screen`), and applies the card exactly like the old draft did: a tower name onto
-`run.unlocked_towers`, or a relic key onto `run.relics` plus `Game._apply_one_time_relic_bonus()`.
-Buying never advances the floor by itself any more -- the player can buy several items (or none) in
-one visit, then explicitly clicks Continue (`ui.build_shop_continue_button_rect()`) to load the next
-floor, the one genuinely new state-machine wrinkle this added over the old always-one-click-advances
-draft. `self.economy.unlimited_gold` (already exactly `self.unlimited_gold or sandbox`, see "Economy
-debug flag" below) makes every shop item free the same way it already makes battle gold spending
-free -- there's no separate sandbox flag for shop currency.
+see `ui.draw_draft_screen`), and applies the card: a tower name onto `run.unlocked_towers`, or a relic
+key via `Game._grant_relic()` (appends to `run.relics` and applies `_apply_one_time_relic_bonus()` --
+the one choke point every relic-granting path, a Shop purchase or a Treasure node's guaranteed pick
+alike, routes through). Buying never leaves the shop by itself -- the player can buy several items (or
+none) in one visit, then explicitly clicks Continue (`ui.build_shop_continue_button_rect()`) to call
+`Game._finish_node()` and return to the map, the same terminal step every other non-combat node
+resolution uses. `self.economy.unlimited_gold` (already exactly `self.unlimited_gold or sandbox`, see
+"Economy debug flag" below) makes every shop item free the same way it already makes battle gold
+spending free -- there's no separate sandbox flag for shop currency.
 
 ### Content is registries, not conditionals
 
@@ -644,9 +749,11 @@ packaged build. Before this was factored out, each independently wrote the same
   gameplay-flavored -- they change what `card_pool.draft_offer()` can offer a future run.
   `Game._record_meta_progress()` mirrors `_record_achievement()` exactly, sandbox guard included.
   `unlock_knockback`'s goal of `1` is load-bearing: `_advance_run_floor` bumps
-  `total_floors_cleared` *before* the player reaches the draft screen, so a brand-new player's very
-  first draft has a real card to offer instead of finding `STARTER_TOWERS` exhausted and silently
-  skipping.
+  `total_floors_cleared` *before* the player can reach any Shop node, so a brand-new player's very
+  first shop visit has a real card to offer instead of finding `STARTER_TOWERS` exhausted and silently
+  skipping -- strengthened, not weakened, by the branching map: row 0 is always Combat (see "The
+  run's branching map" above), so a Shop node can never be reachable before at least one floor has
+  cleared.
 - `run_history.py` records `{seed: best_floors_cleared}`, written once per run by
   `_record_run_permadeath()`. Per-seed max rather than last-write, which is what makes a replayed
   seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
@@ -677,16 +784,26 @@ packaged build. Before this was factored out, each independently wrote the same
   conclusion, so a fresh, unrelated session's own victory can never delete a different, still-valid
   save left over from some other abandoned run. An explicit `_load_level_object()` parameter
   (default `False`), mirroring `active_run` just below it: `resume_saved_run()` passes `True`
-  directly; `_load_floor()` passes `self._resumed_from_save` straight through unchanged on every one
-  of a run's own floor transitions (resumed or not, it's still the same session continuing); only
-  `start_new_run()` -- the one place a genuinely *new* session begins -- explicitly resets it first.
-  An optional `"run"` key carries the `RunState` (validated on load against `LEVELS`/`TOWER_TYPES`/
-  `RELICS`); `None` means a save with no active run -- Practice, an editor playtest, or a file
+  directly; `_load_combat_node()` passes `self._resumed_from_save` straight through unchanged on
+  every one of a run's own floor transitions (resumed or not, it's still the same session
+  continuing); only `start_new_run()` -- the one place a genuinely *new* session begins -- explicitly
+  resets it first.
+  An optional `"run"` key carries the `RunState` (its map serialized node-by-node, validated on load
+  against `LEVELS`/`TOWER_TYPES`/`RELICS`/`run_map.NODE_TYPES` -- including that `current_node_id`
+  names a real node in its own map *and* that node is a Combat/Elite one, since a resumable save is
+  always mid-`PLAYING`, per `can_save_run()`'s own gate, structurally never a Shop/Event/Rest/
+  Treasure screen); `None` means a save with no active run -- Practice, an editor playtest, or a file
   written before the key existed -- and is passed straight through to `_load_level_object()`'s
   `active_run` parameter either way, so its one `_rebuild_button_rects()` call already produces the
   right menu (the run's drafted pool, or every tower) with nothing left to fix up afterward. No RNG
-  state is serialized: a run's streams are re-derived from `(seed, floor_index)` on demand (see the
-  run loop section above).
+  state is serialized: a run's streams are re-derived from `(seed, key)` on demand (see the run loop
+  section above). `SCHEMA_VERSION` bumped to `2` when the run's own floor_sequence/floor_index shape
+  became map/current_node_id/visited_node_ids -- a save from before that (schema 1) has no meaningful
+  way to become a map, so it's a **clean break**, not a migration: reaching for a `"map"` key that was
+  never written raises `KeyError` (one of `json_io`'s own fallback-triggering exceptions), and
+  `load_run()` falls all the way back to "nothing to resume," same as any other corrupt/incompatible
+  save -- acceptable since `save_state.json` is local, gitignored player data, same reasoning this
+  whole family of on-disk files already leans on.
 
 ### Visual effects: the drain-a-per-frame-event-list idiom
 

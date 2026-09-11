@@ -25,6 +25,18 @@ _HP_GROWTH_PER_FLOOR = 0.12
 _SPEED_GROWTH_PER_FLOOR = 0.02
 _GOLD_GROWTH_PER_FLOOR = 0.05
 
+# An Elite map node's own extra bump on top of whatever its row already
+# escalates to (see apply_elite_multiplier below) -- placeholder numbers,
+# tunable once there's real playtesting to tune against, same spirit as
+# shop.py's own TOWER_PRICE/RELIC_PRICE comment. Gold scales with hp (a
+# tougher fight should pay out more in the fight itself too, on top of
+# shop.ELITE_INCOME_MULTIPLIER's own bonus at the *floor-clear* level) --
+# speed barely moves, since a faster-*and* tankier enemy compounds harder
+# than either alone.
+ELITE_HP_MULTIPLIER = 1.5
+ELITE_SPEED_MULTIPLIER = 1.1
+ELITE_GOLD_MULTIPLIER = 1.5
+
 
 @dataclass(frozen=True)
 class FloorEscalation:
@@ -34,9 +46,25 @@ class FloorEscalation:
 
 
 def escalation_for_floor(floor_index):
-    """FloorEscalation for the floor_index-th floor of a run (0-based)."""
+    """FloorEscalation for the floor_index-th floor of a run (0-based) --
+    for a branching run this is the current node's *row*, not a linear
+    floor count (see RunState.current_row), but the formula itself doesn't
+    care which int it's handed."""
     return FloorEscalation(
         enemy_hp_multiplier=1.0 + _HP_GROWTH_PER_FLOOR * floor_index,
         enemy_speed_multiplier=1.0 + _SPEED_GROWTH_PER_FLOOR * floor_index,
         enemy_gold_multiplier=1.0 + _GOLD_GROWTH_PER_FLOOR * floor_index,
+    )
+
+
+def apply_elite_multiplier(escalation):
+    """Layers an Elite map node's own extra bump on top of an already-
+    computed FloorEscalation -- multiplicative, the same "extra factor,
+    never replacing" rule this module's own docstring states for
+    difficulty.py/relics.py, so an Elite node at row 3 is harder than a
+    plain Combat node at that same row, not just harder than row 0."""
+    return FloorEscalation(
+        enemy_hp_multiplier=escalation.enemy_hp_multiplier * ELITE_HP_MULTIPLIER,
+        enemy_speed_multiplier=escalation.enemy_speed_multiplier * ELITE_SPEED_MULTIPLIER,
+        enemy_gold_multiplier=escalation.enemy_gold_multiplier * ELITE_GOLD_MULTIPLIER,
     )

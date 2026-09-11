@@ -28,11 +28,18 @@ from json_io import load_json_with_fallback, module_relative_path
 from levels import LEVELS
 from persistence import level_from_dict, level_to_dict
 from relics import RELICS
+from run_map import NODE_TYPES, MapNode, RunMap
 from run_state import RunState
 from tower import TOWER_TYPES
 from waves import WaveState
 
-SCHEMA_VERSION = 1
+# Bumped from 1 -- the "run" blob's own shape changed (floor_sequence/
+# floor_index replaced by a branching map/current_node_id/visited_node_ids,
+# see run_state.py) when the run loop grew a branching map. Nothing
+# currently branches on this value; it's here purely for inspectability, the
+# same "cheap to have, useful for future debugging" reasoning every other
+# schema_version field in this codebase already follows.
+SCHEMA_VERSION = 2
 SAVE_PATH = module_relative_path(__file__, "save_state.json")
 
 
@@ -65,20 +72,43 @@ def _tower_to_dict(tower):
     }
 
 
+def _map_to_dict(run_map):
+    """One RunMap -> the plain-JSON dict _map_from_dict() reconstructs it
+    from -- every MapNode is already a flat, JSON-safe shape (str/int/None
+    fields only), so this is just nested lists/dicts, no per-field
+    conversion needed the way floor_sequence's tuple used to need."""
+    return {
+        "rows": [[
+            {"id": node.id, "row": node.row, "col": node.col,
+             "node_type": node.node_type, "level_id": node.level_id}
+            for node in row
+        ] for row in run_map.rows],
+        "edges": {node_id: list(target_ids) for node_id, target_ids in run_map.edges.items()},
+    }
+
+
+def _map_from_dict(data):
+    rows = tuple(tuple(MapNode(**node_data) for node_data in row) for row in data["rows"])
+    edges = {node_id: tuple(target_ids) for node_id, target_ids in data["edges"].items()}
+    return RunMap(rows=rows, edges=edges)
+
+
 def _run_to_dict(run):
     """One RunState -> the plain-JSON dict _run_from_dict() reconstructs it
-    from. floor_sequence/unlocked_towers/relics are all plain lists on the
-    way out -- RunState.floor_sequence is a tuple, the one field here JSON
-    can't round-trip byte-for-byte, so _run_from_dict() converts it back.
-    No "gold" key -- battle gold (Economy.gold) resets fresh every floor
-    now and was never part of RunState to begin with (see run_state.py's
-    own docstring); shop_currency is the field that persists here instead."""
+    from. unlocked_towers/relics/visited_node_ids are all plain lists on
+    the way out (RunState.visited_node_ids already is one; kept as its own
+    explicit list() call for the same "never accidentally alias the live
+    run's own list" reasoning the others get). No "gold" key -- battle gold
+    (Economy.gold) resets fresh every floor now and was never part of
+    RunState to begin with (see run_state.py's own docstring); shop_currency
+    is the field that persists here instead."""
     return {
         "seed": run.seed,
-        "floor_sequence": list(run.floor_sequence),
+        "map": _map_to_dict(run.map),
         "difficulty": run.difficulty,
         "unlocked_towers": list(run.unlocked_towers),
-        "floor_index": run.floor_index,
+        "current_node_id": run.current_node_id,
+        "visited_node_ids": list(run.visited_node_ids),
         "lives": run.lives,
         "shop_currency": run.shop_currency,
         "relics": list(run.relics),
@@ -91,15 +121,12 @@ def _run_to_dict(run):
 def _run_from_dict(data):
     return RunState(
         seed=data["seed"],
-        floor_sequence=tuple(data["floor_sequence"]),
+        map=_map_from_dict(data["map"]),
         difficulty=data["difficulty"],
         unlocked_towers=list(data["unlocked_towers"]),
-        floor_index=data["floor_index"],
+        current_node_id=data["current_node_id"],
+        visited_node_ids=list(data["visited_node_ids"]),
         lives=data["lives"],
-        # .get() with a default, not data["shop_currency"] -- a save
-        # written before this field existed (back when "gold" was the key
-        # here instead) should still load, just with no shop currency
-        # banked yet, same spirit as sold_towers' own .get() below.
         shop_currency=data.get("shop_currency", 0),
         relics=list(data["relics"]),
         is_daily=data["is_daily"],
@@ -185,12 +212,43 @@ def _parse_and_validate_active_run(run_data):
     for the same reason the top-level checks aren't one giant function --
     same regression-guard spirit as the unrecognized-tower-type check
     above, just against run_state.py's own registries (LEVELS/TOWER_TYPES/
-    relics.RELICS) instead of TOWER_TYPES alone."""
-    for level_id in run_data["floor_sequence"]:
-        if level_id not in LEVELS:
-            raise ValueError(f"saved run's floor_sequence references an unrecognized level id {level_id!r}")
-    if not 0 <= run_data["floor_index"] < len(run_data["floor_sequence"]):
-        raise ValueError("saved run's floor_index is out of range for its own floor_sequence")
+    relics.RELICS/run_map.NODE_TYPES) instead of TOWER_TYPES alone.
+
+    An older save (from before the run loop's branching map, schema_version
+    1 -- still keyed by "floor_sequence"/"floor_index" rather than "map"/
+    "current_node_id") has no meaningful way to become a map at all, so it's
+    treated the same as any other semantically-invalid save: this raises
+    KeyError reaching for a "map" key that was never written (one of
+    json_io's own fallback-triggering exceptions), and load_run() falls all
+    the way back to "nothing to resume" -- see this module's own docstring
+    and CLAUDE.md's run-loop section for why a clean break, not a
+    migration, is the right call here."""
+    node_ids = {node_data["id"] for row in run_data["map"]["rows"] for node_data in row}
+    for row in run_data["map"]["rows"]:
+        for node_data in row:
+            if node_data["node_type"] not in NODE_TYPES:
+                raise ValueError(f"saved run's map references an unrecognized node type {node_data['node_type']!r}")
+            if node_data["level_id"] is not None and node_data["level_id"] not in LEVELS:
+                raise ValueError(f"saved run's map references an unrecognized level id {node_data['level_id']!r}")
+    for target_ids in run_data["map"]["edges"].values():
+        for target_id in target_ids:
+            if target_id not in node_ids:
+                raise ValueError(f"saved run's map has an edge to an unrecognized node id {target_id!r}")
+    # A resumable save is always mid-PLAYING (see Game.can_save_run()) --
+    # structurally always a combat/elite node, never a Shop/Event/Rest/
+    # Treasure screen, none of which are reachable while WaveManager is
+    # between waves.
+    current_node = next(
+        (node_data for row in run_data["map"]["rows"] for node_data in row if node_data["id"] == run_data["current_node_id"]),
+        None,
+    )
+    if current_node is None:
+        raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
+    if current_node["node_type"] not in ("combat", "elite"):
+        raise ValueError(f"saved run's current node is a {current_node['node_type']!r} node, not resumable mid-PLAYING")
+    for node_id in run_data["visited_node_ids"]:
+        if node_id not in node_ids:
+            raise ValueError(f"saved run's visited_node_ids references an unrecognized node id {node_id!r}")
     for tower_name in run_data["unlocked_towers"]:
         if tower_name not in TOWER_TYPES:
             raise ValueError(f"saved run's unlocked_towers references an unrecognized tower type {tower_name!r}")

@@ -86,3 +86,14 @@ COLOR_EDITOR_JUNCTION = (120, 160, 220)
 # --- Level-select map thumbnails ---
 COLOR_THUMBNAIL_GROUND = (44, 54, 40)
 COLOR_THUMBNAIL_PATH = (150, 130, 90)
+
+# --- Run map screen (see run_map.py/ui.draw_map_screen) -- one color per
+# node type, plus a dimmed color for a node that isn't reachable yet.
+COLOR_NODE_COMBAT = (170, 80, 80)
+COLOR_NODE_ELITE = (180, 70, 140)
+COLOR_NODE_SHOP = (80, 150, 205)
+COLOR_NODE_EVENT = (205, 165, 60)
+COLOR_NODE_REST = (90, 180, 110)
+COLOR_NODE_TREASURE = (215, 185, 90)
+COLOR_NODE_LOCKED = (60, 60, 68)
+COLOR_NODE_EDGE = (90, 90, 100)

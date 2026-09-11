@@ -3,13 +3,18 @@ import random
 import pytest
 
 from relics import RELICS, Relic, RelicModifiers, compose_relic_modifiers, relic_offer
+from run_map import generate_run_map
 from run_state import RunState
 
 
 def _run(relics=()):
+    # relic_offer only ever reads run.relics -- the map itself is
+    # irrelevant here, just a real one RunState now requires.
+    game_map = generate_run_map(random.Random(1))
     return RunState(
-        seed=1, floor_sequence=(1,), difficulty="normal",
+        seed=1, map=game_map, difficulty="normal",
         unlocked_towers=["basic", "cannon", "frost"], relics=list(relics),
+        current_node_id=game_map.start_node_ids[0],
     )
 
 

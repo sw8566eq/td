@@ -12,14 +12,15 @@ import card_pool
 import daily_challenge
 import difficulty
 import effects
+import events
 import meta_progression
 import persistence
 import player_settings
 import progress
 import relics
 import run_escalation
-import run_floors
 import run_history
+import run_map
 import save_state
 import settings
 import shop
@@ -33,17 +34,23 @@ from run_state import RunState
 from tower import TOWER_TYPES
 from waves import WaveManager, WaveState
 
-# Two independently-derived rng streams within one roguelike run (see
+# Independently-derived rng streams within one roguelike run (see
 # Game._run_rng) -- distinct string labels, folded into the seed string
-# alongside run.seed/floor_index, so a floor's own routing rng and that
-# floor's draft-pick rng never collide. Not the multiply-and-add integer
-# scheme this used before: seed * stream + floor_index degenerates to just
-# `floor_index` for every stream whenever seed == 0 (start_new_run(seed=0)
-# is reachable directly, and even an unseeded run has roughly a 1-in-4.3e9
-# chance of drawing it), silently collapsing both streams onto the same
-# sequence. A string seed has no such degenerate case -- see _run_rng.
+# alongside run.seed and whatever key identifies what's being loaded (a
+# node id for most of these -- see _run_rng's own docstring for why a node
+# id, not a row number, is what keeps two sibling nodes in the same row
+# from drawing identically), so no two of these ever collide. Not the
+# multiply-and-add integer scheme this used before floors became nodes:
+# seed * stream + key degenerates to just `key` for every stream whenever
+# seed == 0 (start_new_run(seed=0) is reachable directly, and even an
+# unseeded run has roughly a 1-in-4.3e9 chance of drawing it), silently
+# collapsing every stream onto the same sequence. A string seed has no such
+# degenerate case -- see _run_rng.
 _FLOOR_RNG_STREAM = "floor"
 _DRAFT_RNG_STREAM = "draft"
+_EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's own id
+_EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
+_TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 
 
 class GameState(Enum):
@@ -58,26 +65,45 @@ class GameState(Enum):
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
     HELP = auto()
-    # A roguelike run's own two extra states -- VICTORY stays reserved for
+    # A roguelike run's own extra states -- VICTORY stays reserved for
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
     # non-final floor's results (same board frozen behind it VICTORY/GAME_
-    # OVER already do), DRAFT is the Shop -- see Game._advance_run_floor/
-    # _enter_draft.
+    # OVER already do), MAP is the run's own branching map (see run_map.py/
+    # Game._enter_map), and DRAFT/EVENT/REST/TREASURE are its four
+    # non-combat node types (a Combat/Elite node is just PLAYING -- see
+    # Game._enter_node).
     #
     # DRAFT is a naming fossil, kept deliberately: this state (and
-    # _enter_draft/_handle_draft_click/draft_choices/draft_choice_rects/
-    # ui.draw_draft_screen alongside it) used to be a single free pick from
-    # exactly one card type. It's now a priced, multi-purchase Shop
-    # offering both tower and relic cards together every floor (see
-    # shop.py/CLAUDE.md's "Two currencies" section) -- but renaming this
-    # whole family of identifiers would touch this module, ui.py, and every
-    # test that exercises a run's draft/shop screen for no functional gain,
-    # the same "not worth the blast radius" call save_state.py's own
-    # "session" naming already documents making. The prose everywhere below
-    # says "shop"; the code still says "draft."
+    # _handle_draft_click/draft_choices/draft_choice_rects/ui.draw_draft_
+    # screen alongside it) used to be a single free pick from exactly one
+    # card type, entered automatically after every floor clear. It's now a
+    # priced, multi-purchase Shop offering both tower and relic cards
+    # together (see shop.py/CLAUDE.md's "Two currencies" section), only
+    # entered when the player picks a Shop node on the map (see Game.
+    # _enter_shop_node) -- but renaming this whole family of identifiers
+    # would touch this module, ui.py, and every test that exercises the
+    # shop screen for no functional gain, the same "not worth the blast
+    # radius" call save_state.py's own "session" naming already documents
+    # making. The prose everywhere below says "shop"; the code still says
+    # "draft."
+    #
+    # MAP/DRAFT/EVENT/REST/TREASURE are all full-screen states (like
+    # LEVEL_SELECT/EDITOR -- see render()'s early-return block), not
+    # overlays drawn atop a frozen board the way PAUSED/GAME_OVER/VICTORY/
+    # FLOOR_CLEARED are: MAP can be shown before any floor of the run has
+    # ever loaded (right after start_new_run(), before self.grid/self.
+    # economy exist at all), so there's structurally no board to freeze
+    # behind it -- the other three are reached from MAP and follow the
+    # same full-screen convention for consistency, even on the rare node
+    # sequence where a board technically still exists from an earlier
+    # floor.
     FLOOR_CLEARED = auto()
     DRAFT = auto()
+    MAP = auto()
+    EVENT = auto()
+    REST = auto()
+    TREASURE = auto()
 
 
 class Game:
@@ -128,9 +154,9 @@ class Game:
         # never delete some other still-valid in-progress save. An explicit
         # parameter on _load_level_object() (default False) rather than set
         # after the fact -- resume_saved_run() is the one caller that
-        # passes True; _load_floor() passes whatever this already was,
-        # unaffected by its own floor-to-floor _load_level_object() calls
-        # (see that method's own comment for why).
+        # passes True; _load_combat_node() passes whatever this already
+        # was, unaffected by its own node-to-node _load_level_object()
+        # calls (see that method's own comment for why).
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
 
@@ -146,11 +172,11 @@ class Game:
         # Practice play, a map-editor playtest -- a Daily Run is still a
         # real run, see _start_daily_challenge). Same reset-inside-
         # _load_level_object shape as _resumed_from_save above --
-        # _load_floor() is the one caller that sets it back afterward,
-        # once per floor, so a run's own lives survive across each floor's
-        # fresh _load_level_object() call.
+        # _load_combat_node() is the one caller that sets it back
+        # afterward, once per combat/elite node, so a run's own lives
+        # survive across each floor's fresh _load_level_object() call.
         self.active_run = None
-        # This floor-clear's shop offer (see _enter_draft) -- only
+        # This shop visit's own offer (see _enter_shop_node) -- only
         # meaningful while self.state == GameState.DRAFT, rebuilt from
         # scratch every time that screen is (re-)entered, same "computed
         # fresh, not a persistent cache" spirit as level_select_entries.
@@ -161,11 +187,42 @@ class Game:
         # tracks which of this visit's items are already bought (so a
         # second click on one is a no-op and price_for's escalation knows
         # how many purchases deep this visit is) -- reset every time
-        # _enter_draft runs, same as the offer itself.
+        # _enter_shop_node runs, same as the offer itself.
         self.draft_choices = []
         self.draft_choice_rects = []
         self.shop_purchased_indices = set()
         self.shop_continue_button_rect = ui.build_shop_continue_button_rect()
+
+        # The run's own branching map screen (see run_map.py/_enter_map) --
+        # rebuilt fresh every time that screen is (re-)entered, same
+        # "computed fresh" spirit as draft_choices above (unlike level_
+        # select_rects, a run's own map never scrolls -- see ui.py's own
+        # layout comment -- so there's no separate _rebuild_map_rects
+        # needed for a scroll event, just the one rebuild on entry).
+        self.map_node_rects = {}
+        # A Random Event node's own two-phase state (see _enter_event_node/
+        # _handle_event_click): "choose" while the options are still on
+        # offer, "resolved" once one's been picked -- current_event/
+        # event_option_rects are only meaningful in the first phase,
+        # event_chosen_option/event_resolution only in the second.
+        self.current_event = None
+        self.event_option_rects = []
+        self.event_phase = "choose"
+        self.event_chosen_option = None
+        self.event_resolution = None
+        # A Rest node's own result, for GameState.REST's static screen to
+        # show -- set once, by _enter_rest_node, the instant the node
+        # auto-resolves (there's no player choice to make on this screen,
+        # unlike Event/Shop).
+        self.rest_heal_amount = 0
+        # A Treasure node's own result, for GameState.TREASURE's static
+        # screen to show -- set once, by _enter_treasure_node, the instant
+        # the node auto-resolves. treasure_granted_relic is None once every
+        # relic is already held (see run_map.treasure_shop_currency_for_row's
+        # own docstring) -- the currency half of a Treasure's reward never
+        # degrades the same way.
+        self.treasure_granted_relic = None
+        self.treasure_granted_currency = 0
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -293,18 +350,19 @@ class Game:
         through it, whether that's None (load_level/load_custom_level,
         reset()/advance_or_replay_level()'s own direct calls for a
         custom/playtested level, never part of a run) or a real RunState
-        (_load_floor/resume_saved_run, which both pass their run straight
-        through instead of restoring it and calling this a second time)."""
+        (_load_combat_node/resume_saved_run, which both pass their run
+        straight through instead of restoring it and calling this a second
+        time)."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
     def start_new_run(self, seed=None, is_daily=False):
-        """Start a new roguelike run: a seeded, ordered floor_sequence
-        sampled from LEVELS, a starter tower pool (card_pool.STARTER_
-        TOWERS), and floor 0's own starting gold/lives -- floor 0 behaves
-        exactly like loading that level normally does today; _load_floor()
-        just also captures its outcome into self.active_run for floor 1
-        onward to build on. `seed` is overridable (_start_daily_challenge
-        passes one derived from today's date; tests want determinism).
+        """Start a new roguelike run: a full branching map generated once
+        (run_map.generate_run_map), a starter tower pool (card_pool.
+        STARTER_TOWERS), and no current node yet -- the player's first act
+        is picking one of the map's row-0 nodes (see _enter_map/_enter_
+        node), not an automatic floor 0 load the way a flat floor_sequence
+        used to allow. `seed` is overridable (_start_daily_challenge passes
+        one derived from today's date; tests want determinism).
 
         `is_daily` pins the run's own difficulty to "normal" rather than
         snapshotting the player's own live sticky preference, so every
@@ -318,7 +376,7 @@ class Game:
 
         Explicitly resets _resumed_from_save -- unlike every other
         _load_level_object() call this run will ever make (all routed
-        through _load_floor(), which deliberately preserves this flag
+        through _load_combat_node(), which deliberately preserves this flag
         across its own calls, see that method's own comment), starting a
         brand new run here genuinely is the "unrelated fresh session"
         case _load_level_object()'s own reset exists for, whether or not a
@@ -330,95 +388,112 @@ class Game:
         conclusion."""
         self._resumed_from_save = False
         seed = seed if seed is not None else random.Random().getrandbits(32)
-        floor_sequence = run_floors.sample_floor_sequence(random.Random(seed))
         self.active_run = RunState(
-            seed=seed, floor_sequence=floor_sequence,
+            seed=seed, map=run_map.generate_run_map(random.Random(seed)),
             difficulty="normal" if is_daily else self.difficulty,
             unlocked_towers=list(card_pool.STARTER_TOWERS), is_daily=is_daily,
         )
-        self._load_floor(0)
+        self._enter_map()
 
-    def _floor_load_context(self, run, floor_index):
+    def _floor_load_context(self, run, node):
         """The (relic_modifiers, escalation, rng) triple _load_level_object()
-        needs to load `floor_index` of `run` -- shared by _load_floor() (a
-        normal floor transition, or a mid-run restart of the current
-        floor -- see reset()) and resume_saved_run() (which needs the
-        identical derivation for whatever floor the resumed run was
-        already on), so the two don't independently re-derive the same
+        needs to load `node` (a combat/elite MapNode) of `run` -- shared by
+        _load_combat_node() (a normal node transition, or a mid-run restart
+        of the current node -- see reset()) and resume_saved_run() (which
+        needs the identical derivation for whatever node the resumed run
+        was already on), so the two don't independently re-derive the same
         three values and risk drifting apart if a future change alters
-        what a floor-load needs derived from a RunState."""
+        what a node-load needs derived from a RunState. escalation is
+        keyed on the node's row (the depth value a branching map's
+        escalation math uses -- see RunState.current_row), bumped further
+        by run_escalation.apply_elite_multiplier for an Elite node."""
+        escalation = run_escalation.escalation_for_floor(node.row)
+        if node.node_type == "elite":
+            escalation = run_escalation.apply_elite_multiplier(escalation)
         return (
-            relics.compose_relic_modifiers(run.relics, floor_index, run.has_spent_gold),
-            run_escalation.escalation_for_floor(floor_index),
-            self._run_rng(run, _FLOOR_RNG_STREAM, floor_index),
+            relics.compose_relic_modifiers(run.relics, node.row, run.has_spent_gold),
+            escalation,
+            self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
         )
 
-    def _run_rng(self, run, stream, floor_index):
-        # A floor's own routing rng and that floor's draft-pick rng are
-        # both deterministically re-derived from (run.seed, floor_index)
-        # rather than carried as one continuously-consumed random.Random
-        # across floors, so resuming a saved run needs no RNG state
-        # serialized at all -- just re-derive the same object the same way
-        # on load (see resume_saved_run(), the other caller that needs
-        # this before self.active_run is even set, which is why `run` is
-        # taken as a parameter here instead of read off self.active_run).
-        # `stream` (one of the _*_RNG_STREAM string constants above) keeps
-        # the two derived streams from colliding despite being seeded off
-        # the same (seed, floor_index) pair.
-        return random.Random(f"{run.seed}:{stream}:{floor_index}")
+    def _run_rng(self, run, stream, key):
+        # A node's own routing rng, that node's own shop offer, an Event's
+        # own pick/item-grant, and a Treasure's own relic pick are all
+        # deterministically re-derived from (run.seed, key) rather than
+        # carried as one continuously-consumed random.Random across the
+        # run, so resuming a saved run needs no RNG state serialized at all
+        # -- just re-derive the same object the same way on load (see
+        # resume_saved_run(), the other caller that needs this before
+        # self.active_run is even set, which is why `run` is taken as a
+        # parameter here instead of read off self.active_run). `stream`
+        # (one of the _*_RNG_STREAM string constants above) keeps the
+        # several derived streams from colliding despite often being seeded
+        # off the same (seed, key) pair. `key` is a node's own id (a
+        # string, unique within the run's map) for everything but a Shop's
+        # per-visit offer and an Event option's own item grant, which fold
+        # in one further piece of identity (see _enter_shop_node/
+        # _resolve_event_choice) -- critically, this must never be a bare
+        # row number: two sibling nodes in the same row would otherwise
+        # derive byte-identical rng, silently defeating branching (both
+        # forks of a choice would route/offer identically).
+        return random.Random(f"{run.seed}:{stream}:{key}")
 
-    def _load_floor(self, floor_index):
-        """Load floor `floor_index` of self.active_run. Resets everything
-        via _load_level_object exactly like any other level load -- towers,
-        the grid, and wave state are always rebuilt fresh per floor, the
-        same way a deckbuilder run doesn't carry board state between
-        combats. Only the run's own lives carry across floor loads (floor 0
-        is the one exception: RunState starts with lives=0 as a
-        placeholder, captured for real from floor 0's own freshly-loaded
-        Economy just below -- the same starting_lives every other level
-        load already uses, just also saved off for floor 1 onward to carry
-        forward). Battle gold is never carried -- every floor's Economy
-        gets a fresh starting_gold via _load_level_object's own
-        construction (relic-adjustable via starting_gold_multiplier the
-        same as any other floor), same as if this were the very first
-        floor of the run every time; see CLAUDE.md's "Two currencies"
-        section for why. The sequence's last floor always loads
-        endless=True (see WaveManager's own endless tail) -- a run only
-        ever ends by permadeath, never by "finishing" the last floor; see
-        update()'s win-check for the other half of that.
+    def _load_combat_node(self, node):
+        """Load `node` (a Combat/Elite MapNode) of self.active_run. Resets
+        everything via _load_level_object exactly like any other level
+        load -- towers, the grid, and wave state are always rebuilt fresh
+        per floor, the same way a deckbuilder run doesn't carry board
+        state between combats. Only the run's own lives carry across node
+        loads (the run's very first resolved node is the one exception:
+        RunState starts with lives=0 as a placeholder, captured for real
+        from that node's own freshly-loaded Economy just below -- the same
+        starting_lives every other level load already uses, just also
+        saved off for every later node to carry forward). Battle gold is
+        never carried -- every node's Economy gets a fresh starting_gold
+        via _load_level_object's own construction (relic-adjustable via
+        starting_gold_multiplier the same as any other floor), same as if
+        this were the very first floor of the run every time; see
+        CLAUDE.md's "Two currencies" section for why. The map's boss node
+        (the only node in its final row) always loads endless=True (see
+        WaveManager's own endless tail) -- a run only ever ends by
+        permadeath, never by "finishing" the boss floor; see update()'s
+        win-check for the other half of that.
 
-        run is passed straight through to _load_level_object()'s own
+        `run` is passed straight through to _load_level_object()'s own
         `active_run` parameter -- see its docstring for why that already
         builds the correct, run-narrowed button menu in its one
-        _rebuild_button_rects() call, with nothing left for _load_floor to
+        _rebuild_button_rects() call, with nothing left for this method to
         restore or rebuild itself afterward.
 
-        Also doubles as the restart path for the current floor of an
-        active run (see reset()) -- called again with the same floor_index
-        it's already on, which is exactly "reload this floor from scratch"
-        since run.lives (what floor_index != 0 restores from) doesn't
-        change again until either this floor actually clears (see
-        _advance_run_floor) or its own next draft picks a one-time relic
-        bonus (_apply_one_time_relic_bonus) -- neither reachable mid-floor.
+        Also doubles as the restart path for the current node of an active
+        run (see reset()) -- called again with the same node it's already
+        on, which is exactly "reload this floor from scratch" since
+        run.lives (what a non-first node restores from) doesn't change
+        again until either this floor actually clears (see
+        _advance_run_floor) or its own next shop visit picks a one-time
+        relic bonus (_apply_one_time_relic_bonus) -- neither reachable
+        mid-floor.
 
         _resumed_from_save is passed straight through as-is (see
         _load_level_object's own `resumed_from_save` parameter) -- unlike
         start_new_run(), which explicitly resets it since starting a
         brand new run always is the "unrelated fresh session" case that
-        flag exists to catch, _load_floor is never that: it always
+        flag exists to catch, this method is never that: it always
         continues whatever run is already active, resumed or not, so
-        whatever this flag already was stays exactly as it was."""
+        whatever this flag already was stays exactly as it was.
+
+        Assumes run.current_node_id is already set to node.id (see
+        _enter_node, which sets it before dispatching here; reset()'s own
+        restart path leaves it untouched since it's already correct)."""
         run = self.active_run
-        run.floor_index = floor_index
-        level_id = run.current_level_id
-        relic_modifiers, escalation, rng = self._floor_load_context(run, floor_index)
+        relic_modifiers, escalation, rng = self._floor_load_context(run, node)
         self._load_level_object(
-            LEVELS[level_id], endless=run.is_final_floor,
+            LEVELS[node.level_id], endless=run.is_final_floor,
             difficulty_override=run.difficulty, rng=rng, escalation=escalation, relic_modifiers=relic_modifiers,
             active_run=run, resumed_from_save=self._resumed_from_save,
         )
-        self.current_level_id = level_id
-        if floor_index == 0:
+        self.current_level_id = node.level_id
+        if not run.visited_node_ids:
             run.lives = self.economy.lives
         else:
             self.economy.lives = run.lives
@@ -427,37 +502,41 @@ class Game:
         # folded into _load_level_object's own Economy construction, since
         # it's a flat bonus, not part of the starting-gold formula itself
         # (see relic_modifiers.starting_gold_multiplier, which IS folded in
-        # there instead). Unlike gold itself, there's no floor_index == 0
-        # special case left to worry about here now that gold never carries
-        # forward -- every floor gets this bonus exactly once, the instant
-        # it loads.
+        # there instead). Unlike gold itself, there's no "first node"
+        # special case left to worry about here now that gold never
+        # carries forward -- every floor gets this bonus exactly once, the
+        # instant it loads.
         self.economy.add_gold(relic_modifiers.gold_per_floor_bonus)
         self.state = GameState.PLAYING
 
     def _advance_run_floor(self):
-        """One floor of self.active_run just cleared (see update()'s
-        win-check) -- carry lives forward, convert this floor's own
-        leftover battle gold into shop currency (see shop.income_for_floor;
-        battle gold itself is never carried, see _load_floor), and show the
-        floor-cleared results screen. self.towers/self.economy are still
-        this just-cleared floor's own live state at this point (the next
-        floor isn't loaded until the player leaves the shop -- see
-        _enter_draft/_handle_draft_click), so _tower_results() still has
-        something real to show, and self.economy.gold here is genuinely
-        this floor's own final leftover amount, not yet reset for the next
-        one."""
+        """One combat/elite node of self.active_run just cleared (see
+        update()'s win-check) -- carry lives forward, mark the node
+        visited, convert this floor's own leftover battle gold into shop
+        currency (see shop.income_for_floor; battle gold itself is never
+        carried, see _load_combat_node), and show the floor-cleared results
+        screen. self.towers/self.economy are still this just-cleared
+        floor's own live state at this point (the map isn't shown again
+        until the player leaves this results screen -- see _enter_map),
+        so _tower_results() still has something real to show, and self.
+        economy.gold here is genuinely this floor's own final leftover
+        amount, not yet reset for the next one."""
         run = self.active_run
+        node = run.map.node(run.current_node_id)
         run.lives = self.economy.lives
-        run.shop_currency += shop.income_for_floor(run.floor_index, self.economy.gold)
+        run.visited_node_ids.append(node.id)
+        run.shop_currency += shop.income_for_floor(
+            node.row, self.economy.gold, is_elite=node.node_type == "elite",
+        )
         self._record_meta_progress("total_floors_cleared")
         self._cache_tower_results()
         self.state = GameState.FLOOR_CLEARED
 
     def _record_run_permadeath(self):
         """self.active_run just ended by permadeath -- the only way a run
-        ever ends (its last floor always loads endless=True, so
+        ever ends (the map's boss node always loads endless=True, so
         all_waves_complete structurally can't fire for it either -- see
-        _load_floor's docstring). Same shape as _advance_run_floor: one
+        _load_combat_node's docstring). Same shape as _advance_run_floor: one
         helper update()'s win/loss branches each delegate a run-specific
         multi-step side effect to, rather than growing update() itself.
         floors_cleared doubles as the run's own score, a simple,
@@ -480,20 +559,87 @@ class Game:
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
 
-    def _enter_draft(self):
-        """Advance from FLOOR_CLEARED into the Shop screen (see GameState.
-        DRAFT's own naming note for why the code still says "draft") --
-        computes this floor-clear's shop offer (both tower and relic cards
-        together now, see shop.build_offer) and switches to GameState.
-        DRAFT. Skips straight to the next floor with no shop at all only if
-        that offer comes back completely empty (both pools exhausted --
-        every tower unlocked and every relic held), same as the old draft
-        screen's own empty-offer skip."""
-        next_floor = self.active_run.floor_index + 1
-        rng = self._run_rng(self.active_run, _DRAFT_RNG_STREAM, next_floor)
-        self.draft_choices = shop.build_offer(rng, self.active_run, meta_progression_path=self.meta_progression_path)
+    # --- The run's own branching map ---
+
+    def _enter_map(self):
+        """(Re-)enter the run's branching map screen -- called once from
+        start_new_run() (before any node has ever been picked) and again
+        from _finish_node() every time a node's own resolution completes.
+        Rebuilds map_node_rects fresh every time, same "computed fresh, not
+        a persistent cache" spirit as draft_choices -- there's nothing
+        about the map's own layout that ever changes mid-run (unlike
+        level_select_rects, this never needs a separate rebuild-on-scroll
+        step; see ui.py's own layout comment for why this screen never
+        scrolls)."""
+        self.map_node_rects = ui.build_map_node_rects(self.active_run.map)
+        self.state = GameState.MAP
+
+    def _available_node_ids(self):
+        """Which node ids the player can currently click into from the map
+        screen -- the map's own row-0 nodes if nothing's been picked yet,
+        else whatever the current node's own edges point to. The single
+        source of truth both _handle_map_click's legality check and ui.
+        draw_map_screen's "available" visual state read from, so the two
+        can't drift on what's actually clickable."""
+        run = self.active_run
+        if run.current_node_id is None:
+            return run.map.start_node_ids
+        return run.map.edges.get(run.current_node_id, ())
+
+    def _handle_map_click(self, pos):
+        """A click on the map screen -- a silent no-op if it didn't land on
+        a currently-available node, same "click does nothing" precedent
+        try_place_tower's own unbuildable-spot case already sets."""
+        node_id = ui.get_clicked_map_node(pos, self.map_node_rects)
+        if node_id is None or node_id not in self._available_node_ids():
+            return
+        self._enter_node(node_id)
+
+    def _enter_node(self, node_id):
+        """Commit to `node_id` as the run's new current node and dispatch
+        to whichever node type it is. Sets run.current_node_id before
+        dispatching -- every _enter_*_node method below (and _load_combat_
+        node, via _floor_load_context/RunState.current_row) reads it
+        already set, rather than each one setting it independently."""
+        run = self.active_run
+        run.current_node_id = node_id
+        node = run.map.node(node_id)
+        if node.node_type in ("combat", "elite"):
+            self._load_combat_node(node)
+        elif node.node_type == "shop":
+            self._enter_shop_node(node)
+        elif node.node_type == "event":
+            self._enter_event_node(node)
+        elif node.node_type == "rest":
+            self._enter_rest_node(node)
+        elif node.node_type == "treasure":
+            self._enter_treasure_node(node)
+
+    def _finish_node(self, node_id):
+        """Shared terminal step for every non-combat node's own resolution
+        (Shop's Continue button, an Event's chosen option, Rest/Treasure's
+        auto-resolve) -- mark it visited and return to the map. A combat/
+        elite node's own clear already appends its own id in
+        _advance_run_floor, so this is never called for those (there's no
+        separate "leave the results screen" step distinct from pressing
+        any key on FLOOR_CLEARED, which goes straight to _enter_map)."""
+        self.active_run.visited_node_ids.append(node_id)
+        self._enter_map()
+
+    def _enter_shop_node(self, node):
+        """Enter the Shop screen for `node` (see GameState.DRAFT's own
+        naming note for why the code still says "draft") -- computes this
+        visit's offer (both tower and relic cards together, see shop.
+        build_offer) and switches to GameState.DRAFT. Resolves the node
+        immediately, with no shop at all, only if that offer comes back
+        completely empty (both pools exhausted -- every tower unlocked and
+        every relic held), same as the old draft screen's own empty-offer
+        skip."""
+        run = self.active_run
+        rng = self._run_rng(run, _DRAFT_RNG_STREAM, node.id)
+        self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
         if not self.draft_choices:
-            self._load_floor(next_floor)
+            self._finish_node(node.id)
             return
         self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
         self.shop_purchased_indices = set()
@@ -501,10 +647,10 @@ class Game:
 
     def _handle_draft_click(self, pos):
         """A click anywhere on the Shop screen -- either the Continue
-        button (leave the shop and load the next floor, buying nothing
-        else) or one of this visit's item cards (attempt to buy it)."""
+        button (leave the shop and return to the map, buying nothing else)
+        or one of this visit's item cards (attempt to buy it)."""
         if self.shop_continue_button_rect.collidepoint(pos):
-            self._load_floor(self.active_run.floor_index + 1)
+            self._finish_node(self.active_run.current_node_id)
             return
         index = ui.get_clicked_draft_choice(pos, self.draft_choice_rects)
         if index is None or index in self.shop_purchased_indices:
@@ -534,11 +680,91 @@ class Game:
         if not unlimited:
             run.shop_currency -= price
         if item.kind == "relic":
-            run.relics.append(item.key)
-            self._apply_one_time_relic_bonus(relics.RELICS[item.key])
+            self._grant_relic(item.key)
         else:
             run.unlocked_towers.append(item.key)
         self.shop_purchased_indices.add(index)
+
+    def _grant_relic(self, relic_key):
+        """Add `relic_key` to the active run's relics and apply its
+        one-time bonus, if it has one (see _apply_one_time_relic_bonus) --
+        the one choke point every relic-granting path (a Shop purchase, a
+        Treasure node's guaranteed pick) routes through, so a future
+        relic-granting path can't forget the one-time half of this
+        pairing. events.resolve_event_option grants its own Random Event
+        relics independently (see that function's own comment for why it
+        can't call back into Game)."""
+        self.active_run.relics.append(relic_key)
+        self._apply_one_time_relic_bonus(relics.RELICS[relic_key])
+
+    def _enter_event_node(self, node):
+        """Enter the Random Event screen for `node` -- picks one Event
+        (see events.pick_event) deterministically from this node's own id,
+        so the same seed always shows the same event at the same node."""
+        run = self.active_run
+        rng = self._run_rng(run, _EVENT_RNG_STREAM, node.id)
+        self.current_event = events.pick_event(rng)
+        self.event_option_rects = ui.build_event_option_rects(len(self.current_event.options))
+        self.event_phase = "choose"
+        self.event_chosen_option = None
+        self.event_resolution = None
+        self.state = GameState.EVENT
+
+    def _handle_event_click(self, pos):
+        """A click on the Event screen -- in the "resolved" phase (an
+        option's already been picked), any click moves on, same "press any
+        key to continue" spirit FLOOR_CLEARED's own keydown handling uses;
+        otherwise resolves whichever option (if any) was clicked."""
+        if self.event_phase == "resolved":
+            self._finish_node(self.active_run.current_node_id)
+            return
+        index = ui.get_clicked_event_option(pos, self.event_option_rects)
+        if index is None:
+            return
+        self._resolve_event_choice(index)
+
+    def _resolve_event_choice(self, index):
+        run = self.active_run
+        node_id = run.current_node_id
+        option = self.current_event.options[index]
+        # Keyed on the option actually chosen (not the event itself, and
+        # not just the node) -- see events.resolve_event_option's own
+        # docstring for why only the branch actually taken needs to be
+        # reproducible.
+        item_rng = self._run_rng(run, _EVENT_ITEM_RNG_STREAM, f"{node_id}:{option.key}")
+        self.event_resolution = events.resolve_event_option(
+            run, option, item_rng, meta_progression_path=self.meta_progression_path,
+        )
+        self.event_chosen_option = option
+        self.event_phase = "resolved"
+
+    def _enter_rest_node(self, node):
+        """A Rest node auto-resolves the instant it's entered -- no player
+        choice to make, unlike Shop/Event -- healing run.lives by run_map.
+        heal_amount_for_row(node.row) and showing a static confirmation
+        screen (see ui.draw_rest_screen)."""
+        heal = run_map.heal_amount_for_row(node.row)
+        self.active_run.lives += heal
+        self.rest_heal_amount = heal
+        self.state = GameState.REST
+
+    def _enter_treasure_node(self, node):
+        """A Treasure node auto-resolves the instant it's entered -- a
+        guaranteed shop-currency payout (run_map.treasure_shop_currency_
+        for_row) plus one guaranteed relic pick, degrading gracefully to
+        currency-only once every relic is already held (relics.
+        relic_offer's own empty-once-exhausted precedent, same as a Shop
+        offer can run dry -- see _enter_shop_node)."""
+        run = self.active_run
+        currency = run_map.treasure_shop_currency_for_row(node.row)
+        run.shop_currency += currency
+        self.treasure_granted_currency = currency
+        rng = self._run_rng(run, _TREASURE_RNG_STREAM, node.id)
+        picks = relics.relic_offer(rng, run, count=1)
+        self.treasure_granted_relic = picks[0] if picks else None
+        if picks:
+            self._grant_relic(picks[0])
+        self.state = GameState.TREASURE
 
     def _scaled_starting_gold(self, level, mode, extra_multiplier=1.0):
         """`level.starting_gold` scaled by `mode.starting_gold_multiplier`
@@ -553,12 +779,12 @@ class Game:
 
     def _apply_one_time_relic_bonus(self, relic):
         """Sturdy Gate (relics.py's own RelicModifiers docstring for the
-        full reasoning) can structurally never be bought before floor 0's
-        Shop screen -- the earliest possible shop visit is after floor 0
-        clears, offering floor 1 (see _enter_draft), by which point floor
-        0's Economy is long gone and every later floor's lives comes from
-        the run's own carried-forward value instead (see _load_floor).
-        Baking the bonus into Economy
+        full reasoning) can structurally never be bought before the run's
+        very first node clears -- the earliest possible shop visit (or
+        Treasure node) is reached from the map only after that, by which
+        point that first node's own Economy is long gone and every later
+        node's lives comes from the run's own carried-forward value
+        instead (see _load_combat_node). Baking the bonus into Economy
         construction the way every other relic modifier works would make
         it permanently inert no matter when it's picked -- so instead,
         apply it directly onto the run's carried lives the instant the card
@@ -583,7 +809,7 @@ class Game:
         # whatever this floor's relics resolve to when building a fresh
         # tower -- see its own comment for which fields that means today.
         self.relic_modifiers = relic_modifiers
-        # False (the default) for every loader except _load_floor/
+        # False (the default) for every loader except _load_combat_node/
         # resume_saved_run, mirroring active_run just below -- taken as an
         # explicit parameter, not set after the fact, so resume_saved_run()
         # can pass resumed_from_save=True directly instead of having to
@@ -593,7 +819,7 @@ class Game:
         # disk) from later deleting that unrelated save on its own
         # eventual victory/game-over.
         self._resumed_from_save = resumed_from_save
-        # None (the default) for every loader except _load_floor/
+        # None (the default) for every loader except _load_combat_node/
         # resume_saved_run, the two callers that actually have a RunState
         # to thread through -- taking it as a parameter here, rather than
         # every caller setting self.active_run and re-calling
@@ -630,13 +856,14 @@ class Game:
         )
         # escalation/relic_modifiers both default to a no-op (safe as literal
         # defaults -- both are frozen/immutable) unless a caller passes a
-        # real one -- only _load_floor does, since only it knows which floor
-        # of a run this is and what relics that run has drafted. Composed
-        # into the same construction `mode`'s own multipliers already
-        # occupy, same "extra factor, never replacing" rule difficulty.py's
-        # own docstring states. gold_per_floor_bonus is the one relic_
-        # modifiers field NOT applied here -- _load_floor adds it after this
-        # method returns, see its own comment, since it's meant to apply on
+        # real one -- only _load_combat_node does, since only it knows which
+        # node of a run this is and what relics that run has drafted.
+        # Composed into the same construction `mode`'s own multipliers
+        # already occupy, same "extra factor, never replacing" rule
+        # difficulty.py's own docstring states. gold_per_floor_bonus is the
+        # one relic_modifiers field NOT applied here -- _load_combat_node
+        # adds it after this method returns, see its own comment, since it's
+        # meant to apply on
         # top of every floor's economy, not just what's constructed fresh
         # here. relic_modifiers has no starting_lives field at all, since a
         # relic can never be held this early (see Game._apply_one_time_
@@ -758,22 +985,26 @@ class Game:
         -- self.state hasn't been reassigned to PLAYING yet at this point,
         both callers do that themselves right after reset() returns, so it
         still reliably reflects which of the two ever calls this), this
-        restarts the run's own current floor (_load_floor(self.active_run.
-        floor_index) -- same run, same floor, fresh towers/enemies/economy
-        for that floor, drafted pool/relics/carried gold-lives all
-        untouched) rather than silently discarding the whole run the way a
-        bare _load_level_object() call would (see its own active_run
-        parameter, reset to None on every call unless a caller passes one
-        through explicitly). A run that's already ended by permadeath
-        (state == GAME_OVER, since _record_run_permadeath never clears
-        active_run) has nothing left to restart *into*: the run's outcome
-        is already recorded, so resurrecting it here would let a player
-        undo their own death for free. That falls through to the same
-        plain, run-less reload every other reset() has always done, same
-        as classic/Practice/playtest play."""
+        restarts the run's own current node (_load_combat_node(run.map.
+        node(run.current_node_id)) -- same run, same floor, fresh towers/
+        enemies/economy for that floor, drafted pool/relics/carried
+        gold-lives all untouched) rather than silently discarding the whole
+        run the way a bare _load_level_object() call would (see its own
+        active_run parameter, reset to None on every call unless a caller
+        passes one through explicitly). A run that's already ended by
+        permadeath (state == GAME_OVER, since _record_run_permadeath never
+        clears active_run) has nothing left to restart *into*: the run's
+        outcome is already recorded, so resurrecting it here would let a
+        player undo their own death for free. That falls through to the
+        same plain, run-less reload every other reset() has always done,
+        same as classic/Practice/playtest play. Only ever reachable with the
+        current node still a combat/elite one -- PAUSED is only reachable
+        from PLAYING, which only a combat/elite node's own load ever
+        enters, so run.map.node(run.current_node_id) is always a node
+        _load_combat_node can actually handle."""
         if self.active_run is not None and self.state == GameState.PAUSED:
-            # _load_floor() already sets self.state = PLAYING itself --
-            # left alone here rather than clobbered by the trailing MENU
+            # _load_combat_node() already sets self.state = PLAYING itself
+            # -- left alone here rather than clobbered by the trailing MENU
             # assignment below, which is only ever right for the two
             # classic-reload branches. Harmless for reset()'s own two real
             # callers either way (both reassign PLAYING themselves right
@@ -781,7 +1012,8 @@ class Game:
             # caller that doesn't -- a direct call, the way this method's
             # own tests exercise it -- deserves the state this branch
             # actually produced, not a state it never was.
-            self._load_floor(self.active_run.floor_index)
+            run = self.active_run
+            self._load_combat_node(run.map.node(run.current_node_id))
         else:
             if self.current_level_id is None:
                 # custom level: nothing in LEVELS to re-look-up
@@ -848,15 +1080,15 @@ class Game:
         that happened before the save, not just what happens after.
 
         A resumed run's escalation/relic_modifiers/rng are re-derived here
-        via the same _floor_load_context() _load_floor() itself calls for
-        that same floor -- WaveManager's own multipliers (enemy_hp/speed/
+        via the same _floor_load_context() _load_combat_node() itself calls
+        for that same node -- WaveManager's own multipliers (enemy_hp/speed/
         gold) and its routing rng are never touched by wave_manager.
         restore() below (that only restores wave_index/state/between_wave_
         timer), so leaving these three at _load_level_object()'s own
         no-op defaults would silently understate this floor's difficulty/
         gold and make its enemy routing merely unseeded (rather than
         deterministic) for the rest of the floor, only self-correcting
-        once the *next* floor's own _load_floor() call gets it right.
+        once the *next* node's own _load_combat_node() call gets it right.
         Re-deriving the rng this way reproduces what a *fresh* load of
         this floor would draw, not necessarily what an uninterrupted
         playthrough already would have consumed by save time -- no rng
@@ -866,21 +1098,23 @@ class Game:
         already left it; later waves can route differently post-resume
         than they would have without one. relic_modifiers.gold_per_floor_
         bonus is the one exception deliberately NOT re-applied here
-        (unlike _load_floor's own call) -- it was already added once, back
-        when this floor was first entered, and that's already baked into
-        save_data["gold"] below; re-adding it here would double it."""
+        (unlike _load_combat_node's own call) -- it was already added
+        once, back when this floor was first entered, and that's already
+        baked into save_data["gold"] below; re-adding it here would
+        double it."""
         level = save_data["level"]
         # save_data["run"] is None for a save with no active run (classic/
         # Practice/editor-playtest play, or one taken before this key
         # existed -- see save_state.py's own docstring) -- passed straight
         # through to _load_level_object()'s own `active_run` parameter
-        # either way, same as _load_floor() does, so its one
+        # either way, same as _load_combat_node() does, so its one
         # _rebuild_button_rects() call already builds the correct menu
         # (every tower, or just this run's drafted pool) with nothing left
         # for resume_saved_run() to restore or rebuild itself afterward.
         run = save_data.get("run")
         if run is not None:
-            relic_modifiers, escalation, rng = self._floor_load_context(run, run.floor_index)
+            node = run.map.node(run.current_node_id)
+            relic_modifiers, escalation, rng = self._floor_load_context(run, node)
             # The run's own pinned difficulty, not save_data["difficulty"]
             # (save_run() writes that from the same source, but reading it
             # straight off the already-reconstructed RunState here doesn't
@@ -913,8 +1147,8 @@ class Game:
     def _start_daily_challenge(self, seed=None):
         """Start today's Daily Run -- a roguelike run seeded off today's
         UTC date (daily_challenge.todays_seed()) instead of a random one,
-        so every player sees the exact same floor_sequence and draft
-        offers today and their own skill/picks are the only variable.
+        so every player sees the exact same branching map and shop offers
+        today and their own skill/picks are the only variable.
         Genuinely just a run otherwise -- see start_new_run's own
         docstring for what is_daily=True actually does."""
         seed = seed if seed is not None else daily_challenge.todays_seed()
@@ -984,7 +1218,16 @@ class Game:
                     self._handle_help_click(event.pos)
                 elif self.state == GameState.DRAFT:
                     self._handle_draft_click(event.pos)
+                elif self.state == GameState.MAP:
+                    self._handle_map_click(event.pos)
+                elif self.state == GameState.EVENT:
+                    self._handle_event_click(event.pos)
                 else:
+                    # REST/TREASURE deliberately have no click handler of
+                    # their own -- same "press any key" precedent FLOOR_
+                    # CLEARED sets (see _handle_keydown), a click there
+                    # just falls through here and no-ops (self.state !=
+                    # PLAYING).
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 self._handle_right_click()
@@ -1102,14 +1345,20 @@ class Game:
                 self.state = GameState.PLAYING
         elif self.state == GameState.FLOOR_CLEARED:
             # Escape quits, same as every other post-battle results screen
-            # (VICTORY/GAME_OVER just above) -- any other key advances,
-            # same "press any key to continue" spirit as the menu's own
-            # catch-all, since there's nothing to choose between here
-            # (that's the draft screen's job, entered next).
+            # (VICTORY/GAME_OVER just above) -- any other key returns to
+            # the map, same "press any key to continue" spirit as the
+            # menu's own catch-all, since there's nothing to choose between
+            # here (that's the map screen's job, entered next).
             if key == pygame.K_ESCAPE:
                 self.running = False
             else:
-                self._enter_draft()
+                self._enter_map()
+        elif self.state == GameState.MAP:
+            # No keyboard equivalent for picking a node, same as the build
+            # menu's own tower buttons -- but Escape should still quit, the
+            # same as every other non-PLAYING screen offers.
+            if key == pygame.K_ESCAPE:
+                self.running = False
         elif self.state == GameState.DRAFT:
             # No keyboard equivalent for picking a card, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
@@ -1117,6 +1366,32 @@ class Game:
             # leaving this the one screen with no keyboard way out at all.
             if key == pygame.K_ESCAPE:
                 self.running = False
+        elif self.state == GameState.EVENT:
+            # Escape quits, same as every other non-PLAYING screen; any
+            # other key only does something once an option's been chosen
+            # (see _handle_event_click's own "resolved" phase) -- no
+            # keyboard equivalent for picking an option itself, same as
+            # DRAFT above.
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            elif self.event_phase == "resolved":
+                self._finish_node(self.active_run.current_node_id)
+        elif self.state == GameState.REST:
+            # A Rest node has nothing to choose -- it's already resolved
+            # the instant it's entered (see _enter_rest_node) -- so any key
+            # but Escape just continues, same "press any key" spirit as
+            # FLOOR_CLEARED above.
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            else:
+                self._finish_node(self.active_run.current_node_id)
+        elif self.state == GameState.TREASURE:
+            # Same "already resolved on entry, press any key to continue"
+            # shape as REST above.
+            if key == pygame.K_ESCAPE:
+                self.running = False
+            else:
+                self._finish_node(self.active_run.current_node_id)
 
     def _handle_right_click(self):
         if self.state != GameState.PLAYING:
@@ -1979,10 +2254,10 @@ class Game:
             self._record_level_cleared()
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
-                # the run's last floor is always loaded endless=True (see
-                # _load_floor), so all_waves_complete structurally can
-                # never fire for it; this branch is only ever reached by a
-                # non-final floor clearing.
+                # the map's boss node is always loaded endless=True (see
+                # _load_combat_node), so all_waves_complete structurally
+                # can never fire for it; this branch is only ever reached
+                # by a non-final floor clearing.
                 self._advance_run_floor()
             else:
                 self.state = GameState.VICTORY
@@ -2048,6 +2323,65 @@ class Game:
             pygame.display.flip()
             return
 
+        # MAP/DRAFT/EVENT/REST/TREASURE are all full-screen, board-less
+        # states now (see GameState's own comment on why) -- each guarded
+        # on active_run is not None the same way FLOOR_CLEARED's own
+        # overlay below still is: active_run is None only ever happens by
+        # force-setting state directly (e.g. the render() smoke test's
+        # blanket sweep across every GameState), in which case falling
+        # through to the normal board/HUD/panel drawing below (with no
+        # overlay on top) is fine; crashing on it wouldn't be.
+        if self.state == GameState.MAP and self.active_run is not None:
+            run = self.active_run
+            # lives/shop_currency are meaningless before the run's very
+            # first node has ever loaded (run.lives is still its 0
+            # placeholder -- see RunState's own docstring) -- None hides
+            # the readout entirely rather than showing a misleading
+            # "Lives: 0" before any floor has actually been played.
+            has_played_a_node = run.current_node_id is not None
+            ui.draw_map_screen(
+                self.screen, self.font, self.small_font, run.map, self.map_node_rects,
+                run.current_node_id, run.visited_node_ids, self._available_node_ids(),
+                self._hovered_map_node(),
+                run.lives if has_played_a_node else None,
+                run.shop_currency if has_played_a_node else None,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.DRAFT and self.active_run is not None:
+            ui.draw_draft_screen(
+                self.screen, self.font, self.small_font,
+                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
+                self.shop_purchased_indices, self.active_run.shop_currency,
+                self.shop_continue_button_rect, self.economy.unlimited_gold,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.EVENT and self.active_run is not None:
+            ui.draw_event_screen(
+                self.screen, self.font, self.small_font, self.current_event, self.event_option_rects,
+                self._hovered_event_option(), self.event_phase, self.event_chosen_option, self.event_resolution,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.REST and self.active_run is not None:
+            ui.draw_rest_screen(
+                self.screen, self.font, self.small_font, self.rest_heal_amount, self.active_run.lives,
+            )
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.TREASURE and self.active_run is not None:
+            ui.draw_treasure_screen(
+                self.screen, self.font, self.small_font,
+                self.treasure_granted_relic, self.treasure_granted_currency,
+            )
+            pygame.display.flip()
+            return
+
         self.grid.draw(self.screen, self.assets)
         for tower in self.towers:
             tower.draw(self.screen, self.assets, self.tiny_font)
@@ -2098,23 +2432,16 @@ class Game:
             # every GameState) -- real gameplay only ever reaches
             # FLOOR_CLEARED via _advance_run_floor, which requires one.
             # Drawing nothing for that otherwise-unreachable combination is
-            # fine; crashing on it wouldn't be.
+            # fine; crashing on it wouldn't be. Kept as a frozen-board
+            # overlay (unlike MAP/DRAFT/EVENT/REST/TREASURE above) since
+            # it's always reached immediately from real combat on a board
+            # that still exists -- see GameState's own comment on this
+            # split.
+            node = self.active_run.map.node(self.active_run.current_node_id)
             ui.draw_floor_cleared_screen(
                 self.screen, self.font, self.small_font,
-                self.active_run.floor_index + 1, len(self.active_run.floor_sequence),
+                node.row + 1, self.active_run.map.final_row_index + 1,
                 self._cached_tower_results,
-            )
-        elif self.state == GameState.DRAFT and self.active_run is not None:
-            # active_run is None only ever happens by force-setting state
-            # directly (e.g. the render() smoke test's blanket sweep across
-            # every GameState) -- same guard, same reasoning, as FLOOR_
-            # CLEARED just above (this screen now reads self.active_run.
-            # shop_currency, so it can no longer render with none active).
-            ui.draw_draft_screen(
-                self.screen, self.font, self.small_font,
-                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
-                self.shop_purchased_indices, self.active_run.shop_currency,
-                self.shop_continue_button_rect, self.economy.unlimited_gold,
             )
 
         pygame.display.flip()
@@ -2168,6 +2495,18 @@ class Game:
         before it's clicked, same purpose _hovered_specialize_key serves
         for the stats panel's own choice buttons."""
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.draft_choice_rects)
+
+    def _hovered_map_node(self):
+        """The map node id currently under the mouse, or None -- same
+        "hover highlight uses the exact same lookup as the click handler"
+        precedent _hovered_draft_choice sets."""
+        return ui.get_clicked_map_node(pygame.mouse.get_pos(), self.map_node_rects)
+
+    def _hovered_event_option(self):
+        """Index into self.current_event.options/event_option_rects the
+        mouse is currently over, or None -- same purpose _hovered_draft_
+        choice serves for the Shop screen's own cards."""
+        return ui.get_clicked_event_option(pygame.mouse.get_pos(), self.event_option_rects)
 
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered

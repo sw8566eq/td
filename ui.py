@@ -477,7 +477,260 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         y += PANEL_ROW_HEIGHT
 
 
-# --- Draft screen (a roguelike run's own between-floors Shop -- see
+# --- Run map screen (see run_map.py/Game._enter_map) ---
+#
+# Slay-the-Spire convention: the run's start (row 0) at the bottom, the boss
+# (the final row) at the top. Full-screen, no side panel -- unlike gameplay,
+# this screen has no board/HUD/stats panel to share space with (see
+# GameState's own comment on why MAP is a full-screen state, not an overlay).
+
+MAP_TOP = 90
+MAP_BOTTOM = settings.SCREEN_HEIGHT - 60
+MAP_NODE_RADIUS = 24
+# Must match run_map.COLS -- how many columns a row's nodes are spread
+# across. A plain duplicated layout constant (not imported from run_map.py)
+# since ui.py otherwise has no reason to depend on that module at all -- the
+# same "small numeric constants sometimes just agree by convention rather
+# than by a shared import" spirit settings.py's own HUD_HEIGHT split
+# (HUD_TOP_STRIP_HEIGHT + HUD_BUTTON_ROW_HEIGHT) already accepts.
+MAP_COLS = 4
+
+MAP_NODE_TYPE_LABELS = {
+    "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
+}
+MAP_NODE_TYPE_COLORS = {
+    "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
+    "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
+    "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
+}
+
+
+def build_map_node_rects(game_map):
+    """One square Rect (MAP_NODE_RADIUS*2 per side, centered on where that
+    node's circle draws) per MapNode in `game_map`, keyed by node id -- dict-
+    keyed like build_level_select_rects, not list-indexed like
+    build_draft_choice_rects, since a node's id is a stable identity across
+    the whole run (unlike a per-visit shop offer's own cards). Rows are
+    stacked bottom (row 0) to top (the boss); columns spread evenly across
+    the full screen width. The run's map never scrolls (ROW_COUNT=6 rows
+    comfortably fit MAP_TOP..MAP_BOTTOM at this spacing), so unlike level_
+    select_rects there's no separate scroll-aware rebuild path needed."""
+    row_count = len(game_map.rows)
+    row_height = (MAP_BOTTOM - MAP_TOP) / (row_count - 1) if row_count > 1 else 0
+    col_width = settings.SCREEN_WIDTH / (MAP_COLS + 1)
+    rects = {}
+    for row in game_map.rows:
+        for node in row:
+            rect = pygame.Rect(0, 0, MAP_NODE_RADIUS * 2, MAP_NODE_RADIUS * 2)
+            rect.center = (round(col_width * (node.col + 1)), round(MAP_BOTTOM - node.row * row_height))
+            rects[node.id] = rect
+    return rects
+
+
+def get_clicked_map_node(pos, node_rects):
+    """Return the node id whose circle contains pos, or None."""
+    return _key_of_rect_containing(pos, node_rects)
+
+
+def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
+                     visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None):
+    """The run's whole branching map, shown in full from the very first
+    visit (see Game._enter_map) -- edges drawn first as plain lines, then
+    every node as a filled, color-by-type circle, modulated by state:
+    visited (dim, a checkmark), current (a bright ring), available (full
+    color, hover-highlighted), or locked (desaturated, not yet reachable).
+    `lives`/`shop_currency` are optional (None outside of an active run,
+    same "nothing to show" spirit draw_hud's own shop_currency param
+    follows) -- shown as a small readout up top since this screen has no
+    HUD of its own to read them from otherwise."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Choose your path", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
+
+    if lives is not None and shop_currency is not None:
+        info = small_font.render(f"Lives: {lives}   Shop currency: {shop_currency}", True, settings.COLOR_GOLD)
+        surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 58)))
+
+    for from_id, target_ids in game_map.edges.items():
+        if from_id not in node_rects:
+            continue
+        start = node_rects[from_id].center
+        for target_id in target_ids:
+            if target_id in node_rects:
+                pygame.draw.line(surface, settings.COLOR_NODE_EDGE, start, node_rects[target_id].center, width=2)
+
+    for row in game_map.rows:
+        for node in row:
+            rect = node_rects[node.id]
+            visited = node.id in visited_node_ids
+            current = node.id == current_node_id
+            available = node.id in available_node_ids
+            base_color = MAP_NODE_TYPE_COLORS[node.node_type]
+            fill_color = base_color if (visited or current or available) else settings.COLOR_NODE_LOCKED
+            pygame.draw.circle(surface, fill_color, rect.center, MAP_NODE_RADIUS)
+            border_color = settings.COLOR_BUTTON_SELECTED if (available and node.id == hovered_node_id) else settings.COLOR_TEXT
+            pygame.draw.circle(surface, border_color, rect.center, MAP_NODE_RADIUS, width=3 if current else 1)
+
+            label_color = settings.COLOR_TEXT_DIM if visited and not current else settings.COLOR_TEXT
+            label = small_font.render(MAP_NODE_TYPE_LABELS[node.node_type], True, label_color)
+            surface.blit(label, label.get_rect(center=rect.center))
+
+    hint = small_font.render(
+        "Click an available node to continue" if available_node_ids else "Nothing left to pick -- press any key",
+        True, settings.COLOR_TEXT_DIM,
+    )
+    surface.blit(hint, hint.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT - 30)))
+    esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
+    surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+# --- Random Event / Rest / Treasure screens (the run map's other three
+# non-combat, non-Shop node types -- see events.py/Game._enter_event_node/
+# _enter_rest_node/_enter_treasure_node) ---
+
+EVENT_OPTION_WIDTH = 480
+EVENT_OPTION_HEIGHT = 100
+EVENT_OPTION_GAP = 20
+EVENT_OPTIONS_TOP = 300
+
+
+def build_event_option_rects(count):
+    """`count` rects for an Event screen's options, stacked in a centered
+    vertical column -- mirrors build_draft_choice_rects' own per-visit,
+    list-indexed shape (an Event's options aren't a stable identity across
+    visits the way a map node's id is)."""
+    x = (settings.SCREEN_WIDTH - EVENT_OPTION_WIDTH) // 2
+    return [
+        pygame.Rect(x, EVENT_OPTIONS_TOP + i * (EVENT_OPTION_HEIGHT + EVENT_OPTION_GAP),
+                    EVENT_OPTION_WIDTH, EVENT_OPTION_HEIGHT)
+        for i in range(count)
+    ]
+
+
+def get_clicked_event_option(pos, option_rects):
+    """Return the index into `option_rects` (and the matching Event's own
+    `options`) that pos landed on, or None."""
+    for index, rect in enumerate(option_rects):
+        if rect.collidepoint(pos):
+            return index
+    return None
+
+
+def _describe_event_outcome(option, resolution):
+    """Plain-text lines describing what `option` actually did, once
+    resolved -- the currency/lives delta read straight off `option` itself
+    (already applied to the run by the time this draws), plus whatever
+    events.resolve_event_option's own `resolution` dict reports granting."""
+    lines = []
+    if option.shop_currency_delta:
+        lines.append(f"Shop currency: {option.shop_currency_delta:+d}")
+    if option.lives_delta:
+        lines.append(f"Lives: {option.lives_delta:+d}")
+    if resolution.get("relic"):
+        lines.append(f"Gained relic: {RELICS[resolution['relic']].display_name}")
+    if resolution.get("tower"):
+        lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
+    return lines or ["Nothing else happened."]
+
+
+def draw_event_screen(surface, font, small_font, event, option_rects, hovered_index, phase,
+                       chosen_option=None, resolution=None):
+    """`phase` is "choose" (the event's options are still on offer) or
+    "resolved" (one's been picked -- `chosen_option`/`resolution` describe
+    what happened; see Game._resolve_event_choice)."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render(event.display_name, True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 70)))
+
+    y = 130
+    for line in _wrap_text(event.prompt, small_font, EVENT_OPTION_WIDTH + 80):
+        text = small_font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += text.get_height() + 4
+
+    if phase == "choose":
+        for index, option in enumerate(event.options):
+            rect = option_rects[index]
+            fill_color = settings.COLOR_BUTTON_SELECTED if index == hovered_index else settings.COLOR_HUD_BG
+            pygame.draw.rect(surface, fill_color, rect, border_radius=8)
+            pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+            label = small_font.render(option.label, True, settings.COLOR_GOLD)
+            surface.blit(label, label.get_rect(midtop=(rect.centerx, rect.y + 10)))
+            desc_y = rect.y + 10 + label.get_height() + 6
+            for line in _wrap_text(option.description, small_font, rect.width - 24):
+                desc = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+                surface.blit(desc, desc.get_rect(midtop=(rect.centerx, desc_y)))
+                desc_y += desc.get_height() + 2
+        bottom = option_rects[-1].bottom if option_rects else EVENT_OPTIONS_TOP
+        hint = small_font.render("Choose one option above", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(midtop=(settings.SCREEN_WIDTH // 2, bottom + 20)))
+    else:
+        top = option_rects[0].y if option_rects else EVENT_OPTIONS_TOP
+        chosen_label = small_font.render(f"You chose: {chosen_option.label}", True, settings.COLOR_GOLD)
+        surface.blit(chosen_label, chosen_label.get_rect(midtop=(settings.SCREEN_WIDTH // 2, top)))
+        summary_y = top + chosen_label.get_height() + 16
+        for line in _describe_event_outcome(chosen_option, resolution or {}):
+            text = small_font.render(line, True, settings.COLOR_TEXT)
+            surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, summary_y)))
+            summary_y += PANEL_ROW_HEIGHT
+        hint = small_font.render("Press any key or click to continue", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(midtop=(settings.SCREEN_WIDTH // 2, summary_y + 16)))
+
+    esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
+    surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def draw_rest_screen(surface, font, small_font, heal_amount, lives_after):
+    """A Rest node's static, already-resolved screen (see Game.
+    _enter_rest_node -- there's no player choice here, unlike Event/Shop)."""
+    surface.fill(settings.COLOR_BG)
+    center_x = settings.SCREEN_WIDTH // 2
+    mid_y = settings.SCREEN_HEIGHT // 2
+    title = font.render("Rest Site", True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(center=(center_x, mid_y - 50)))
+    heal_line = small_font.render(f"You rest and recover {heal_amount} lives.", True, settings.COLOR_TEXT)
+    surface.blit(heal_line, heal_line.get_rect(center=(center_x, mid_y)))
+    lives_line = small_font.render(f"Lives: {lives_after}", True, settings.COLOR_LIVES)
+    surface.blit(lives_line, lives_line.get_rect(center=(center_x, mid_y + 30)))
+    hint = small_font.render("Press any key or click to continue", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, hint.get_rect(center=(center_x, mid_y + 70)))
+    esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
+    surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def draw_treasure_screen(surface, font, small_font, granted_relic_key, granted_currency):
+    """A Treasure node's static, already-resolved screen (see Game.
+    _enter_treasure_node) -- granted_relic_key is None once every relic is
+    already held (the currency half of a Treasure's reward never
+    degrades the same way)."""
+    surface.fill(settings.COLOR_BG)
+    center_x = settings.SCREEN_WIDTH // 2
+    mid_y = settings.SCREEN_HEIGHT // 2
+    title = font.render("Treasure", True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(center=(center_x, mid_y - 70)))
+    currency_line = small_font.render(f"+{granted_currency} shop currency", True, settings.COLOR_GOLD)
+    surface.blit(currency_line, currency_line.get_rect(center=(center_x, mid_y - 20)))
+
+    if granted_relic_key is not None:
+        relic = RELICS[granted_relic_key]
+        relic_line = small_font.render(f"Relic: {relic.display_name}", True, settings.COLOR_TEXT)
+        surface.blit(relic_line, relic_line.get_rect(center=(center_x, mid_y + 10)))
+        desc_y = mid_y + 36
+        for line in _wrap_text(relic.description, small_font, EVENT_OPTION_WIDTH):
+            desc = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+            surface.blit(desc, desc.get_rect(center=(center_x, desc_y)))
+            desc_y += desc.get_height() + 2
+    else:
+        none_line = small_font.render("(every relic is already held)", True, settings.COLOR_TEXT_DIM)
+        surface.blit(none_line, none_line.get_rect(center=(center_x, mid_y + 10)))
+
+    hint = small_font.render("Press any key or click to continue", True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, hint.get_rect(center=(center_x, mid_y + 100)))
+    esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
+    surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+# --- Draft screen (a roguelike run's own Shop, entered via a map node -- see
 # game.py's GameState.DRAFT for why the code still says "draft") ---
 
 DRAFT_CARD_WIDTH = settings.PANEL_WIDTH  # matches the sidebar's own visual width
@@ -595,11 +848,17 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     the layout, so the row doesn't reflow while shopping. `unlimited_gold`
     (see economy.py's own docstring) makes every item read as affordable
     regardless of `shop_currency`, mirroring how it already does for
-    battle gold in the build menu (see draw_hud). The board underneath
-    (grid/towers/HUD) is left drawn by the caller -- same "frozen board
-    behind a dark overlay" look draw_victory_screen/draw_game_over_screen
-    already use, for visual continuity between the floor that was just
-    cleared and the shop that's about to shape the next one."""
+    battle gold in the build menu (see draw_hud). A full-screen state (see
+    GameState's own comment on why), not an overlay on a frozen board the
+    way draw_victory_screen/draw_game_over_screen still are -- a Shop visit
+    is reached from the map now, not always immediately after a fresh
+    floor clear, so there's no board behind it that's reliably still
+    relevant. _draw_dim_overlay is still called for its dimmed-black
+    backdrop look (now just over the plain COLOR_BG fill this screen
+    starts with, rather than over a frozen board), keeping this screen's
+    visual identity consistent with the run's other full-screen node
+    screens (see draw_event_screen/draw_rest_screen/draw_treasure_screen)."""
+    surface.fill(settings.COLOR_BG)
     _draw_dim_overlay(surface)
 
     title = font.render("Shop: spend shop currency on towers and relics", True, settings.COLOR_GOLD)

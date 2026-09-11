@@ -28,6 +28,7 @@ import pytest  # noqa: E402
 import settings  # noqa: E402
 from game import Game, GameState  # noqa: E402
 from levels import Level  # noqa: E402
+from run_map import MapNode, RunMap  # noqa: E402
 
 
 def make_game(tmp_path, prefix="", **kwargs):
@@ -102,6 +103,38 @@ def finish_all_waves(game):
     step (e.g. to assert nothing happened yet)."""
     game.wave_manager.all_waves_complete = True
     game.enemies = []
+
+
+def start_first_floor(game, seed=1, **kwargs):
+    """game.start_new_run(seed=..., **kwargs) followed by picking the first
+    of its row-0 nodes -- the pre-branching-map behavior every test that
+    just wants "a run in progress on its first floor" relied on, before
+    start_new_run() stopped auto-loading floor 0 and started showing the
+    map instead (see Game._enter_map). Row 0 is always all-combat (see
+    run_map.py), so this always lands on GameState.PLAYING. Returns the
+    resulting RunState, same convenience `game.start_new_run` itself
+    doesn't offer (callers read game.active_run)."""
+    game.start_new_run(seed=seed, **kwargs)
+    game._enter_node(game.active_run.map.start_node_ids[0])
+    return game.active_run
+
+
+def make_linear_run_map(node_types, level_id=1):
+    """A trivial single-column RunMap, one node per row, chained straight
+    through (row i -> row i+1, no branching at all) -- for tests that need
+    a specific node type (Shop/Event/Rest/Treasure/Elite) at a specific
+    depth without hunting for a seed that happens to produce one from the
+    real generator. `node_types[i]` is row i's own type; every combat/elite
+    node uses `level_id` (a real LEVELS key)."""
+    rows = tuple(
+        (MapNode(
+            f"{row}-0", row=row, col=0, node_type=node_type,
+            level_id=level_id if node_type in ("combat", "elite") else None,
+        ),)
+        for row, node_type in enumerate(node_types)
+    )
+    edges = {rows[i][0].id: (rows[i + 1][0].id,) for i in range(len(rows) - 1)}
+    return RunMap(rows=rows, edges=edges)
 
 
 def make_custom_level(level_id="custom-slug", name="Custom Level"):

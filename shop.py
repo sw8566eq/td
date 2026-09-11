@@ -49,6 +49,11 @@ PRICE_ESCALATION = 1.5
 BASE_INCOME_PER_FLOOR = 3
 INCOME_GROWTH_PER_FLOOR = 1
 LEFTOVER_GOLD_CONVERSION_RATE = 0.10
+# An Elite map node's own reward bonus, on top of the normal formula above --
+# the risk/reward half of run_escalation.apply_elite_multiplier's own extra
+# difficulty: clearing the harder fight pays out more shop currency than an
+# ordinary Combat node at the same floor would have.
+ELITE_INCOME_MULTIPLIER = 1.5
 
 
 @dataclass(frozen=True)
@@ -94,10 +99,15 @@ def can_afford(shop_currency, price, unlimited=False):
     return unlimited or shop_currency >= price
 
 
-def income_for_floor(floor_index, leftover_gold):
+def income_for_floor(floor_index, leftover_gold, is_elite=False):
     """Shop currency earned when floor_index's floor clears, given
     `leftover_gold` battle gold still unspent at that moment -- the flat,
     escalating half plus a fraction of the leftover (see this module's own
-    docstring for why leftover gold converts here instead of vanishing)."""
+    docstring for why leftover gold converts here instead of vanishing).
+    `is_elite` scales the whole result up by ELITE_INCOME_MULTIPLIER --
+    an Elite map node's own reward for its extra risk (see
+    run_escalation.apply_elite_multiplier for the difficulty half of that
+    same trade)."""
     flat_income = BASE_INCOME_PER_FLOOR + INCOME_GROWTH_PER_FLOOR * floor_index
-    return flat_income + round(leftover_gold * LEFTOVER_GOLD_CONVERSION_RATE)
+    income = flat_income + round(leftover_gold * LEFTOVER_GOLD_CONVERSION_RATE)
+    return round(income * ELITE_INCOME_MULTIPLIER) if is_elite else income
