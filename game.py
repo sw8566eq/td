@@ -65,6 +65,7 @@ class GameState(Enum):
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
     HELP = auto()
+    CREDITS = auto()
     # A roguelike run's own extra states -- VICTORY stays reserved for
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
@@ -143,6 +144,7 @@ class Game:
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.achievements_back_rect = ui.build_achievements_back_rect()
         self.help_back_rect = ui.build_help_back_rect()
+        self.credits_back_rect = ui.build_credits_back_rect()
         # Newly-unlocked-achievement toasts -- see _record_achievement().
         self.achievement_toasts = []
 
@@ -1217,6 +1219,8 @@ class Game:
                     self._handle_achievements_click(event.pos)
                 elif self.state == GameState.HELP:
                     self._handle_help_click(event.pos)
+                elif self.state == GameState.CREDITS:
+                    self._handle_credits_click(event.pos)
                 elif self.state == GameState.DRAFT:
                     self._handle_draft_click(event.pos)
                 elif self.state == GameState.MAP:
@@ -1272,15 +1276,18 @@ class Game:
                         self.state = GameState.HELP
                     elif letter == "d":
                         self._start_daily_challenge()
+                    elif letter == "b":
+                        self.state = GameState.CREDITS
                 else:
                     self.start_new_run()
-        elif self.state == GameState.SETTINGS:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-        elif self.state == GameState.ACHIEVEMENTS:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-        elif self.state == GameState.HELP:
+        elif self.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
+                             GameState.HELP, GameState.CREDITS):
+            # These four share nothing but "Esc goes back to the menu" --
+            # each is otherwise driven entirely by its own click handler
+            # (Settings/Achievements have real buttons; Help/Credits are
+            # fully static). EDITOR isn't folded in here despite starting
+            # with the identical check, since it has real key handling of
+            # its own below Esc (see its own elif right after this one).
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
         elif self.state == GameState.EDITOR:
@@ -1722,15 +1729,28 @@ class Game:
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.state = GameState.ACHIEVEMENTS
 
-    def _handle_achievements_click(self, pos):
-        if self.achievements_back_rect.collidepoint(pos):
+    def _handle_static_screen_back_click(self, pos, back_rect):
+        """Shared body for every full-screen "click the Back to Menu
+        button" handler below -- kept as separate, per-screen public
+        methods (rather than one handler threaded through handle_events'
+        own click-routing table) so each stays independently named and
+        directly callable, matching how Game's other per-state click
+        handlers are organized."""
+        if back_rect.collidepoint(pos):
             self.state = GameState.MENU
+
+    def _handle_achievements_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.achievements_back_rect)
 
     # --- Help / How to Play ---
 
     def _handle_help_click(self, pos):
-        if self.help_back_rect.collidepoint(pos):
-            self.state = GameState.MENU
+        self._handle_static_screen_back_click(pos, self.help_back_rect)
+
+    # --- Credits ---
+
+    def _handle_credits_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.credits_back_rect)
 
     def _delete_save_if_this_run_was_resumed(self):
         """Called from both of update()'s win/loss branches -- a resumed
@@ -2321,6 +2341,11 @@ class Game:
 
         if self.state == GameState.HELP:
             ui.draw_help_screen(self.screen, self.font, self.small_font, self.help_back_rect)
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.CREDITS:
+            ui.draw_credits_screen(self.screen, self.font, self.small_font, self.credits_back_rect)
             pygame.display.flip()
             return
 
