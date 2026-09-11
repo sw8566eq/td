@@ -22,11 +22,49 @@ tower-driven chain_range/max_chain_targets above -- it fires on ANY hit
 exactly one non-recursive bounce via _apply_direct_damage, never a
 multi-link chain. See _find_chain_target for the nearest-unvisited-enemy
 lookup both mechanisms share.
+
+_apply_hit_effects also resolves several more relic-driven, per-enemy
+checks, each read straight off the enemy being hit (via getattr with a
+neutral default, so a lightweight test double missing the attribute is
+unaffected): Chilling Precision (relic_damage_vs_slowed_multiplier,
+gated on enemy.slow_timer > 0 -- read *before* this same hit's own slow
+application below, so a Frost tower's first-ever hit on a target never
+retroactively counts itself as "vs. a slowed enemy"), Choke Point
+(relic_damage_vs_early_route_multiplier, gated on enemy.distance_traveled
+< CHOKE_POINT_DISTANCE_THRESHOLD), Giant Slayer
+(relic_damage_vs_high_hp_multiplier, gated on enemy.max_hp >
+GIANT_SLAYER_HP_THRESHOLD), Aftershock (relic_slow_chance/
+relic_slow_effect, same chance-gated shape as the existing poison/chain
+relic rolls, just calling enemy.apply_slow()), and Overkill
+(relic_overkill_carry_fraction, checked after the hit resolves: any
+damage beyond what was needed to kill carries to the nearest other enemy
+within OVERKILL_CARRY_RANGE via _find_chain_target/_apply_direct_damage,
+the same non-recursive single hop Arcing Rounds' own bounce already
+uses). CHOKE_POINT_DISTANCE_THRESHOLD/GIANT_SLAYER_HP_THRESHOLD/
+OVERKILL_CARRY_RANGE are plain module constants here, not Relic fields --
+relics.py has no import dependency on tower.py/projectile.py, and every
+existing per-mechanic constant already lives beside the mechanic that
+consumes it.
+
+mark_effect (a Beacon-style tower's own field, not relic-driven -- see
+tower.BeaconTower) is a (damage_multiplier, duration) pair applied via
+enemy.apply_mark(), the same shape as slow_effect/poison_effect above.
 """
 
 import random
 
 import pygame
+
+# Choke Point's own cutoff: an enemy with less than this much path
+# distance behind it counts as "early in its route." Giant Slayer's own
+# cutoff matches its relic text ("more than 100 max HP") exactly, so
+# there's nothing to tune independently of the relic description itself.
+# Overkill's own search radius for a carry-over bounce target, the same
+# idea as arcing_rounds' own chain_range but a separate constant since the
+# two mechanisms are otherwise unrelated.
+CHOKE_POINT_DISTANCE_THRESHOLD = 200
+GIANT_SLAYER_HP_THRESHOLD = 100
+OVERKILL_CARRY_RANGE = 90
 
 
 class Projectile:
@@ -35,7 +73,13 @@ class Projectile:
                  poison_effect=None, sprite_name="", source=None,
                  relic_poison_chance=0.0, relic_poison_effect=None,
                  relic_crit_chance=0.0, relic_crit_damage_multiplier=1.0,
-                 relic_chain_chance=0.0, relic_chain_effect=None):
+                 relic_chain_chance=0.0, relic_chain_effect=None,
+                 mark_effect=None, relic_damage_vs_slowed_multiplier=1.0,
+                 relic_slow_chance=0.0, relic_slow_effect=None,
+                 relic_poison_ignores_shield=False,
+                 relic_damage_vs_early_route_multiplier=1.0,
+                 relic_damage_vs_high_hp_multiplier=1.0,
+                 relic_overkill_carry_fraction=0.0):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -73,6 +117,24 @@ class Projectile:
         # _apply_hit_effects/_apply_direct_damage.
         self.relic_chain_chance = relic_chain_chance
         self.relic_chain_effect = relic_chain_effect
+        # A Beacon-style tower's own mark -- (damage_multiplier, duration)
+        # or None, same shape as slow_effect/poison_effect above (this
+        # tower's own always-on hit effect, not a relic-driven chance
+        # roll). See enemy.apply_mark().
+        self.mark_effect = mark_effect
+        # The remaining relic-driven fields below all follow the exact
+        # same "neutral default, copied from a firing tower's own relic_*
+        # attribute by Tower.update()" shape as relic_poison_chance etc.
+        # above -- see relics.py's own field-by-field docstring for what
+        # each relic actually grants, and this module's own docstring for
+        # where each is checked in _apply_hit_effects.
+        self.relic_damage_vs_slowed_multiplier = relic_damage_vs_slowed_multiplier
+        self.relic_slow_chance = relic_slow_chance
+        self.relic_slow_effect = relic_slow_effect
+        self.relic_poison_ignores_shield = relic_poison_ignores_shield
+        self.relic_damage_vs_early_route_multiplier = relic_damage_vs_early_route_multiplier
+        self.relic_damage_vs_high_hp_multiplier = relic_damage_vs_high_hp_multiplier
+        self.relic_overkill_carry_fraction = relic_overkill_carry_fraction
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -206,6 +268,21 @@ class Projectile:
         return applied
 
     def _apply_hit_effects(self, enemy, enemies):
+        # Chilling Precision/Choke Point/Giant Slayer -- ungated, per-enemy
+        # damage multipliers, each read straight off the enemy being hit
+        # (getattr with a neutral default, so a lightweight test double
+        # missing the attribute is unaffected -- see this module's own
+        # docstring). Chilling Precision's slow_timer check MUST happen
+        # before this same hit's own slow application further below, or a
+        # Frost tower's first-ever hit on a target would retroactively
+        # count itself as "vs. a slowed enemy."
+        damage = self.damage
+        if getattr(enemy, "slow_timer", 0.0) > 0:
+            damage *= self.relic_damage_vs_slowed_multiplier
+        if getattr(enemy, "distance_traveled", 0.0) < CHOKE_POINT_DISTANCE_THRESHOLD:
+            damage *= self.relic_damage_vs_early_route_multiplier
+        if getattr(enemy, "max_hp", 0.0) > GIANT_SLAYER_HP_THRESHOLD:
+            damage *= self.relic_damage_vs_high_hp_multiplier
         # A Lucky Strikes-style relic's crit roll happens here, once per
         # enemy this projectile actually hits (see this method's own call
         # sites -- once for a direct hit, once per enemy in a splash
@@ -214,16 +291,45 @@ class Projectile:
         # own independent roll rather than one roll deciding the whole
         # shot. Guarded on relic_crit_chance being truthy so a relic-less
         # run's projectiles never call random.random() at all.
-        damage = self.damage
         if self.relic_crit_chance and random.random() < self.relic_crit_chance:
             damage *= self.relic_crit_damage_multiplier
-        self._apply_direct_damage(enemy, damage)
+        # hp_before/applied are captured for Overkill's own check, below --
+        # applied is the amount that actually reached hp (not necessarily
+        # the nominal `damage` above, once a shield/armor phase absorbs
+        # part of it -- see Enemy.take_damage's own docstring), so
+        # `applied > hp_before` is exactly "this hit killed with room to
+        # spare." getattr with a default, like the other per-enemy checks
+        # above -- a lightweight test double that doesn't track hp at all
+        # (it's meaningless there since relic_overkill_carry_fraction
+        # defaults to 0.0, short-circuiting the check below before
+        # hp_before is ever read) is unaffected.
+        hp_before = getattr(enemy, "hp", 0.0)
+        applied = self._apply_direct_damage(enemy, damage)
         if self.slow_effect is not None:
             enemy.apply_slow(*self.slow_effect)
+        # An Aftershock-style relic's slow roll -- same "once per enemy
+        # actually hit, independent of the tower's own slow_effect above"
+        # shape as the poison/chain relic rolls below. apply_slow()'s own
+        # min()/max() refresh semantics mean a successful roll here on an
+        # already-slowed target just keeps the stronger of the two.
+        if (
+            self.relic_slow_chance and self.relic_slow_effect is not None
+            and random.random() < self.relic_slow_chance
+        ):
+            enemy.apply_slow(*self.relic_slow_effect)
+        # A Beacon-style tower's own mark -- see enemy.apply_mark().
+        if self.mark_effect is not None:
+            enemy.apply_mark(*self.mark_effect)
         if self.knockback_duration:
             enemy.apply_knockback(enemy.speed * self.knockback_duration)
+        # relic_poison_ignores_shield (a Corrosive Poison-style relic)
+        # threads through to Enemy.take_poison_damage() via apply_poison()
+        # either way -- a tower's own poison_effect and a Venomous
+        # Coating-style relic roll alike, since neither poison source
+        # should behave differently against a shield once the relic is
+        # held.
         if self.poison_effect is not None:
-            enemy.apply_poison(*self.poison_effect)
+            enemy.apply_poison(*self.poison_effect, ignore_shield=self.relic_poison_ignores_shield)
         # A Venomous Coating-style relic's poison roll -- same "once per
         # enemy actually hit, independent of the tower's own poison_effect
         # above" shape as the crit roll. Enemy.apply_poison()'s own
@@ -241,7 +347,7 @@ class Projectile:
             self.relic_poison_chance and self.relic_poison_effect is not None
             and random.random() < self.relic_poison_chance
         ):
-            enemy.apply_poison(*self.relic_poison_effect)
+            enemy.apply_poison(*self.relic_poison_effect, ignore_shield=self.relic_poison_ignores_shield)
         # An Arcing Rounds-style relic's chain roll -- same "once per enemy
         # actually hit" shape as crit/poison above, but the resulting
         # bounce is a plain _apply_direct_damage() call, not a recursive
@@ -258,6 +364,18 @@ class Projectile:
             bounce_target = self._find_chain_target(enemy, {enemy}, chain_range, enemies)
             if bounce_target is not None:
                 self._apply_direct_damage(bounce_target, damage * damage_fraction)
+        # An Overkill-style relic's carry-over -- any damage beyond what
+        # was needed to kill `enemy` hops to the nearest other enemy
+        # within OVERKILL_CARRY_RANGE, at relic_overkill_carry_fraction
+        # strength. Same non-recursive single-hop shape as the chain
+        # bounce immediately above, deliberately not a full
+        # _apply_hit_effects() call for the same reasons that one isn't.
+        if self.relic_overkill_carry_fraction and applied > hp_before:
+            overkill_target = self._find_chain_target(enemy, {enemy}, OVERKILL_CARRY_RANGE, enemies)
+            if overkill_target is not None:
+                self._apply_direct_damage(
+                    overkill_target, (applied - hp_before) * self.relic_overkill_carry_fraction
+                )
 
     def draw(self, surface, assets):
         size = (12, 12)

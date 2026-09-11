@@ -497,6 +497,102 @@ def test_slow_expires_after_its_duration():
     assert enemy.slow_timer == 0.0
 
 
+def test_apply_mark_keeps_stronger_of_current_and_new():
+    # Same guard/refresh shape as apply_slow above, except the multiplier
+    # combines via max(), not min() -- a bigger mark_damage_multiplier is
+    # always the stronger effect, the opposite direction of slow_factor.
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_mark(multiplier=1.3, duration=2.0)
+    assert enemy.mark_damage_multiplier == 1.3
+    assert enemy.mark_timer == 2.0
+
+    # A weaker mark with a longer duration should refresh the duration but
+    # keep the stronger (higher) multiplier.
+    enemy.apply_mark(multiplier=1.1, duration=5.0)
+    assert enemy.mark_damage_multiplier == 1.3
+    assert enemy.mark_timer == 5.0
+
+    # A stronger mark should override the multiplier.
+    enemy.apply_mark(multiplier=1.5, duration=1.0)
+    assert enemy.mark_damage_multiplier == 1.5
+    assert enemy.mark_timer == 5.0
+
+
+def test_apply_mark_is_a_no_op_for_dead_or_finished_enemies():
+    dead = GruntEnemy(WAYPOINTS, wave_number=1)
+    dead.take_damage(10_000)
+    dead.apply_mark(multiplier=1.5, duration=5.0)
+    assert dead.mark_damage_multiplier == 1.0
+    assert dead.mark_timer == 0.0
+
+    finished = GruntEnemy(WAYPOINTS, wave_number=1)
+    finished.speed = 1000.0
+    finished.update(dt=1.0)
+    assert finished.reached_goal
+    finished.apply_mark(multiplier=1.5, duration=5.0)
+    assert finished.mark_damage_multiplier == 1.0
+    assert finished.mark_timer == 0.0
+
+
+def test_mark_expires_after_its_duration():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_mark(multiplier=1.5, duration=1.0)
+    enemy.update(dt=0.6)
+    assert enemy.mark_damage_multiplier == 1.5
+    enemy.update(dt=0.6)
+    assert enemy.mark_damage_multiplier == 1.0
+    assert enemy.mark_timer == 0.0
+
+
+def test_mark_amplifies_incoming_damage():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_mark(multiplier=1.5, duration=3.0)
+    starting_hp = enemy.hp
+
+    enemy.take_damage(10)
+
+    assert enemy.hp == starting_hp - 15
+
+
+def test_mark_amplifies_only_the_post_shield_leftover_on_a_shielded_enemy():
+    # Regression: Mark must amplify whatever's left AFTER the shield
+    # absorbs its own share, never the raw incoming hit -- the multiply
+    # lives in the base class's own take_damage(), reached only once
+    # ShieldedEnemy's override has already reduced `amount`.
+    enemy = ShieldedEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_mark(multiplier=2.0, duration=3.0)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+
+    enemy.take_damage(starting_shield + 5)  # shield absorbs its share, 5 spills into hp
+
+    assert enemy.shield == 0
+    assert enemy.hp == starting_hp - 10  # 5 leftover * 2.0, not (shield + 5) * 2.0
+
+
+def test_mark_amplifies_only_the_post_armor_amount_on_a_boss():
+    enemy = BossEnemy(WAYPOINTS, wave_number=1)
+    enemy.armor_timer = BossEnemy.ARMOR_DURATION  # armor phase already active
+    enemy.apply_mark(multiplier=2.0, duration=3.0)
+    starting_hp = enemy.hp
+
+    enemy.take_damage(50)
+
+    # Armor flat-reduces first (50 - ARMOR_FLAT_REDUCTION), THEN Mark
+    # doubles whatever's left -- not (50 * 2.0) - ARMOR_FLAT_REDUCTION.
+    expected = (50 - BossEnemy.ARMOR_FLAT_REDUCTION) * 2.0
+    assert enemy.hp == starting_hp - expected
+
+
+def test_mark_does_not_disrupt_a_splitters_split_on_death():
+    enemy = SplitterEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_mark(multiplier=3.0, duration=3.0)
+
+    enemy.take_damage(10_000)
+
+    assert enemy.is_dead
+    assert len(enemy.pending_spawns) == SplitterEnemy.SPLIT_COUNT
+
+
 def test_apply_poison_first_tick_fires_on_the_very_next_update():
     # tick_timer starts at 0 on a fresh application, not tick_interval --
     # so the first tick lands immediately rather than waiting a full
@@ -612,6 +708,136 @@ def test_poison_tick_can_kill_and_stops_further_movement_that_frame():
 
     assert enemy.is_dead
     assert enemy.hp == 0
+
+
+# --- apply_poison's ignore_shield (a Corrosive Poison-style relic's own
+# fresh-vs-refresh semantics) ---
+
+def test_apply_poison_ignore_shield_defaults_to_false():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0)
+    assert enemy.poison_ignores_shield is False
+
+
+def test_apply_poison_fresh_application_sets_ignore_shield_directly():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0, ignore_shield=True)
+    assert enemy.poison_ignores_shield is True
+
+
+def test_apply_poison_refresh_ors_in_ignore_shield_rather_than_downgrading():
+    # A fresh application without ignore_shield, then a refresh WITH it --
+    # the stronger property must stick, not get silently overwritten by a
+    # second, weaker application landing on top of an already-armed one.
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0, ignore_shield=False)
+    assert enemy.poison_ignores_shield is False
+    enemy.apply_poison(damage_per_tick=2, tick_interval=1.0, duration=1.0, ignore_shield=True)
+    assert enemy.poison_ignores_shield is True
+
+    # And the reverse order: once armed, a weaker non-ignoring refresh must
+    # not turn it back off.
+    other = GruntEnemy(WAYPOINTS, wave_number=1)
+    other.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0, ignore_shield=True)
+    other.apply_poison(damage_per_tick=2, tick_interval=1.0, duration=1.0, ignore_shield=False)
+    assert other.poison_ignores_shield is True
+
+
+def test_apply_poison_expiring_and_reapplying_resets_ignore_shield_fresh():
+    # Once poison fully expires, the NEXT application is genuinely fresh
+    # again -- it sets ignore_shield directly rather than carrying over
+    # whatever the previous (now-expired) poison's flag was.
+    enemy = GruntEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=1.0, ignore_shield=True)
+    enemy.update(dt=1.5)  # crosses the tick and the duration -- expires
+    assert enemy.poison_time_remaining == 0.0
+
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=3.0, ignore_shield=False)
+    assert enemy.poison_ignores_shield is False
+
+
+# --- take_poison_damage (the shield-bypass hook a Corrosive Poison-style
+# relic threads through -- see ShieldedEnemy's own override) ---
+
+def test_take_poison_damage_default_hook_calls_take_damage_polymorphically():
+    enemy = GruntEnemy(WAYPOINTS, wave_number=1)
+    starting_hp = enemy.hp
+
+    applied = enemy.take_poison_damage(10, ignore_shield=False)
+
+    assert applied == 10
+    assert enemy.hp == starting_hp - 10
+
+
+def test_shielded_enemy_take_poison_damage_without_ignore_shield_is_absorbed_normally():
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+
+    enemy.take_poison_damage(4, ignore_shield=False)
+
+    assert enemy.shield == starting_shield - 4
+    assert enemy.hp == starting_hp
+
+
+def test_shielded_enemy_take_poison_damage_with_ignore_shield_bypasses_the_shield():
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+
+    enemy.take_poison_damage(4, ignore_shield=True)
+
+    assert enemy.shield == starting_shield  # untouched
+    assert enemy.hp == starting_hp - 4
+
+
+def test_shielded_enemy_take_poison_damage_with_ignore_shield_still_resets_regen_timer():
+    # Bypassing the shield's absorption still counts as "a hit landed" for
+    # regen purposes -- Corrosive Poison shouldn't also make the shield
+    # regenerate faster by pretending nothing happened.
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.shield -= 5  # so it's eligible to regen
+    enemy.time_since_hit = enemy.shield_regen_delay  # already due to regen
+
+    enemy.take_poison_damage(4, ignore_shield=True)
+
+    assert enemy.time_since_hit == 0.0
+
+
+def test_boss_armor_phase_still_fires_against_poison_with_ignore_shield():
+    # A Corrosive Poison-style relic only bypasses a SHIELD -- BossEnemy has
+    # none, so take_poison_damage's default hook (a plain polymorphic call
+    # to take_damage) still goes through BossEnemy's own armor-phase
+    # override unmodified, structurally untouched by ignore_shield.
+    enemy = BossEnemy(LONG_WAYPOINTS, wave_number=1)
+    enemy.armor_timer = BossEnemy.ARMOR_DURATION
+    starting_hp = enemy.hp
+
+    applied = enemy.take_poison_damage(20, ignore_shield=True)
+
+    assert applied == max(0.0, 20 - BossEnemy.ARMOR_FLAT_REDUCTION)
+    assert enemy.hp == starting_hp - applied
+
+
+def test_splitter_still_splits_from_poison_via_take_poison_damage():
+    enemy = SplitterEnemy(LONG_WAYPOINTS, wave_number=1)
+
+    enemy.take_poison_damage(10_000, ignore_shield=True)
+
+    assert enemy.is_dead
+    assert len(enemy.pending_spawns) == SplitterEnemy.SPLIT_COUNT
+
+
+def test_poison_tick_through_update_threads_ignore_shield_end_to_end():
+    # Same bypass as the direct take_poison_damage call above, but proving
+    # Enemy.update()'s own poison-tick call site actually threads
+    # poison_ignores_shield through, not just the hook in isolation.
+    enemy = ShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    starting_hp, starting_shield = enemy.hp, enemy.shield
+    enemy.apply_poison(damage_per_tick=4, tick_interval=1.0, duration=1.0, ignore_shield=True)
+
+    enemy.update(dt=0.1)  # immediate first tick
+
+    assert enemy.shield == starting_shield  # bypassed entirely
+    assert enemy.hp == starting_hp - 4
 
 
 def test_enemy_moves_toward_next_waypoint_and_tracks_distance():

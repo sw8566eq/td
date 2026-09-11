@@ -57,14 +57,28 @@ class Enemy:
         self.slow_multiplier = 1.0
         self.slow_timer = 0.0
 
+        # Mark state -- see apply_mark()/take_damage(). Mirrors slow_
+        # multiplier/slow_timer's own shape exactly (a multiplier plus a
+        # countdown, decayed in update() below), but amplifies incoming
+        # damage instead of reducing movement speed, and combines via
+        # max() on the multiplier rather than apply_slow's min() -- a
+        # bigger mark_damage_multiplier is always the stronger effect,
+        # unlike slow_factor (see FrostTower's own note on that).
+        self.mark_damage_multiplier = 1.0
+        self.mark_timer = 0.0
+
         # Damage-over-time state -- see apply_poison(). damage_per_tick/
         # tick_interval describe the currently-active poison (meaningless
         # while time_remaining is 0); tick_timer counts down to the next
-        # actual damage application.
+        # actual damage application. poison_ignores_shield is a Corrosive
+        # Poison-style relic's own bypass flag, threaded through to
+        # take_poison_damage() -- see apply_poison()'s own docstring for
+        # its fresh-vs-refresh semantics.
         self.poison_damage_per_tick = 0.0
         self.poison_tick_interval = 0.0
         self.poison_tick_timer = 0.0
         self.poison_time_remaining = 0.0
+        self.poison_ignores_shield = False
 
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
@@ -103,12 +117,18 @@ class Enemy:
                 self.slow_timer = 0.0
                 self.slow_multiplier = 1.0
 
+        if self.mark_timer > 0:
+            self.mark_timer -= dt
+            if self.mark_timer <= 0:
+                self.mark_timer = 0.0
+                self.mark_damage_multiplier = 1.0
+
         if self.poison_time_remaining > 0:
             self.poison_time_remaining -= dt
             self.poison_tick_timer -= dt
             if self.poison_tick_timer <= 0:
                 self.poison_tick_timer += self.poison_tick_interval
-                self.take_damage(self.poison_damage_per_tick)
+                self.take_poison_damage(self.poison_damage_per_tick, self.poison_ignores_shield)
                 if self.is_dead:
                     return  # a killing tick -- don't also move the corpse this frame
             if self.poison_time_remaining <= 0:
@@ -151,6 +171,17 @@ class Enemy:
         # True, and Game.update()'s alive-filter checks is_dead before
         # reached_goal, so it would award gold for an enemy that had
         # already cost a life instead.
+        # Beacon-style mark amplifies whatever damage actually reaches
+        # this method -- multiplied here, at the very top of the base
+        # class's own take_damage(), before anything else. That's what
+        # makes it compose correctly under every subclass's own override
+        # with ZERO subclass changes: BossEnemy/ShieldedEnemy each reduce
+        # `amount` for armor/shield absorption *before* calling
+        # super().take_damage(), so Mark always amplifies whatever's left
+        # after that absorption, never before it; SplitterEnemy calls
+        # super().take_damage() first, unmodified, so its split-on-death
+        # logic is indifferent to the exact number Mark produces.
+        amount *= self.mark_damage_multiplier
         if self.is_dead or self.reached_goal:
             return 0.0
         self.damage_events.append(amount)
@@ -167,6 +198,18 @@ class Enemy:
         # this return value, not the raw shot damage, to the firing
         # tower's lifetime damage_dealt stat.
         return amount
+
+    def take_poison_damage(self, amount, ignore_shield):
+        """Called only by update()'s own poison-tick handling above -- the
+        one hook a subclass overrides to change how a damage-over-time
+        tick interacts with its own damage-absorption mechanic (see
+        ShieldedEnemy's override below). The base implementation is just a
+        polymorphic call to take_damage(): `ignore_shield` is meaningless
+        without a shield to ignore, so every species except ShieldedEnemy
+        inherits this unmodified -- structurally keeping BossEnemy's armor
+        phase and SplitterEnemy's split-on-death untouched by a Corrosive
+        Poison-style relic, not via any runtime species check."""
+        return self.take_damage(amount)
 
     def receive_heal(self, amount):
         """Called by a HealerEnemy in range, once per frame, for every
@@ -195,7 +238,20 @@ class Enemy:
         self.slow_multiplier = min(self.slow_multiplier, factor)
         self.slow_timer = max(self.slow_timer, duration)
 
-    def apply_poison(self, damage_per_tick, tick_interval, duration):
+    def apply_mark(self, multiplier, duration):
+        """Start (or refresh) a Beacon-style mark: incoming damage is
+        multiplied by `multiplier` for the next `duration` seconds -- same
+        guard/refresh shape as apply_slow() immediately above, except both
+        the multiplier AND the duration combine via max(), not min()/max()
+        -- unlike slow_factor, a bigger mark_damage_multiplier is always
+        the stronger effect, so repeated marks keep whichever was
+        stronger rather than one direction weakening the other."""
+        if self.is_dead or self.reached_goal:
+            return
+        self.mark_damage_multiplier = max(self.mark_damage_multiplier, multiplier)
+        self.mark_timer = max(self.mark_timer, duration)
+
+    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False):
         """Start (or refresh) a damage-over-time effect: damage_per_tick
         every tick_interval seconds, for duration seconds total -- see the
         per-frame handling in update(). Re-poisoning follows apply_slow's
@@ -205,11 +261,23 @@ class Enemy:
         reset poison_tick_timer -- only a genuinely fresh application
         (nothing currently active) starts a new tick countdown; a re-hit
         while already poisoned strengthens/extends it without delaying
-        whatever tick is already due."""
+        whatever tick is already due.
+
+        ignore_shield (a Corrosive Poison-style relic's own bypass, read
+        by take_poison_damage()/ShieldedEnemy's override) follows a
+        one-way-ratchet rule, not max()/min() like the numeric fields
+        above: a genuinely fresh application (nothing currently active)
+        sets it directly, but a refresh of already-active poison ORs it
+        in -- the stronger property (bypassing a shield) should never be
+        silently downgraded by a second, weaker application landing on
+        top of an already-armed one."""
         if self.is_dead or self.reached_goal:
             return
         if self.poison_time_remaining <= 0:
             self.poison_tick_timer = 0.0  # first tick fires on the very next update()
+            self.poison_ignores_shield = ignore_shield
+        else:
+            self.poison_ignores_shield = self.poison_ignores_shield or ignore_shield
         self.poison_damage_per_tick = max(self.poison_damage_per_tick, damage_per_tick)
         self.poison_tick_interval = tick_interval
         self.poison_time_remaining = max(self.poison_time_remaining, duration)
@@ -447,6 +515,24 @@ class ShieldedEnemy(Enemy):
         if amount > 0:
             return super().take_damage(amount)
         return 0.0  # fully absorbed by the shield -- no real hp damage dealt
+
+    def take_poison_damage(self, amount, ignore_shield):
+        """The only species that overrides this hook -- everything else
+        inherits Enemy's own plain polymorphic call. Without
+        ignore_shield, behaves exactly like any other hit (poison still
+        has to burn the shield down first, same as take_damage()'s own
+        docstring already says); with it, bypasses the shield entirely by
+        calling Enemy.take_damage() directly (not self.take_damage(),
+        which would re-enter this class's own shield-absorbing override)
+        -- but still resets the shield's regen timer, the same way a
+        normal absorbed hit would, so Corrosive Poison doesn't also make
+        the shield regenerate faster by pretending nothing landed."""
+        if not ignore_shield:
+            return super().take_poison_damage(amount, ignore_shield)
+        if self.is_dead or self.reached_goal:
+            return 0.0
+        self.time_since_hit = 0.0
+        return Enemy.take_damage(self, amount)
 
     def update(self, dt, enemies=None):
         super().update(dt, enemies)

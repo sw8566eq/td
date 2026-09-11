@@ -1,6 +1,6 @@
 import pygame
 
-from projectile import Projectile
+from projectile import CHOKE_POINT_DISTANCE_THRESHOLD, GIANT_SLAYER_HP_THRESHOLD, OVERKILL_CARRY_RANGE, Projectile
 
 
 class FakeEnemy:
@@ -13,6 +13,8 @@ class FakeEnemy:
         self.slow_applied = None
         self.knockback_applied = None
         self.poison_applied = None
+        self.poison_ignore_shield = None
+        self.mark_applied = None
 
     def take_damage(self, amount):
         self.damage_taken += amount
@@ -24,8 +26,12 @@ class FakeEnemy:
     def apply_knockback(self, distance):
         self.knockback_applied = distance
 
-    def apply_poison(self, damage_per_tick, tick_interval, duration):
+    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False):
         self.poison_applied = (damage_per_tick, tick_interval, duration)
+        self.poison_ignore_shield = ignore_shield
+
+    def apply_mark(self, multiplier, duration):
+        self.mark_applied = (multiplier, duration)
 
 
 def test_direct_hit_damages_only_the_target():
@@ -372,6 +378,286 @@ def test_relic_chain_applies_independently_to_every_enemy_in_a_splash():
     assert target.damage_taken == 10 + 5  # direct hit + bounce from bystander
     assert bystander.damage_taken == 10 + 5  # direct hit + bounce from target
     assert far_bounce_target.damage_taken == 0  # out of chain_range from both
+
+
+# --- Chilling Precision (damage vs. a currently-slowed enemy) ---
+
+def test_chilling_precision_boosts_damage_against_an_already_slowed_enemy():
+    target = FakeEnemy((0, 0))
+    target.slow_timer = 2.0  # already slowed before this hit
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_slowed_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.0
+
+
+def test_chilling_precision_does_not_apply_to_an_unslowed_enemy():
+    target = FakeEnemy((0, 0))
+    target.slow_timer = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_slowed_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_chilling_precision_does_not_retroactively_count_this_hits_own_slow():
+    # Regression: the slow_timer check must read BEFORE this same hit's own
+    # apply_slow() call below it -- a Frost tower's first-ever hit on a
+    # fresh target must not count as "vs. a slowed enemy" just because it
+    # also slows it.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, slow_effect=(0.5, 2.0),
+        relic_damage_vs_slowed_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10  # not boosted
+    assert target.slow_applied == (0.5, 2.0)  # but the slow itself still lands
+
+
+def test_no_slowed_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.slow_timer = 2.0
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+# --- Choke Point (damage vs. an enemy still early in its route) ---
+
+def test_choke_point_boosts_damage_against_an_enemy_early_in_its_route():
+    target = FakeEnemy((0, 0))
+    target.distance_traveled = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_early_route_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.5
+
+
+def test_choke_point_does_not_apply_past_the_distance_threshold():
+    target = FakeEnemy((0, 0))
+    target.distance_traveled = CHOKE_POINT_DISTANCE_THRESHOLD  # not "less than"
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_early_route_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_early_route_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.distance_traveled = 0.0
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+# --- Giant Slayer (damage vs. a high-max-HP enemy) ---
+
+def test_giant_slayer_boosts_damage_against_a_high_hp_enemy():
+    target = FakeEnemy((0, 0))
+    target.max_hp = GIANT_SLAYER_HP_THRESHOLD + 1
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_high_hp_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.5
+
+
+def test_giant_slayer_does_not_apply_at_or_below_the_hp_threshold():
+    target = FakeEnemy((0, 0))
+    target.max_hp = GIANT_SLAYER_HP_THRESHOLD
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_high_hp_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_giant_slayer_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.max_hp = GIANT_SLAYER_HP_THRESHOLD + 1
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+# --- Aftershock (relic-driven chance to also slow the hit target) ---
+
+def test_relic_slow_always_applies_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_slow_chance=1.0, relic_slow_effect=(0.75, 1.5),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.slow_applied == (0.75, 1.5)
+
+
+def test_relic_slow_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_slow_chance=0.0, relic_slow_effect=(0.75, 1.5),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.slow_applied is None
+
+
+def test_relic_slow_chance_never_rolls_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.slow_applied is None
+
+
+def test_relic_slow_chance_with_no_effect_does_not_crash():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_slow_chance=1.0, relic_slow_effect=None,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.slow_applied is None
+
+
+def test_relic_slow_applies_independently_to_every_enemy_in_a_splash():
+    target = FakeEnemy((0, 0))
+    bystander = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        relic_slow_chance=1.0, relic_slow_effect=(0.75, 1.5),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bystander])
+
+    assert target.slow_applied == (0.75, 1.5)
+    assert bystander.slow_applied == (0.75, 1.5)
+
+
+def test_relic_slow_roll_happens_after_the_towers_own_slow_application():
+    # Both calls happen (tower's own slow_effect first, then the relic
+    # roll) -- FakeEnemy.apply_slow just overwrites slow_applied with
+    # whichever call landed most recently, so seeing the relic's own
+    # values here confirms it ran, not just that the tower's own did.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, slow_effect=(0.5, 2.0),
+        relic_slow_chance=1.0, relic_slow_effect=(0.75, 1.5),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.slow_applied == (0.75, 1.5)
+
+
+# --- Mark (a Beacon-style tower's own always-on hit effect) ---
+
+def test_mark_effect_applies_on_direct_hit():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=1, mark_effect=(1.20, 3.0))
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.mark_applied == (1.20, 3.0)
+
+
+def test_no_mark_when_mark_effect_is_none():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.mark_applied is None
+
+
+def test_mark_effect_applies_independently_to_every_enemy_in_a_splash():
+    target = FakeEnemy((0, 0))
+    bystander = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=1, splash_radius=20, mark_effect=(1.20, 3.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bystander])
+
+    assert target.mark_applied == (1.20, 3.0)
+    assert bystander.mark_applied == (1.20, 3.0)
+
+
+# --- Corrosive Poison's own ignore_shield threading (both the tower's own
+# poison_effect and a Venomous Coating-style relic poison roll must both
+# carry it through to enemy.apply_poison()) ---
+
+def test_towers_own_poison_effect_threads_relic_poison_ignores_shield():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        poison_effect=(4, 0.5, 3.0), relic_poison_ignores_shield=True,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_applied == (4, 0.5, 3.0)
+    assert target.poison_ignore_shield is True
+
+
+def test_towers_own_poison_effect_defaults_to_not_ignoring_shield():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, poison_effect=(4, 0.5, 3.0))
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_ignore_shield is False
+
+
+def test_relic_poison_roll_threads_relic_poison_ignores_shield_too():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_poison_chance=1.0, relic_poison_effect=(3, 0.5, 2.0),
+        relic_poison_ignores_shield=True,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.poison_ignore_shield is True
 
 
 def test_update_on_an_already_dead_projectile_is_a_no_op():
@@ -727,6 +1013,74 @@ def test_chain_counts_one_shot_hit_but_cumulative_damage_across_every_link():
 
     assert source.shots_hit == 1
     assert source.damage_dealt == 14  # 7 to target + 7 to the one chain link
+
+
+# --- Overkill (excess killing-blow damage carries to a nearby enemy) ---
+
+def test_overkill_carries_excess_damage_to_the_nearest_other_enemy():
+    target = KillableFakeEnemy((0, 0), hp=5)
+    nearby = KillableFakeEnemy((10, 0), hp=100)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=20, relic_overkill_carry_fraction=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert target.is_dead
+    assert nearby.damage_taken == 7.5  # (20 - 5) * 0.5
+
+
+def test_overkill_does_not_trigger_on_a_non_lethal_hit():
+    target = KillableFakeEnemy((0, 0), hp=100)
+    nearby = KillableFakeEnemy((10, 0), hp=100)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=20, relic_overkill_carry_fraction=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert not target.is_dead
+    assert nearby.damage_taken == 0
+
+
+def test_overkill_finds_no_target_when_none_in_range():
+    target = KillableFakeEnemy((0, 0), hp=5)
+    far = KillableFakeEnemy((OVERKILL_CARRY_RANGE + 100, 0), hp=100)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=20, relic_overkill_carry_fraction=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, far])
+
+    assert far.damage_taken == 0
+
+
+def test_overkill_does_not_apply_when_no_relic_is_held():
+    target = KillableFakeEnemy((0, 0), hp=5)
+    nearby = KillableFakeEnemy((10, 0), hp=100)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=20)
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert nearby.damage_taken == 0
+
+
+def test_overkill_does_not_trigger_further_relic_effects_on_the_bounce():
+    # Same non-recursive single-hop shape as the chain bounce's own
+    # regression test above -- the bounced-to enemy must not also roll
+    # its own poison/crit/chain/another overkill.
+    target = KillableFakeEnemy((0, 0), hp=5)
+    bounce_target = KillableFakeEnemy((10, 0), hp=100)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=20,
+        relic_overkill_carry_fraction=0.5,
+        relic_poison_chance=1.0, relic_poison_effect=(3, 0.5, 2.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, bounce_target])
+
+    assert bounce_target.damage_taken == 7.5
+    assert bounce_target.poison_applied is None  # no poison roll on the bounce
 
 
 # --- impact_events (drained by Game.update() into visual "juice" effects) ---

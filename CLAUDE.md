@@ -78,8 +78,8 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
-  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Twenty relics
-  across six effect shapes -- the original three, plus three more a later batch added: **per-floor**
+  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Twenty-nine
+  relics across seven effect shapes -- the original three, plus four more added since: **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
   **one-time** (`starting_lives_bonus`, applied directly at draft-pick time instead, see
@@ -90,10 +90,22 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   (`tower_range_multiplier`/`tower_fire_rate_multiplier`/`tower_damage_multiplier`/`poison_chance`+
   `poison_effect`/`crit_chance`+`crit_damage_multiplier`/`chain_chance`+`chain_effect`/
   `tower_footprint_shrink`/`tower_upgrade_cost_multiplier`/`sell_refund_bonus`/`support_aura_range_
-  multiplier`+`support_aura_strength_multiplier`, read once per tower at construction time -- see
+  multiplier`+`support_aura_strength_multiplier`/`damage_vs_slowed_multiplier`/`slow_chance`+
+  `slow_effect`/`poison_ignores_shield`/`damage_vs_early_route_multiplier`/`damage_vs_high_hp_
+  multiplier`/`overkill_carry_fraction`, read once per tower at construction time -- see
   `Game._construct_tower`/`_current_footprint_subtiles`, and `Tower.effective_range()`/
   `effective_fire_rate()`/`effective_damage()`/`upgrade_cost()`/`specialization_cost()`/`sell_value()`/
-  `SupportTower.update()`/`Projectile._apply_hit_effects()` for where each actually applies);
+  `SupportTower.update()`/`Projectile._apply_hit_effects()` for where each actually applies -- the six
+  newest of these are copied onto `Projectile` the same way `poison_chance`/`crit_chance`/
+  `chain_chance` already are, then resolved per enemy actually hit rather than once per shot: Chilling
+  Precision/Choke Point/Giant Slayer are ungated per-enemy multipliers (`enemy.slow_timer`/
+  `distance_traveled`/`max_hp`, read via `getattr` with a neutral default so a lightweight test double
+  is unaffected), Aftershock is a chance-gated `apply_slow()` roll following `poison_chance`'s exact
+  shape, `poison_ignores_shield` threads through both the tower's own `poison_effect` and a Venomous
+  Coating-style relic roll into `enemy.apply_poison()`'s new `ignore_shield` parameter, and Overkill
+  fires once a hit's `applied` damage exceeds the target's pre-hit hp, bouncing the excess to the
+  nearest other enemy within `projectile.OVERKILL_CARRY_RANGE` via the same non-recursive
+  `_find_chain_target`/`_apply_direct_damage` hop `arcing_rounds`' own bounce uses);
   **escalating-per-floor** (`veterans_momentum`'s `tower_damage_growth_per_floor`, folded into
   `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- fed the current
   node's *row* now that a run is a branching map rather than a flat sequence (see `RunState.
@@ -105,15 +117,23 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   successful spend, tracked via `Game._spend_gold()`, the one choke point `try_place_tower`/
   `try_upgrade_tower`/`try_specialize_tower` all route through instead of calling `Economy.spend()`
   directly);
-  and **live-reactive** (`last_stand_charm`'s `last_stand_damage_multiplier`, the one relic effect
-  resolved every frame against changing game state -- `Economy.is_on_last_life` -- rather than once at
-  floor-load/construction time, via `Tower.set_last_stand_multiplier()` called from `Game.update()`'s
-  existing two-pass tower loop). `guardians_reprieve` has no `RelicModifiers` field at all (same shape
-  as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in `Game._lose_a_life()`,
-  the interception point for the enemy-reached-goal life loss, gated on `RunState.
-  used_guardians_reprieve` (a one-time-per-run charge) and a no-op under `Economy.invulnerable`
-  (sandbox/Creative -- nothing to save there); `Economy.is_on_last_life` is the one shared answer to
-  "is this run on its last life" both relics ask, rather than each re-deriving `lives <= 1` on its own.
+  **live-reactive** (`last_stand_charm`'s `last_stand_damage_multiplier` and `adrenaline_rush`'s own
+  `last_stand_fire_rate_multiplier`, both relic effects resolved every frame against changing game
+  state -- `Economy.is_on_last_life` -- rather than once at floor-load/construction time, via a single
+  `Tower.set_last_stand_multiplier()` call, called from `Game.update()`'s existing two-pass tower
+  loop, that sets both live values together since both relics key off the exact same condition); and
+  **per-tower-density (live-reactive)** (`overcrowded_circuits`' `tower_density_radius`/
+  `tower_density_damage_bonus_per_neighbor`/`tower_density_damage_bonus_cap`, resolved every frame
+  too, but from each tower's own live neighbor count rather than one global condition -- folded into
+  the same two-pass loop's first pass as a nested scan, skipped entirely for a tower with no such
+  relic held; see `Tower.set_nearby_tower_bonus()` and `Game.update()`'s own comment on why this is a
+  nested scan in pass 1, not a third pass). `guardians_reprieve` has no `RelicModifiers` field at all
+  (same shape as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in
+  `Game._lose_a_life()`, the interception point for the enemy-reached-goal life loss, gated on
+  `RunState.used_guardians_reprieve` (a one-time-per-run charge) and a no-op under
+  `Economy.invulnerable` (sandbox/Creative -- nothing to save there); `Economy.is_on_last_life` is the
+  one shared answer to "is this run on its last life" every relic that asks reads, rather than each
+  re-deriving `lives <= 1` on its own.
   `compose_relic_modifiers()`'s per-tower fields aggregate
   the same "flat sums, multipliers multiply" way as the per-floor ones, except `crit_damage_multiplier`
   and `last_stand_damage_multiplier` (both `max()` across relics, not multiplied -- two such relics
@@ -334,9 +354,10 @@ re-checks membership itself as defense in depth, since `selected_tower_name` cou
 outlive the menu that set it. `Tower.EXTRA_STATS` (label, attribute, format-fn tuples)
 is how a subclass's special mechanic (splash radius, slow %, chain range, ...) shows up in the
 stats panel automatically. `Projectile` (`projectile.py`) is a single data-parametrized class, not
-one subclass per tower -- splash/slow/knockback/chain are just constructor args a tower's
+one subclass per tower -- splash/slow/knockback/chain/mark are just constructor args a tower's
 `create_projectile()` passes in, and the hit-resolution algorithm doesn't care which combination
-it got.
+it got (see "Mark and Corrosive Poison's shield-bypass hook" below for why Mark's own
+amplification math still lives in `Enemy`, not here).
 
 ### Boss enemy mechanics
 
@@ -351,6 +372,45 @@ same way `ShieldedEnemy`'s shield eats damage before HP does). Both thresholds a
 _spawn_enemy` multiplies `max_hp`/`hp` by the active difficulty's `enemy_hp_multiplier` *after*
 construction (the same reason it already has a `hasattr(enemy, "max_shield")` patch-up for
 `ShieldedEnemy`), so a threshold baked in early would silently fire at the wrong HP on Easy/Hard.
+
+### Mark and Corrosive Poison's shield-bypass hook
+
+Two mechanics from the tower/relic synergy batch live inside `Enemy` itself rather than
+`Projectile`/a per-species special case, because each has to affect *every* damage source
+uniformly, not just a tower's own direct hit resolution:
+
+- **Mark** (`BeaconTower`'s own mechanic, `tower.py`) is `Enemy.mark_damage_multiplier`/
+  `mark_timer`, decayed in `update()` exactly like `slow_timer`/`slow_multiplier`, and set via
+  `Enemy.apply_mark(multiplier, duration)` -- same guard/refresh shape as `apply_slow()`, except
+  both the multiplier *and* the duration combine via `max()`, not `min()`/`max()`, since a bigger
+  `mark_damage_multiplier` is always the stronger effect (the opposite of `slow_factor`).
+  `Enemy.take_damage()` multiplies `amount` by `mark_damage_multiplier` at the very top of the
+  *base class's own* method, before anything else -- which is what makes it compose correctly
+  under every subclass's own override with zero subclass changes: `BossEnemy`/`ShieldedEnemy` each
+  reduce `amount` for armor/shield absorption *before* calling `super().take_damage()`, so Mark
+  always amplifies whatever's left after that absorption, never before it; `SplitterEnemy` calls
+  `super().take_damage()` first, unmodified, so its split-on-death logic is indifferent to the
+  exact number Mark produces. `Projectile`'s own `mark_effect` constructor field (a
+  `(damage_multiplier, duration)` pair, the same shape as `slow_effect`/`poison_effect`) is how
+  `BeaconTower.create_projectile()` reaches it -- reusing `Projectile` verbatim, per this
+  codebase's own "one data-parametrized class" architecture, which also means Beacon's own tiny
+  hits go through the full existing relic pipeline for free.
+- **Corrosive Poison** (`poison_ignores_shield`, a `RelicModifiers` field) needs a dedicated hook
+  because a poison tick applies via a *direct* `self.take_damage(...)` call inside `Enemy.update()`
+  itself, not through `Projectile` -- so bypassing `ShieldedEnemy`'s shield absorption can't be an
+  inline check in `Projectile`. `Enemy.take_poison_damage(amount, ignore_shield)` is the hook
+  `update()`'s poison-tick handling calls instead of `take_damage()` directly: the base
+  implementation is just a polymorphic call to `take_damage()` (meaningless without a shield to
+  ignore), and `ShieldedEnemy` is the *only* species that overrides it -- bypassing its own
+  shield-absorbing `take_damage()` override by calling `Enemy.take_damage(self, amount)` directly
+  when `ignore_shield` is set, while still resetting the shield's regen timer, the same way a
+  normal absorbed hit would. Every other species inherits the base hook unmodified, which is what
+  keeps `BossEnemy`'s armor phase and `SplitterEnemy`'s split-on-death structurally untouched by
+  Corrosive Poison -- not via a runtime species check anywhere, but because only `ShieldedEnemy`
+  ever overrides the hook at all. `Enemy.apply_poison()`'s own `ignore_shield` parameter follows a
+  one-way-ratchet rule, not the `min()`/`max()` its numeric fields use: a genuinely fresh
+  application sets it directly, but a refresh of already-active poison ORs it in, so the stronger
+  property (bypassing a shield) can never be silently downgraded by a second, weaker application.
 
 ### Grid has two coordinate systems
 

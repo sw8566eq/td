@@ -2,7 +2,10 @@ import pygame
 import pytest
 
 from projectile import Projectile
-from tower import TOWER_TYPES, BasicTower, BeamTower, KnockbackTower, LightningTower, PoisonTower, SniperTower, SupportTower, Tower
+from tower import (
+    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, KnockbackTower, LightningTower,
+    PoisonTower, SniperTower, SupportTower, Tower,
+)
 
 
 class FakeEnemy:
@@ -619,3 +622,123 @@ def test_support_tower_specializations_do_not_touch_a_permanently_zero_damage():
     assert tower.can_specialize
     tower.specialize("amplify")
     assert tower.damage == 0  # never touched -- "damage" isn't in SPECIALIZATIONS' stat_multipliers
+
+
+# --- Overcrowded Circuits' own live density bonus (set_nearby_tower_bonus) ---
+
+def test_set_nearby_tower_bonus_defaults_to_no_bonus():
+    # Neutral relic_* defaults (0.0 per-neighbor rate and cap) make this a
+    # no-op regardless of neighbor count -- the relic-less-run case.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.set_nearby_tower_bonus(5)
+    assert tower.relic_tower_density_bonus_multiplier == 1.0
+
+
+def test_set_nearby_tower_bonus_scales_with_neighbor_count():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    tower.set_nearby_tower_bonus(3)
+    assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.06)  # 1 + 3 * 0.02
+
+
+def test_set_nearby_tower_bonus_is_capped():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    tower.set_nearby_tower_bonus(50)  # far beyond what the cap allows
+    assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.20)
+
+
+def test_effective_damage_reflects_the_density_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    tower.set_nearby_tower_bonus(3)
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.06)
+
+
+def test_effective_damage_stacks_density_bonus_additively_with_everything_else():
+    # Extends the existing three-source additive-stack regression above to
+    # the fourth (Overcrowded Circuits-style) source -- still ADDs, never
+    # multiplies or max()'s against the other three.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.aura_damage_multiplier = 1.5
+    tower.relic_damage_bonus_multiplier = 1.25
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    tower.set_last_stand_multiplier(True)
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    tower.set_nearby_tower_bonus(5)  # +0.10, under the cap
+
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 2.15)  # 1 + .5 + .25 + .3 + .10
+    assert tower.effective_damage() != pytest.approx(BasicTower.damage * 1.5 * 1.25 * 1.3 * 1.10)  # not multiplicative
+
+
+# --- Adrenaline Rush's own live fire-rate bonus ---
+
+def test_set_last_stand_multiplier_toggles_the_fire_rate_bonus_too():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_fire_rate_bonus_multiplier = 1.15
+    assert tower.effective_fire_rate() == tower.fire_rate  # inactive by default
+
+    tower.set_last_stand_multiplier(True)
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.15)
+
+    tower.set_last_stand_multiplier(False)
+    assert tower.effective_fire_rate() == tower.fire_rate
+
+
+def test_effective_fire_rate_stacks_relic_and_last_stand_bonuses_multiplicatively():
+    # Unlike effective_damage()'s additive stack, effective_fire_rate() has
+    # no aura source to protect -- both sources here just multiply.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_fire_rate_bonus_multiplier = 1.08
+    tower.relic_last_stand_fire_rate_bonus_multiplier = 1.15
+    tower.set_last_stand_multiplier(True)
+
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.08 * 1.15)
+
+
+# --- Beacon tower (near-zero damage, marks whatever its splash touches) ---
+
+def test_beacon_tower_is_registered():
+    assert TOWER_TYPES["beacon"] is BeaconTower
+
+
+def test_beacon_tower_projectile_carries_a_mark_effect():
+    tower = BeaconTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.mark_effect == (BeaconTower.mark_damage_multiplier, BeaconTower.mark_duration)
+    assert projectile.splash_radius == BeaconTower.mark_splash_radius
+
+
+def test_beacon_tower_specialization_boosts_carry_through_to_the_projectile():
+    wide_beacon_tower = BeaconTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BeaconTower.MAX_LEVEL - 1):
+        wide_beacon_tower.upgrade()
+    base_splash_radius = wide_beacon_tower.mark_splash_radius
+    wide_beacon_tower.specialize("wide_beacon")
+    projectile = wide_beacon_tower.create_projectile(FakeEnemy())
+    assert projectile.splash_radius == wide_beacon_tower.mark_splash_radius
+    assert projectile.splash_radius > base_splash_radius
+
+    searing_brand_tower = BeaconTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BeaconTower.MAX_LEVEL - 1):
+        searing_brand_tower.upgrade()
+    base_multiplier = searing_brand_tower.mark_damage_multiplier
+    base_duration = searing_brand_tower.mark_duration
+    searing_brand_tower.specialize("searing_brand")
+    projectile = searing_brand_tower.create_projectile(FakeEnemy())
+    assert projectile.mark_effect == (searing_brand_tower.mark_damage_multiplier, searing_brand_tower.mark_duration)
+    assert searing_brand_tower.mark_damage_multiplier > base_multiplier
+    assert searing_brand_tower.mark_duration > base_duration
+
+
+def test_other_towers_have_no_mark_effect():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name in ("beacon", "support"):
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.mark_effect is None, name

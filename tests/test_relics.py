@@ -285,3 +285,133 @@ def test_war_chest_contributes_its_starting_gold_multiplier():
     # relics.py's own module docstring).
     modifiers = compose_relic_modifiers(["war_chest"])
     assert modifiers.starting_gold_multiplier == pytest.approx(1.25)
+
+
+# --- The 10 discoverable synergies' own new fields --------------------
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_slowed_multiplier():
+    modifiers = compose_relic_modifiers(["chilling_precision", "chilling_precision"])
+    assert modifiers.damage_vs_slowed_multiplier == RELICS["chilling_precision"].damage_vs_slowed_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_slow_chance():
+    modifiers = compose_relic_modifiers(["aftershock", "aftershock"])
+    assert modifiers.slow_chance == pytest.approx(RELICS["aftershock"].slow_chance * 2)
+
+
+def test_compose_relic_modifiers_builds_slow_effect_from_the_relics_own_fields():
+    modifiers = compose_relic_modifiers(["aftershock"])
+    relic = RELICS["aftershock"]
+    assert modifiers.slow_effect == (relic.slow_factor, relic.slow_duration)
+
+
+def test_compose_relic_modifiers_combines_two_slow_relics_like_two_slow_hits(monkeypatch):
+    # Mirrors Enemy.apply_slow()'s own semantics for combining two hits --
+    # but unlike poison/chain's tuple merges above, the FACTOR takes
+    # min(), not max(): slow_factor is the one stat in this codebase where
+    # *smaller* is the stronger effect (see FrostTower's own note), so
+    # "keep the harsher slow" means the minimum factor here.
+    stronger_slow = Relic("test_stronger_slow", "", "", slow_chance=0.1, slow_factor=0.4, slow_duration=1.0)
+    longer_slow = Relic("test_longer_slow", "", "", slow_chance=0.1, slow_factor=0.9, slow_duration=9.0)
+    monkeypatch.setitem(RELICS, "test_stronger_slow", stronger_slow)
+    monkeypatch.setitem(RELICS, "test_longer_slow", longer_slow)
+    modifiers = compose_relic_modifiers(["test_stronger_slow", "test_longer_slow"])
+    assert modifiers.slow_chance == pytest.approx(0.2)
+    assert modifiers.slow_effect == (0.4, 9.0)  # min factor (stronger slow), max duration
+
+
+def test_compose_relic_modifiers_no_slow_relic_leaves_slow_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.slow_chance == 0.0
+    assert modifiers.slow_effect is None
+
+
+def test_compose_relic_modifiers_poison_ignores_shield_is_boolean_or():
+    modifiers = compose_relic_modifiers(["corrosive_poison"])
+    assert modifiers.poison_ignores_shield is True
+    assert compose_relic_modifiers([]).poison_ignores_shield is False
+
+
+def test_compose_relic_modifiers_poison_ignores_shield_stays_granted_alongside_other_relics():
+    modifiers = compose_relic_modifiers(["prospectors_charm", "corrosive_poison"])
+    assert modifiers.poison_ignores_shield is True
+
+
+def test_compose_relic_modifiers_takes_the_max_tower_density_radius(monkeypatch):
+    smaller_radius = Relic(
+        "test_smaller_density", "", "", tower_density_radius=10,
+        tower_density_damage_bonus_per_neighbor=0.01, tower_density_damage_bonus_cap=0.05,
+    )
+    monkeypatch.setitem(RELICS, "test_smaller_density", smaller_radius)
+    modifiers = compose_relic_modifiers(["overcrowded_circuits", "test_smaller_density"])
+    assert modifiers.tower_density_radius == RELICS["overcrowded_circuits"].tower_density_radius
+
+
+def test_compose_relic_modifiers_sums_tower_density_bonus_rate_and_cap():
+    modifiers = compose_relic_modifiers(["overcrowded_circuits", "overcrowded_circuits"])
+    relic = RELICS["overcrowded_circuits"]
+    assert modifiers.tower_density_damage_bonus_per_neighbor == pytest.approx(
+        relic.tower_density_damage_bonus_per_neighbor * 2
+    )
+    assert modifiers.tower_density_damage_bonus_cap == pytest.approx(relic.tower_density_damage_bonus_cap * 2)
+
+
+def test_compose_relic_modifiers_no_density_relic_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.tower_density_radius == 0.0
+    assert modifiers.tower_density_damage_bonus_per_neighbor == 0.0
+    assert modifiers.tower_density_damage_bonus_cap == 0.0
+
+
+def test_compose_relic_modifiers_takes_the_max_last_stand_fire_rate_multiplier(monkeypatch):
+    weaker = Relic("test_weaker_last_stand_fire_rate", "", "", last_stand_fire_rate_multiplier=1.05)
+    monkeypatch.setitem(RELICS, "test_weaker_last_stand_fire_rate", weaker)
+    modifiers = compose_relic_modifiers(["adrenaline_rush", "test_weaker_last_stand_fire_rate"])
+    assert modifiers.last_stand_fire_rate_multiplier == RELICS["adrenaline_rush"].last_stand_fire_rate_multiplier
+
+
+def test_compose_relic_modifiers_no_adrenaline_rush_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.last_stand_fire_rate_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_early_route_multiplier():
+    modifiers = compose_relic_modifiers(["choke_point", "choke_point"])
+    assert modifiers.damage_vs_early_route_multiplier == RELICS["choke_point"].damage_vs_early_route_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_high_hp_multiplier():
+    modifiers = compose_relic_modifiers(["giant_slayer", "giant_slayer"])
+    assert modifiers.damage_vs_high_hp_multiplier == RELICS["giant_slayer"].damage_vs_high_hp_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_overkill_carry_fraction():
+    modifiers = compose_relic_modifiers(["overkill", "overkill"])
+    assert modifiers.overkill_carry_fraction == pytest.approx(RELICS["overkill"].overkill_carry_fraction * 2)
+
+
+def test_focused_fire_needs_zero_new_plumbing():
+    # Focused Fire reuses lucky_strikes' own crit_chance/crit_damage_
+    # multiplier fields verbatim -- composing the two together sums
+    # chance and takes max() on the damage multiplier, the exact same
+    # aggregation every other crit-granting relic pair already gets.
+    modifiers = compose_relic_modifiers(["lucky_strikes", "focused_fire"])
+    assert modifiers.crit_chance == pytest.approx(
+        RELICS["lucky_strikes"].crit_chance + RELICS["focused_fire"].crit_chance
+    )
+    assert modifiers.crit_damage_multiplier == max(
+        RELICS["lucky_strikes"].crit_damage_multiplier, RELICS["focused_fire"].crit_damage_multiplier
+    )
+
+
+def test_compose_relic_modifiers_new_fields_are_order_independent():
+    forward = compose_relic_modifiers([
+        "chilling_precision", "aftershock", "corrosive_poison", "overcrowded_circuits",
+        "adrenaline_rush", "choke_point", "giant_slayer", "focused_fire", "overkill",
+    ])
+    backward = compose_relic_modifiers([
+        "overkill", "focused_fire", "giant_slayer", "choke_point", "adrenaline_rush",
+        "overcrowded_circuits", "corrosive_poison", "aftershock", "chilling_precision",
+    ])
+    assert forward == backward

@@ -62,6 +62,7 @@ META_UNLOCKS = {
     "unlock_sniper": MetaUnlock("unlock_sniper", "sniper", "runs_played", 1),
     "unlock_support": MetaUnlock("unlock_support", "support", "runs_played", 2),
     "unlock_beam": MetaUnlock("unlock_beam", "beam", "runs_reached_endless", 1),
+    "unlock_beacon": MetaUnlock("unlock_beacon", "beacon", "runs_played", 3),
 }
 
 

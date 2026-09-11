@@ -22,6 +22,7 @@ import meta_progression
 import progress
 import run_history
 import save_state
+import settings
 import shop
 import ui
 from card_pool import STARTER_TOWERS
@@ -29,7 +30,7 @@ from difficulty import DIFFICULTY_MODES
 from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
-from relics import RELICS
+from relics import RELICS, Relic
 from run_map import MapNode, RunMap
 from run_state import RunState
 from shop import ShopItem
@@ -78,6 +79,20 @@ def _reload_current_node(game):
     escalation after changing something about the run."""
     run = game.active_run
     game._load_combat_node(run.map.node(run.current_node_id))
+
+
+def _find_buildable_row(game, count):
+    """`count` buildable, tile-aligned anchors in the same row, consecutive
+    columns (TILE_SIZE apart) -- for tests exercising Overcrowded Circuits'
+    own live density check, which needs several real placed towers within
+    a shared radius of each other, not just one."""
+    n = settings.SUBTILES_PER_TILE
+    for row in range(settings.GRID_ROWS):
+        for col in range(settings.GRID_COLS - count + 1):
+            anchors = [((col + i) * n, row * n) for i in range(count)]
+            if all(game.grid.is_buildable(c, r) for c, r in anchors):
+                return anchors
+    raise AssertionError("no matching buildable row found")
 
 
 def _enter_run_shop(game, seed=1):
@@ -975,6 +990,49 @@ def test_last_stand_charm_only_boosts_damage_while_down_to_the_last_life(game):
     assert tower.effective_damage() == base_damage
 
 
+def test_adrenaline_rushs_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["adrenaline_rush"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_last_stand_fire_rate_bonus_multiplier == (
+        RELICS["adrenaline_rush"].last_stand_fire_rate_multiplier
+    )
+
+
+def test_adrenaline_rush_only_boosts_fire_rate_while_down_to_the_last_life(game):
+    # Mirrors last_stand_charm's own damage test above exactly -- both
+    # relics key off the same Economy.is_on_last_life condition, resolved
+    # in the same set_last_stand_multiplier() call.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["adrenaline_rush"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    base_fire_rate = tower.effective_fire_rate()
+
+    game.economy.lives = 2
+    game.update(dt=0.01)
+    assert tower.effective_fire_rate() == base_fire_rate  # not yet down to the last life
+
+    game.economy.lives = 1
+    game.update(dt=0.01)
+    assert tower.effective_fire_rate() == pytest.approx(
+        base_fire_rate * RELICS["adrenaline_rush"].last_stand_fire_rate_multiplier
+    )
+
+    game.economy.lives = 3  # a life regained turns the bonus back off
+    game.update(dt=0.01)
+    assert tower.effective_fire_rate() == base_fire_rate
+
+
 def test_guardians_reprieve_saves_the_run_from_permadeath_once(game):
     start_first_floor(game, seed=1)
     game.active_run.relics = ["guardians_reprieve"]
@@ -1099,6 +1157,85 @@ def test_resuming_a_run_rederives_a_placed_towers_footprint_size(game):
     tower = game.grid.get_tower(anchor_col, anchor_row)
     expected_size = 8 - RELICS["compact_framework"].tower_footprint_shrink
     assert tower.footprint_subtiles == expected_size
+
+
+def test_overcrowded_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overcrowded_circuits"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["overcrowded_circuits"]
+    assert tower.relic_tower_density_radius == relic.tower_density_radius
+    assert tower.relic_tower_density_damage_bonus_per_neighbor == relic.tower_density_damage_bonus_per_neighbor
+    assert tower.relic_tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
+
+
+def test_overcrowded_circuits_density_bonus_counts_neighboring_towers_through_game_update(game, monkeypatch):
+    # A small-scale stand-in relic (monkeypatch.setitem, same precedent
+    # test_relics.py's own artificial relics use) rather than the real
+    # registry's own tuned 80px/2%/20% numbers -- an easier-to-reason-about
+    # rate, and a radius (100px) wide enough to reach an orthogonal
+    # neighbor one tile (64px) away but not one two tiles (128px) away, so
+    # the three-in-a-row cluster below produces two different neighbor
+    # counts to check.
+    monkeypatch.setitem(RELICS, "overcrowded_circuits", Relic(
+        "overcrowded_circuits", "", "", tower_density_radius=100,
+        tower_density_damage_bonus_per_neighbor=0.10, tower_density_damage_bonus_cap=0.50,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overcrowded_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])  # flanked by both other towers
+    assert center.relic_tower_density_bonus_multiplier == pytest.approx(1.20)  # 2 neighbors * 0.10
+    edge = game.grid.get_tower(*anchors[0])  # only one neighbor within range
+    assert edge.relic_tower_density_bonus_multiplier == pytest.approx(1.10)
+
+
+def test_overcrowded_circuits_density_bonus_is_capped_through_game_update(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "overcrowded_circuits", Relic(
+        "overcrowded_circuits", "", "", tower_density_radius=200,
+        tower_density_damage_bonus_per_neighbor=0.10, tower_density_damage_bonus_cap=0.15,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overcrowded_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])
+    assert center.relic_tower_density_bonus_multiplier == pytest.approx(1.15)  # capped, not 1.20
+
+
+def test_beacon_tower_placement_populates_relic_fields_like_any_other_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["lucky_strikes"]
+    game.active_run.unlocked_towers.append("beacon")  # a drafted card, not a starter tower
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "beacon"
+
+    assert game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["lucky_strikes"]
+    assert tower.relic_crit_chance == relic.crit_chance
+    assert tower.relic_crit_damage_multiplier == relic.crit_damage_multiplier
 
 
 # --- Elite Combat nodes: harder, and a bigger payout ---

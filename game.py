@@ -2001,6 +2001,17 @@ class Game:
         tower.relic_sell_refund_bonus = self.relic_modifiers.sell_refund_bonus
         tower.relic_aura_range_bonus_multiplier = self.relic_modifiers.support_aura_range_multiplier
         tower.relic_aura_strength_bonus_multiplier = self.relic_modifiers.support_aura_strength_multiplier
+        tower.relic_damage_vs_slowed_multiplier = self.relic_modifiers.damage_vs_slowed_multiplier
+        tower.relic_slow_chance = self.relic_modifiers.slow_chance
+        tower.relic_slow_effect = self.relic_modifiers.slow_effect
+        tower.relic_poison_ignores_shield = self.relic_modifiers.poison_ignores_shield
+        tower.relic_tower_density_radius = self.relic_modifiers.tower_density_radius
+        tower.relic_tower_density_damage_bonus_per_neighbor = self.relic_modifiers.tower_density_damage_bonus_per_neighbor
+        tower.relic_tower_density_damage_bonus_cap = self.relic_modifiers.tower_density_damage_bonus_cap
+        tower.relic_last_stand_fire_rate_bonus_multiplier = self.relic_modifiers.last_stand_fire_rate_multiplier
+        tower.relic_damage_vs_early_route_multiplier = self.relic_modifiers.damage_vs_early_route_multiplier
+        tower.relic_damage_vs_high_hp_multiplier = self.relic_modifiers.damage_vs_high_hp_multiplier
+        tower.relic_overkill_carry_fraction = self.relic_modifiers.overkill_carry_fraction
         return tower
 
     def _current_footprint_subtiles(self):
@@ -2152,6 +2163,24 @@ class Game:
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
+            # An Overcrowded Circuits-style relic's own live density check
+            # -- folds into this same first pass rather than a third one,
+            # unlike the aura: this only reads already-known static .pos
+            # values, with no dependency on anything pass 2 below does
+            # (the aura genuinely needs every reset_aura() done first,
+            # since receive_aura() is called from inside another tower's
+            # own update()). Skipped entirely for a relic-less run (or any
+            # tower with no such relic held) via the radius guard, so the
+            # O(n) neighbor scan below costs nothing when it's unused.
+            # "Every other tower" here includes SupportTower instances too
+            # -- the relic's own text says "tower," not "attacking tower."
+            nearby_count = 0
+            if tower.relic_tower_density_radius > 0:
+                nearby_count = sum(
+                    1 for other in self.towers
+                    if other is not tower and tower.pos.distance_to(other.pos) <= tower.relic_tower_density_radius
+                )
+            tower.set_nearby_tower_bonus(nearby_count)
         for tower in self.towers:
             tower.update(dt, self.enemies, self.projectiles, self.towers)
 

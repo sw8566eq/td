@@ -78,7 +78,7 @@ def test_bump_ignores_other_counters_thresholds(tmp_path):
 
     # runs_played crossing 10 must never unlock unlock_lightning
     # (total_floors_cleared, 10) just because the raw numbers line up.
-    assert set(newly_unlocked) == {"unlock_sniper", "unlock_support"}
+    assert set(newly_unlocked) == {"unlock_sniper", "unlock_support", "unlock_beacon"}
 
 
 def test_every_meta_unlock_targets_a_real_non_starter_tower():

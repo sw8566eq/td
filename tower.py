@@ -197,6 +197,46 @@ class Tower:
         # run, unlike any other relic effect here.
         self.relic_last_stand_bonus_multiplier = 1.0
         self.relic_last_stand_multiplier = 1.0
+        # Chilling Precision-style relic -- ungated multiply, read
+        # directly by Projectile._apply_hit_effects (needs the live
+        # per-enemy slow_timer check that only exists at hit-resolution
+        # time, not something effective_damage() can fold in once up
+        # front like relic_damage_bonus_multiplier above).
+        self.relic_damage_vs_slowed_multiplier = 1.0
+        # Aftershock-style relic -- same chance-gated shape as
+        # relic_poison_chance/relic_poison_effect above, just triggering
+        # enemy.apply_slow() instead of apply_poison().
+        self.relic_slow_chance = 0.0
+        self.relic_slow_effect = None
+        # Corrosive Poison-style relic -- threaded through to
+        # enemy.apply_poison()/take_poison_damage() as ignore_shield.
+        self.relic_poison_ignores_shield = False
+        # Overcrowded Circuits-style relic -- relic_tower_density_radius/
+        # _per_neighbor/_cap are its own configured strength (set once at
+        # construction); relic_tower_density_bonus_multiplier is the live
+        # value Game.update() recomputes every frame from this tower's own
+        # current neighbor count (see set_nearby_tower_bonus() below) --
+        # the "per-tower-density (live-reactive)" shape relics.py's own
+        # module docstring names.
+        self.relic_tower_density_radius = 0.0
+        self.relic_tower_density_damage_bonus_per_neighbor = 0.0
+        self.relic_tower_density_damage_bonus_cap = 0.0
+        self.relic_tower_density_bonus_multiplier = 1.0
+        # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
+        # multiplier/relic_last_stand_multiplier immediately above exactly,
+        # just for fire rate instead of damage; both live values are set
+        # together by set_last_stand_multiplier() below.
+        self.relic_last_stand_fire_rate_bonus_multiplier = 1.0
+        self.relic_last_stand_fire_rate_multiplier = 1.0
+        # Choke Point-style relic -- ungated multiply, read by Projectile
+        # against enemy.distance_traveled.
+        self.relic_damage_vs_early_route_multiplier = 1.0
+        # Giant Slayer-style relic -- ungated multiply, read by Projectile
+        # against enemy.max_hp.
+        self.relic_damage_vs_high_hp_multiplier = 1.0
+        # Overkill-style relic -- read by Projectile._apply_hit_effects
+        # after a killing blow, to size the carry-over bounce.
+        self.relic_overkill_carry_fraction = 0.0
         # Always one tile's worth of area (settings.SUBTILES_PER_TILE)
         # unless a Compact Framework-style relic shrinks it -- see
         # tile_rect()/upgrade_badge_center()/draw() below and
@@ -331,6 +371,13 @@ class Tower:
         projectile.relic_crit_damage_multiplier = self.relic_crit_damage_multiplier
         projectile.relic_chain_chance = self.relic_chain_chance
         projectile.relic_chain_effect = self.relic_chain_effect
+        projectile.relic_damage_vs_slowed_multiplier = self.relic_damage_vs_slowed_multiplier
+        projectile.relic_slow_chance = self.relic_slow_chance
+        projectile.relic_slow_effect = self.relic_slow_effect
+        projectile.relic_poison_ignores_shield = self.relic_poison_ignores_shield
+        projectile.relic_damage_vs_early_route_multiplier = self.relic_damage_vs_early_route_multiplier
+        projectile.relic_damage_vs_high_hp_multiplier = self.relic_damage_vs_high_hp_multiplier
+        projectile.relic_overkill_carry_fraction = self.relic_overkill_carry_fraction
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
@@ -429,17 +476,20 @@ class Tower:
         return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
 
     def effective_damage(self):
-        """self.damage scaled by three independent bonus sources, stacked
-        ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus) --
-        the same "sources don't multiply or max()" rule effective_range()
-        already establishes for its own two sources, generalized to a
-        third here: the transient per-frame aura buff (aura_damage_
-        multiplier, reset every frame -- see reset_aura()/receive_aura()),
-        this tower's persistent relic-driven bonus (relic_damage_bonus_
-        multiplier, set once at construction -- see Game._construct_tower),
-        and a Last Stand Charm-style relic's live, per-frame-recomputed
-        bonus (relic_last_stand_multiplier -- see
-        set_last_stand_multiplier()). Every create_projectile() below reads
+        """self.damage scaled by four independent bonus sources, stacked
+        ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus +
+        density_bonus) -- the same "sources don't multiply or max()" rule
+        effective_range() already establishes for its own two sources,
+        generalized to a fourth here: the transient per-frame aura buff
+        (aura_damage_multiplier, reset every frame -- see reset_aura()/
+        receive_aura()), this tower's persistent relic-driven bonus
+        (relic_damage_bonus_multiplier, set once at construction -- see
+        Game._construct_tower), a Last Stand Charm-style relic's live,
+        per-frame-recomputed bonus (relic_last_stand_multiplier -- see
+        set_last_stand_multiplier()), and an Overcrowded Circuits-style
+        relic's own live, per-frame-recomputed density bonus
+        (relic_tower_density_bonus_multiplier -- see
+        set_nearby_tower_bonus()). Every create_projectile() below reads
         this instead of self.damage directly, so a buffed tower's shots
         reflect it without each subclass repeating the multiplication."""
         return self.damage * (
@@ -447,6 +497,7 @@ class Tower:
             + (self.aura_damage_multiplier - 1.0)
             + (self.relic_damage_bonus_multiplier - 1.0)
             + (self.relic_last_stand_multiplier - 1.0)
+            + (self.relic_tower_density_bonus_multiplier - 1.0)
         )
 
     def set_last_stand_multiplier(self, active):
@@ -454,21 +505,45 @@ class Tower:
         the same first pass) with `active` = whether Economy.lives is down
         to the last one -- the one relic-driven value on this class that
         reacts to live, changing game state rather than resolving once at
-        floor-load/construction time. relic_last_stand_bonus_multiplier is
-        the relic's own configured strength (constant, from
-        Game._construct_tower); this just switches whether effective_
-        damage() currently applies it."""
+        floor-load/construction time. relic_last_stand_bonus_multiplier/
+        relic_last_stand_fire_rate_bonus_multiplier are the relics' own
+        configured strengths (constant, from Game._construct_tower); this
+        just switches whether effective_damage()/effective_fire_rate()
+        currently apply them, both in the same call since both relics key
+        off the exact same "down to your last life" condition."""
         self.relic_last_stand_multiplier = (
             self.relic_last_stand_bonus_multiplier if active else 1.0
         )
+        self.relic_last_stand_fire_rate_multiplier = (
+            self.relic_last_stand_fire_rate_bonus_multiplier if active else 1.0
+        )
+
+    def set_nearby_tower_bonus(self, nearby_count):
+        """Called every frame by Game.update() (same first pass as
+        reset_aura()/set_last_stand_multiplier()) with how many other
+        towers are currently within relic_tower_density_radius of this one
+        -- computes and stores the live Overcrowded Circuits-style density
+        bonus read by effective_damage(), capped at relic_tower_density_
+        damage_bonus_cap. Zero neighbors (or no such relic held, leaving
+        relic_tower_density_radius at 0) leaves this at 1.0, a no-op in
+        effective_damage()'s additive stack."""
+        bonus = min(
+            nearby_count * self.relic_tower_density_damage_bonus_per_neighbor,
+            self.relic_tower_density_damage_bonus_cap,
+        )
+        self.relic_tower_density_bonus_multiplier = 1.0 + bonus
 
     def effective_fire_rate(self):
-        """self.fire_rate scaled by this tower's own persistent,
-        relic-driven bonus (relic_fire_rate_bonus_multiplier -- see
-        Game._construct_tower). Unlike effective_range(), there's no aura
-        equivalent for fire rate to also fold in -- a plain single-source
-        multiply, not an additive stack."""
-        return self.fire_rate * self.relic_fire_rate_bonus_multiplier
+        """self.fire_rate scaled by two independent multiplicative
+        sources: this tower's own persistent, relic-driven bonus
+        (relic_fire_rate_bonus_multiplier -- see Game._construct_tower)
+        and an Adrenaline Rush-style relic's live, per-frame-recomputed
+        bonus (relic_last_stand_fire_rate_multiplier -- see
+        set_last_stand_multiplier()). Unlike effective_range()/
+        effective_damage(), there's no aura equivalent for fire rate to
+        also fold in, so both sources just multiply straight in rather
+        than stacking additively."""
+        return self.fire_rate * self.relic_fire_rate_bonus_multiplier * self.relic_last_stand_fire_rate_multiplier
 
     def create_projectile(self, target):
         raise NotImplementedError
@@ -919,6 +994,57 @@ class BeamTower(Tower):
         )
 
 
+class BeaconTower(Tower):
+    """Near-zero direct damage -- its real job is marking whatever its
+    always-on AoE flash touches: every enemy caught in mark_splash_radius
+    takes mark_damage_multiplier more damage from every source (not just
+    this tower's own hits) for mark_duration seconds (see Enemy.apply_mark/
+    take_damage). Reuses the existing Projectile class verbatim -- one new
+    mark_effect constructor field, exactly how FrostTower added slow_effect
+    -- which also means Beacon's own tiny hits go through the full existing
+    relic pipeline for free, same as every other tower. can_target_flying
+    stays the class default True: a beacon flash is light-based, not a
+    ground-impact blast, so it has no reason to exclude flying targets the
+    way Cannon/Knockback do."""
+    cost = 80
+    range = 110
+    damage = 1
+    fire_rate = 1.0
+    projectile_speed = 340.0
+    mark_splash_radius = 50
+    mark_damage_multiplier = 1.20
+    mark_duration = 3.0
+    sprite_name = "tower_beacon"
+    display_name = "Beacon"
+    EXTRA_STATS = (
+        ("Splash radius", "mark_splash_radius", _format_px),
+        ("Mark bonus", "mark_damage_multiplier", _format_buff_percent),
+        ("Mark duration", "mark_duration", _format_seconds),
+    )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Beacon's own marking mechanic instead.
+    SPECIALIZATIONS = {
+        "wide_beacon": {
+            "display_name": "Wide Beacon",
+            "description": "Marks a much larger area.",
+            "stat_multipliers": {"mark_splash_radius": 1.8},
+        },
+        "searing_brand": {
+            "display_name": "Searing Brand",
+            "description": "Hits harder, lasts longer.",
+            "stat_multipliers": {"mark_damage_multiplier": 1.5, "mark_duration": 1.4},
+        },
+    }
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(), splash_radius=self.mark_splash_radius,
+            mark_effect=(self.mark_damage_multiplier, self.mark_duration),
+            sprite_name="projectile_beacon", source=self,
+        )
+
+
 class SupportTower(Tower):
     """Never attacks -- buffs every other tower within range instead (see
     Tower.reset_aura()/receive_aura(), and Game.update()'s two-pass tower
@@ -1000,4 +1126,5 @@ TOWER_TYPES = {
     "poison": PoisonTower,
     "support": SupportTower,
     "beam": BeamTower,
+    "beacon": BeaconTower,
 }

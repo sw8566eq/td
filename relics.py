@@ -38,6 +38,14 @@ relic effect resolved every frame against changing game state --
 Economy.lives -- rather than once at floor-load or tower-construction
 time; see Tower.set_last_stand_multiplier/Game.update()).
 
+A further batch added a 7th shape, per-tower-density (also live-reactive,
+but per-tower rather than global): overcrowded_circuits' tower_density_
+radius/tower_density_damage_bonus_per_neighbor/tower_density_damage_bonus_cap,
+resolved every frame from each tower's own live neighbor count (folded
+into Game.update()'s existing two-pass tower loop -- see Tower.
+set_nearby_tower_bonus()) rather than from one global condition the way
+last_stand_damage_multiplier's own live check is.
+
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are
 few enough relics, and few enough relic-draft floors per run, that
@@ -123,6 +131,52 @@ class Relic:
     # comment for why.
     support_aura_range_multiplier: float = 1.0
     support_aura_strength_multiplier: float = 1.0
+    # chilling_precision's own bonus -- multiplies straight into
+    # effective_damage() (ungated, like tower_damage_multiplier) whenever
+    # Projectile._apply_hit_effects() finds enemy.slow_timer > 0 *before*
+    # this same hit's own slow application, so a Frost tower's first-ever
+    # hit on a target never retroactively counts itself as "vs. slowed".
+    damage_vs_slowed_multiplier: float = 1.0
+    # aftershock's own chance-gated roll, same shape as poison_chance/
+    # chain_chance above -- slow_factor/slow_duration are the *raw* per-
+    # relic values, folded into RelicModifiers.slow_effect the same way
+    # poison's own raw per-tick fields fold into poison_effect.
+    slow_chance: float = 0.0
+    slow_factor: float = 0.0
+    slow_duration: float = 0.0
+    # corrosive_poison's own bypass -- see Enemy.take_poison_damage/
+    # ShieldedEnemy's override. Boolean OR across held relics: once any
+    # one of them grants it, it stays granted.
+    poison_ignores_shield: bool = False
+    # overcrowded_circuits' own density bonus -- resolved live, every
+    # frame, from each tower's own neighbor count (Game.update()'s
+    # existing two-pass tower loop; see Tower.set_nearby_tower_bonus), not
+    # once at construction time like every tower_*_multiplier field above.
+    # tower_density_radius is a reach value (max()'d across relics, same
+    # precedent as chain_effect's chain_range); the per-neighbor rate and
+    # cap are flat magnitudes (summed, same as gold_per_floor_bonus).
+    tower_density_radius: float = 0.0
+    tower_density_damage_bonus_per_neighbor: float = 0.0
+    tower_density_damage_bonus_cap: float = 0.0
+    # adrenaline_rush's own bonus -- see RelicModifiers' matching field and
+    # Tower.set_last_stand_multiplier()/effective_fire_rate() for where it
+    # actually applies; aggregated via max(), the same conservative choice
+    # last_stand_damage_multiplier already makes.
+    last_stand_fire_rate_multiplier: float = 1.0
+    # choke_point's own bonus -- multiplies straight in (ungated), same
+    # shape as damage_vs_slowed_multiplier above. See
+    # projectile.CHOKE_POINT_DISTANCE_THRESHOLD for the fixed pixel cutoff
+    # this checks against -- a plain module constant in projectile.py, not
+    # a Relic field, since relics.py has no import dependency on
+    # tower.py/projectile.py today and every existing per-mechanic
+    # constant already lives beside the mechanic that consumes it.
+    damage_vs_early_route_multiplier: float = 1.0
+    # giant_slayer's own bonus -- same ungated-multiply shape, checked
+    # against projectile.GIANT_SLAYER_HP_THRESHOLD.
+    damage_vs_high_hp_multiplier: float = 1.0
+    # overkill's own bonus -- see projectile.OVERKILL_CARRY_RANGE for the
+    # fixed pixel range its carry-over bounce searches within.
+    overkill_carry_fraction: float = 0.0
 
 
 RELICS = {
@@ -246,6 +300,54 @@ RELICS = {
         "Support tower auras reach 20% further and buff 20% more, every floor.",
         support_aura_range_multiplier=1.20, support_aura_strength_multiplier=1.20,
     ),
+    "chilling_precision": Relic(
+        "chilling_precision", "Chilling Precision",
+        "Towers deal 20% more damage to enemies that are currently slowed.",
+        damage_vs_slowed_multiplier=1.20,
+    ),
+    # Deliberately weaker than FrostTower's own base slow (0.5 factor,
+    # 2.0s duration) -- same "the dedicated tower stays the strongest
+    # source" reasoning venomous_coating's own comment gives for poison.
+    "aftershock": Relic(
+        "aftershock", "Aftershock", "18% chance for any hit to also slow its target.",
+        slow_chance=0.18, slow_factor=0.75, slow_duration=1.5,
+    ),
+    "corrosive_poison": Relic(
+        "corrosive_poison", "Corrosive Poison", "Poison damage always breaks through enemy shields.",
+        poison_ignores_shield=True,
+    ),
+    "overcrowded_circuits": Relic(
+        "overcrowded_circuits", "Overcrowded Circuits",
+        "+2% tower damage for every other tower within 80 pixels of it, capped at +20%, every floor.",
+        tower_density_radius=80, tower_density_damage_bonus_per_neighbor=0.02,
+        tower_density_damage_bonus_cap=0.20,
+    ),
+    "adrenaline_rush": Relic(
+        "adrenaline_rush", "Adrenaline Rush",
+        "+15% tower fire rate while you're down to your last life.",
+        last_stand_fire_rate_multiplier=1.15,
+    ),
+    "choke_point": Relic(
+        "choke_point", "Choke Point",
+        "Towers deal 25% more damage to enemies that haven't traveled far along their route yet.",
+        damage_vs_early_route_multiplier=1.25,
+    ),
+    "giant_slayer": Relic(
+        "giant_slayer", "Giant Slayer", "+25% damage to enemies with more than 100 max HP.",
+        damage_vs_high_hp_multiplier=1.25,
+    ),
+    # Reuses lucky_strikes' own two fields verbatim, tuned to its own
+    # numbers -- no new plumbing needed anywhere (see compose_relic_
+    # modifiers' existing crit_chance/crit_damage_multiplier handling).
+    "focused_fire": Relic(
+        "focused_fire", "Focused Fire", "+10% crit chance for every tower, every floor.",
+        crit_chance=0.10, crit_damage_multiplier=1.5,
+    ),
+    "overkill": Relic(
+        "overkill", "Overkill",
+        "Damage beyond what's needed to kill an enemy carries over to a nearby enemy, at 50% strength.",
+        overkill_carry_fraction=0.5,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -337,6 +439,17 @@ class RelicModifiers:
     sell_refund_bonus: float = 0.0
     support_aura_range_multiplier: float = 1.0
     support_aura_strength_multiplier: float = 1.0
+    damage_vs_slowed_multiplier: float = 1.0
+    slow_chance: float = 0.0
+    slow_effect: tuple = None
+    poison_ignores_shield: bool = False
+    tower_density_radius: float = 0.0
+    tower_density_damage_bonus_per_neighbor: float = 0.0
+    tower_density_damage_bonus_cap: float = 0.0
+    last_stand_fire_rate_multiplier: float = 1.0
+    damage_vs_early_route_multiplier: float = 1.0
+    damage_vs_high_hp_multiplier: float = 1.0
+    overkill_carry_fraction: float = 0.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -388,6 +501,17 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     sell_refund_bonus = 0.0
     support_aura_range_multiplier = 1.0
     support_aura_strength_multiplier = 1.0
+    damage_vs_slowed_multiplier = 1.0
+    slow_chance = 0.0
+    slow_effect = None
+    poison_ignores_shield = False
+    tower_density_radius = 0.0
+    tower_density_damage_bonus_per_neighbor = 0.0
+    tower_density_damage_bonus_cap = 0.0
+    last_stand_fire_rate_multiplier = 1.0
+    damage_vs_early_route_multiplier = 1.0
+    damage_vs_high_hp_multiplier = 1.0
+    overkill_carry_fraction = 0.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -431,6 +555,31 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
                     max(chain_effect[0], relic.chain_damage_fraction),
                     max(chain_effect[1], relic.chain_range),
                 )
+        # Ungated, straight multiplies -- same neutral-default-means-no-op
+        # shape as tower_damage_multiplier above.
+        damage_vs_slowed_multiplier *= relic.damage_vs_slowed_multiplier
+        damage_vs_early_route_multiplier *= relic.damage_vs_early_route_multiplier
+        damage_vs_high_hp_multiplier *= relic.damage_vs_high_hp_multiplier
+        poison_ignores_shield = poison_ignores_shield or relic.poison_ignores_shield
+        tower_density_radius = max(tower_density_radius, relic.tower_density_radius)
+        tower_density_damage_bonus_per_neighbor += relic.tower_density_damage_bonus_per_neighbor
+        tower_density_damage_bonus_cap += relic.tower_density_damage_bonus_cap
+        last_stand_fire_rate_multiplier = max(last_stand_fire_rate_multiplier, relic.last_stand_fire_rate_multiplier)
+        overkill_carry_fraction += relic.overkill_carry_fraction
+        if relic.slow_chance > 0:
+            slow_chance += relic.slow_chance
+            if slow_effect is None:
+                slow_effect = (relic.slow_factor, relic.slow_duration)
+            else:
+                # min() on the factor, not max() -- slow_factor is the one
+                # stat in this codebase where *smaller* is the stronger
+                # effect (see FrostTower's own note), so "keep the harsher
+                # slow" means taking the minimum here, unlike every other
+                # tuple-merge in this function.
+                slow_effect = (
+                    min(slow_effect[0], relic.slow_factor),
+                    max(slow_effect[1], relic.slow_duration),
+                )
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -451,4 +600,15 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         sell_refund_bonus=sell_refund_bonus,
         support_aura_range_multiplier=support_aura_range_multiplier,
         support_aura_strength_multiplier=support_aura_strength_multiplier,
+        damage_vs_slowed_multiplier=damage_vs_slowed_multiplier,
+        slow_chance=slow_chance,
+        slow_effect=slow_effect,
+        poison_ignores_shield=poison_ignores_shield,
+        tower_density_radius=tower_density_radius,
+        tower_density_damage_bonus_per_neighbor=tower_density_damage_bonus_per_neighbor,
+        tower_density_damage_bonus_cap=tower_density_damage_bonus_cap,
+        last_stand_fire_rate_multiplier=last_stand_fire_rate_multiplier,
+        damage_vs_early_route_multiplier=damage_vs_early_route_multiplier,
+        damage_vs_high_hp_multiplier=damage_vs_high_hp_multiplier,
+        overkill_carry_fraction=overkill_carry_fraction,
     )
