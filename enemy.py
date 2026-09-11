@@ -504,10 +504,25 @@ class ShieldedEnemy(Enemy):
         self.shield = self.max_shield
         self.time_since_hit = 0.0
 
-    def take_damage(self, amount):
+    def _register_hit(self):
+        """Shared entry bookkeeping for any hit that actually reaches this
+        enemy -- absorbed by the shield in take_damage() below, or
+        bypassing it entirely via a Corrosive Poison-style relic in
+        take_poison_damage() below -- factored out since both methods
+        need the exact same two things done first: the same is_dead/
+        reached_goal guard every hit-shaped method in this file leads
+        with, and resetting the shield's own regen timer, since either
+        path counts as "a hit landed" for regen purposes. Returns False
+        (nothing to do -- caller should return 0.0) for an already-dead
+        or finished enemy, True otherwise."""
         if self.is_dead or self.reached_goal:
-            return 0.0
+            return False
         self.time_since_hit = 0.0
+        return True
+
+    def take_damage(self, amount):
+        if not self._register_hit():
+            return 0.0
         if self.shield > 0:
             absorbed = min(self.shield, amount)
             self.shield -= absorbed
@@ -524,14 +539,14 @@ class ShieldedEnemy(Enemy):
         docstring already says); with it, bypasses the shield entirely by
         calling Enemy.take_damage() directly (not self.take_damage(),
         which would re-enter this class's own shield-absorbing override)
-        -- but still resets the shield's regen timer, the same way a
-        normal absorbed hit would, so Corrosive Poison doesn't also make
-        the shield regenerate faster by pretending nothing landed."""
+        -- but still resets the shield's regen timer via _register_hit(),
+        the same way a normal absorbed hit would, so Corrosive Poison
+        doesn't also make the shield regenerate faster by pretending
+        nothing landed."""
         if not ignore_shield:
             return super().take_poison_damage(amount, ignore_shield)
-        if self.is_dead or self.reached_goal:
+        if not self._register_hit():
             return 0.0
-        self.time_since_hit = 0.0
         return Enemy.take_damage(self, amount)
 
     def update(self, dt, enemies=None):
