@@ -37,6 +37,7 @@ from ui import (
     build_editor_tool_rects,
     build_level_select_rects,
     build_level_thumbnail,
+    build_relics_button_rect,
     build_sell_button_rect,
     build_settings_rects,
     build_shop_continue_button_rect,
@@ -55,6 +56,7 @@ from ui import (
     draw_game_over_screen,
     draw_help_screen,
     draw_level_select_screen,
+    draw_relics_overlay,
     draw_results_table,
     draw_victory_screen,
     get_clicked_draft_choice,
@@ -73,6 +75,7 @@ from ui import (
     wave_unit_max_scroll,
     _format_wave_label,
     _format_wave_preview,
+    _relics_overlay_lines,
 )
 
 
@@ -271,6 +274,52 @@ def test_format_wave_label_prefers_all_cleared_over_endless():
     # practice, see WaveManager._advance_after_clear).
     label = _format_wave_label(_FakeWaveManager(all_waves_complete=True, endless=True))
     assert label == "All waves cleared!"
+
+
+# --- Relics overlay (HUD) ---
+
+def test_relics_overlay_lines_shows_a_placeholder_when_empty():
+    assert _relics_overlay_lines([]) == ["No relics yet."]
+
+
+def test_relics_overlay_lines_shows_one_line_per_relic():
+    from relics import RELICS
+
+    lines = _relics_overlay_lines(["war_chest", "sturdy_gate"])
+    assert lines == [
+        f"{RELICS['war_chest'].display_name} -- {RELICS['war_chest'].description}",
+        f"{RELICS['sturdy_gate'].display_name} -- {RELICS['sturdy_gate'].description}",
+    ]
+
+
+def test_relics_button_sits_within_the_hud_top_strip():
+    rect = build_relics_button_rect()
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    assert rect.top >= hud_top
+    assert rect.bottom <= hud_top + HUD_TOP_STRIP_HEIGHT
+    assert rect.right <= settings.PLAY_WIDTH
+
+
+def test_relics_button_does_not_overlap_the_speed_button():
+    assert not build_relics_button_rect().colliderect(build_speed_button_rect())
+
+
+def test_draw_relics_overlay_does_not_crash_when_empty():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    draw_relics_overlay(surface, font, small_font, [])
+
+
+def test_draw_relics_overlay_does_not_crash_with_relics_held():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    draw_relics_overlay(surface, font, small_font, ["war_chest", "sturdy_gate"])
 
 
 # --- Post-level results (per-tower damage/kills/accuracy) ---

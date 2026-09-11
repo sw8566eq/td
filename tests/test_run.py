@@ -1822,6 +1822,64 @@ def test_clearing_a_practice_level_earns_no_progress(game):
     assert "levels_cleared" not in achievements.load_achievements(game.achievements_path)["counters"]
 
 
+# --- Relics overlay (HUD) ---
+
+
+def test_r_key_enters_relics_during_a_run(game):
+    start_first_floor(game, seed=1)
+    assert game.state == GameState.PLAYING
+
+    game._handle_keydown(pygame.K_r)
+
+    assert game.state == GameState.RELICS
+
+
+def test_r_key_is_a_no_op_outside_a_run(playing_game):
+    # Practice/classic play -- active_run is None, so R (unlike every
+    # other PLAYING key) does nothing, same as it's a no-op for the pause
+    # menu's own restart confirmation shape being irrelevant here.
+    assert playing_game.active_run is None
+
+    playing_game._handle_keydown(pygame.K_r)
+
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_relics_any_key_returns_to_playing(game):
+    start_first_floor(game, seed=1)
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RELICS
+
+    game._handle_keydown(pygame.K_z)  # nothing to confirm/lose, unlike PAUSED's own R
+
+    assert game.state == GameState.PLAYING
+
+
+def test_relics_button_click_enters_relics_during_a_run(game):
+    start_first_floor(game, seed=1)
+
+    game._handle_click(game.relics_button_rect.center)
+
+    assert game.state == GameState.RELICS
+
+
+def test_relics_button_click_is_a_no_op_outside_a_run(playing_game):
+    assert playing_game.active_run is None
+
+    playing_game._handle_click(playing_game.relics_button_rect.center)
+
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_render_relics_overlay_does_not_crash(game):
+    run = start_first_floor(game, seed=1)
+    run.relics = ["war_chest", "sturdy_gate"]
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RELICS
+
+    game.render()
+
+
 # --- Rendering the run-specific screens ---
 
 
