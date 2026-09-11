@@ -1188,7 +1188,8 @@ def draw_help_screen(surface, font, small_font, back_rect):
     surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
 
 
-def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False):
+def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False,
+                     confirm_restart=False):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
     # panel stays visible and undimmed to its right. "Return to Editor"
     # only makes sense while playing a level that actually came from the
@@ -1196,13 +1197,25 @@ def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=F
     # buffer to go back to. "Save & Quit" only makes sense between waves
     # (see Game.can_save_run()) -- there's no live enemy/projectile state
     # to resume back into mid-wave.
-    options = ["Esc / P -- Resume", "R -- Restart Level"]
-    if is_custom_level:
-        options.append("E -- Return to Map Editor")
-    if can_save:
-        options.append("S -- Save & Quit")
-    options.append("Q -- Quit")
-    _draw_centered_overlay(surface, font, small_font, "Paused", options,
+    #
+    # confirm_restart swaps in a one-question confirm screen in place of
+    # the normal option list (see Game._handle_keydown's PAUSED branch) --
+    # reusing this same _draw_centered_overlay call rather than a second
+    # drawing primitive, since a confirm prompt is just a differently-
+    # worded title+subtitle-list, the exact shape this already draws.
+    if confirm_restart:
+        title = "Restart Level?"
+        options = ["This discards your progress on this floor.",
+                    "R -- Confirm Restart", "Esc -- Cancel"]
+    else:
+        title = "Paused"
+        options = ["Esc / P -- Resume", "R -- Restart Level"]
+        if is_custom_level:
+            options.append("E -- Return to Map Editor")
+        if can_save:
+            options.append("S -- Save & Quit")
+        options.append("Q -- Quit")
+    _draw_centered_overlay(surface, font, small_font, title, options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 

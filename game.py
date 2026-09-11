@@ -314,6 +314,17 @@ class Game:
         self.level_select_endless_armed = False
         self._custom_levels_by_id = {}
 
+        # Gates R's actual reset() call behind one extra confirming press
+        # while PAUSED -- an in-progress run/Practice/playtest floor is
+        # genuinely losable state, unlike GAME_OVER/VICTORY's own R (see
+        # _handle_keydown's PAUSED branch), so only PAUSED needs this. Only
+        # ever set True from inside that same PAUSED branch, and always
+        # cleared again by the very next R (confirms, also resets state to
+        # PLAYING) or Escape (cancels) before PAUSED can be left any other
+        # way -- so, unlike GameState.EVENT's own event_phase, there's no
+        # stale-leftover-value case to guard against on (re-)entry.
+        self.pause_restart_confirm_pending = False
+
         self.state = GameState.MENU
         self.running = True
 
@@ -1316,11 +1327,23 @@ class Game:
             elif key == pygame.K_3:
                 self.set_time_scale(3.0)
         elif self.state == GameState.PAUSED:
-            if key in (pygame.K_p, pygame.K_ESCAPE):
+            if self.pause_restart_confirm_pending:
+                # Only R (confirm) or Esc (cancel, back to the normal pause
+                # menu -- still PAUSED) do anything here; P is deliberately
+                # not treated as a synonym for Esc, unlike the normal pause
+                # menu's own Esc/P-both-resume shape, so a reflexive P
+                # press mid-confirm can't be misread as "resume playing"
+                # when nothing has actually been decided yet.
+                if key == pygame.K_r:
+                    self.reset()  # reset() itself still sees state == PAUSED here
+                    self.state = GameState.PLAYING
+                    self.pause_restart_confirm_pending = False
+                elif key == pygame.K_ESCAPE:
+                    self.pause_restart_confirm_pending = False
+            elif key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PLAYING
             elif key == pygame.K_r:
-                self.reset()
-                self.state = GameState.PLAYING
+                self.pause_restart_confirm_pending = True
             elif key == pygame.K_e and self.current_level_id is None:
                 # Only offered (see ui.draw_pause_menu) while playing a
                 # custom level -- self.editor still has whatever was
@@ -2448,7 +2471,8 @@ class Game:
 
         if self.state == GameState.PAUSED:
             ui.draw_pause_menu(self.screen, self.font, self.small_font,
-                                self.current_level_id is None, self.can_save_run())
+                                self.current_level_id is None, self.can_save_run(),
+                                self.pause_restart_confirm_pending)
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._cached_tower_results)
         elif self.state == GameState.VICTORY:
