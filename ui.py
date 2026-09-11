@@ -1028,11 +1028,25 @@ SETTINGS_BUTTON_HEIGHT = 44
 SETTINGS_BUTTON_GAP = 16
 SETTINGS_TOP = 160
 
+# Preset windowed sizes -- separate buttons (mirroring DIFFICULTY_ORDER's
+# own one-button-per-choice shape below), not a cycling toggle or a
+# dropdown. Every preset is >= the game's own fixed content size
+# (settings.SCREEN_WIDTH/HEIGHT, the first entry here) since dragging/
+# resizing under plain RESIZABLE never rescales that content (see Game.
+# apply_display_mode's own docstring) -- anything smaller would just clip
+# the grid or the stats panel, not shrink to fit.
+WINDOW_SIZE_PRESETS = {
+    "window_1200x704": (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT),  # Default -- exact content size
+    "window_1440x840": (1440, 840),
+    "window_1600x960": (1600, 960),
+}
+
 # "fullscreen" toggles on/off; each difficulty.DIFFICULTY_ORDER key picks
 # that difficulty.DIFFICULTY_MODES entry directly (so get_clicked_settings_
 # option's result plugs straight into Game.set_difficulty with no
-# translation); "back" returns to the menu.
-SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, "back"]
+# translation); each WINDOW_SIZE_PRESETS key likewise plugs straight into
+# Game.set_window_size; "back" returns to the menu.
+SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, *WINDOW_SIZE_PRESETS, "back"]
 
 
 def _settings_button_rect(index):
@@ -1059,7 +1073,8 @@ def _draw_settings_button(surface, font, rect, label, selected):
     surface.blit(text, text.get_rect(center=rect.center))
 
 
-def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key):
+def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key,
+                          window_size):
     surface.fill(settings.COLOR_BG)
     title = font.render("Settings", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
@@ -1070,6 +1085,14 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
     for key in DIFFICULTY_ORDER:
         label = f"Difficulty: {DIFFICULTY_MODES[key].display_name}"
         _draw_settings_button(surface, small_font, settings_rects[key], label, key == difficulty_key)
+
+    # Meaningless while fullscreen (see Game.set_window_size), but still
+    # drawn/selectable so the player can see what windowed size they'll
+    # return to.
+    window_size = tuple(window_size)
+    for key, size in WINDOW_SIZE_PRESETS.items():
+        label = f"Window: {size[0]}x{size[1]}"
+        _draw_settings_button(surface, small_font, settings_rects[key], label, size == window_size)
 
     _draw_settings_button(surface, small_font, settings_rects["back"], "Back to Menu", False)
 

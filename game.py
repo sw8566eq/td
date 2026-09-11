@@ -230,14 +230,22 @@ class Game:
         # _delete_save_if_this_run_was_resumed().
         self.has_saved_run = save_state.has_saved_run(self.save_path)
 
-        # Persisted player preferences -- fullscreen and difficulty are the
-        # first genuinely cross-session prefs this game has (unlike
+        # Persisted player preferences -- fullscreen and difficulty were the
+        # first genuinely cross-session prefs this game had (unlike
         # time_scale/unlimited_gold above), so they're written through
         # immediately on change rather than only on quit -- see
-        # set_fullscreen()/set_difficulty().
+        # set_fullscreen()/set_difficulty()/set_window_size().
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
         saved_settings = player_settings.load_settings(self.settings_path)
         self.fullscreen = saved_settings["fullscreen"]
+        # Windowed size -- read here so the very first apply_display_mode()
+        # call below already restores it (today's actual prior behavior:
+        # dragging the window to a new size was never persisted across a
+        # relaunch at all; see set_window_size()/the VIDEORESIZE handler
+        # for how this now stays current, preset click or organic drag
+        # alike). Meaningless while fullscreen, same as a drag already
+        # being ignored there -- see apply_display_mode's own docstring.
+        self.window_size = tuple(saved_settings["window_size"])
         # Which difficulty.DIFFICULTY_MODES entry is currently active --
         # read at _load_level_object time, so changing it mid-level has no
         # effect until the next load_level()/reset() (same "applies on next
@@ -926,10 +934,15 @@ class Game:
 
     def apply_display_mode(self, size=None):
         """(Re)create self.screen for the current self.fullscreen setting,
-        at `size` pixels -- defaults to the configured settings.SCREEN_
-        WIDTH/HEIGHT; only ever overridden by handle_events()'s
-        pygame.VIDEORESIZE case, once the player has actually dragged a
-        non-fullscreen window to a new size.
+        at `size` pixels -- defaults to self.window_size (the persisted
+        windowed size, itself defaulting to settings.SCREEN_WIDTH/HEIGHT --
+        see player_settings.DEFAULTS). Overridden explicitly by
+        set_window_size() (a Settings-screen preset click) and by
+        handle_events()'s pygame.VIDEORESIZE case (an organic drag) --
+        both also update self.window_size itself, so the *next* bare call
+        here (e.g. toggling fullscreen back off) still lands on whatever
+        size the player last actually chose, not silently back to the
+        hardcoded default.
 
         pygame.SCALED (rendering at a fixed logical resolution, letterboxed
         by SDL to whatever physical size the window becomes) was the first
@@ -949,7 +962,7 @@ class Game:
         flags = pygame.RESIZABLE
         if self.fullscreen:
             flags |= pygame.FULLSCREEN
-        self.screen = pygame.display.set_mode(size or (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT), flags)
+        self.screen = pygame.display.set_mode(size or self.window_size, flags)
 
     def set_fullscreen(self, value):
         self.fullscreen = bool(value)
@@ -961,9 +974,24 @@ class Game:
             self.difficulty = key
             self._save_player_settings()
 
+    def set_window_size(self, size):
+        """A Settings-screen preset click -- see the VIDEORESIZE handler in
+        handle_events() for the other way self.window_size changes (an
+        organic drag), which persists through this same field/save call."""
+        if self.fullscreen:
+            return  # meaningless while fullscreen, same as a drag already being ignored there
+        self.window_size = tuple(size)
+        self.apply_display_mode(self.window_size)
+        self._save_player_settings()
+
     def _save_player_settings(self):
         player_settings.save_settings(
-            {"fullscreen": self.fullscreen, "difficulty": self.difficulty}, self.settings_path,
+            {
+                "fullscreen": self.fullscreen,
+                "difficulty": self.difficulty,
+                "window_size": list(self.window_size),
+            },
+            self.settings_path,
         )
 
     def set_time_scale(self, scale):
@@ -1245,7 +1273,16 @@ class Game:
                 # from the desktop resolution isn't something the player
                 # actually did (see apply_display_mode's docstring for what
                 # this makes dragging a windowed edge actually do).
-                self.apply_display_mode(event.size)
+                # set_window_size() persists too, same as a Settings-screen
+                # preset click, so an organic drag survives a relaunch just
+                # the same. That does mean a full (tiny, un-fsync'd) JSON
+                # rewrite on every intermediate size SDL reports while a
+                # drag is in progress, not just once at the end -- a
+                # deliberate choice, not an oversight: there's no distinct
+                # "drag finished" event to defer to here, and debouncing
+                # this write is not worth the added state for a save this
+                # cheap.
+                self.set_window_size(event.size)
 
     def _handle_keydown(self, key):
         if self.state == GameState.MENU:
@@ -1708,6 +1745,8 @@ class Game:
             self.set_fullscreen(not self.fullscreen)
         elif option in difficulty.DIFFICULTY_MODES:
             self.set_difficulty(option)
+        elif option in ui.WINDOW_SIZE_PRESETS:
+            self.set_window_size(ui.WINDOW_SIZE_PRESETS[option])
         elif option == "back":
             self.state = GameState.MENU
 
@@ -2305,7 +2344,7 @@ class Game:
         if self.state == GameState.SETTINGS:
             ui.draw_settings_screen(
                 self.screen, self.font, self.small_font, self.settings_rects,
-                self.fullscreen, self.difficulty,
+                self.fullscreen, self.difficulty, self.window_size,
             )
             pygame.display.flip()
             return
