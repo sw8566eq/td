@@ -1832,6 +1832,16 @@ def test_render_map_does_not_crash(game):
     game.render()
 
 
+def test_render_playing_during_a_run_does_not_crash(game):
+    # Exercises the HUD's floor_label branch specifically -- test_game.py's
+    # own PLAYING render smoke tests all use classic/Practice play, which
+    # never sets active_run, so none of them touch this path.
+    start_first_floor(game, seed=1)
+    assert game.state == GameState.PLAYING
+
+    game.render()
+
+
 def test_render_floor_cleared_does_not_crash(game):
     start_first_floor(game, seed=1)
     finish_all_waves(game)

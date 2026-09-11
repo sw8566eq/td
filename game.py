@@ -2429,6 +2429,13 @@ class Game:
         if panel_subject in self.towers:  # a placed tower (hovered, or pinned via selected_tower)
             ui.draw_tower_range_preview(self.screen, panel_subject)
 
+        # "Floor N/M" -- same 1-based node.row+1 / final_row_index+1 shape
+        # FLOOR_CLEARED's own screen already uses, just also shown live
+        # during PLAYING itself now, not only between floors.
+        floor_label = (
+            f"Floor {self.active_run.current_row + 1}/{self.active_run.map.final_row_index + 1}"
+            if self.active_run is not None else None
+        )
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
             self.economy, self.wave_manager, self.button_rects,
@@ -2436,6 +2443,7 @@ class Game:
             self.time_scale, self.speed_button_rect,
             self.wave_manager.next_wave_preview(),
             shop_currency=self.active_run.shop_currency if self.active_run is not None else None,
+            floor_label=floor_label,
         )
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
