@@ -998,6 +998,11 @@ MENU_KEY_HINTS = [
     ("a", "Achievements"),
     ("h", "How to Play"),
     ("d", "Daily Run"),
+    # "c" is already reserved for the conditional Continue option below, so
+    # this picks an unused letter rather than a strictly mnemonic one --
+    # same spirit as "d" for Daily Run being the mnemonic exception, not
+    # every letter here being one.
+    ("b", "Credits"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -1019,6 +1024,12 @@ def draw_menu_screen(surface, font, small_font, has_saved_run=False):
     surface.fill(settings.COLOR_BG)
     options = menu_options(has_saved_run)
     _draw_centered_overlay(surface, font, small_font, "Tower Defense", options, settings.COLOR_TEXT)
+    # Escape already quits from here (see Game._handle_keydown's MENU
+    # branch) -- same "Esc -- Quit" wording MAP/DRAFT/EVENT/REST already
+    # use for their own quit-the-game Escape, not SETTINGS/ACHIEVEMENTS/
+    # HELP/CREDITS' own "Esc -- Back to Menu" (there's no "back" from the
+    # menu itself).
+    _draw_escape_hint(surface, small_font, "Esc -- Quit")
 
 
 # --- Settings screen ---
@@ -1052,6 +1063,27 @@ def get_clicked_settings_option(pos, settings_rects):
     return _key_of_rect_containing(pos, settings_rects)
 
 
+def _draw_escape_hint(surface, small_font, text="Esc -- Back to Menu"):
+    """The small 'Esc -- ...' corner hint every full-screen menu-adjacent
+    screen draws in its bottom-left corner -- Settings/Achievements/Help/
+    Credits all share the default "back to menu" wording; the main menu's
+    own Esc quits the game outright rather than going "back" anywhere, so
+    it passes its own text instead."""
+    hint = small_font.render(text, True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def _draw_back_to_menu_button(surface, small_font, rect, label="Back to Menu"):
+    """The single centered button Achievements/Help/Credits each draw --
+    Settings has its own row of same-shaped buttons already (see
+    _draw_settings_button below) and keeps using that instead, for one
+    consistent look across all of Settings' own buttons including this
+    one."""
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+    text = small_font.render(label, True, settings.COLOR_TEXT)
+    surface.blit(text, text.get_rect(center=rect.center))
+
+
 def _draw_settings_button(surface, font, rect, label, selected):
     color = settings.COLOR_BUTTON_SELECTED if selected else settings.COLOR_BUTTON
     pygame.draw.rect(surface, color, rect, border_radius=6)
@@ -1073,8 +1105,7 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
 
     _draw_settings_button(surface, small_font, settings_rects["back"], "Back to Menu", False)
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+    _draw_escape_hint(surface, small_font)
 
 
 # --- Achievements screen ---
@@ -1122,12 +1153,42 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
         surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += ACHIEVEMENT_ROW_HEIGHT
 
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
-    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
-    surface.blit(label, label.get_rect(center=back_rect.center))
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+# --- Static list screens (Help, Credits) ---
+#
+# Both are a fixed, hand-written list of lines under a title, with nothing
+# derived from any in-game state -- unlike Settings/Achievements, neither
+# needs anything read or re-read on entry (see Game._handle_keydown's HELP/
+# CREDITS branches -- no _enter_help()/_enter_credits() needed). Sharing
+# one body here is what keeps their per-screen TOP/LINE_HEIGHT/BACK_BUTTON_*
+# constants independent of each other (each screen declares its own, same
+# as SETTINGS_BUTTON_WIDTH/ACHIEVEMENTS_BACK_BUTTON_WIDTH/HELP_BACK_BUTTON_
+# WIDTH already independently happen to share the value 240) rather than
+# one screen's own constants silently doubling as another's.
+
+
+def _build_static_list_back_rect(line_count, top, line_height, width, height, gap):
+    x = (settings.SCREEN_WIDTH - width) // 2
+    y = top + line_count * line_height + gap
+    return pygame.Rect(x, y, width, height)
+
+
+def _draw_static_list_screen(surface, font, small_font, title, lines, back_rect, top, line_height):
+    surface.fill(settings.COLOR_BG)
+    title_text = font.render(title, True, settings.COLOR_TEXT)
+    surface.blit(title_text, title_text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    y = top
+    for line in lines:
+        text = small_font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += line_height
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
 
 
 # --- Help / How to Play screen ---
@@ -1160,32 +1221,46 @@ def build_help_back_rect(line_count=len(HELP_LINES)):
     """Rect for the Help screen's single 'Back to Menu' button, stacked
     below the last line -- same layout idea as build_achievements_back_rect,
     since HELP_LINES is likewise a short, fixed list."""
-    x = (settings.SCREEN_WIDTH - HELP_BACK_BUTTON_WIDTH) // 2
-    y = HELP_TOP + line_count * HELP_LINE_HEIGHT + HELP_BACK_BUTTON_GAP
-    return pygame.Rect(x, y, HELP_BACK_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT)
+    return _build_static_list_back_rect(line_count, HELP_TOP, HELP_LINE_HEIGHT,
+                                         HELP_BACK_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT,
+                                         HELP_BACK_BUTTON_GAP)
 
 
 def draw_help_screen(surface, font, small_font, back_rect):
-    """Static how-to-play screen -- HELP_LINES is a fixed, hand-written
-    summary, not derived from any in-game state, so unlike Settings/
-    Achievements there's nothing to read or re-read on entry (see
-    Game._handle_keydown's HELP branch -- no _enter_help() needed)."""
-    surface.fill(settings.COLOR_BG)
-    title = font.render("How to Play", True, settings.COLOR_TEXT)
-    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+    _draw_static_list_screen(surface, font, small_font, "How to Play", HELP_LINES,
+                              back_rect, HELP_TOP, HELP_LINE_HEIGHT)
 
-    y = HELP_TOP
-    for line in HELP_LINES:
-        text = small_font.render(line, True, settings.COLOR_TEXT)
-        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
-        y += HELP_LINE_HEIGHT
 
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
-    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
-    surface.blit(label, label.get_rect(center=back_rect.center))
+# --- Credits screen ---
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+CREDITS_TOP = 100
+CREDITS_LINE_HEIGHT = 34
+CREDITS_BACK_BUTTON_WIDTH = 240
+CREDITS_BACK_BUTTON_HEIGHT = 40
+CREDITS_BACK_BUTTON_GAP = 24
+
+# Placeholder content -- fill in real attribution/license text later; this
+# exists so there's a credits screen at all, not to make any final claim
+# about what it should say.
+CREDITS_LINES = [
+    "Tower Defense",
+    "Built with Python and pygame.",
+    "(c) the author. License: TBD.",
+]
+
+
+def build_credits_back_rect(line_count=len(CREDITS_LINES)):
+    """Rect for the Credits screen's single 'Back to Menu' button --
+    same layout idea as build_help_back_rect, since CREDITS_LINES is
+    likewise a short, fixed list."""
+    return _build_static_list_back_rect(line_count, CREDITS_TOP, CREDITS_LINE_HEIGHT,
+                                         CREDITS_BACK_BUTTON_WIDTH, CREDITS_BACK_BUTTON_HEIGHT,
+                                         CREDITS_BACK_BUTTON_GAP)
+
+
+def draw_credits_screen(surface, font, small_font, back_rect):
+    _draw_static_list_screen(surface, font, small_font, "Credits", CREDITS_LINES,
+                              back_rect, CREDITS_TOP, CREDITS_LINE_HEIGHT)
 
 
 def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False,

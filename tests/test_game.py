@@ -1902,6 +1902,43 @@ def test_render_help_screen_does_not_crash(game):
     game.render()
 
 
+# --- Credits screen ---
+
+
+def test_menu_b_key_enters_credits(game):
+    game._handle_keydown(pygame.K_b)
+    assert game.state == GameState.CREDITS
+
+
+def test_credits_escape_returns_to_menu(game):
+    game.state = GameState.CREDITS
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_credits_unbound_key_is_a_no_op(game):
+    game.state = GameState.CREDITS
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.CREDITS
+
+
+def test_credits_click_on_back_returns_to_menu(game):
+    game.state = GameState.CREDITS
+    game._handle_credits_click(game.credits_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_credits_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.CREDITS
+    game._handle_credits_click((0, 0))
+    assert game.state == GameState.CREDITS
+
+
+def test_render_credits_screen_does_not_crash(game):
+    game.state = GameState.CREDITS
+    game.render()
+
+
 # --- Endless/Survival mode ---
 
 
