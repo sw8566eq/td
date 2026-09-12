@@ -1878,6 +1878,27 @@ def test_render_event_does_not_crash(game):
     game.render()  # the "resolved" phase
 
 
+def test_render_a_three_option_event_does_not_crash(game):
+    # build_event_option_rects/draw_event_screen/_handle_event_click were
+    # already fully generic over option count before Chunk D added any
+    # 3-option event -- this pins that down explicitly rather than just
+    # trusting it, using collapsed_vault (one of the new 3-option events)
+    # forced directly onto an otherwise-ordinary event node.
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+    game.current_event = EVENTS["collapsed_vault"]
+    game.event_option_rects = ui.build_event_option_rects(len(game.current_event.options))
+    assert len(game.event_option_rects) == 3
+
+    game.render()  # the "choose" phase, with all 3 options on screen
+
+    game._handle_event_click(game.event_option_rects[2].center)  # the 3rd option specifically
+
+    assert game.event_phase == "resolved"
+    assert game.event_chosen_option is game.current_event.options[2]
+    game.render()  # the "resolved" phase
+
+
 def test_render_rest_does_not_crash(game):
     _begin_run_with_map(game, ["combat", "rest"])
     game._enter_node("1-0")
