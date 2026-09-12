@@ -10,17 +10,19 @@ from waves import WaveState
 
 # A small, hand-built map (not a real generate_run_map() output) shared by
 # every test below that needs a real RunState -- combat node "0-0" (level 1)
-# -> shop node "1-0" -> boss combat node "2-0" (level 2, the final row).
-# Deliberately includes one non-combat node (the shop) so tests can exercise
-# _parse_and_validate_active_run's "current_node_id must be a combat/elite
-# node" check.
+# -> shop node "1-0" -> combat node "2-0" (level 2) -> boss node "3-0"
+# (level 16, the actual final row). Deliberately includes one non-combat
+# node (the shop) so tests can exercise _parse_and_validate_active_run's
+# "current_node_id must be a combat/elite/boss node" check, and one boss
+# node so tests can exercise the positive case of that same check.
 _MAP = RunMap(
     rows=(
         (MapNode("0-0", row=0, col=0, node_type="combat", level_id=1),),
         (MapNode("1-0", row=1, col=0, node_type="shop"),),
         (MapNode("2-0", row=2, col=0, node_type="combat", level_id=2),),
+        (MapNode("3-0", row=3, col=0, node_type="boss", level_id=16),),
     ),
-    edges={"0-0": ("1-0",), "1-0": ("2-0",)},
+    edges={"0-0": ("1-0",), "1-0": ("2-0",), "2-0": ("3-0",)},
 )
 
 
@@ -129,7 +131,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
         seed=42, difficulty="hard", unlocked_towers=["basic", "cannon", "frost"],
         visited_node_ids=["0-0", "1-0"], current_node_id="2-0",
         lives=15, shop_currency=80, relics=["prospectors_charm"], is_daily=True,
-        has_spent_gold=True, used_guardians_reprieve=True,
+        has_spent_gold=True, used_guardians_reprieve=True, boss_defeated=True,
     )
     game = _FakeGame(level, [], active_run=run)
 
@@ -149,6 +151,34 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     assert loaded_run.is_daily is True
     assert loaded_run.has_spent_gold is True
     assert loaded_run.used_guardians_reprieve is True
+    assert loaded_run.boss_defeated is True
+
+
+def test_load_run_with_a_save_predating_boss_defeated_defaults_it_false(tmp_path):
+    # Same .get()-defaults precedent as shop_currency/sold_towers above --
+    # an older save written before this field existed has no such key at
+    # all, not an explicit false.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    del data["run"]["boss_defeated"]
+    path.write_text(json.dumps(data))
+
+    loaded_run = save_state.load_run(path=path)["run"]
+    assert loaded_run.boss_defeated is False
+
+
+def test_load_run_with_a_current_node_that_is_a_boss_node_resumes_fine(tmp_path):
+    # The positive case of test_load_run_with_a_current_node_that_isnt_
+    # combat_or_elite_returns_none below -- a boss node is just as
+    # resumable mid-PLAYING as an ordinary combat/elite one.
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run(current_node_id="3-0"))
+    save_state.save_run(game, path=path)
+
+    loaded_run = save_state.load_run(path=path)["run"]
+    assert loaded_run.current_node_id == "3-0"
 
 
 def test_load_run_with_a_saved_run_predating_the_run_key_still_resumes(tmp_path):

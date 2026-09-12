@@ -5,6 +5,7 @@ from enemy import (
     ENEMY_TYPES,
     BossEnemy,
     Enemy,
+    FinalBossEnemy,
     FlyingEnemy,
     GruntEnemy,
     HealerEnemy,
@@ -195,6 +196,73 @@ def test_boss_draw_omits_the_status_ring_before_any_mechanic_triggers():
 
     ring_y = int(boss.pos.y - (boss.radius + 4))
     assert surface.get_at((int(boss.pos.x), ring_y)) == (0, 0, 0, 255)
+
+
+# --- Final boss enemy (the run map's own dedicated boss-tier levels) ---
+
+def test_final_boss_is_registered():
+    assert ENEMY_TYPES["final_boss"] is FinalBossEnemy
+
+
+def test_final_boss_dwarfs_the_regular_boss_in_hp_and_reward():
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    assert final_boss.max_hp > boss.max_hp
+    assert final_boss.gold_reward > boss.gold_reward
+
+
+def test_final_boss_still_enrages_and_gets_an_armor_phase():
+    # Inherits BossEnemy.take_damage() completely unmodified -- both
+    # mechanics must still fire exactly as they would for an ordinary boss.
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)
+    final_boss.take_damage(final_boss.max_hp * 0.85)  # leaves hp at 15% -- below both thresholds
+    assert final_boss.enraged is True
+    assert final_boss.armor_timer == FinalBossEnemy.ARMOR_DURATION
+
+
+def test_final_boss_starts_with_no_pending_spawns():
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)
+    assert final_boss.pending_spawns == []
+
+
+def test_final_boss_summons_reinforcements_once_the_interval_elapses():
+    final_boss = FinalBossEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL - 0.01)
+    assert final_boss.pending_spawns == []  # not yet
+
+    final_boss.update(dt=0.02)  # crosses the interval
+    assert len(final_boss.pending_spawns) == FinalBossEnemy.SUMMON_COUNT
+    for child in final_boss.pending_spawns:
+        assert isinstance(child, ScoutEnemy)
+        assert child.distance_traveled == pytest.approx(final_boss.distance_traveled)
+
+
+def test_final_boss_summon_timer_resets_and_can_fire_again():
+    final_boss = FinalBossEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)
+    assert len(final_boss.pending_spawns) == FinalBossEnemy.SUMMON_COUNT
+
+    final_boss.pending_spawns.clear()  # simulate Game.update()'s own per-frame drain
+    final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)
+    assert len(final_boss.pending_spawns) == FinalBossEnemy.SUMMON_COUNT
+
+
+def test_final_boss_does_not_summon_once_dead():
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)
+    final_boss.take_damage(final_boss.max_hp)  # a killing blow
+    assert final_boss.is_dead
+
+    final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 1.0)
+    assert final_boss.pending_spawns == []
+
+
+def test_final_boss_does_not_summon_once_it_reaches_the_goal():
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)  # a short path
+    final_boss.update(dt=100.0)  # walks the whole (short) route and reaches the goal
+    assert final_boss.reached_goal
+
+    final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 1.0)
+    assert final_boss.pending_spawns == []
 
 
 def test_scout_is_faster_and_squishier_than_grunt():

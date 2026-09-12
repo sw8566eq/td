@@ -1,18 +1,20 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. Ships with eight species -- GruntEnemy
+as overridable class attributes. Ships with nine species -- GruntEnemy
 (baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP), BossEnemy
 (a level's one-off final-wave heavyweight), ShieldedEnemy (a regenerating
 shield absorbs damage before HP does), FlyingEnemy (only a tower with
 can_target_flying -- see tower.py -- can hit it), SplitterEnemy (splits
 into weaker children on death -- see Enemy.pending_spawns), HealerEnemy
-(passively heals nearby enemies -- see Enemy.receive_heal()) -- and a new
-one is written the same way towers are: subclass Enemy, override stats
-(and update()/take_damage() too, if it needs genuinely different behavior
-like a shield), then add one line to ENEMY_TYPES. Levels reference enemies
-by their registry name string in wave_specs (see levels.py), so WaveManager
-never needs to know about concrete Enemy subclasses directly.
+(passively heals nearby enemies -- see Enemy.receive_heal()), FinalBossEnemy
+(the run map's own final-row boss -- BossEnemy plus a live reinforcement-
+summon mechanic, also via Enemy.pending_spawns) -- and a new one is written
+the same way towers are: subclass Enemy, override stats (and update()/
+take_damage() too, if it needs genuinely different behavior like a shield),
+then add one line to ENEMY_TYPES. Levels reference enemies by their
+registry name string in wave_specs (see levels.py), so WaveManager never
+needs to know about concrete Enemy subclasses directly.
 """
 
 import pygame
@@ -94,13 +96,15 @@ class Enemy:
         # hit, or several links of a chain) each get their own popup.
         self.damage_events = []
 
-        # Enemies this one wants added to the live Game.enemies list once
-        # it dies -- same drain-a-per-frame-event-list idiom as
-        # damage_events above (see CLAUDE.md's "Visual effects" section),
-        # just applied to spawning entities instead of floating text.
-        # Empty for every species except SplitterEnemy; Game.update()'s
-        # dead-enemy loop drains it unconditionally, so no per-species
-        # special-casing is needed there.
+        # Enemies this one wants added to the live Game.enemies list --
+        # same drain-a-per-frame-event-list idiom as damage_events above
+        # (see CLAUDE.md's "Visual effects" section), just applied to
+        # spawning entities instead of floating text. Empty for every
+        # species except SplitterEnemy (populated once, at death) and
+        # FinalBossEnemy (populated repeatedly, while still alive, by its
+        # own reinforcement-summon mechanic) -- Game.update() drains
+        # whatever's here for *every* enemy, dead or alive, every frame, so
+        # no per-species special-casing is needed there.
         self.pending_spawns = []
 
     @staticmethod
@@ -476,6 +480,49 @@ class BossEnemy(Enemy):
             pygame.draw.circle(surface, color, center, self.radius + 4, width=2)
 
 
+class FinalBossEnemy(BossEnemy):
+    """The run map's own final-row boss (see run_map.BOSS_LEVEL_IDS) --
+    tankier and more rewarding than the ordinary BossEnemy every mid-run
+    level's own final wave already uses, and inherits its Enrage/Armor
+    mechanics completely unmodified (take_damage() isn't overridden here at
+    all). What actually sets it apart is a one-time-per-run mechanic: while
+    still alive, it periodically summons SUMMON_COUNT ScoutEnemy
+    reinforcements at its own current position along the route, via the
+    same Enemy.pending_spawns channel SplitterEnemy already uses -- reuses
+    _seek_to_distance() verbatim to position each child, the same helper
+    SplitterEnemy.take_damage() uses. Unlike SplitterEnemy (which only ever
+    populates pending_spawns once, at death), this can populate it
+    repeatedly across many frames while still alive, which is exactly why
+    Game.update()'s dead-enemy drain loop had to be generalized to drain
+    *every* enemy's pending_spawns every frame (clearing the list right
+    after), not just a dead one's -- see that method's own comment."""
+    base_hp = 900
+    hp_per_wave = 70
+    base_reward = 250
+    reward_per_wave = 30
+    sprite_name = "enemy_final_boss"
+    radius = 34
+
+    SUMMON_INTERVAL = 9.0  # seconds between reinforcement waves
+    SUMMON_COUNT = 3
+
+    def __init__(self, waypoints_px, wave_number):
+        super().__init__(waypoints_px, wave_number)
+        self.summon_timer = self.SUMMON_INTERVAL
+
+    def update(self, dt, enemies=None):
+        super().update(dt, enemies)
+        if self.is_dead or self.reached_goal:
+            return
+        self.summon_timer -= dt
+        if self.summon_timer <= 0:
+            self.summon_timer += self.SUMMON_INTERVAL
+            for _ in range(self.SUMMON_COUNT):
+                child = ScoutEnemy(self.waypoints, self.wave_number)
+                child._seek_to_distance(self.distance_traveled)
+                self.pending_spawns.append(child)
+
+
 class ShieldedEnemy(Enemy):
     """A regenerating shield absorbs damage before HP does: take_damage()
     depletes the shield first and only spills any remainder into HP, and
@@ -692,4 +739,5 @@ ENEMY_TYPES = {
     "flying": FlyingEnemy,
     "splitter": SplitterEnemy,
     "healer": HealerEnemy,
+    "final_boss": FinalBossEnemy,
 }

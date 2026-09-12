@@ -53,6 +53,15 @@ ELITE_HP_MULTIPLIER = 1.25
 ELITE_SPEED_MULTIPLIER = 1.1
 ELITE_GOLD_MULTIPLIER = 1.5
 
+# The map's own boss node's extra bump -- unambiguously the hardest fight in
+# the run, tuned higher than Elite's own multiplier above on the same "gold
+# scales with hp, speed barely moves" reasoning (a starting point, same as
+# ELITE_HP_MULTIPLIER once was, pending a real headless-playtest tuning pass
+# once FinalBossEnemy's reinforcement-summon mechanic is actually in play).
+BOSS_HP_MULTIPLIER = 1.4
+BOSS_SPEED_MULTIPLIER = 1.1
+BOSS_GOLD_MULTIPLIER = 1.75
+
 
 @dataclass(frozen=True)
 class FloorEscalation:
@@ -83,4 +92,18 @@ def apply_elite_multiplier(escalation):
         enemy_hp_multiplier=escalation.enemy_hp_multiplier * ELITE_HP_MULTIPLIER,
         enemy_speed_multiplier=escalation.enemy_speed_multiplier * ELITE_SPEED_MULTIPLIER,
         enemy_gold_multiplier=escalation.enemy_gold_multiplier * ELITE_GOLD_MULTIPLIER,
+    )
+
+
+def apply_boss_multiplier(escalation):
+    """Layers the map's own boss node's extra bump on top of an already-
+    computed FloorEscalation -- same shape as apply_elite_multiplier
+    (multiplicative, an extra factor never replacing the row's own
+    escalation), tuned higher so the boss is unambiguously the hardest
+    fight in the run, harder than an Elite node would be at that same
+    row."""
+    return FloorEscalation(
+        enemy_hp_multiplier=escalation.enemy_hp_multiplier * BOSS_HP_MULTIPLIER,
+        enemy_speed_multiplier=escalation.enemy_speed_multiplier * BOSS_SPEED_MULTIPLIER,
+        enemy_gold_multiplier=escalation.enemy_gold_multiplier * BOSS_GOLD_MULTIPLIER,
     )

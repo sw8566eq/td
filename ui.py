@@ -199,7 +199,7 @@ def _format_currency(value, unlimited):
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
-             floor_label=None):
+             floor_label=None, boss_defeated=False):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -254,12 +254,19 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
     lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
-    # floor_label ("Floor N/M") piggybacks onto the Wave line the same way
-    # shop_currency piggybacks onto Gold above -- same "no headroom for a
-    # fourth line" reason (see the comment there). None outside an active
-    # run, same gate shop_currency uses.
+    # floor_label ("Floor N/M") and boss_defeated both piggyback onto the
+    # Wave line rather than getting a line of their own, same reasoning
+    # shop_currency's own comment above gives -- HUD_HEIGHT has no headroom
+    # left for a fourth line under Gold/Lives/Wave. They're mutually
+    # exclusive, not concatenated: boss_defeated only ever fires on the
+    # run's final row (see Game._handle_boss_defeated), so "Floor 6/6" would
+    # be redundant with "-- Boss defeated!" once it's shown -- boss_defeated
+    # wins and persists for the rest of the (endless) fight, a floor_label
+    # is shown on every other floor instead.
     wave_label = _format_wave_label(wave_manager)
-    if floor_label is not None:
+    if boss_defeated:
+        wave_label += " -- Boss defeated!"
+    elif floor_label is not None:
         wave_label += f"   {floor_label}"
     wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
 
@@ -554,11 +561,13 @@ MAP_COLS = 4
 
 MAP_NODE_TYPE_LABELS = {
     "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
+    "boss": "B",
 }
 MAP_NODE_TYPE_COLORS = {
     "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
     "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
     "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
+    "boss": settings.COLOR_NODE_BOSS,
 }
 
 

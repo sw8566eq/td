@@ -52,12 +52,23 @@ MIN_ROW_WIDTH, MAX_ROW_WIDTH = 2, 4
 MAX_COL_JUMP = 1
 EXTRA_EDGE_CHANCE = 0.3
 
-NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure")
+NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure", "boss")
 # Placeholder weights, tunable once there's real playtesting to tune
 # against (same "loose draft" spirit shop.py's own TOWER_PRICE/RELIC_PRICE
 # comment already documents) -- combat stays the most common node by a wide
-# margin, treasure the rarest.
+# margin, treasure the rarest. "boss" has no entry here at all -- it's never
+# drawn by the weighted mix, only forced onto the final row exactly like
+# "combat" is forced onto row 0 (see _assign_node_types).
 NODE_TYPE_WEIGHTS = {"combat": 45, "elite": 15, "shop": 12, "event": 16, "rest": 8, "treasure": 4}
+# The final row's own dedicated level pool -- two boss-tier levels, distinct
+# from the ordinary "complex" tier every other late-row combat/elite node
+# draws from (see _level_pool_for_row), so the run's climactic fight is
+# never just an ordinary multi-lane level reused. A plain module-tuple
+# allowlist rather than a new Level.is_boss_level field -- that would ripple
+# into persistence.py's (de)serialization and the map editor's Editor.
+# to_level() for something a fixed id list does with zero blast radius (same
+# shape events._EVENT_ORDER already establishes beside its own registry).
+BOSS_LEVEL_IDS = (16, 17)
 # A row can't be more than half of one node type -- keeps a wide row from
 # degenerating into e.g. two Shops and nothing else, without needing a full
 # shuffle-and-cap algorithm to enforce it.
@@ -140,29 +151,45 @@ class RunMap:
 
 
 def _level_pool_for_row(row_index, level_pool):
-    """Which LEVELS ids a combat/elite node at this row draws from --
+    """Which LEVELS ids a combat/elite/boss node at this row draws from --
     partitioned by structure (single-spawn "corridor" levels vs.
     multi-spawn "multi-lane" ones), not a hardcoded id list, so this stays
     self-maintaining as levels are added. Mirrors the authored
     corridor-then-multi-lane ramp run_floors.py's own ascending-sorted
     sampling used to preserve, just expressed as row bands instead of a
     flat sequence: earlier rows draw from the simpler shape, later rows
-    (elites and the boss included) from the more complex one."""
+    (elites included) from the more complex one. The final row is its own
+    special case -- BOSS_LEVEL_IDS, not the general complex pool -- falling
+    back to that same complex pool if a caller hands in a level_pool with
+    neither boss-tier level in it (e.g. a test's own trimmed-down pool).
+    BOSS_LEVEL_IDS are excluded from complex_ids itself (not just left to
+    the final row to prefer) -- they're reserved exclusively for the run's
+    climactic final fight, an ordinary mid-run Combat/Elite node drawing
+    one and spawning a FinalBossEnemy several floors early would defeat
+    that entirely."""
     simple_ids = sorted(lid for lid, level in level_pool.items() if len(level.spawn_cells) == 1)
-    complex_ids = sorted(lid for lid, level in level_pool.items() if len(level.spawn_cells) > 1)
+    complex_ids = sorted(
+        lid for lid, level in level_pool.items()
+        if len(level.spawn_cells) > 1 and lid not in BOSS_LEVEL_IDS
+    )
+    if row_index == ROW_COUNT - 1:
+        boss_ids = [lid for lid in BOSS_LEVEL_IDS if lid in level_pool]
+        return boss_ids or complex_ids
     return simple_ids if row_index < ROW_COUNT // 2 else complex_ids
 
 
 def _assign_node_types(rng, row_index, width):
-    """`width` node types for this row -- row 0 and the final row are
-    always all-combat (see generate_run_map); every row between them is a
-    weighted random draw from NODE_TYPES, capped at MAX_SAME_TYPE_PER_ROW_
-    FRACTION of the row so one row can't degenerate into a single
-    repeated type, with Elite excluded below MIN_ELITE_ROW and a Rest node
-    forced in on GUARANTEED_REST_ROW if the draw didn't already produce
-    one."""
-    if row_index in (0, ROW_COUNT - 1):
+    """`width` node types for this row -- row 0 is always all-combat and
+    the final row is always all-boss (see generate_run_map); every row
+    between them is a weighted random draw from NODE_TYPES, capped at
+    MAX_SAME_TYPE_PER_ROW_FRACTION of the row so one row can't degenerate
+    into a single repeated type, with Elite excluded below MIN_ELITE_ROW
+    and a Rest node forced in on GUARANTEED_REST_ROW if the draw didn't
+    already produce one."""
+    if row_index == 0:
         return ["combat"] * width
+    if row_index == ROW_COUNT - 1:
+        return ["boss"] * width
 
     allowed = {
         node_type: weight for node_type, weight in NODE_TYPE_WEIGHTS.items()
@@ -241,14 +268,14 @@ def generate_run_map(rng, level_pool=LEVELS):
         cols = [COLS // 2] if width == 1 else sorted(rng.sample(range(COLS), width))
         types = _assign_node_types(rng, row_index, width)
 
-        level_ids_needed = sum(1 for node_type in types if node_type in ("combat", "elite"))
+        level_ids_needed = sum(1 for node_type in types if node_type in ("combat", "elite", "boss"))
         level_pool_for_row = _level_pool_for_row(row_index, level_pool)
         picked_level_ids = iter(sample_up_to(rng, level_pool_for_row, level_ids_needed))
 
         rows.append(tuple(
             MapNode(
                 id=f"{row_index}-{col}", row=row_index, col=col, node_type=node_type,
-                level_id=next(picked_level_ids) if node_type in ("combat", "elite") else None,
+                level_id=next(picked_level_ids) if node_type in ("combat", "elite", "boss") else None,
             )
             for col, node_type in zip(cols, types)
         ))

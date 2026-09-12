@@ -115,6 +115,7 @@ def _run_to_dict(run):
         "is_daily": run.is_daily,
         "has_spent_gold": run.has_spent_gold,
         "used_guardians_reprieve": run.used_guardians_reprieve,
+        "boss_defeated": run.boss_defeated,
     }
 
 
@@ -132,6 +133,11 @@ def _run_from_dict(data):
         is_daily=data["is_daily"],
         has_spent_gold=data["has_spent_gold"],
         used_guardians_reprieve=data["used_guardians_reprieve"],
+        # .get(), not a hard index -- a save from before this field existed
+        # (boss_defeated didn't exist yet) should still resume cleanly, same
+        # "old save, new optional field" precedent shop_currency's own
+        # .get() above already sets.
+        boss_defeated=data.get("boss_defeated", False),
     )
 
 
@@ -235,7 +241,7 @@ def _parse_and_validate_active_run(run_data):
             if target_id not in node_ids:
                 raise ValueError(f"saved run's map has an edge to an unrecognized node id {target_id!r}")
     # A resumable save is always mid-PLAYING (see Game.can_save_run()) --
-    # structurally always a combat/elite node, never a Shop/Event/Rest/
+    # structurally always a combat/elite/boss node, never a Shop/Event/Rest/
     # Treasure screen, none of which are reachable while WaveManager is
     # between waves.
     current_node = next(
@@ -244,7 +250,7 @@ def _parse_and_validate_active_run(run_data):
     )
     if current_node is None:
         raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
-    if current_node["node_type"] not in ("combat", "elite"):
+    if current_node["node_type"] not in ("combat", "elite", "boss"):
         raise ValueError(f"saved run's current node is a {current_node['node_type']!r} node, not resumable mid-PLAYING")
     for node_id in run_data["visited_node_ids"]:
         if node_id not in node_ids:

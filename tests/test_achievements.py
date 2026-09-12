@@ -85,6 +85,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
     known_counters = {
         "kills", "towers_built", "towers_maxed", "towers_specialized",
         "levels_cleared", "distinct_levels_cleared", "waves_survived",
+        "bosses_defeated",
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key

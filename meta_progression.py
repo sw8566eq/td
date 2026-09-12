@@ -65,6 +65,14 @@ META_UNLOCKS = {
     "unlock_beacon": MetaUnlock("unlock_beacon", "beacon", "runs_played", 3),
 }
 
+# Game._handle_boss_defeated bumps a "bosses_defeated" counter here (via
+# _record_meta_progress) every time a run's final boss's authored waves
+# clear for the first time -- nothing in META_UNLOCKS is keyed off it yet
+# (a future relic/level meta-unlock gated on it is a natural fit, once one
+# exists that wants a genuinely hard-to-reach threshold), but bump_counter()
+# tracks any counter name unconditionally regardless of whether a registry
+# entry reads it yet, so the counter itself is already accumulating.
+
 
 def load_meta_progression(path=META_PROGRESSION_PATH):
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to

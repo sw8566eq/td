@@ -244,23 +244,27 @@ only ever run from one row to the next, never skip a row or point backward, whic
 fact (tests still verify it via BFS over many seeds anyway). Row 0 is a fixed-width, all-Combat
 choice (which of `START_ROW_WIDTH` same-difficulty layouts to open the run on, not a difficulty
 choice at all) -- the run's very first resolved node is always guaranteed to be a real level load,
-keeping the lives-capture special case above simple. The final row is always exactly one Combat
-node, the boss (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps `is_final_floor`/
-`endless=True` trivial, no "did every path converge" check needed.
+keeping the lives-capture special case above simple. The final row is always exactly one node of its
+own dedicated `"boss"` type (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps
+`is_final_floor`/`endless=True` trivial, no "did every path converge" check needed.
 
-Every other row is a weighted-random mix of all six `NODE_TYPES` (`NODE_TYPE_WEIGHTS`), capped at
-half the row per type (`MAX_SAME_TYPE_PER_ROW_FRACTION`) so a wide row can't degenerate into one
+Every other row is a weighted-random mix of the six ordinary `NODE_TYPES` (`NODE_TYPE_WEIGHTS`) --
+`"boss"` is a seventh registered type with no entry in that weight table at all, since it's never
+drawn by the mix, only forced onto the final row exactly like `"combat"` is forced onto row 0 -- capped
+at half the row per type (`MAX_SAME_TYPE_PER_ROW_FRACTION`) so a wide row can't degenerate into one
 repeated type. `MIN_ELITE_ROW` keeps Elite off the run's opening rows; `GUARANTEED_REST_ROW` forces
 at least one Rest node onto that one row if the weighted draw didn't already produce one -- deliberately
 **not** mirrored for Shop, which stays pure chance (a run's Shop cadence is meant to vary, unlike Rest's
 "never go the whole back half with no way to recover lives" guarantee). A Combat/Elite node's own
 level id is drawn from whichever tier its row falls in (`_level_pool_for_row`, partitioned by
 structure -- single-spawn "corridor" levels for earlier rows, multi-spawn "multi-lane" ones for later
-rows including the boss -- not a hardcoded id list, so it stays self-maintaining as levels are added)
-rather than sampled freely across all of `LEVELS`, preserving the same corridor-then-multi-lane
-authored ramp the old flat, ascending `floor_sequence` used to give for free.
+rows -- not a hardcoded id list, so it stays self-maintaining as levels are added) rather than sampled
+freely across all of `LEVELS`, preserving the same corridor-then-multi-lane authored ramp the old
+flat, ascending `floor_sequence` used to give for free. The final row's own boss node is a further
+special case on top of that tiering, not just "whichever multi-lane level a late row would otherwise
+draw" -- see the Boss bullet below.
 
-The six node types:
+The seven node types:
 - **Combat**: a normal floor, exactly what a run's only node type used to be.
 - **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
   escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
@@ -281,6 +285,33 @@ The six node types:
   guaranteed shop-currency payout (`run_map.treasure_shop_currency_for_row`) plus one guaranteed relic
   pick, degrading gracefully to currency-only once every relic is already held (`relics.relic_offer`'s
   own empty-once-exhausted precedent).
+- **Boss**: the run's climactic final-row node -- dispatched through `Game._load_combat_node` exactly
+  like Combat/Elite (`Game._enter_node`'s `("combat", "elite", "boss")` check), escalated further still
+  by `run_escalation.apply_boss_multiplier` (tuned higher than Elite's own bump), and drawn from its
+  own dedicated `run_map.BOSS_LEVEL_IDS` pool (two levels, ids 16/17) rather than the ordinary
+  multi-lane tier -- `_level_pool_for_row` excludes `BOSS_LEVEL_IDS` from that ordinary complex pool
+  entirely, so an ordinary mid-run Elite/Combat node can never draw one early. Each ends its final
+  wave in `{"final_boss": N}` (`enemy.FinalBossEnemy`, an `ENEMY_TYPES` entry reserved for these two
+  levels) rather than the ordinary `{"boss": N}` every other level's own final wave still uses.
+  `FinalBossEnemy` inherits `BossEnemy`'s Enrage/Armor mechanics unmodified and adds a one-time-per-run
+  live mechanic of its own: while still alive, it periodically summons `SUMMON_COUNT` `ScoutEnemy`
+  reinforcements at its own current position along the route, via `Enemy.pending_spawns` -- the same
+  channel `SplitterEnemy` already uses, just populated repeatedly while alive rather than once at
+  death, which is what required generalizing `Game.update()`'s own drain of that list: every enemy's
+  own `pending_spawns` is now drained into `still_alive` and cleared *before* the dead/goal/alive split
+  runs, not only inside the `if enemy.is_dead:` branch the way it worked before `FinalBossEnemy`
+  existed. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
+  the boss, run over" screen -- `WaveManager.authored_waves_cleared` (a new flag, distinct from
+  `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
+  before/after check reads to detect the boss node's authored waves running out for the first time,
+  firing `Game._handle_boss_defeated()`: a one-shot-per-run toast, a `bosses_defeated` bump on both
+  `meta_progression.py` and `achievements.py` (the `"boss_slayer"` achievement), and a persistent
+  `RunState.boss_defeated` flag that appends "-- Boss defeated!" onto the HUD's existing Wave line for
+  the rest of the (still-ongoing, still-endless) fight -- piggybacked onto that line rather than a new
+  one, same headroom reasoning `shop_currency`'s own comment in `ui.draw_hud` already gives.
+  `RunState.boss_defeated` (guarded the same one-shot way `used_guardians_reprieve` is) is what stops
+  a mid-boss-fight Restart -- which rebuilds a fresh `WaveManager` whose own `authored_waves_cleared`
+  starts `False` again -- from double-counting `bosses_defeated` a second time.
 
 `Game._enter_map()` (re-)shows the map screen, rebuilding `self.map_node_rects` fresh every time
 (`ui.build_map_node_rects`) -- the same "computed fresh, not a persistent cache" spirit
@@ -389,6 +420,12 @@ same way `ShieldedEnemy`'s shield eats damage before HP does). Both thresholds a
 _spawn_enemy` multiplies `max_hp`/`hp` by the active difficulty's `enemy_hp_multiplier` *after*
 construction (the same reason it already has a `hasattr(enemy, "max_shield")` patch-up for
 `ShieldedEnemy`), so a threshold baked in early would silently fire at the wrong HP on Easy/Hard.
+
+`FinalBossEnemy` (the run map's own boss-node species -- see the Boss bullet under "The run's
+branching map" above) subclasses `BossEnemy` directly and inherits both mechanics completely
+unmodified -- `take_damage()` isn't overridden a second time. Its own reinforcement-summon mechanic
+lives entirely in `update()`, guarded the same `if self.is_dead or self.reached_goal: return` way
+every other one-time enemy mechanic in this file is.
 
 ### Mark and Corrosive Poison's shield-bypass hook
 

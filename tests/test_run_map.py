@@ -11,6 +11,7 @@ from collections import deque
 
 from levels import LEVELS
 from run_map import (
+    BOSS_LEVEL_IDS,
     GUARANTEED_REST_ROW,
     MAX_SAME_TYPE_PER_ROW_FRACTION,
     MIN_ELITE_ROW,
@@ -82,11 +83,11 @@ def test_row_zero_is_always_combat_at_the_fixed_start_width():
         assert all(node.node_type == "combat" for node in game_map.rows[0])
 
 
-def test_final_row_is_a_single_combat_boss_node():
+def test_final_row_is_a_single_boss_node():
     for seed in _SEEDS:
         game_map = generate_run_map(random.Random(seed))
         assert len(game_map.rows[-1]) == 1
-        assert game_map.rows[-1][0].node_type == "combat"
+        assert game_map.rows[-1][0].node_type == "boss"
         assert game_map.boss_node_id == game_map.rows[-1][0].id
 
 
@@ -150,12 +151,12 @@ def test_no_row_exceeds_the_same_type_cap():
             assert all(count <= max_per_type for count in counts.values())
 
 
-def test_combat_and_elite_nodes_have_a_real_level_id_from_the_right_tier():
+def test_combat_and_elite_and_boss_nodes_have_a_real_level_id_from_the_right_tier():
     for seed in _SEEDS:
         game_map = generate_run_map(random.Random(seed))
         for row in game_map.rows:
             for node in row:
-                if node.node_type in ("combat", "elite"):
+                if node.node_type in ("combat", "elite", "boss"):
                     assert node.level_id in LEVELS
                     assert node.level_id in _level_pool_for_row(node.row, LEVELS)
                 else:
@@ -163,12 +164,28 @@ def test_combat_and_elite_nodes_have_a_real_level_id_from_the_right_tier():
 
 
 def test_level_tiers_partition_by_spawn_count_and_dont_overlap():
+    # Probes a representative non-final complex row (ROW_COUNT - 2, not
+    # ROW_COUNT - 1) -- the final row is its own special case now (see
+    # test_final_row_draws_only_from_the_boss_level_pool below), no longer
+    # just "whatever the general complex partition returns."
     simple_pool = _level_pool_for_row(0, LEVELS)
-    complex_pool = _level_pool_for_row(ROW_COUNT - 1, LEVELS)
+    complex_pool = _level_pool_for_row(ROW_COUNT - 2, LEVELS)
     assert set(simple_pool) & set(complex_pool) == set()
-    assert set(simple_pool) | set(complex_pool) == set(LEVELS.keys())
+    assert set(simple_pool) | set(complex_pool) == set(LEVELS.keys()) - set(BOSS_LEVEL_IDS)
     assert all(len(LEVELS[lid].spawn_cells) == 1 for lid in simple_pool)
     assert all(len(LEVELS[lid].spawn_cells) > 1 for lid in complex_pool)
+
+
+def test_final_row_draws_only_from_the_boss_level_pool():
+    boss_pool = _level_pool_for_row(ROW_COUNT - 1, LEVELS)
+    assert set(boss_pool) == set(BOSS_LEVEL_IDS) & set(LEVELS)
+
+
+def test_final_row_falls_back_to_the_complex_pool_if_no_boss_level_is_available():
+    trimmed_pool = {lid: level for lid, level in LEVELS.items() if lid not in BOSS_LEVEL_IDS}
+    fallback_pool = _level_pool_for_row(ROW_COUNT - 1, trimmed_pool)
+    assert fallback_pool == _level_pool_for_row(ROW_COUNT - 2, trimmed_pool)
+    assert fallback_pool  # never empty -- there's still a complex-tier level to fall back to
 
 
 def test_all_node_types_are_within_the_registered_set():

@@ -644,3 +644,103 @@ LEVELS[15] = _multi_lane_level(
     starting_gold=200,
     starting_lives=20,
 )
+
+# Levels 16-17: the run map's own dedicated boss-tier pool (see
+# run_map.BOSS_LEVEL_IDS) -- reserved exclusively for the final row, never
+# drawn by _level_pool_for_row's ordinary complex-tier band the way Levels
+# 6-11 are. Their final wave ends in {"final_boss": 1} (ENEMY_TYPES'
+# FinalBossEnemy) rather than {"boss": N} -- see test_levels.py's own
+# split between "every ordinary level's final wave has a boss" and "every
+# boss-tier level's final wave has the final boss instead." Both topologies
+# were verified with pathing.validate_topology directly against candidate
+# corner lists before being wired in here, the same "verify programmatically
+# before committing to a design" lesson Chunk C's own Level 14 (Quad Muster)
+# learned the hard way -- a hand-reasoned "this merge looks fine" design can
+# still hide an accidental adjacency-driven cycle pathing.path_cells_from_
+# corners' straightforward corner-to-corner walk doesn't protect against on
+# its own.
+LEVEL_16_SPAWN_TOP = (0, 0)
+LEVEL_16_SPAWN_MID = (0, 4)
+LEVEL_16_SPAWN_BOTTOM = (0, 8)
+LEVEL_16_JUNCTION = (8, 4)
+LEVEL_16_GOAL = (14, 4)
+
+# Same per-spawn split style Triple Crossing (Level 9) established --
+# top/bottom run grunt/tank, the mid lane runs scout/flying/shielded -- but
+# six waves (one more than Level 9's five) and introducing splitter/healer
+# partway through, the same escalation shape Grand Delta (Level 11) uses.
+LEVEL_16_WAVE_SPECS = [
+    {LEVEL_16_SPAWN_TOP: {"grunt": 7}, LEVEL_16_SPAWN_MID: {"scout": 7},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 7}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 9, "tank": 4}, LEVEL_16_SPAWN_MID: {"scout": 10, "flying": 4},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 9, "tank": 4}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 10, "tank": 6, "splitter": 3},
+     LEVEL_16_SPAWN_MID: {"scout": 11, "flying": 6, "shielded": 4},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 10, "tank": 6, "splitter": 3}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 11, "tank": 7},
+     LEVEL_16_SPAWN_MID: {"scout": 12, "flying": 7, "shielded": 5, "healer": 3},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 11, "tank": 7}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 12, "tank": 8, "splitter": 4},
+     LEVEL_16_SPAWN_MID: {"scout": 13, "flying": 8, "shielded": 6, "healer": 4},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 12, "tank": 8, "splitter": 4}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 12, "tank": 9},
+     LEVEL_16_SPAWN_MID: {"scout": 13, "flying": 8, "shielded": 6, "final_boss": 1},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 12, "tank": 9}},
+]
+
+LEVELS[16] = _multi_lane_level(
+    16, "The Last Bastion",
+    lane_corner_lists=[
+        [LEVEL_16_SPAWN_TOP, (8, 0), LEVEL_16_JUNCTION],
+        [LEVEL_16_SPAWN_MID, LEVEL_16_JUNCTION],
+        [LEVEL_16_SPAWN_BOTTOM, (8, 8), LEVEL_16_JUNCTION],
+        [LEVEL_16_JUNCTION, LEVEL_16_GOAL],
+    ],
+    spawn_cells=(LEVEL_16_SPAWN_TOP, LEVEL_16_SPAWN_MID, LEVEL_16_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_16_GOAL,),
+    wave_specs=LEVEL_16_WAVE_SPECS,
+    starting_gold=240,
+    starting_lives=20,
+)
+
+LEVEL_17_SPAWN_TOP = (0, 1)
+LEVEL_17_SPAWN_BOTTOM = (0, 7)
+LEVEL_17_MERGE_JUNCTION = (6, 4)
+LEVEL_17_BRANCH_JUNCTION = (10, 4)
+LEVEL_17_GOAL_TOP = (14, 0)
+LEVEL_17_GOAL_BOTTOM = (14, 8)
+
+# Twin Confluence (Level 8)'s own merge-then-branch shape, at a wider
+# spread (spawns/goals at the grid's own top/bottom edge rows rather than
+# Level 8's more central ones) and a much harder six-wave curve -- the
+# full roster (splitter and healer both introduced, same as Level 16
+# above) rather than Level 8's simpler grunt/tank-vs-scout/flying/shielded
+# split alone.
+LEVEL_17_WAVE_SPECS = [
+    {LEVEL_17_SPAWN_TOP: {"grunt": 8, "tank": 3}, LEVEL_17_SPAWN_BOTTOM: {"scout": 9, "flying": 3}},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 10, "tank": 5}, LEVEL_17_SPAWN_BOTTOM: {"scout": 11, "flying": 5, "shielded": 3}},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 11, "tank": 6, "splitter": 4},
+     LEVEL_17_SPAWN_BOTTOM: {"scout": 12, "flying": 6, "shielded": 4}},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 12, "tank": 7, "healer": 3},
+     LEVEL_17_SPAWN_BOTTOM: {"scout": 13, "flying": 7, "shielded": 5, "splitter": 4}},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 13, "tank": 8, "healer": 4, "splitter": 5},
+     LEVEL_17_SPAWN_BOTTOM: {"scout": 14, "flying": 8, "shielded": 6}},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 13, "tank": 9, "final_boss": 1},
+     LEVEL_17_SPAWN_BOTTOM: {"scout": 14, "flying": 8, "shielded": 6}},
+]
+
+LEVELS[17] = _multi_lane_level(
+    17, "Endless Vigil",
+    lane_corner_lists=[
+        [LEVEL_17_SPAWN_TOP, (6, 1), LEVEL_17_MERGE_JUNCTION],
+        [LEVEL_17_SPAWN_BOTTOM, (6, 7), LEVEL_17_MERGE_JUNCTION],
+        [LEVEL_17_MERGE_JUNCTION, LEVEL_17_BRANCH_JUNCTION],
+        [LEVEL_17_BRANCH_JUNCTION, (10, 0), LEVEL_17_GOAL_TOP],
+        [LEVEL_17_BRANCH_JUNCTION, (10, 8), LEVEL_17_GOAL_BOTTOM],
+    ],
+    spawn_cells=(LEVEL_17_SPAWN_TOP, LEVEL_17_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_17_GOAL_TOP, LEVEL_17_GOAL_BOTTOM),
+    wave_specs=LEVEL_17_WAVE_SPECS,
+    starting_gold=250,
+    starting_lives=20,
+)

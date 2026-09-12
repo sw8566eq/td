@@ -94,6 +94,15 @@ class RunState:
     # first time it actually saves the run from losing its last life
     # (Game._lose_a_life), and never resets for the rest of the run.
     used_guardians_reprieve: bool = False
+    # Whether this run's boss node has already had its authored waves
+    # cleared once -- flips true exactly once, in Game._handle_boss_
+    # defeated, and never resets for the rest of the run. Guards against a
+    # mid-boss-fight restart (which rebuilds a fresh WaveManager whose own
+    # authored_waves_cleared starts False again) double-counting the
+    # bosses_defeated meta-progression counter; also read by the HUD to
+    # keep showing "Boss defeated!" on the Wave line for the rest of the
+    # (endless) fight, not just a one-time toast.
+    boss_defeated: bool = False
 
     @property
     def current_level_id(self):

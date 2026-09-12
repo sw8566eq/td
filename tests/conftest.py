@@ -122,14 +122,17 @@ def start_first_floor(game, seed=1, **kwargs):
 def make_linear_run_map(node_types, level_id=1):
     """A trivial single-column RunMap, one node per row, chained straight
     through (row i -> row i+1, no branching at all) -- for tests that need
-    a specific node type (Shop/Event/Rest/Treasure/Elite) at a specific
+    a specific node type (Shop/Event/Rest/Treasure/Elite/Boss) at a specific
     depth without hunting for a seed that happens to produce one from the
-    real generator. `node_types[i]` is row i's own type; every combat/elite
-    node uses `level_id` (a real LEVELS key)."""
+    real generator. `node_types[i]` is row i's own type; every combat/elite/
+    boss node uses `level_id` (a real LEVELS key) -- a caller wanting a
+    "boss" row endless=True (see Game._load_combat_node/RunState.
+    is_final_floor) needs it to actually be the *last* entry in node_types,
+    same as a real RunMap's own final row."""
     rows = tuple(
         (MapNode(
             f"{row}-0", row=row, col=0, node_type=node_type,
-            level_id=level_id if node_type in ("combat", "elite") else None,
+            level_id=level_id if node_type in ("combat", "elite", "boss") else None,
         ),)
         for row, node_type in enumerate(node_types)
     )
