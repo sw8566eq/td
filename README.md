@@ -71,8 +71,8 @@ pinned to Normal regardless of your own setting, so scores are comparable.
 From the main **menu**: press any other key to start a new run (see "Runs" above), `E` opens the
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen (a condensed version of this section),
-`D` starts today's Daily Run, and `C` (shown only when one exists) continues a saved in-progress
-run.
+`D` starts today's Daily Run, `B` opens the Credits screen, and `C` (shown only when one exists)
+continues a saved in-progress run.
 
 While **playing**: click a tower button in the bottom bar, then click a buildable tile to place it
 -- the sidebar on the right shows that tower type's stats while it's selected; right-click at any

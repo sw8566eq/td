@@ -9,6 +9,9 @@ from tower import TOWER_TYPES
 from ui import (
     ACHIEVEMENTS_TOP,
     ACHIEVEMENT_ROW_HEIGHT,
+    CREDITS_LINE_HEIGHT,
+    CREDITS_LINES,
+    CREDITS_TOP,
     EDITOR_ACTION_ORDER,
     HELP_LINE_HEIGHT,
     HELP_LINES,
@@ -31,6 +34,7 @@ from ui import (
     _wrap_text,
     build_achievements_back_rect,
     build_button_rects,
+    build_credits_back_rect,
     build_draft_choice_rects,
     build_help_back_rect,
     build_editor_action_rects,
@@ -51,6 +55,7 @@ from ui import (
     build_wave_unit_rects,
     compute_tower_results,
     draw_achievements_screen,
+    draw_credits_screen,
     draw_draft_screen,
     draw_floor_cleared_screen,
     draw_game_over_screen,
@@ -102,6 +107,7 @@ def test_menu_options_lists_every_key_in_documented_order():
         "A -- Achievements",
         "H -- How to Play",
         "D -- Daily Run",
+        "B -- Credits",
     ]
 
 
@@ -244,6 +250,24 @@ def test_draw_help_screen_does_not_crash():
     back_rect = build_help_back_rect()
 
     draw_help_screen(surface, font, small_font, back_rect)
+
+
+# --- Credits screen ---
+
+def test_build_credits_back_rect_sits_below_the_last_credits_line():
+    rect = build_credits_back_rect()
+    last_line_bottom = CREDITS_TOP + len(CREDITS_LINES) * CREDITS_LINE_HEIGHT
+    assert rect.top >= last_line_bottom
+
+
+def test_draw_credits_screen_does_not_crash():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_credits_back_rect()
+
+    draw_credits_screen(surface, font, small_font, back_rect)
 
 
 class _FakeWaveManager:

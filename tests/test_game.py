@@ -226,7 +226,10 @@ def test_paused_escape_also_resumes(playing_game):
     assert playing_game.running is True
 
 
-def test_paused_r_restarts_the_level_and_resumes_playing(playing_game):
+def test_paused_r_arms_a_restart_confirmation_without_resetting_yet(playing_game):
+    # R no longer restarts immediately -- it only arms a confirmation (see
+    # _handle_keydown's PAUSED branch), so a stray press can't discard an
+    # in-progress run/floor by itself.
     playing_game.state = GameState.PAUSED
     playing_game.economy.gold = 0
     playing_game.economy.lives = 1
@@ -234,10 +237,64 @@ def test_paused_r_restarts_the_level_and_resumes_playing(playing_game):
 
     playing_game._handle_keydown(pygame.K_r)
 
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
+    assert playing_game.economy.gold == 0
+    assert playing_game.economy.lives == 1
+    assert playing_game.towers == ["fake"]
+
+
+def test_paused_r_twice_restarts_the_level_and_resumes_playing(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.economy.gold = 0
+    playing_game.economy.lives = 1
+    playing_game.towers = ["fake"]
+
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+    playing_game._handle_keydown(pygame.K_r)  # confirms it
+
     assert playing_game.state == GameState.PLAYING
+    assert playing_game.pause_restart_confirm_pending is False
     assert playing_game.economy.gold == playing_game.level.starting_gold
     assert playing_game.economy.lives == playing_game.level.starting_lives
     assert playing_game.towers == []
+
+
+def test_paused_escape_while_restart_confirm_pending_cancels_back_to_the_pause_menu(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.economy.gold = 0
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_ESCAPE)
+
+    # Back to the ordinary paused menu -- still PAUSED, not PLAYING -- with
+    # nothing reset.
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is False
+    assert playing_game.economy.gold == 0
+
+
+def test_paused_unbound_key_while_restart_confirm_pending_is_a_no_op(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_z)
+
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
+
+
+def test_paused_p_while_restart_confirm_pending_is_a_no_op(playing_game):
+    # P is deliberately not a synonym for Esc here -- only R/Esc resolve a
+    # pending confirmation, so a reflexive P mid-confirm can't be misread
+    # as "resume playing" when nothing's been decided yet.
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_p)
+
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
 
 
 def test_paused_q_quits(playing_game):
@@ -1689,6 +1746,21 @@ def test_settings_click_picks_a_difficulty(game):
     assert game.difficulty == "hard"
 
 
+def test_settings_click_picks_a_window_size_preset(game):
+    game._handle_settings_click(game.settings_rects["window_1440x840"].center)
+    assert game.window_size == (1440, 840)
+    assert game.screen.get_size() == (1440, 840)
+
+
+def test_set_window_size_is_a_no_op_while_fullscreen(game):
+    game.set_fullscreen(True)
+    size_while_fullscreen = game.window_size
+
+    game.set_window_size((1600, 960))
+
+    assert game.window_size == size_while_fullscreen
+
+
 def test_settings_click_on_back_returns_to_menu(game):
     game.state = GameState.SETTINGS
     game._handle_settings_click(game.settings_rects["back"].center)
@@ -1713,6 +1785,12 @@ def test_difficulty_setting_persists_to_the_settings_file(game):
     assert reloaded["difficulty"] == "easy"
 
 
+def test_window_size_setting_persists_to_the_settings_file(game):
+    game.set_window_size((1600, 960))
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["window_size"] == [1600, 960]
+
+
 def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     first = make_game(tmp_path)
     try:
@@ -1725,6 +1803,21 @@ def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     try:
         assert second.fullscreen is True
         assert second.difficulty == "hard"
+    finally:
+        pygame.quit()
+
+
+def test_a_fresh_game_instance_restores_a_previously_persisted_window_size(tmp_path):
+    first = make_game(tmp_path)
+    try:
+        first.set_window_size((1440, 840))
+    finally:
+        pygame.quit()
+
+    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    try:
+        assert second.window_size == (1440, 840)
+        assert second.screen.get_size() == (1440, 840)
     finally:
         pygame.quit()
 
@@ -1842,6 +1935,43 @@ def test_help_click_off_the_back_button_is_a_no_op(game):
 
 def test_render_help_screen_does_not_crash(game):
     game.state = GameState.HELP
+    game.render()
+
+
+# --- Credits screen ---
+
+
+def test_menu_b_key_enters_credits(game):
+    game._handle_keydown(pygame.K_b)
+    assert game.state == GameState.CREDITS
+
+
+def test_credits_escape_returns_to_menu(game):
+    game.state = GameState.CREDITS
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_credits_unbound_key_is_a_no_op(game):
+    game.state = GameState.CREDITS
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.CREDITS
+
+
+def test_credits_click_on_back_returns_to_menu(game):
+    game.state = GameState.CREDITS
+    game._handle_credits_click(game.credits_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_credits_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.CREDITS
+    game._handle_credits_click((0, 0))
+    assert game.state == GameState.CREDITS
+
+
+def test_render_credits_screen_does_not_crash(game):
+    game.state = GameState.CREDITS
     game.render()
 
 
@@ -2319,6 +2449,12 @@ def test_render_pause_menu_with_save_available_does_not_crash(playing_game):
     playing_game.render()
 
 
+def test_render_pause_menu_restart_confirmation_does_not_crash(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.pause_restart_confirm_pending = True
+    playing_game.render()
+
+
 # --- render(): smoke tests across every state ---
 
 
@@ -2604,6 +2740,17 @@ def test_handle_events_mousewheel_in_level_select_scrolls(game, monkeypatch):
 def test_handle_events_videoresize_while_windowed_resizes_the_screen(game):
     _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
     assert game.screen.get_size() == (1000, 600)
+
+
+def test_handle_events_videoresize_while_windowed_persists_the_new_size(game):
+    # Regression: an organic drag-resize used to never survive a relaunch
+    # at all, unlike a Settings-screen preset click -- now both go through
+    # the same self.window_size field/save call (see set_window_size's own
+    # docstring).
+    _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
+    assert game.window_size == (1000, 600)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["window_size"] == [1000, 600]
 
 
 def test_handle_events_videoresize_while_fullscreen_is_ignored(game):
