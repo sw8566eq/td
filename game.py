@@ -57,6 +57,15 @@ class GameState(Enum):
     MENU = auto()
     PLAYING = auto()
     PAUSED = auto()
+    # A run's currently-held relics, reachable directly from PLAYING (the
+    # HUD's "Relics: N" button, or R -- unlike R while PAUSED, this one's
+    # free) and dismissed by any key back into PLAYING with nothing to
+    # confirm/lose, unlike PAUSED's own R. The button click is handled
+    # inline in _handle_click (not a dedicated per-state method like
+    # _handle_help_click) since it's reachable from PLAYING itself, not a
+    # separate screen with its own click table -- see _handle_keydown's
+    # own RELICS branch and ui.draw_relics_overlay for the rest.
+    RELICS = auto()
     GAME_OVER = auto()
     VICTORY = auto()
     EDITOR = auto()
@@ -91,8 +100,8 @@ class GameState(Enum):
     #
     # MAP/DRAFT/EVENT/REST/TREASURE are all full-screen states (like
     # LEVEL_SELECT/EDITOR -- see render()'s early-return block), not
-    # overlays drawn atop a frozen board the way PAUSED/GAME_OVER/VICTORY/
-    # FLOOR_CLEARED are: MAP can be shown before any floor of the run has
+    # overlays drawn atop a frozen board the way PAUSED/RELICS/GAME_OVER/
+    # VICTORY/FLOOR_CLEARED are: MAP can be shown before any floor of the run has
     # ever loaded (right after start_new_run(), before self.grid/self.
     # economy exist at all), so there's structurally no board to freeze
     # behind it -- the other three are reached from MAP and follow the
@@ -270,6 +279,7 @@ class Game:
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
+        self.relics_button_rect = ui.build_relics_button_rect()
         self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
@@ -1370,6 +1380,17 @@ class Game:
                 self.set_time_scale(2.0)
             elif key == pygame.K_3:
                 self.set_time_scale(3.0)
+            elif key == pygame.K_r and self.active_run is not None:
+                self.state = GameState.RELICS
+        elif self.state == GameState.RELICS:
+            # Nothing to confirm or lose here (unlike PAUSED's own R) --
+            # any key dismisses it, Escape included. That's PAUSED's own
+            # Escape/P-resumes shape, not FLOOR_CLEARED/REST's -- those two
+            # special-case Escape to quit the app instead, which would be
+            # bad UX here (there's a live board underneath, not a result
+            # to leave); nothing else warrants special-casing Escape while
+            # just glancing at your relics.
+            self.state = GameState.PLAYING
         elif self.state == GameState.PAUSED:
             if self.pause_restart_confirm_pending:
                 # Only R (confirm) or Esc (cancel, back to the normal pause
@@ -1938,6 +1959,10 @@ class Game:
 
         if self.speed_button_rect.collidepoint(pos):
             self.cycle_time_scale()
+            return
+
+        if self.active_run is not None and self.relics_button_rect.collidepoint(pos):
+            self.state = GameState.RELICS
             return
 
         if self._handle_panel_action_click(pos):
@@ -2530,6 +2555,8 @@ class Game:
             self.time_scale, self.speed_button_rect,
             self.wave_manager.next_wave_preview(),
             shop_currency=self.active_run.shop_currency if self.active_run is not None else None,
+            relics_button_rect=self.relics_button_rect,
+            relic_count=len(self.active_run.relics) if self.active_run is not None else None,
             floor_label=floor_label,
         )
         ui.draw_tower_stats_panel(
@@ -2545,6 +2572,12 @@ class Game:
             ui.draw_pause_menu(self.screen, self.font, self.small_font,
                                 self.current_level_id is None, self.can_save_run(),
                                 self.pause_restart_confirm_pending)
+        elif self.state == GameState.RELICS and self.active_run is not None:
+            # active_run is None only ever happens by force-setting state
+            # directly (e.g. the render() smoke test's blanket sweep across
+            # every GameState) -- real gameplay only ever reaches RELICS
+            # via the HUD button/R, both gated on active_run already.
+            ui.draw_relics_overlay(self.screen, self.font, self.small_font, self.active_run.relics)
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._cached_tower_results)
         elif self.state == GameState.VICTORY:

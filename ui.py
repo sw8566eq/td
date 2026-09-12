@@ -127,6 +127,22 @@ def build_speed_button_rect():
     return pygame.Rect(x, y, SPEED_BUTTON_WIDTH, SPEED_BUTTON_HEIGHT)
 
 
+RELICS_BUTTON_WIDTH = 100
+RELICS_BUTTON_HEIGHT = 28
+
+
+def build_relics_button_rect():
+    """Rect for the HUD's 'Relics: N' button, opening GameState.RELICS
+    (see Game._handle_click/the R hotkey in _handle_keydown's PLAYING
+    branch) -- left of the speed button, same top strip, same
+    independent-of-the-tower-row reasoning as that button's own
+    docstring."""
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    x = settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN - RELICS_BUTTON_WIDTH - BUTTON_MARGIN
+    y = hud_top + (HUD_TOP_STRIP_HEIGHT - RELICS_BUTTON_HEIGHT) // 2
+    return pygame.Rect(x, y, RELICS_BUTTON_WIDTH, RELICS_BUTTON_HEIGHT)
+
+
 def _action_button_rect(top):
     x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - ACTION_BUTTON_WIDTH) // 2
     return pygame.Rect(x, top, ACTION_BUTTON_WIDTH, ACTION_BUTTON_HEIGHT)
@@ -182,7 +198,8 @@ def _format_currency(value, unlimited):
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
-             wave_preview=None, shop_currency=None, floor_label=None):
+             wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
+             floor_label=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -190,6 +207,11 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
 
     _draw_speed_button(surface, small_font, speed_button_rect, time_scale)
+    # relic_count is None outside an active run (classic/Practice play, an
+    # editor playtest) -- nothing to show there, same gate shop_currency
+    # uses below.
+    if relic_count is not None:
+        _draw_relics_button(surface, small_font, relics_button_rect, relic_count)
     if wave_preview is not None:
         _draw_wave_preview(surface, small_font, hud_rect, wave_preview)
 
@@ -289,6 +311,34 @@ def _draw_speed_button(surface, font, speed_button_rect, time_scale):
     pygame.draw.rect(surface, settings.COLOR_BUTTON, speed_button_rect, border_radius=6)
     label = font.render(f"Speed: {time_scale:g}x", True, settings.COLOR_TEXT)
     surface.blit(label, label.get_rect(center=speed_button_rect.center))
+
+
+def _draw_relics_button(surface, font, relics_button_rect, relic_count):
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, relics_button_rect, border_radius=6)
+    label = font.render(f"Relics: {relic_count}", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=relics_button_rect.center))
+
+
+def _relics_overlay_lines(relic_keys):
+    """The Relics overlay's own line-per-relic text, pulled out as its own
+    pure function (like _format_wave_label/_describe_event_outcome above)
+    so its content is unit-testable without a real Surface."""
+    if not relic_keys:
+        return ["No relics yet."]
+    return [f"{RELICS[key].display_name} -- {RELICS[key].description}" for key in relic_keys]
+
+
+def draw_relics_overlay(surface, font, small_font, relic_keys):
+    """Dim overlay atop the still-frozen board+HUD (see Game.render's
+    RELICS branch) -- reuses _draw_centered_overlay verbatim, the same
+    title+list-of-lines shape draw_pause_menu already uses, rather than a
+    fresh full-screen wipe like draw_achievements_screen/draw_help_screen:
+    dismissing this has nothing to reload, so it should return to the
+    exact live game state still showing underneath, not a separate
+    destination screen."""
+    lines = _relics_overlay_lines(relic_keys)
+    _draw_centered_overlay(surface, font, small_font, f"Relics ({len(relic_keys)})", lines,
+                            settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 
 def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
