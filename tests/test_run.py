@@ -36,6 +36,7 @@ from run_map import MapNode, RunMap
 from run_state import RunState
 from shop import ShopItem
 from tower import TOWER_TYPES
+from waves import WaveState
 
 from conftest import (
     finish_all_waves,
@@ -1321,6 +1322,120 @@ def test_elite_node_clear_pays_out_more_shop_currency_than_combat(game):
     elite_income = game.active_run.shop_currency
 
     assert elite_income > normal_income
+
+
+def _clear_the_current_waves_final_authored_wave(game):
+    """Force game.wave_manager onto its own last authored wave with
+    nothing left queued and nothing left alive -- the endless-aware
+    counterpart to conftest.finish_all_waves (which only sets
+    all_waves_complete, permanently False for an endless-loaded
+    WaveManager, so it can never trigger authored_waves_cleared at all).
+    Same "on the level's last wave" shortcut test_game.py's own
+    waves_survived regression test already establishes. Callers still call
+    game.update(dt) themselves afterward -- that's what makes the real
+    before/after transition Game.update() reads to fire
+    Game._handle_boss_defeated actually happen, unlike directly poking
+    wave_manager.authored_waves_cleared, which would already equal
+    whatever "after" reads too, never registering as a fresh transition."""
+    wave_manager = game.wave_manager
+    wave_manager.wave_index = wave_manager.total_waves - 1
+    wave_manager.state = WaveState.SPAWNING
+    wave_manager._spawn_queues = []
+    game.enemies = []
+
+
+# --- Boss node (the run map's final row) ---
+
+
+def test_boss_node_escalation_is_harder_than_elite_at_the_same_row(game):
+    _begin_run_with_map(game, ["combat", "elite"])
+    game._enter_node("1-0")
+    elite_hp_multiplier = game.wave_manager.enemy_hp_multiplier
+
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+
+    assert game.wave_manager.enemy_hp_multiplier > elite_hp_multiplier
+
+
+def test_boss_node_always_loads_endless(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    assert game.wave_manager.endless is True
+    assert game.active_run.is_final_floor
+
+
+def test_boss_node_renders_with_its_own_map_color_and_label(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game.active_run.current_node_id = "0-0"  # makes "1-0" available without entering it
+    game.render()
+    rect = game.map_node_rects["1-0"]
+    assert game.screen.get_at(rect.center)[:3] == settings.COLOR_NODE_BOSS
+
+
+def test_boss_defeated_flips_once_the_boss_nodes_authored_waves_clear(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    assert game.active_run.boss_defeated is False
+
+    _clear_the_current_waves_final_authored_wave(game)
+    game.update(dt=0.01)
+
+    assert game.active_run.boss_defeated is True
+    # The run keeps going -- there is no "you won the run" screen; the
+    # boss node's own endless=True keeps state at PLAYING regardless.
+    assert game.state == GameState.PLAYING
+
+
+def test_boss_defeated_does_not_flip_for_an_ordinary_combat_node(game):
+    _begin_run_with_map(game, ["combat", "combat"])
+    game._enter_node("1-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    assert game.active_run.boss_defeated is False
+
+
+def test_boss_defeated_persists_on_the_hud_wave_line(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    _clear_the_current_waves_final_authored_wave(game)
+    game.update(dt=0.01)
+    assert game.active_run.boss_defeated is True
+
+    game.render()  # smoke-test: boss_defeated=True must not crash draw_hud
+
+
+def test_boss_defeated_bumps_meta_progress_and_achievement_counters_once(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    _clear_the_current_waves_final_authored_wave(game)
+    game.update(dt=0.01)
+
+    meta_counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    achievement_state = achievements.load_achievements(game.achievements_path)
+    assert meta_counters["bosses_defeated"] == 1
+    assert achievement_state["counters"]["bosses_defeated"] == 1
+    assert "boss_slayer" in achievement_state["unlocked"]
+
+
+def test_boss_defeated_does_not_double_count_across_a_mid_boss_restart(game):
+    # A mid-fight Restart (see reset()) rebuilds a fresh WaveManager whose
+    # own authored_waves_cleared starts False again -- RunState.
+    # boss_defeated is what stops this from re-bumping bosses_defeated a
+    # second time.
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    _clear_the_current_waves_final_authored_wave(game)
+    game.update(dt=0.01)
+    assert game.active_run.boss_defeated is True
+
+    game.state = GameState.PAUSED
+    game.reset()  # restarts the same (still-active) boss node from scratch
+    _clear_the_current_waves_final_authored_wave(game)
+    game.update(dt=0.01)
+
+    meta_counters = meta_progression.load_meta_progression(game.meta_progression_path)["counters"]
+    assert meta_counters["bosses_defeated"] == 1
 
 
 # --- Random Event nodes ---

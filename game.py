@@ -428,19 +428,23 @@ class Game:
 
     def _floor_load_context(self, run, node):
         """The (relic_modifiers, escalation, rng) triple _load_level_object()
-        needs to load `node` (a combat/elite MapNode) of `run` -- shared by
-        _load_combat_node() (a normal node transition, or a mid-run restart
-        of the current node -- see reset()) and resume_saved_run() (which
-        needs the identical derivation for whatever node the resumed run
-        was already on), so the two don't independently re-derive the same
-        three values and risk drifting apart if a future change alters
-        what a node-load needs derived from a RunState. escalation is
-        keyed on the node's row (the depth value a branching map's
-        escalation math uses -- see RunState.current_row), bumped further
-        by run_escalation.apply_elite_multiplier for an Elite node."""
+        needs to load `node` (a combat/elite/boss MapNode) of `run` --
+        shared by _load_combat_node() (a normal node transition, or a
+        mid-run restart of the current node -- see reset()) and resume_
+        saved_run() (which needs the identical derivation for whatever node
+        the resumed run was already on), so the two don't independently
+        re-derive the same three values and risk drifting apart if a
+        future change alters what a node-load needs derived from a
+        RunState. escalation is keyed on the node's row (the depth value a
+        branching map's escalation math uses -- see RunState.current_row),
+        bumped further by run_escalation.apply_elite_multiplier for an
+        Elite node, or apply_boss_multiplier (tuned higher than Elite's own
+        bump) for the map's one boss node."""
         escalation = run_escalation.escalation_for_floor(node.row)
         if node.node_type == "elite":
             escalation = run_escalation.apply_elite_multiplier(escalation)
+        elif node.node_type == "boss":
+            escalation = run_escalation.apply_boss_multiplier(escalation)
         return (
             relics.compose_relic_modifiers(run.relics, node.row, run.has_spent_gold),
             escalation,
@@ -470,7 +474,7 @@ class Game:
         return random.Random(f"{run.seed}:{stream}:{key}")
 
     def _load_combat_node(self, node):
-        """Load `node` (a Combat/Elite MapNode) of self.active_run. Resets
+        """Load `node` (a Combat/Elite/Boss MapNode) of self.active_run. Resets
         everything via _load_level_object exactly like any other level
         load -- towers, the grid, and wave state are always rebuilt fresh
         per floor, the same way a deckbuilder run doesn't carry board
@@ -590,6 +594,26 @@ class Game:
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
 
+    def _handle_boss_defeated(self):
+        """The map's boss node just ran out of authored waves for the
+        first time this run (see update()'s own before/after check on
+        WaveManager.authored_waves_cleared) -- the run keeps going
+        (endless=True, so the fight continues; there is no "you won the
+        run" screen, see CLAUDE.md's run-loop section), but this is still a
+        real, one-time-per-run moment worth recording and celebrating.
+        Guarded on RunState.boss_defeated (a one-shot-per-run flag, same
+        shape as used_guardians_reprieve) rather than firing every time
+        this check passes -- a mid-fight Restart (see reset()) rebuilds a
+        fresh WaveManager whose own authored_waves_cleared starts False
+        again, which would otherwise double-count bosses_defeated on every
+        restart after the boss was already beaten once."""
+        if self.active_run.boss_defeated:
+            return
+        self.active_run.boss_defeated = True
+        self._record_meta_progress("bosses_defeated")
+        self._record_achievement("bosses_defeated")
+        self._queue_toast("Boss defeated! Fighting on for score...")
+
     # --- The run's own branching map ---
 
     def _enter_map(self):
@@ -635,7 +659,7 @@ class Game:
         run = self.active_run
         run.current_node_id = node_id
         node = run.map.node(node_id)
-        if node.node_type in ("combat", "elite"):
+        if node.node_type in ("combat", "elite", "boss"):
             self._load_combat_node(node)
         elif node.node_type == "shop":
             self._enter_shop_node(node)
@@ -1049,10 +1073,10 @@ class Game:
         player undo their own death for free. That falls through to the
         same plain, run-less reload every other reset() has always done,
         same as classic/Practice/playtest play. Only ever reachable with the
-        current node still a combat/elite one -- PAUSED is only reachable
-        from PLAYING, which only a combat/elite node's own load ever
-        enters, so run.map.node(run.current_node_id) is always a node
-        _load_combat_node can actually handle."""
+        current node still a combat/elite/boss one -- PAUSED is only
+        reachable from PLAYING, which only a combat/elite/boss node's own
+        load ever enters, so run.map.node(run.current_node_id) is always a
+        node _load_combat_node can actually handle."""
         if self.active_run is not None and self.state == GameState.PAUSED:
             # _load_combat_node() already sets self.state = PLAYING itself
             # -- left alone here rather than clobbered by the trailing MENU
@@ -2341,6 +2365,38 @@ class Game:
         still_alive = []
         kills_this_frame = 0
         for enemy in self.enemies:
+            # Drained for *every* enemy, dead or alive, before the death/
+            # goal/alive split below decides whether the enemy itself
+            # stays in still_alive -- SplitterEnemy only ever populates
+            # this once, at death (still handled identically to before:
+            # its children still join still_alive the same frame it
+            # dies), but FinalBossEnemy's own reinforcement-summon
+            # mechanic populates it repeatedly while very much still
+            # alive, which is exactly why this can no longer live inside
+            # the `if enemy.is_dead:` branch below -- and why the list
+            # must be cleared right after, or a still-alive summoner would
+            # re-queue the same already-spawned children again next frame
+            # (see Enemy.pending_spawns).
+            if enemy.pending_spawns:
+                # A Containment Charges-style relic's own flat damage is
+                # applied here, once per child, right before they ever join
+                # self.enemies -- the one place pending_spawns is ever read
+                # at all, so this is a flat per-floor value read straight
+                # off self.relic_modifiers, not something threaded through
+                # every Tower/Projectile the way a per-tower relic field
+                # would need to be (nothing about this varies by which
+                # tower landed the killing blow). Gated on enemy.is_dead,
+                # checked here rather than in the branch below (which no
+                # longer has its own pending_spawns read to hang this off
+                # of -- see the drain's own comment above) since the relic
+                # is specifically about a *death*-triggered split
+                # (SplitterEnemy); FinalBossEnemy's own live reinforcement
+                # summons must never be caught by this same check.
+                if enemy.is_dead and self.relic_modifiers.splitter_child_damage:
+                    for child in enemy.pending_spawns:
+                        child.take_damage(self.relic_modifiers.splitter_child_damage)
+                still_alive.extend(enemy.pending_spawns)
+                enemy.pending_spawns = []
             if enemy.is_dead:
                 self.economy.add_gold(enemy.gold_reward)
                 kills_this_frame += 1
@@ -2350,22 +2406,6 @@ class Game:
                 self.impact_effects.append(effects.ExpandingRing(
                     enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
                 ))
-                # SplitterEnemy is the only species that ever populates
-                # this -- empty for everything else, so extending
-                # unconditionally needs no per-species special-casing (see
-                # Enemy.pending_spawns). A Containment Charges-style
-                # relic's own flat damage is applied here, once per child,
-                # right before they ever join self.enemies -- the one
-                # place pending_spawns is ever read at all, so this is a
-                # flat per-floor value read straight off self.relic_
-                # modifiers, not something threaded through every Tower/
-                # Projectile the way a per-tower relic field would need to
-                # be (nothing about this varies by which tower landed the
-                # killing blow).
-                if self.relic_modifiers.splitter_child_damage:
-                    for child in enemy.pending_spawns:
-                        child.take_damage(self.relic_modifiers.splitter_child_damage)
-                still_alive.extend(enemy.pending_spawns)
             elif enemy.reached_goal:
                 self._lose_a_life()
             else:
@@ -2382,11 +2422,20 @@ class Game:
         # tick (WaveManager._advance_after_clear bumping wave_index) --
         # counts a survived wave whether it came from the level's own
         # authored waves or an endless-generated one, without adding any
-        # Game/persistence coupling into waves.py itself.
+        # Game/persistence coupling into waves.py itself. boss_cleared_
+        # before mirrors the same before/after idiom for the map's boss
+        # node running out of authored content for the first time (see
+        # _handle_boss_defeated) -- all_waves_complete itself never fires
+        # for an endless-loaded node, so authored_waves_cleared is the
+        # signal that actually can.
         wave_number_before_update = self.wave_manager.current_wave_number
+        boss_cleared_before = self.wave_manager.authored_waves_cleared
         self.enemies.extend(self.wave_manager.update(dt, self.enemies))
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
+        if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
+                and self.active_run is not None and self.active_run.is_final_floor):
+            self._handle_boss_defeated()
 
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
@@ -2576,6 +2625,7 @@ class Game:
             relics_button_rect=self.relics_button_rect,
             relic_count=len(self.active_run.relics) if self.active_run is not None else None,
             floor_label=floor_label,
+            boss_defeated=self.active_run.boss_defeated if self.active_run is not None else False,
         )
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,

@@ -77,6 +77,9 @@ ACHIEVEMENTS = {
     "century_of_waves": Achievement(
         "century_of_waves", "Century of Waves", "Clear 100 waves total.", "waves_survived", 100,
     ),
+    "boss_slayer": Achievement(
+        "boss_slayer", "Boss Slayer", "Defeat the run's final boss.", "bosses_defeated", 1,
+    ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 

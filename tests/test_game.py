@@ -22,6 +22,7 @@ import save_state
 import settings
 import ui
 from editor import EditorTool
+from enemy import FinalBossEnemy, SplitterEnemy
 from game import GameState
 from levels import LEVELS
 from tower import TOWER_TYPES, BasicTower
@@ -1541,6 +1542,44 @@ def test_floating_damage_numbers_are_pruned_once_expired(playing_game):
     playing_game.update(dt=10.0)  # comfortably past any FloatingText's lifetime
 
     assert playing_game.damage_numbers == []
+
+
+# --- Enemy.pending_spawns: drained for every enemy, not just a dead one ---
+
+
+def test_a_splitters_children_still_join_self_enemies_the_frame_it_dies(playing_game):
+    # Regression guard: the pending_spawns drain used to live only inside
+    # the `if enemy.is_dead:` branch of Game.update()'s alive-filter loop
+    # -- this proves the generalized "drain every enemy's pending_spawns,
+    # then decide dead/goal/alive" version still handles SplitterEnemy's
+    # own once-at-death populate identically.
+    splitter = SplitterEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    playing_game.enemies = [splitter]
+    splitter.take_damage(splitter.max_hp)  # a killing blow -- populates pending_spawns
+    children = list(splitter.pending_spawns)
+    assert children  # sanity: the split actually queued something
+
+    playing_game.update(dt=0.01)
+
+    assert splitter not in playing_game.enemies  # the parent is still dead and gone
+    assert all(child in playing_game.enemies for child in children)
+    assert splitter.pending_spawns == []
+
+
+def test_a_live_enemys_pending_spawns_join_self_enemies_and_are_cleared(playing_game):
+    # FinalBossEnemy's own reinforcement-summon mechanic populates
+    # pending_spawns repeatedly while still alive -- unlike SplitterEnemy,
+    # which only ever does this once, at death. This is exactly why the
+    # drain can no longer live inside the `if enemy.is_dead:` branch: a
+    # still-alive summoner needs it drained (and cleared) every frame too.
+    boss = FinalBossEnemy([pygame.Vector2(0, 0), pygame.Vector2(10**7, 0)], wave_number=1)
+    playing_game.enemies = [boss]
+
+    playing_game.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)  # crosses the summon interval
+
+    assert boss in playing_game.enemies  # still alive
+    assert boss.pending_spawns == []  # drained (and cleared) the same frame it was populated
+    assert len(playing_game.enemies) == 1 + FinalBossEnemy.SUMMON_COUNT
 
 
 def test_a_projectile_hit_spawns_an_impact_effect_sized_to_its_splash_radius(playing_game):

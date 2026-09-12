@@ -463,6 +463,52 @@ def test_non_endless_still_reaches_done_and_all_waves_complete():
     assert manager.all_waves_complete
 
 
+def test_authored_waves_cleared_stays_false_until_the_last_wave_clears():
+    level = make_level([{"grunt": 1}, {"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, endless=True)
+    manager.skip_delay()
+    assert manager.authored_waves_cleared is False
+
+    # Clear wave 1 only -- one more authored wave still to go.
+    for _ in range(300):
+        manager.update(dt=0.01, active_enemies=[])
+        if manager.wave_index > 0:
+            break
+    assert manager.wave_index > 0  # sanity: wave 1 actually did clear
+    assert manager.authored_waves_cleared is False
+
+
+def test_authored_waves_cleared_flips_true_once_the_levels_own_final_wave_clears():
+    # Non-endless: all_waves_complete itself already signals this, but
+    # authored_waves_cleared must track it identically -- Game._handle_
+    # boss_defeated's own before/after check has to work the same whether
+    # or not this particular WaveManager happens to be endless.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0)
+    _drive_to_completion(manager)
+    assert manager.authored_waves_cleared is True
+
+
+def test_authored_waves_cleared_flips_true_the_instant_endless_content_runs_out():
+    # This is the whole point of the flag -- endless=True keeps
+    # all_waves_complete permanently False (see the endless-specific tests
+    # above), so it can never signal "the map's boss node just ran out of
+    # authored content" the way authored_waves_cleared can.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0, endless=True)
+    manager.skip_delay()
+    assert manager.authored_waves_cleared is False
+
+    all_spawned = []
+    for _ in range(300):
+        all_spawned.extend(manager.update(dt=0.01, active_enemies=[]))
+        if manager.authored_waves_cleared:
+            break
+
+    assert manager.authored_waves_cleared is True
+    assert manager.all_waves_complete is False  # unaffected -- endless never sets this
+
+
 def test_clearing_the_final_wave_still_advances_wave_index():
     # Regression guard: current_wave_number (wave_index + 1) must reflect
     # every wave actually cleared, the final one included -- Game.update()

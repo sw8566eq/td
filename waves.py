@@ -84,6 +84,17 @@ class WaveManager:
         self._spawn_queues = []  # [(spawn_cell, [Enemy subclass, ...]), ...] -- one queue per spawn this wave
 
         self.all_waves_complete = False
+        # Flips true the instant the level's own last *authored* wave
+        # clears, even under endless=True (where all_waves_complete itself
+        # never fires -- see _advance_after_clear's own endless branch
+        # below) -- this is what lets Game.update() detect "the map's boss
+        # node just ran out of authored content" without all_waves_complete
+        # ever becoming a usable signal for that. Stays true (re-set to
+        # True, harmlessly, on every subsequent endless-wave clear too)
+        # rather than reverting, since the point being detected -- content
+        # ran out at least once -- doesn't un-happen once an endless-
+        # generated wave clears in turn.
+        self.authored_waves_cleared = False
 
     @property
     def current_wave_number(self):
@@ -237,6 +248,17 @@ class WaveManager:
 
     def _advance_after_clear(self):
         if self.wave_index >= self.total_waves - 1:
+            # The level's own authored content just ran out -- true
+            # regardless of endless (there, it fires again, harmlessly, on
+            # every later already-appended endless-generated wave clearing
+            # in turn too; see authored_waves_cleared's own comment in
+            # __init__). Set unconditionally, above the endless/non-endless
+            # split below, since this is what the field actually claims to
+            # track either way -- non-endless already has all_waves_complete
+            # as an equivalent signal, but Game._handle_boss_defeated's own
+            # before/after check should work the same regardless of which
+            # kind of WaveManager it's watching.
+            self.authored_waves_cleared = True
             if self.endless:
                 # Generate and append one more wave rather than ever
                 # setting state = DONE -- all_waves_complete stays False

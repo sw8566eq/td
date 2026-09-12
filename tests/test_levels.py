@@ -3,6 +3,7 @@ import pytest
 import settings
 from enemy import ENEMY_TYPES
 from levels import LEVELS, Level, _corridor_level, generate_default_waves
+from run_map import BOSS_LEVEL_IDS
 
 
 def test_all_registered_levels_have_in_bounds_path_cells():
@@ -178,7 +179,11 @@ def test_level_1_introduces_every_enemy_species_across_its_waves():
         for composition in wave.values()
         for name in composition
     }
-    assert species_seen == set(ENEMY_TYPES)
+    # final_boss is deliberately excluded -- reserved for the run map's own
+    # boss-tier levels (16/17, see run_map.BOSS_LEVEL_IDS), never an
+    # ordinary corridor level's final wave (that's still plain "boss" --
+    # see test_every_levels_final_wave_includes_a_boss_or_final_boss below).
+    assert species_seen == set(ENEMY_TYPES) - {"final_boss"}
 
 
 def test_at_least_two_levels_are_registered():
@@ -212,19 +217,40 @@ def _wave_species(wave):
     return {name for composition in wave.values() for name in composition}
 
 
-def test_every_levels_final_wave_includes_a_boss():
+def test_every_levels_final_wave_includes_a_boss_or_final_boss():
+    # Levels 16/17 (run_map.BOSS_LEVEL_IDS) are the one exception: their
+    # final wave uses "final_boss" (FinalBossEnemy) instead of the ordinary
+    # "boss" every other level's final wave still uses -- see
+    # test_boss_tier_levels_use_the_final_boss_species below for the
+    # positive assertion that they specifically do.
     for level_id, level in LEVELS.items():
         final_wave = level.wave_specs[-1]
         species = _wave_species(final_wave)
-        assert "boss" in species, level_id
-        boss_count = sum(composition.get("boss", 0) for composition in final_wave.values())
+        boss_species = "final_boss" if level_id in BOSS_LEVEL_IDS else "boss"
+        assert boss_species in species, level_id
+        boss_count = sum(composition.get(boss_species, 0) for composition in final_wave.values())
         assert boss_count >= 1, level_id
+
+
+def test_boss_tier_levels_use_the_final_boss_species_not_the_ordinary_one():
+    for level_id in BOSS_LEVEL_IDS:
+        final_wave = LEVELS[level_id].wave_specs[-1]
+        assert "boss" not in _wave_species(final_wave), level_id
+
+
+def test_non_boss_tier_levels_never_use_the_final_boss_species():
+    for level_id, level in LEVELS.items():
+        if level_id in BOSS_LEVEL_IDS:
+            continue
+        for wave in level.wave_specs:
+            assert "final_boss" not in _wave_species(wave), level_id
 
 
 def test_boss_does_not_appear_before_the_final_wave():
     for level_id, level in LEVELS.items():
+        boss_species = "final_boss" if level_id in BOSS_LEVEL_IDS else "boss"
         for wave in level.wave_specs[:-1]:
-            assert "boss" not in _wave_species(wave), level_id
+            assert boss_species not in _wave_species(wave), level_id
 
 
 def test_level_7_is_a_single_spawn_branching_into_two_goals():
