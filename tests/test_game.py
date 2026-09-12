@@ -1746,6 +1746,21 @@ def test_settings_click_picks_a_difficulty(game):
     assert game.difficulty == "hard"
 
 
+def test_settings_click_picks_a_window_size_preset(game):
+    game._handle_settings_click(game.settings_rects["window_1440x840"].center)
+    assert game.window_size == (1440, 840)
+    assert game.screen.get_size() == (1440, 840)
+
+
+def test_set_window_size_is_a_no_op_while_fullscreen(game):
+    game.set_fullscreen(True)
+    size_while_fullscreen = game.window_size
+
+    game.set_window_size((1600, 960))
+
+    assert game.window_size == size_while_fullscreen
+
+
 def test_settings_click_on_back_returns_to_menu(game):
     game.state = GameState.SETTINGS
     game._handle_settings_click(game.settings_rects["back"].center)
@@ -1770,6 +1785,12 @@ def test_difficulty_setting_persists_to_the_settings_file(game):
     assert reloaded["difficulty"] == "easy"
 
 
+def test_window_size_setting_persists_to_the_settings_file(game):
+    game.set_window_size((1600, 960))
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["window_size"] == [1600, 960]
+
+
 def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     first = make_game(tmp_path)
     try:
@@ -1782,6 +1803,21 @@ def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     try:
         assert second.fullscreen is True
         assert second.difficulty == "hard"
+    finally:
+        pygame.quit()
+
+
+def test_a_fresh_game_instance_restores_a_previously_persisted_window_size(tmp_path):
+    first = make_game(tmp_path)
+    try:
+        first.set_window_size((1440, 840))
+    finally:
+        pygame.quit()
+
+    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    try:
+        assert second.window_size == (1440, 840)
+        assert second.screen.get_size() == (1440, 840)
     finally:
         pygame.quit()
 
@@ -2704,6 +2740,17 @@ def test_handle_events_mousewheel_in_level_select_scrolls(game, monkeypatch):
 def test_handle_events_videoresize_while_windowed_resizes_the_screen(game):
     _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
     assert game.screen.get_size() == (1000, 600)
+
+
+def test_handle_events_videoresize_while_windowed_persists_the_new_size(game):
+    # Regression: an organic drag-resize used to never survive a relaunch
+    # at all, unlike a Settings-screen preset click -- now both go through
+    # the same self.window_size field/save call (see set_window_size's own
+    # docstring).
+    _fire_event(game, pygame.event.Event(pygame.VIDEORESIZE, size=(1000, 600), w=1000, h=600))
+    assert game.window_size == (1000, 600)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["window_size"] == [1000, 600]
 
 
 def test_handle_events_videoresize_while_fullscreen_is_ignored(game):
