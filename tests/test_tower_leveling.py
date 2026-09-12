@@ -152,13 +152,17 @@ def test_specialization_cost_reflects_a_quartermasters_favor_style_relic_discoun
 
 
 def test_specialize_applies_its_stat_multipliers():
+    # Generic over whichever stat(s) "power" actually multiplies -- not
+    # hardcoded to "damage", since that's no longer true for BasicTower's
+    # own "power" (see its own crit-mechanic tests below).
     tower = _max_out(make_tower())
-    base_damage = tower.damage
     spec = BasicTower.SPECIALIZATIONS["power"]
+    base_values = {stat: getattr(tower, stat) for stat in spec["stat_multipliers"]}
 
     assert tower.specialize("power") is True
 
-    assert tower.damage == base_damage * spec["stat_multipliers"]["damage"]
+    for stat, multiplier in spec["stat_multipliers"].items():
+        assert getattr(tower, stat) == base_values[stat] * multiplier
     assert tower.specialization == "power"
 
 
@@ -244,52 +248,54 @@ def test_basic_tower_specializations_are_tuned_differently_from_the_generic_plac
     assert BasicTower.SPECIALIZATIONS != Tower.SPECIALIZATIONS
 
 
-def test_basic_tower_power_boosts_damage_only():
+def test_basic_tower_power_boosts_crit_damage_only():
     tower = _max_out(make_tower(BasicTower))
-    base_damage, base_fire_rate = tower.damage, tower.fire_rate
-    multiplier = BasicTower.SPECIALIZATIONS["power"]["stat_multipliers"]["damage"]
+    base_crit_damage, base_crit_chance = tower.crit_damage_multiplier, tower.crit_chance
+    multiplier = BasicTower.SPECIALIZATIONS["power"]["stat_multipliers"]["crit_damage_multiplier"]
 
     assert tower.specialize("power") is True
 
-    assert tower.damage == base_damage * multiplier
-    assert tower.fire_rate == base_fire_rate  # unaffected
+    assert tower.crit_damage_multiplier == base_crit_damage * multiplier
+    assert tower.crit_chance == base_crit_chance  # unaffected
 
 
-def test_basic_tower_precision_boosts_fire_rate_only():
+def test_basic_tower_precision_boosts_crit_chance_only():
     tower = _max_out(make_tower(BasicTower))
-    base_damage, base_fire_rate = tower.damage, tower.fire_rate
-    multiplier = BasicTower.SPECIALIZATIONS["precision"]["stat_multipliers"]["fire_rate"]
+    base_crit_damage, base_crit_chance = tower.crit_damage_multiplier, tower.crit_chance
+    multiplier = BasicTower.SPECIALIZATIONS["precision"]["stat_multipliers"]["crit_chance"]
 
     assert tower.specialize("precision") is True
 
-    assert tower.fire_rate == base_fire_rate * multiplier
-    assert tower.damage == base_damage  # unaffected
+    assert tower.crit_chance == base_crit_chance * multiplier
+    assert tower.crit_damage_multiplier == base_crit_damage  # unaffected
 
 
 def test_sniper_tower_overrides_the_generic_specializations():
     assert set(SniperTower.SPECIALIZATIONS.keys()) == {"armor_piercing", "extended_scope"}
 
 
-def test_sniper_tower_armor_piercing_boosts_damage_only():
+def test_sniper_tower_armor_piercing_boosts_execute_damage_only():
     tower = _max_out(make_tower(SniperTower))
-    base_damage, base_range = tower.damage, tower.range
-    multiplier = SniperTower.SPECIALIZATIONS["armor_piercing"]["stat_multipliers"]["damage"]
+    base_execute_damage = tower.execute_damage_multiplier
+    base_execute_threshold = tower.execute_hp_threshold
+    multiplier = SniperTower.SPECIALIZATIONS["armor_piercing"]["stat_multipliers"]["execute_damage_multiplier"]
 
     assert tower.specialize("armor_piercing") is True
 
-    assert tower.damage == base_damage * multiplier
-    assert tower.range == base_range  # unaffected
+    assert tower.execute_damage_multiplier == base_execute_damage * multiplier
+    assert tower.execute_hp_threshold == base_execute_threshold  # unaffected
 
 
-def test_sniper_tower_extended_scope_boosts_range_only():
+def test_sniper_tower_extended_scope_boosts_execute_threshold_only():
     tower = _max_out(make_tower(SniperTower))
-    base_damage, base_range = tower.damage, tower.range
-    multiplier = SniperTower.SPECIALIZATIONS["extended_scope"]["stat_multipliers"]["range"]
+    base_execute_damage = tower.execute_damage_multiplier
+    base_execute_threshold = tower.execute_hp_threshold
+    multiplier = SniperTower.SPECIALIZATIONS["extended_scope"]["stat_multipliers"]["execute_hp_threshold"]
 
     assert tower.specialize("extended_scope") is True
 
-    assert tower.range == base_range * multiplier
-    assert tower.damage == base_damage  # unaffected
+    assert tower.execute_hp_threshold == base_execute_threshold * multiplier
+    assert tower.execute_damage_multiplier == base_execute_damage  # unaffected
 
 
 def test_cannon_tower_overrides_the_generic_specializations():
@@ -506,8 +512,20 @@ def test_every_registered_towers_extra_stats_reference_real_attributes():
             assert isinstance(formatted, str) and formatted, f"{name}: {label}"
 
 
-def test_basic_tower_has_no_extra_stats():
-    assert BasicTower.EXTRA_STATS == ()
+def test_basic_tower_extra_stats_show_its_crit_mechanic():
+    labels_and_attrs = [(label, attr) for label, attr, _fmt in BasicTower.EXTRA_STATS]
+    assert labels_and_attrs == [
+        ("Crit chance", "crit_chance"),
+        ("Crit multiplier", "crit_damage_multiplier"),
+    ]
+
+
+def test_sniper_tower_extra_stats_show_its_execute_mechanic():
+    labels_and_attrs = [(label, attr) for label, attr, _fmt in SniperTower.EXTRA_STATS]
+    assert labels_and_attrs == [
+        ("Execute threshold", "execute_hp_threshold"),
+        ("Execute multiplier", "execute_damage_multiplier"),
+    ]
 
 
 def test_upgrade_badge_sits_in_the_tiles_top_right_corner():
