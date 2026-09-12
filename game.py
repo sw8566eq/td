@@ -57,6 +57,15 @@ class GameState(Enum):
     MENU = auto()
     PLAYING = auto()
     PAUSED = auto()
+    # A run's currently-held relics, reachable directly from PLAYING (the
+    # HUD's "Relics: N" button, or R -- unlike R while PAUSED, this one's
+    # free) and dismissed by any key back into PLAYING with nothing to
+    # confirm/lose, unlike PAUSED's own R. The button click is handled
+    # inline in _handle_click (not a dedicated per-state method like
+    # _handle_help_click) since it's reachable from PLAYING itself, not a
+    # separate screen with its own click table -- see _handle_keydown's
+    # own RELICS branch and ui.draw_relics_overlay for the rest.
+    RELICS = auto()
     GAME_OVER = auto()
     VICTORY = auto()
     EDITOR = auto()
@@ -65,6 +74,7 @@ class GameState(Enum):
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
     HELP = auto()
+    CREDITS = auto()
     # A roguelike run's own extra states -- VICTORY stays reserved for
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
@@ -90,8 +100,8 @@ class GameState(Enum):
     #
     # MAP/DRAFT/EVENT/REST/TREASURE are all full-screen states (like
     # LEVEL_SELECT/EDITOR -- see render()'s early-return block), not
-    # overlays drawn atop a frozen board the way PAUSED/GAME_OVER/VICTORY/
-    # FLOOR_CLEARED are: MAP can be shown before any floor of the run has
+    # overlays drawn atop a frozen board the way PAUSED/RELICS/GAME_OVER/
+    # VICTORY/FLOOR_CLEARED are: MAP can be shown before any floor of the run has
     # ever loaded (right after start_new_run(), before self.grid/self.
     # economy exist at all), so there's structurally no board to freeze
     # behind it -- the other three are reached from MAP and follow the
@@ -143,6 +153,7 @@ class Game:
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.achievements_back_rect = ui.build_achievements_back_rect()
         self.help_back_rect = ui.build_help_back_rect()
+        self.credits_back_rect = ui.build_credits_back_rect()
         # Newly-unlocked-achievement toasts -- see _record_achievement().
         self.achievement_toasts = []
 
@@ -230,14 +241,22 @@ class Game:
         # _delete_save_if_this_run_was_resumed().
         self.has_saved_run = save_state.has_saved_run(self.save_path)
 
-        # Persisted player preferences -- fullscreen and difficulty are the
-        # first genuinely cross-session prefs this game has (unlike
+        # Persisted player preferences -- fullscreen and difficulty were the
+        # first genuinely cross-session prefs this game had (unlike
         # time_scale/unlimited_gold above), so they're written through
         # immediately on change rather than only on quit -- see
-        # set_fullscreen()/set_difficulty().
+        # set_fullscreen()/set_difficulty()/set_window_size().
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
         saved_settings = player_settings.load_settings(self.settings_path)
         self.fullscreen = saved_settings["fullscreen"]
+        # Windowed size -- read here so the very first apply_display_mode()
+        # call below already restores it (today's actual prior behavior:
+        # dragging the window to a new size was never persisted across a
+        # relaunch at all; see set_window_size()/the VIDEORESIZE handler
+        # for how this now stays current, preset click or organic drag
+        # alike). Meaningless while fullscreen, same as a drag already
+        # being ignored there -- see apply_display_mode's own docstring.
+        self.window_size = tuple(saved_settings["window_size"])
         # Which difficulty.DIFFICULTY_MODES entry is currently active --
         # read at _load_level_object time, so changing it mid-level has no
         # effect until the next load_level()/reset() (same "applies on next
@@ -260,6 +279,7 @@ class Game:
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
+        self.relics_button_rect = ui.build_relics_button_rect()
         self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
@@ -313,6 +333,17 @@ class Game:
         # so it's always on and combinable with Survival for free.
         self.level_select_endless_armed = False
         self._custom_levels_by_id = {}
+
+        # Gates R's actual reset() call behind one extra confirming press
+        # while PAUSED -- an in-progress run/Practice/playtest floor is
+        # genuinely losable state, unlike GAME_OVER/VICTORY's own R (see
+        # _handle_keydown's PAUSED branch), so only PAUSED needs this. Only
+        # ever set True from inside that same PAUSED branch, and always
+        # cleared again by the very next R (confirms, also resets state to
+        # PLAYING) or Escape (cancels) before PAUSED can be left any other
+        # way -- so, unlike GameState.EVENT's own event_phase, there's no
+        # stale-leftover-value case to guard against on (re-)entry.
+        self.pause_restart_confirm_pending = False
 
         self.state = GameState.MENU
         self.running = True
@@ -926,10 +957,15 @@ class Game:
 
     def apply_display_mode(self, size=None):
         """(Re)create self.screen for the current self.fullscreen setting,
-        at `size` pixels -- defaults to the configured settings.SCREEN_
-        WIDTH/HEIGHT; only ever overridden by handle_events()'s
-        pygame.VIDEORESIZE case, once the player has actually dragged a
-        non-fullscreen window to a new size.
+        at `size` pixels -- defaults to self.window_size (the persisted
+        windowed size, itself defaulting to settings.SCREEN_WIDTH/HEIGHT --
+        see player_settings.DEFAULTS). Overridden explicitly by
+        set_window_size() (a Settings-screen preset click) and by
+        handle_events()'s pygame.VIDEORESIZE case (an organic drag) --
+        both also update self.window_size itself, so the *next* bare call
+        here (e.g. toggling fullscreen back off) still lands on whatever
+        size the player last actually chose, not silently back to the
+        hardcoded default.
 
         pygame.SCALED (rendering at a fixed logical resolution, letterboxed
         by SDL to whatever physical size the window becomes) was the first
@@ -949,7 +985,7 @@ class Game:
         flags = pygame.RESIZABLE
         if self.fullscreen:
             flags |= pygame.FULLSCREEN
-        self.screen = pygame.display.set_mode(size or (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT), flags)
+        self.screen = pygame.display.set_mode(size or self.window_size, flags)
 
     def set_fullscreen(self, value):
         self.fullscreen = bool(value)
@@ -961,9 +997,24 @@ class Game:
             self.difficulty = key
             self._save_player_settings()
 
+    def set_window_size(self, size):
+        """A Settings-screen preset click -- see the VIDEORESIZE handler in
+        handle_events() for the other way self.window_size changes (an
+        organic drag), which persists through this same field/save call."""
+        if self.fullscreen:
+            return  # meaningless while fullscreen, same as a drag already being ignored there
+        self.window_size = tuple(size)
+        self.apply_display_mode(self.window_size)
+        self._save_player_settings()
+
     def _save_player_settings(self):
         player_settings.save_settings(
-            {"fullscreen": self.fullscreen, "difficulty": self.difficulty}, self.settings_path,
+            {
+                "fullscreen": self.fullscreen,
+                "difficulty": self.difficulty,
+                "window_size": list(self.window_size),
+            },
+            self.settings_path,
         )
 
     def set_time_scale(self, scale):
@@ -1217,6 +1268,8 @@ class Game:
                     self._handle_achievements_click(event.pos)
                 elif self.state == GameState.HELP:
                     self._handle_help_click(event.pos)
+                elif self.state == GameState.CREDITS:
+                    self._handle_credits_click(event.pos)
                 elif self.state == GameState.DRAFT:
                     self._handle_draft_click(event.pos)
                 elif self.state == GameState.MAP:
@@ -1245,7 +1298,16 @@ class Game:
                 # from the desktop resolution isn't something the player
                 # actually did (see apply_display_mode's docstring for what
                 # this makes dragging a windowed edge actually do).
-                self.apply_display_mode(event.size)
+                # set_window_size() persists too, same as a Settings-screen
+                # preset click, so an organic drag survives a relaunch just
+                # the same. That does mean a full (tiny, un-fsync'd) JSON
+                # rewrite on every intermediate size SDL reports while a
+                # drag is in progress, not just once at the end -- a
+                # deliberate choice, not an oversight: there's no distinct
+                # "drag finished" event to defer to here, and debouncing
+                # this write is not worth the added state for a save this
+                # cheap.
+                self.set_window_size(event.size)
 
     def _handle_keydown(self, key):
         if self.state == GameState.MENU:
@@ -1272,15 +1334,18 @@ class Game:
                         self.state = GameState.HELP
                     elif letter == "d":
                         self._start_daily_challenge()
+                    elif letter == "b":
+                        self.state = GameState.CREDITS
                 else:
                     self.start_new_run()
-        elif self.state == GameState.SETTINGS:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-        elif self.state == GameState.ACHIEVEMENTS:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-        elif self.state == GameState.HELP:
+        elif self.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
+                             GameState.HELP, GameState.CREDITS):
+            # These four share nothing but "Esc goes back to the menu" --
+            # each is otherwise driven entirely by its own click handler
+            # (Settings/Achievements have real buttons; Help/Credits are
+            # fully static). EDITOR isn't folded in here despite starting
+            # with the identical check, since it has real key handling of
+            # its own below Esc (see its own elif right after this one).
             if key == pygame.K_ESCAPE:
                 self.state = GameState.MENU
         elif self.state == GameState.EDITOR:
@@ -1315,12 +1380,35 @@ class Game:
                 self.set_time_scale(2.0)
             elif key == pygame.K_3:
                 self.set_time_scale(3.0)
+            elif key == pygame.K_r and self.active_run is not None:
+                self.state = GameState.RELICS
+        elif self.state == GameState.RELICS:
+            # Nothing to confirm or lose here (unlike PAUSED's own R) --
+            # any key dismisses it, Escape included. That's PAUSED's own
+            # Escape/P-resumes shape, not FLOOR_CLEARED/REST's -- those two
+            # special-case Escape to quit the app instead, which would be
+            # bad UX here (there's a live board underneath, not a result
+            # to leave); nothing else warrants special-casing Escape while
+            # just glancing at your relics.
+            self.state = GameState.PLAYING
         elif self.state == GameState.PAUSED:
-            if key in (pygame.K_p, pygame.K_ESCAPE):
+            if self.pause_restart_confirm_pending:
+                # Only R (confirm) or Esc (cancel, back to the normal pause
+                # menu -- still PAUSED) do anything here; P is deliberately
+                # not treated as a synonym for Esc, unlike the normal pause
+                # menu's own Esc/P-both-resume shape, so a reflexive P
+                # press mid-confirm can't be misread as "resume playing"
+                # when nothing has actually been decided yet.
+                if key == pygame.K_r:
+                    self.reset()  # reset() itself still sees state == PAUSED here
+                    self.state = GameState.PLAYING
+                    self.pause_restart_confirm_pending = False
+                elif key == pygame.K_ESCAPE:
+                    self.pause_restart_confirm_pending = False
+            elif key in (pygame.K_p, pygame.K_ESCAPE):
                 self.state = GameState.PLAYING
             elif key == pygame.K_r:
-                self.reset()
-                self.state = GameState.PLAYING
+                self.pause_restart_confirm_pending = True
             elif key == pygame.K_e and self.current_level_id is None:
                 # Only offered (see ui.draw_pause_menu) while playing a
                 # custom level -- self.editor still has whatever was
@@ -1708,6 +1796,8 @@ class Game:
             self.set_fullscreen(not self.fullscreen)
         elif option in difficulty.DIFFICULTY_MODES:
             self.set_difficulty(option)
+        elif option in ui.WINDOW_SIZE_PRESETS:
+            self.set_window_size(ui.WINDOW_SIZE_PRESETS[option])
         elif option == "back":
             self.state = GameState.MENU
 
@@ -1722,15 +1812,28 @@ class Game:
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.state = GameState.ACHIEVEMENTS
 
-    def _handle_achievements_click(self, pos):
-        if self.achievements_back_rect.collidepoint(pos):
+    def _handle_static_screen_back_click(self, pos, back_rect):
+        """Shared body for every full-screen "click the Back to Menu
+        button" handler below -- kept as separate, per-screen public
+        methods (rather than one handler threaded through handle_events'
+        own click-routing table) so each stays independently named and
+        directly callable, matching how Game's other per-state click
+        handlers are organized."""
+        if back_rect.collidepoint(pos):
             self.state = GameState.MENU
+
+    def _handle_achievements_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.achievements_back_rect)
 
     # --- Help / How to Play ---
 
     def _handle_help_click(self, pos):
-        if self.help_back_rect.collidepoint(pos):
-            self.state = GameState.MENU
+        self._handle_static_screen_back_click(pos, self.help_back_rect)
+
+    # --- Credits ---
+
+    def _handle_credits_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.credits_back_rect)
 
     def _delete_save_if_this_run_was_resumed(self):
         """Called from both of update()'s win/loss branches -- a resumed
@@ -1856,6 +1959,10 @@ class Game:
 
         if self.speed_button_rect.collidepoint(pos):
             self.cycle_time_scale()
+            return
+
+        if self.active_run is not None and self.relics_button_rect.collidepoint(pos):
+            self.state = GameState.RELICS
             return
 
         if self._handle_panel_action_click(pos):
@@ -2323,7 +2430,7 @@ class Game:
         if self.state == GameState.SETTINGS:
             ui.draw_settings_screen(
                 self.screen, self.font, self.small_font, self.settings_rects,
-                self.fullscreen, self.difficulty,
+                self.fullscreen, self.difficulty, self.window_size,
             )
             pygame.display.flip()
             return
@@ -2339,6 +2446,11 @@ class Game:
 
         if self.state == GameState.HELP:
             ui.draw_help_screen(self.screen, self.font, self.small_font, self.help_back_rect)
+            pygame.display.flip()
+            return
+
+        if self.state == GameState.CREDITS:
+            ui.draw_credits_screen(self.screen, self.font, self.small_font, self.credits_back_rect)
             pygame.display.flip()
             return
 
@@ -2447,6 +2559,13 @@ class Game:
         if panel_subject in self.towers:  # a placed tower (hovered, or pinned via selected_tower)
             ui.draw_tower_range_preview(self.screen, panel_subject)
 
+        # "Floor N/M" -- same 1-based node.row+1 / final_row_index+1 shape
+        # FLOOR_CLEARED's own screen already uses, just also shown live
+        # during PLAYING itself now, not only between floors.
+        floor_label = (
+            f"Floor {self.active_run.current_row + 1}/{self.active_run.map.final_row_index + 1}"
+            if self.active_run is not None else None
+        )
         ui.draw_hud(
             self.screen, self.assets, self.font, self.small_font,
             self.economy, self.wave_manager, self.button_rects,
@@ -2454,6 +2573,9 @@ class Game:
             self.time_scale, self.speed_button_rect,
             self.wave_manager.next_wave_preview(),
             shop_currency=self.active_run.shop_currency if self.active_run is not None else None,
+            relics_button_rect=self.relics_button_rect,
+            relic_count=len(self.active_run.relics) if self.active_run is not None else None,
+            floor_label=floor_label,
         )
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
@@ -2466,7 +2588,14 @@ class Game:
 
         if self.state == GameState.PAUSED:
             ui.draw_pause_menu(self.screen, self.font, self.small_font,
-                                self.current_level_id is None, self.can_save_run())
+                                self.current_level_id is None, self.can_save_run(),
+                                self.pause_restart_confirm_pending)
+        elif self.state == GameState.RELICS and self.active_run is not None:
+            # active_run is None only ever happens by force-setting state
+            # directly (e.g. the render() smoke test's blanket sweep across
+            # every GameState) -- real gameplay only ever reaches RELICS
+            # via the HUD button/R, both gated on active_run already.
+            ui.draw_relics_overlay(self.screen, self.font, self.small_font, self.active_run.relics)
         elif self.state == GameState.GAME_OVER:
             ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._cached_tower_results)
         elif self.state == GameState.VICTORY:

@@ -127,6 +127,22 @@ def build_speed_button_rect():
     return pygame.Rect(x, y, SPEED_BUTTON_WIDTH, SPEED_BUTTON_HEIGHT)
 
 
+RELICS_BUTTON_WIDTH = 100
+RELICS_BUTTON_HEIGHT = 28
+
+
+def build_relics_button_rect():
+    """Rect for the HUD's 'Relics: N' button, opening GameState.RELICS
+    (see Game._handle_click/the R hotkey in _handle_keydown's PLAYING
+    branch) -- left of the speed button, same top strip, same
+    independent-of-the-tower-row reasoning as that button's own
+    docstring."""
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    x = settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN - RELICS_BUTTON_WIDTH - BUTTON_MARGIN
+    y = hud_top + (HUD_TOP_STRIP_HEIGHT - RELICS_BUTTON_HEIGHT) // 2
+    return pygame.Rect(x, y, RELICS_BUTTON_WIDTH, RELICS_BUTTON_HEIGHT)
+
+
 def _action_button_rect(top):
     x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - ACTION_BUTTON_WIDTH) // 2
     return pygame.Rect(x, top, ACTION_BUTTON_WIDTH, ACTION_BUTTON_HEIGHT)
@@ -182,7 +198,8 @@ def _format_currency(value, unlimited):
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
-             wave_preview=None, shop_currency=None):
+             wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
+             floor_label=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -190,6 +207,11 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     pygame.draw.rect(surface, settings.COLOR_HUD_BG, hud_rect)
 
     _draw_speed_button(surface, small_font, speed_button_rect, time_scale)
+    # relic_count is None outside an active run (classic/Practice play, an
+    # editor playtest) -- nothing to show there, same gate shop_currency
+    # uses below.
+    if relic_count is not None:
+        _draw_relics_button(surface, small_font, relics_button_rect, relic_count)
     if wave_preview is not None:
         _draw_wave_preview(surface, small_font, hud_rect, wave_preview)
 
@@ -232,7 +254,14 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
     lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
-    wave_text = font.render(_format_wave_label(wave_manager), True, settings.COLOR_TEXT)
+    # floor_label ("Floor N/M") piggybacks onto the Wave line the same way
+    # shop_currency piggybacks onto Gold above -- same "no headroom for a
+    # fourth line" reason (see the comment there). None outside an active
+    # run, same gate shop_currency uses.
+    wave_label = _format_wave_label(wave_manager)
+    if floor_label is not None:
+        wave_label += f"   {floor_label}"
+    wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
 
     surface.blit(gold_text, (info_x, hud_rect.y + 8))
     surface.blit(lives_text, (info_x, hud_rect.y + 36))
@@ -282,6 +311,34 @@ def _draw_speed_button(surface, font, speed_button_rect, time_scale):
     pygame.draw.rect(surface, settings.COLOR_BUTTON, speed_button_rect, border_radius=6)
     label = font.render(f"Speed: {time_scale:g}x", True, settings.COLOR_TEXT)
     surface.blit(label, label.get_rect(center=speed_button_rect.center))
+
+
+def _draw_relics_button(surface, font, relics_button_rect, relic_count):
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, relics_button_rect, border_radius=6)
+    label = font.render(f"Relics: {relic_count}", True, settings.COLOR_TEXT)
+    surface.blit(label, label.get_rect(center=relics_button_rect.center))
+
+
+def _relics_overlay_lines(relic_keys):
+    """The Relics overlay's own line-per-relic text, pulled out as its own
+    pure function (like _format_wave_label/_describe_event_outcome above)
+    so its content is unit-testable without a real Surface."""
+    if not relic_keys:
+        return ["No relics yet."]
+    return [f"{RELICS[key].display_name} -- {RELICS[key].description}" for key in relic_keys]
+
+
+def draw_relics_overlay(surface, font, small_font, relic_keys):
+    """Dim overlay atop the still-frozen board+HUD (see Game.render's
+    RELICS branch) -- reuses _draw_centered_overlay verbatim, the same
+    title+list-of-lines shape draw_pause_menu already uses, rather than a
+    fresh full-screen wipe like draw_achievements_screen/draw_help_screen:
+    dismissing this has nothing to reload, so it should return to the
+    exact live game state still showing underneath, not a separate
+    destination screen."""
+    lines = _relics_overlay_lines(relic_keys)
+    _draw_centered_overlay(surface, font, small_font, f"Relics ({len(relic_keys)})", lines,
+                            settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 
 def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
@@ -998,6 +1055,11 @@ MENU_KEY_HINTS = [
     ("a", "Achievements"),
     ("h", "How to Play"),
     ("d", "Daily Run"),
+    # "c" is already reserved for the conditional Continue option below, so
+    # this picks an unused letter rather than a strictly mnemonic one --
+    # same spirit as "d" for Daily Run being the mnemonic exception, not
+    # every letter here being one.
+    ("b", "Credits"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -1019,6 +1081,12 @@ def draw_menu_screen(surface, font, small_font, has_saved_run=False):
     surface.fill(settings.COLOR_BG)
     options = menu_options(has_saved_run)
     _draw_centered_overlay(surface, font, small_font, "Tower Defense", options, settings.COLOR_TEXT)
+    # Escape already quits from here (see Game._handle_keydown's MENU
+    # branch) -- same "Esc -- Quit" wording MAP/DRAFT/EVENT/REST already
+    # use for their own quit-the-game Escape, not SETTINGS/ACHIEVEMENTS/
+    # HELP/CREDITS' own "Esc -- Back to Menu" (there's no "back" from the
+    # menu itself).
+    _draw_escape_hint(surface, small_font, "Esc -- Quit")
 
 
 # --- Settings screen ---
@@ -1028,11 +1096,25 @@ SETTINGS_BUTTON_HEIGHT = 44
 SETTINGS_BUTTON_GAP = 16
 SETTINGS_TOP = 160
 
+# Preset windowed sizes -- separate buttons (mirroring DIFFICULTY_ORDER's
+# own one-button-per-choice shape below), not a cycling toggle or a
+# dropdown. Every preset is >= the game's own fixed content size
+# (settings.SCREEN_WIDTH/HEIGHT, the first entry here) since dragging/
+# resizing under plain RESIZABLE never rescales that content (see Game.
+# apply_display_mode's own docstring) -- anything smaller would just clip
+# the grid or the stats panel, not shrink to fit.
+WINDOW_SIZE_PRESETS = {
+    "window_1200x704": (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT),  # Default -- exact content size
+    "window_1440x840": (1440, 840),
+    "window_1600x960": (1600, 960),
+}
+
 # "fullscreen" toggles on/off; each difficulty.DIFFICULTY_ORDER key picks
 # that difficulty.DIFFICULTY_MODES entry directly (so get_clicked_settings_
 # option's result plugs straight into Game.set_difficulty with no
-# translation); "back" returns to the menu.
-SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, "back"]
+# translation); each WINDOW_SIZE_PRESETS key likewise plugs straight into
+# Game.set_window_size; "back" returns to the menu.
+SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, *WINDOW_SIZE_PRESETS, "back"]
 
 
 def _settings_button_rect(index):
@@ -1052,6 +1134,27 @@ def get_clicked_settings_option(pos, settings_rects):
     return _key_of_rect_containing(pos, settings_rects)
 
 
+def _draw_escape_hint(surface, small_font, text="Esc -- Back to Menu"):
+    """The small 'Esc -- ...' corner hint every full-screen menu-adjacent
+    screen draws in its bottom-left corner -- Settings/Achievements/Help/
+    Credits all share the default "back to menu" wording; the main menu's
+    own Esc quits the game outright rather than going "back" anywhere, so
+    it passes its own text instead."""
+    hint = small_font.render(text, True, settings.COLOR_TEXT_DIM)
+    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+
+def _draw_back_to_menu_button(surface, small_font, rect, label="Back to Menu"):
+    """The single centered button Achievements/Help/Credits each draw --
+    Settings has its own row of same-shaped buttons already (see
+    _draw_settings_button below) and keeps using that instead, for one
+    consistent look across all of Settings' own buttons including this
+    one."""
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=6)
+    text = small_font.render(label, True, settings.COLOR_TEXT)
+    surface.blit(text, text.get_rect(center=rect.center))
+
+
 def _draw_settings_button(surface, font, rect, label, selected):
     color = settings.COLOR_BUTTON_SELECTED if selected else settings.COLOR_BUTTON
     pygame.draw.rect(surface, color, rect, border_radius=6)
@@ -1059,7 +1162,8 @@ def _draw_settings_button(surface, font, rect, label, selected):
     surface.blit(text, text.get_rect(center=rect.center))
 
 
-def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key):
+def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key,
+                          window_size):
     surface.fill(settings.COLOR_BG)
     title = font.render("Settings", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
@@ -1071,10 +1175,17 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
         label = f"Difficulty: {DIFFICULTY_MODES[key].display_name}"
         _draw_settings_button(surface, small_font, settings_rects[key], label, key == difficulty_key)
 
+    # Meaningless while fullscreen (see Game.set_window_size), but still
+    # drawn/selectable so the player can see what windowed size they'll
+    # return to.
+    window_size = tuple(window_size)
+    for key, size in WINDOW_SIZE_PRESETS.items():
+        label = f"Window: {size[0]}x{size[1]}"
+        _draw_settings_button(surface, small_font, settings_rects[key], label, size == window_size)
+
     _draw_settings_button(surface, small_font, settings_rects["back"], "Back to Menu", False)
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+    _draw_escape_hint(surface, small_font)
 
 
 # --- Achievements screen ---
@@ -1122,12 +1233,42 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
         surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += ACHIEVEMENT_ROW_HEIGHT
 
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
-    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
-    surface.blit(label, label.get_rect(center=back_rect.center))
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
 
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+
+# --- Static list screens (Help, Credits) ---
+#
+# Both are a fixed, hand-written list of lines under a title, with nothing
+# derived from any in-game state -- unlike Settings/Achievements, neither
+# needs anything read or re-read on entry (see Game._handle_keydown's HELP/
+# CREDITS branches -- no _enter_help()/_enter_credits() needed). Sharing
+# one body here is what keeps their per-screen TOP/LINE_HEIGHT/BACK_BUTTON_*
+# constants independent of each other (each screen declares its own, same
+# as SETTINGS_BUTTON_WIDTH/ACHIEVEMENTS_BACK_BUTTON_WIDTH/HELP_BACK_BUTTON_
+# WIDTH already independently happen to share the value 240) rather than
+# one screen's own constants silently doubling as another's.
+
+
+def _build_static_list_back_rect(line_count, top, line_height, width, height, gap):
+    x = (settings.SCREEN_WIDTH - width) // 2
+    y = top + line_count * line_height + gap
+    return pygame.Rect(x, y, width, height)
+
+
+def _draw_static_list_screen(surface, font, small_font, title, lines, back_rect, top, line_height):
+    surface.fill(settings.COLOR_BG)
+    title_text = font.render(title, True, settings.COLOR_TEXT)
+    surface.blit(title_text, title_text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    y = top
+    for line in lines:
+        text = small_font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += line_height
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
 
 
 # --- Help / How to Play screen ---
@@ -1160,35 +1301,50 @@ def build_help_back_rect(line_count=len(HELP_LINES)):
     """Rect for the Help screen's single 'Back to Menu' button, stacked
     below the last line -- same layout idea as build_achievements_back_rect,
     since HELP_LINES is likewise a short, fixed list."""
-    x = (settings.SCREEN_WIDTH - HELP_BACK_BUTTON_WIDTH) // 2
-    y = HELP_TOP + line_count * HELP_LINE_HEIGHT + HELP_BACK_BUTTON_GAP
-    return pygame.Rect(x, y, HELP_BACK_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT)
+    return _build_static_list_back_rect(line_count, HELP_TOP, HELP_LINE_HEIGHT,
+                                         HELP_BACK_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT,
+                                         HELP_BACK_BUTTON_GAP)
 
 
 def draw_help_screen(surface, font, small_font, back_rect):
-    """Static how-to-play screen -- HELP_LINES is a fixed, hand-written
-    summary, not derived from any in-game state, so unlike Settings/
-    Achievements there's nothing to read or re-read on entry (see
-    Game._handle_keydown's HELP branch -- no _enter_help() needed)."""
-    surface.fill(settings.COLOR_BG)
-    title = font.render("How to Play", True, settings.COLOR_TEXT)
-    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
-
-    y = HELP_TOP
-    for line in HELP_LINES:
-        text = small_font.render(line, True, settings.COLOR_TEXT)
-        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
-        y += HELP_LINE_HEIGHT
-
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
-    label = small_font.render("Back to Menu", True, settings.COLOR_TEXT)
-    surface.blit(label, label.get_rect(center=back_rect.center))
-
-    hint = small_font.render("Esc -- Back to Menu", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, (60, settings.SCREEN_HEIGHT - 40))
+    _draw_static_list_screen(surface, font, small_font, "How to Play", HELP_LINES,
+                              back_rect, HELP_TOP, HELP_LINE_HEIGHT)
 
 
-def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False):
+# --- Credits screen ---
+
+CREDITS_TOP = 100
+CREDITS_LINE_HEIGHT = 34
+CREDITS_BACK_BUTTON_WIDTH = 240
+CREDITS_BACK_BUTTON_HEIGHT = 40
+CREDITS_BACK_BUTTON_GAP = 24
+
+# Placeholder content -- fill in real attribution/license text later; this
+# exists so there's a credits screen at all, not to make any final claim
+# about what it should say.
+CREDITS_LINES = [
+    "Tower Defense",
+    "Built with Python and pygame.",
+    "(c) the author. License: TBD.",
+]
+
+
+def build_credits_back_rect(line_count=len(CREDITS_LINES)):
+    """Rect for the Credits screen's single 'Back to Menu' button --
+    same layout idea as build_help_back_rect, since CREDITS_LINES is
+    likewise a short, fixed list."""
+    return _build_static_list_back_rect(line_count, CREDITS_TOP, CREDITS_LINE_HEIGHT,
+                                         CREDITS_BACK_BUTTON_WIDTH, CREDITS_BACK_BUTTON_HEIGHT,
+                                         CREDITS_BACK_BUTTON_GAP)
+
+
+def draw_credits_screen(surface, font, small_font, back_rect):
+    _draw_static_list_screen(surface, font, small_font, "Credits", CREDITS_LINES,
+                              back_rect, CREDITS_TOP, CREDITS_LINE_HEIGHT)
+
+
+def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False,
+                     confirm_restart=False):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
     # panel stays visible and undimmed to its right. "Return to Editor"
     # only makes sense while playing a level that actually came from the
@@ -1196,13 +1352,25 @@ def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=F
     # buffer to go back to. "Save & Quit" only makes sense between waves
     # (see Game.can_save_run()) -- there's no live enemy/projectile state
     # to resume back into mid-wave.
-    options = ["Esc / P -- Resume", "R -- Restart Level"]
-    if is_custom_level:
-        options.append("E -- Return to Map Editor")
-    if can_save:
-        options.append("S -- Save & Quit")
-    options.append("Q -- Quit")
-    _draw_centered_overlay(surface, font, small_font, "Paused", options,
+    #
+    # confirm_restart swaps in a one-question confirm screen in place of
+    # the normal option list (see Game._handle_keydown's PAUSED branch) --
+    # reusing this same _draw_centered_overlay call rather than a second
+    # drawing primitive, since a confirm prompt is just a differently-
+    # worded title+subtitle-list, the exact shape this already draws.
+    if confirm_restart:
+        title = "Restart Level?"
+        options = ["This discards your progress on this floor.",
+                    "R -- Confirm Restart", "Esc -- Cancel"]
+    else:
+        title = "Paused"
+        options = ["Esc / P -- Resume", "R -- Restart Level"]
+        if is_custom_level:
+            options.append("E -- Return to Map Editor")
+        if can_save:
+            options.append("S -- Save & Quit")
+        options.append("Q -- Quit")
+    _draw_centered_overlay(surface, font, small_font, title, options,
                             settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
 
 

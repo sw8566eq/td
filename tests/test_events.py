@@ -137,3 +137,120 @@ def test_resolve_event_option_tower_grant_degrades_gracefully_once_exhausted(tmp
     granted = resolve_event_option(run, option, random.Random(1), meta_progression_path=tmp_path / "meta.json")
 
     assert "tower" not in granted
+
+
+# --- The 6 events added in Chunk D, one test per event covering every one
+# of its own options' deltas -- rather than the generic "first option
+# anywhere in the registry matching X" shape the original 7 events' tests
+# above use, since that shape can't target a *specific* new event/option.
+
+
+def test_collapsed_vault_options():
+    event = EVENTS["collapsed_vault"]
+    assert len(event.options) == 3
+
+    force_open, pick_lock, leave_sealed = event.options
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, force_open, random.Random(1))
+    assert run.shop_currency == 25
+    assert run.lives == 4
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, pick_lock, random.Random(1))
+    assert run.shop_currency == 10
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, leave_sealed, random.Random(1))
+    assert run.shop_currency == 0
+    assert run.lives == 5
+
+
+def test_traveling_smith_options(tmp_path):
+    event = EVENTS["traveling_smith"]
+    assert len(event.options) == 2
+
+    buy, decline = event.options
+
+    run = _run(shop_currency=20, unlocked_towers=[])
+    granted = resolve_event_option(run, buy, random.Random(1), meta_progression_path=tmp_path / "meta.json")
+    assert run.shop_currency == 8
+    assert granted["tower"] in run.unlocked_towers
+
+    run = _run(shop_currency=20)
+    resolve_event_option(run, decline, random.Random(1))
+    assert run.shop_currency == 20
+
+
+def test_omen_of_ruin_options():
+    event = EVENTS["omen_of_ruin"]
+    assert len(event.options) == 2
+
+    press_on, turn_back = event.options
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, press_on, random.Random(1))
+    assert run.shop_currency == 18
+    assert run.lives == 3
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, turn_back, random.Random(1))
+    assert run.shop_currency == 0
+    assert run.lives == 5
+
+
+def test_quartermasters_cache_options():
+    event = EVENTS["quartermasters_cache"]
+    assert len(event.options) == 3
+
+    take_currency, take_spare_part, leave = event.options
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, take_currency, random.Random(1))
+    assert run.shop_currency == 14
+
+    run = _run(shop_currency=10)
+    granted = resolve_event_option(run, take_spare_part, random.Random(1))
+    assert run.shop_currency == 5
+    assert granted["relic"] in run.relics
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, leave, random.Random(1))
+    assert run.shop_currency == 0
+
+
+def test_unclaimed_cache_options(tmp_path):
+    event = EVENTS["unclaimed_cache"]
+    assert len(event.options) == 2
+
+    take_schematic, take_device = event.options
+
+    run = _run(unlocked_towers=[])
+    granted = resolve_event_option(run, take_schematic, random.Random(1), meta_progression_path=tmp_path / "meta.json")
+    assert granted["tower"] in run.unlocked_towers
+
+    run = _run()
+    granted = resolve_event_option(run, take_device, random.Random(1))
+    assert granted["relic"] in run.relics
+
+
+def test_crumbling_shrine_options():
+    event = EVENTS["crumbling_shrine"]
+    assert len(event.options) == 3
+
+    offer, take, walk_on = event.options
+
+    run = _run(shop_currency=10, lives=5)
+    resolve_event_option(run, offer, random.Random(1))
+    assert run.shop_currency == 0
+    assert run.lives == 8
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, take, random.Random(1))
+    assert run.shop_currency == 15
+    assert run.lives == 3
+
+    run = _run(shop_currency=0, lives=5)
+    resolve_event_option(run, walk_on, random.Random(1))
+    assert run.shop_currency == 0
+    assert run.lives == 5

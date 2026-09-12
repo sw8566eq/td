@@ -467,3 +467,180 @@ LEVELS[11] = _multi_lane_level(
     starting_gold=210,
     starting_lives=20,
 )
+
+# Level 12: "Twin Corridors" -- the simplest possible complex level: two
+# fully disjoint straight lanes (a 2-component forest, no junction cell at
+# all), rather than composing existing junction shapes like every level
+# below it. Deliberately the easiest of the complex tier -- run_map.py's
+# own row-3/row-4 pool draws from these four new levels alongside 6/8/9/11,
+# and this one is meant to read as "the gentle one" among them.
+LEVEL_12_LANE_TOP = [(0, 1), (14, 1)]
+LEVEL_12_LANE_BOTTOM = [(0, 7), (14, 7)]
+LEVEL_12_WAVE_SPECS = [
+    {LEVEL_12_LANE_TOP[0]: {"grunt": 7}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 6}},
+    {LEVEL_12_LANE_TOP[0]: {"grunt": 8, "tank": 2}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 8, "flying": 3}},
+    {LEVEL_12_LANE_TOP[0]: {"grunt": 9, "tank": 4}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 9, "flying": 4, "shielded": 2}},
+    {LEVEL_12_LANE_TOP[0]: {"grunt": 10, "tank": 5},
+     LEVEL_12_LANE_BOTTOM[0]: {"scout": 10, "flying": 5, "shielded": 3}},
+    {LEVEL_12_LANE_TOP[0]: {"grunt": 10, "tank": 5, "boss": 1},
+     LEVEL_12_LANE_BOTTOM[0]: {"scout": 9, "flying": 5, "shielded": 3}},
+]
+
+LEVELS[12] = _multi_lane_level(
+    12, "Twin Corridors",
+    lane_corner_lists=[LEVEL_12_LANE_TOP, LEVEL_12_LANE_BOTTOM],
+    spawn_cells=(LEVEL_12_LANE_TOP[0], LEVEL_12_LANE_BOTTOM[0]),
+    goal_cells=(LEVEL_12_LANE_TOP[-1], LEVEL_12_LANE_BOTTOM[-1]),
+    wave_specs=LEVEL_12_WAVE_SPECS,
+    starting_gold=170,
+    starting_lives=20,
+)
+
+# Level 13: "Delta Fork" -- the campaign's first genuine "3-in/3-out": Triple
+# Crossing's own 3-way merge shape (Level 9), immediately followed by Twin
+# Confluence's own merge-then-branch shape (Level 8), so the fan-out on the
+# far side mirrors the fan-in on the near side. Still a forest: the merge
+# junction's own vertical arms (top descends, bottom ascends, mid arrives
+# with zero vertical component) all meet at that single cell, and the branch
+# junction's arms do the same in reverse -- exactly Level 9's own proven
+# "only one arm may have a nonzero vertical run at any other column" shape,
+# just composed twice.
+LEVEL_13_SPAWN_TOP = (0, 1)
+LEVEL_13_SPAWN_MID = (0, 4)
+LEVEL_13_SPAWN_BOTTOM = (0, 7)
+LEVEL_13_MERGE_JUNCTION = (6, 4)
+LEVEL_13_BRANCH_JUNCTION = (10, 4)
+LEVEL_13_GOAL_TOP = (14, 1)
+LEVEL_13_GOAL_MID = (14, 4)
+LEVEL_13_GOAL_BOTTOM = (14, 7)
+LEVEL_13_WAVE_SPECS = [
+    {LEVEL_13_SPAWN_TOP: {"grunt": 6}, LEVEL_13_SPAWN_MID: {"scout": 6}, LEVEL_13_SPAWN_BOTTOM: {"tank": 3}},
+    {LEVEL_13_SPAWN_TOP: {"grunt": 7, "tank": 3}, LEVEL_13_SPAWN_MID: {"scout": 8, "flying": 3},
+     LEVEL_13_SPAWN_BOTTOM: {"tank": 5, "grunt": 4}},
+    {LEVEL_13_SPAWN_TOP: {"grunt": 8, "tank": 5}, LEVEL_13_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
+     LEVEL_13_SPAWN_BOTTOM: {"tank": 6, "grunt": 5, "splitter": 3}},
+    {LEVEL_13_SPAWN_TOP: {"grunt": 9, "tank": 6}, LEVEL_13_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 4},
+     LEVEL_13_SPAWN_BOTTOM: {"tank": 7, "grunt": 6, "splitter": 4}},
+    {LEVEL_13_SPAWN_TOP: {"grunt": 9, "tank": 7, "boss": 1},
+     LEVEL_13_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5},
+     LEVEL_13_SPAWN_BOTTOM: {"tank": 7, "grunt": 6, "splitter": 4}},
+]
+
+LEVELS[13] = _multi_lane_level(
+    13, "Delta Fork",
+    lane_corner_lists=[
+        [LEVEL_13_SPAWN_TOP, (6, 1), LEVEL_13_MERGE_JUNCTION],
+        [LEVEL_13_SPAWN_MID, LEVEL_13_MERGE_JUNCTION],
+        [LEVEL_13_SPAWN_BOTTOM, (6, 7), LEVEL_13_MERGE_JUNCTION],
+        [LEVEL_13_MERGE_JUNCTION, LEVEL_13_BRANCH_JUNCTION],
+        [LEVEL_13_BRANCH_JUNCTION, (10, 1), LEVEL_13_GOAL_TOP],
+        [LEVEL_13_BRANCH_JUNCTION, LEVEL_13_GOAL_MID],
+        [LEVEL_13_BRANCH_JUNCTION, (10, 7), LEVEL_13_GOAL_BOTTOM],
+    ],
+    spawn_cells=(LEVEL_13_SPAWN_TOP, LEVEL_13_SPAWN_MID, LEVEL_13_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_13_GOAL_TOP, LEVEL_13_GOAL_MID, LEVEL_13_GOAL_BOTTOM),
+    wave_specs=LEVEL_13_WAVE_SPECS,
+    starting_gold=220,
+    starting_lives=20,
+)
+
+# Level 14: "Quad Muster" -- the widest star yet: 4 spawns merging toward one
+# goal, built as a two-level hierarchy rather than one flat N-way star.
+# Cramming all 4 arms into a single junction cell the way Level 9/13's 3-way
+# merges do (one descending, one ascending, one arriving with zero vertical
+# component) has no room for a 4th arm without two arms' sweeps ending up on
+# adjacent rows over an overlapping column range -- which isn't even an
+# outright cell collision, just ordinary grid *adjacency* between two
+# different lanes, but that's just as fatal: it wires their cells together
+# into an unintended loop. Composing two independent Confluence-style
+# (Level 6) 2-spawn merges instead sidesteps this entirely: MERGE_TOP pairs
+# the two top spawns, MERGE_BOTTOM pairs the two bottom ones, and a single
+# vertical spine then joins those two merge points to each other, with the
+# goal branching east off that spine partway down.
+LEVEL_14_SPAWN_TOP_A = (0, 0)
+LEVEL_14_SPAWN_TOP_B = (0, 2)
+LEVEL_14_MERGE_TOP = (4, 1)
+LEVEL_14_SPAWN_BOTTOM_A = (0, 6)
+LEVEL_14_SPAWN_BOTTOM_B = (0, 8)
+LEVEL_14_MERGE_BOTTOM = (4, 7)
+LEVEL_14_BRANCH_JUNCTION = (4, 4)  # where the goal spur leaves the spine
+LEVEL_14_GOAL = (14, 4)
+LEVEL_14_WAVE_SPECS = [
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 5}, LEVEL_14_SPAWN_TOP_B: {"scout": 5},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 3}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 5}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 6, "splitter": 2}, LEVEL_14_SPAWN_TOP_B: {"scout": 6, "flying": 3},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 4}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 6, "shielded": 2}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 7, "splitter": 3}, LEVEL_14_SPAWN_TOP_B: {"scout": 7, "flying": 4},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 5, "healer": 2}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 7, "shielded": 3}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 8, "splitter": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 8, "flying": 5},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 6, "healer": 3}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 8, "shielded": 4}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 8, "splitter": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 8, "flying": 5},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 6, "healer": 3, "boss": 1},
+     LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 8, "shielded": 4}},
+]
+
+LEVELS[14] = _multi_lane_level(
+    14, "Quad Muster",
+    lane_corner_lists=[
+        [LEVEL_14_SPAWN_TOP_A, (4, 0), LEVEL_14_MERGE_TOP],
+        [LEVEL_14_SPAWN_TOP_B, (4, 2), LEVEL_14_MERGE_TOP],
+        [LEVEL_14_SPAWN_BOTTOM_A, (4, 6), LEVEL_14_MERGE_BOTTOM],
+        [LEVEL_14_SPAWN_BOTTOM_B, (4, 8), LEVEL_14_MERGE_BOTTOM],
+        [LEVEL_14_MERGE_TOP, LEVEL_14_MERGE_BOTTOM],  # the spine, col4 rows1-7
+        [LEVEL_14_BRANCH_JUNCTION, LEVEL_14_GOAL],
+    ],
+    spawn_cells=(
+        LEVEL_14_SPAWN_TOP_A, LEVEL_14_SPAWN_TOP_B, LEVEL_14_SPAWN_BOTTOM_A, LEVEL_14_SPAWN_BOTTOM_B,
+    ),
+    goal_cells=(LEVEL_14_GOAL,),
+    wave_specs=LEVEL_14_WAVE_SPECS,
+    starting_gold=230,
+    starting_lives=20,
+)
+
+# Level 15: "Double Confluence" -- two independent Confluence-style 2-spawn
+# merges (Level 6's own shape), side by side and never touching: a top
+# network confined to rows 0-2, a bottom network confined to rows 6-8, with
+# rows 3-5 left as an untouched buffer between them. Tests split attention
+# across two separate fronts at once, rather than one larger network.
+LEVEL_15_TOP_SPAWN_A = (0, 0)
+LEVEL_15_TOP_SPAWN_B = (0, 2)
+LEVEL_15_TOP_JUNCTION = (5, 1)
+LEVEL_15_TOP_GOAL = (14, 1)
+LEVEL_15_BOTTOM_SPAWN_A = (0, 6)
+LEVEL_15_BOTTOM_SPAWN_B = (0, 8)
+LEVEL_15_BOTTOM_JUNCTION = (5, 7)
+LEVEL_15_BOTTOM_GOAL = (14, 7)
+LEVEL_15_WAVE_SPECS = [
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 6}, LEVEL_15_TOP_SPAWN_B: {"scout": 5},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 6}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 7, "tank": 2}, LEVEL_15_TOP_SPAWN_B: {"scout": 7, "flying": 2},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 4, "splitter": 2}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 7, "shielded": 2}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 8, "tank": 4}, LEVEL_15_TOP_SPAWN_B: {"scout": 8, "flying": 4},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 5, "splitter": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 8, "shielded": 3}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 9, "tank": 5}, LEVEL_15_TOP_SPAWN_B: {"scout": 9, "flying": 5, "healer": 2},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 6, "splitter": 4}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 9, "shielded": 4}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 9, "tank": 6, "boss": 1},
+     LEVEL_15_TOP_SPAWN_B: {"scout": 9, "flying": 5, "healer": 2},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 6, "splitter": 4},
+     LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 9, "shielded": 4}},
+]
+
+LEVELS[15] = _multi_lane_level(
+    15, "Double Confluence",
+    lane_corner_lists=[
+        [LEVEL_15_TOP_SPAWN_A, (5, 0), LEVEL_15_TOP_JUNCTION],
+        [LEVEL_15_TOP_SPAWN_B, (5, 2), LEVEL_15_TOP_JUNCTION],
+        [LEVEL_15_TOP_JUNCTION, LEVEL_15_TOP_GOAL],
+        [LEVEL_15_BOTTOM_SPAWN_A, (5, 6), LEVEL_15_BOTTOM_JUNCTION],
+        [LEVEL_15_BOTTOM_SPAWN_B, (5, 8), LEVEL_15_BOTTOM_JUNCTION],
+        [LEVEL_15_BOTTOM_JUNCTION, LEVEL_15_BOTTOM_GOAL],
+    ],
+    spawn_cells=(
+        LEVEL_15_TOP_SPAWN_A, LEVEL_15_TOP_SPAWN_B, LEVEL_15_BOTTOM_SPAWN_A, LEVEL_15_BOTTOM_SPAWN_B,
+    ),
+    goal_cells=(LEVEL_15_TOP_GOAL, LEVEL_15_BOTTOM_GOAL),
+    wave_specs=LEVEL_15_WAVE_SPECS,
+    starting_gold=200,
+    starting_lives=20,
+)

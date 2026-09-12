@@ -18,7 +18,9 @@ import relics
 
 _EVENT_ORDER = (
     "wandering_merchant", "ancient_shrine", "abandoned_camp", "friendly_duel",
-    "traveling_healer", "cursed_idol", "old_battlefield",
+    "traveling_healer", "cursed_idol", "old_battlefield", "collapsed_vault",
+    "traveling_smith", "omen_of_ruin", "quartermasters_cache", "unclaimed_cache",
+    "crumbling_shrine",
 )
 
 
@@ -141,6 +143,97 @@ EVENTS = {
                 "A quick pass turns up only loose currency.",
                 shop_currency_delta=10,
             ),
+        ),
+    ),
+    "collapsed_vault": Event(
+        "collapsed_vault", "Collapsed Vault",
+        "A sealed vault, likely damaged by whatever came through here first.",
+        options=(
+            EventOption(
+                "force_open", "Force it open (risk 1 life, +25 shop currency)",
+                "The vault gives way all at once, and not gently.",
+                lives_delta=-1, shop_currency_delta=25,
+            ),
+            EventOption(
+                "pick_lock", "Pick the lock carefully (+10 shop currency)",
+                "It takes time, but the vault opens without incident.",
+                shop_currency_delta=10,
+            ),
+            EventOption("leave_sealed", "Leave it sealed", "You decide it isn't worth the risk."),
+        ),
+    ),
+    "traveling_smith": Event(
+        "traveling_smith", "Traveling Smith",
+        "A traveling smith offers a tower blueprint, for a price.",
+        options=(
+            EventOption(
+                "buy", "Buy it (-12 shop currency, unlock a tower)",
+                "The smith hands over the blueprint in exchange for your currency.",
+                shop_currency_delta=-12, unlock_random_tower=True,
+            ),
+            EventOption("decline", "Decline", "You keep your currency and move on."),
+        ),
+    ),
+    "omen_of_ruin": Event(
+        "omen_of_ruin", "Omen of Ruin",
+        "A grim omen -- turning back costs time, pressing on costs something else.",
+        options=(
+            EventOption(
+                "press_on", "Press on (risk 2 lives, +18 shop currency)",
+                "You push past the omen and find your way regardless.",
+                lives_delta=-2, shop_currency_delta=18,
+            ),
+            EventOption("turn_back", "Turn back", "You heed the omen and lose nothing."),
+        ),
+    ),
+    "quartermasters_cache": Event(
+        "quartermasters_cache", "Quartermaster's Cache",
+        "An abandoned quartermaster's cache.",
+        options=(
+            EventOption(
+                "take_currency", "Take the currency (+14 shop currency)",
+                "You take the currency and leave the rest behind.",
+                shop_currency_delta=14,
+            ),
+            EventOption(
+                "take_spare_part", "Take the spare part (-5 shop currency, gain a relic)",
+                "You spend a little to salvage a usable relic.",
+                shop_currency_delta=-5, grant_relic=True,
+            ),
+            EventOption("leave", "Leave it", "You decide it isn't worth the trouble."),
+        ),
+    ),
+    "unclaimed_cache": Event(
+        "unclaimed_cache", "Unclaimed Cache",
+        "An unclaimed supply cache -- take one thing before you go.",
+        options=(
+            EventOption(
+                "take_schematic", "Take the tower schematic (unlock a tower)",
+                "You take the schematic and leave the rest untouched.",
+                unlock_random_tower=True,
+            ),
+            EventOption(
+                "take_device", "Take the strange device (gain a relic)",
+                "You take the device and leave the rest untouched.",
+                grant_relic=True,
+            ),
+        ),
+    ),
+    "crumbling_shrine": Event(
+        "crumbling_shrine", "Crumbling Shrine",
+        "A crumbling shrine -- give something, take something, or walk on.",
+        options=(
+            EventOption(
+                "offer", "Leave an offering (-10 shop currency, +3 lives)",
+                "The shrine accepts your offering and mends your wounds.",
+                shop_currency_delta=-10, lives_delta=3,
+            ),
+            EventOption(
+                "take", "Take what's left (risk 2 lives, +15 shop currency)",
+                "You take what you can, and it takes something back.",
+                lives_delta=-2, shop_currency_delta=15,
+            ),
+            EventOption("walk_on", "Walk on", "You leave the shrine undisturbed."),
         ),
     ),
 }

@@ -1877,12 +1877,80 @@ def test_clearing_a_practice_level_earns_no_progress(game):
     assert "levels_cleared" not in achievements.load_achievements(game.achievements_path)["counters"]
 
 
+# --- Relics overlay (HUD) ---
+
+
+def test_r_key_enters_relics_during_a_run(game):
+    start_first_floor(game, seed=1)
+    assert game.state == GameState.PLAYING
+
+    game._handle_keydown(pygame.K_r)
+
+    assert game.state == GameState.RELICS
+
+
+def test_r_key_is_a_no_op_outside_a_run(playing_game):
+    # Practice/classic play -- active_run is None, so R (unlike every
+    # other PLAYING key) does nothing, same as it's a no-op for the pause
+    # menu's own restart confirmation shape being irrelevant here.
+    assert playing_game.active_run is None
+
+    playing_game._handle_keydown(pygame.K_r)
+
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_relics_any_key_returns_to_playing(game):
+    start_first_floor(game, seed=1)
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RELICS
+
+    game._handle_keydown(pygame.K_z)  # nothing to confirm/lose, unlike PAUSED's own R
+
+    assert game.state == GameState.PLAYING
+
+
+def test_relics_button_click_enters_relics_during_a_run(game):
+    start_first_floor(game, seed=1)
+
+    game._handle_click(game.relics_button_rect.center)
+
+    assert game.state == GameState.RELICS
+
+
+def test_relics_button_click_is_a_no_op_outside_a_run(playing_game):
+    assert playing_game.active_run is None
+
+    playing_game._handle_click(playing_game.relics_button_rect.center)
+
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_render_relics_overlay_does_not_crash(game):
+    run = start_first_floor(game, seed=1)
+    run.relics = ["war_chest", "sturdy_gate"]
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RELICS
+
+    game.render()
+
+
 # --- Rendering the run-specific screens ---
 
 
 def test_render_map_does_not_crash(game):
     game.start_new_run(seed=1)
     assert game.state == GameState.MAP
+
+    game.render()
+
+
+def test_render_playing_during_a_run_does_not_crash(game):
+    # Exercises the HUD's floor_label branch specifically -- test_game.py's
+    # own PLAYING render smoke tests all use classic/Practice play, which
+    # never sets active_run, so none of them touch this path.
+    start_first_floor(game, seed=1)
+    assert game.state == GameState.PLAYING
 
     game.render()
 
@@ -1930,6 +1998,27 @@ def test_render_event_does_not_crash(game):
 
     game._handle_event_click(game.event_option_rects[0].center)
 
+    game.render()  # the "resolved" phase
+
+
+def test_render_a_three_option_event_does_not_crash(game):
+    # build_event_option_rects/draw_event_screen/_handle_event_click were
+    # already fully generic over option count before Chunk D added any
+    # 3-option event -- this pins that down explicitly rather than just
+    # trusting it, using collapsed_vault (one of the new 3-option events)
+    # forced directly onto an otherwise-ordinary event node.
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+    game.current_event = EVENTS["collapsed_vault"]
+    game.event_option_rects = ui.build_event_option_rects(len(game.current_event.options))
+    assert len(game.event_option_rects) == 3
+
+    game.render()  # the "choose" phase, with all 3 options on screen
+
+    game._handle_event_click(game.event_option_rects[2].center)  # the 3rd option specifically
+
+    assert game.event_phase == "resolved"
+    assert game.event_chosen_option is game.current_event.options[2]
     game.render()  # the "resolved" phase
 
 
