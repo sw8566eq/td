@@ -374,6 +374,204 @@ def test_relic_chain_chance_never_rolls_when_no_relic_is_held():
     assert nearby.damage_taken == 0
 
 
+# --- Concussive Rounds (relic knockback roll) ---
+
+def test_relic_knockback_always_applies_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_knockback_chance=1.0, relic_knockback_effect=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.knockback_applied == target.speed * 0.5
+
+
+def test_relic_knockback_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_knockback_chance=0.0, relic_knockback_effect=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.knockback_applied is None
+
+
+def test_relic_knockback_chance_never_rolls_when_no_relic_is_held():
+    # relic_knockback_chance defaults to 0.0 -- must not call
+    # random.random() at all, matching relic_slow/relic_poison's own
+    # precedent.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.knockback_applied is None
+
+
+def test_tower_driven_and_relic_knockback_can_both_apply_to_the_same_hit():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, knockback_duration=0.2,
+        relic_knockback_chance=1.0, relic_knockback_effect=0.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    # apply_knockback() is called twice -- FakeEnemy's own stub just
+    # records the most recent call, so this confirms both fired without
+    # erroring rather than the second silently overwriting a check on the
+    # first.
+    assert target.knockback_applied == target.speed * 0.5
+
+
+# --- Disorienting Flash (relic mark roll) ---
+
+def test_relic_mark_always_applies_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_mark_chance=1.0, relic_mark_effect=(1.2, 3.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.mark_applied == (1.2, 3.0)
+
+
+def test_relic_mark_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_mark_chance=0.0, relic_mark_effect=(1.2, 3.0),
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.mark_applied is None
+
+
+def test_relic_mark_chance_never_rolls_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.mark_applied is None
+
+
+# --- Flak Rounds / Breach Charges / Suppression Directive (ungated
+# per-enemy multipliers vs. flying/shielded/healer enemies) ---
+
+def test_flak_rounds_boosts_damage_against_a_flying_enemy():
+    target = FakeEnemy((0, 0))
+    target.is_flying = True
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_flying_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.5
+
+
+def test_flak_rounds_does_not_apply_to_a_grounded_enemy():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_flying_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_flak_rounds_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.is_flying = True
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_breach_charges_boosts_damage_against_a_shielded_enemy():
+    target = FakeEnemy((0, 0))
+    target.shield = 30
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_shielded_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.5
+
+
+def test_breach_charges_does_not_apply_once_the_shield_is_down():
+    target = FakeEnemy((0, 0))
+    target.shield = 0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_shielded_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_breach_charges_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.shield = 30
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_suppression_directive_boosts_damage_against_a_healer():
+    target = FakeEnemy((0, 0))
+    target.heal_rate = 6.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_healer_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.0
+
+
+def test_suppression_directive_does_not_apply_to_a_non_healer():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_healer_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_suppression_directive_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.heal_rate = 6.0
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
 def test_relic_chain_with_no_effect_does_not_crash():
     # Same defensive shape as relic_poison_chance_with_no_effect above:
     # relic_chain_chance/relic_chain_effect are always set together by

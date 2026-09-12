@@ -243,6 +243,29 @@ class Tower:
         # Overkill-style relic -- read by Projectile._apply_hit_effects
         # after a killing blow, to size the carry-over bounce.
         self.relic_overkill_carry_fraction = 0.0
+        # Concussive Rounds-style relic -- same chance-gated shape as
+        # relic_slow_chance/relic_slow_effect above, just triggering
+        # enemy.apply_knockback() instead of apply_slow().
+        self.relic_knockback_chance = 0.0
+        self.relic_knockback_effect = None
+        # Disorienting Flash-style relic -- same chance-gated shape,
+        # triggering enemy.apply_mark() instead.
+        self.relic_mark_chance = 0.0
+        self.relic_mark_effect = None
+        # Flak Rounds/Breach Charges-style relics -- ungated multiplies,
+        # same shape as relic_damage_vs_slowed_multiplier above, read
+        # against the target's own current is_flying/shield state.
+        self.relic_damage_vs_flying_multiplier = 1.0
+        self.relic_damage_vs_shielded_multiplier = 1.0
+        # Suppression Directive-style relic -- ungated multiply, read
+        # against the target's own current heal_rate.
+        self.relic_damage_vs_healer_multiplier = 1.0
+        # Containment Charges-style relic is deliberately NOT one of these
+        # relic_* fields -- it's a flat per-floor value with no per-tower
+        # variation, so Game.update()'s own dead-enemy drain loop reads
+        # self.relic_modifiers.splitter_child_damage directly instead of
+        # this being threaded through Tower/Projectile like every relic
+        # above (which all genuinely can vary per shot/per tower).
         # Always one tile's worth of area (settings.SUBTILES_PER_TILE)
         # unless a Compact Framework-style relic shrinks it -- see
         # tile_rect()/upgrade_badge_center()/draw() below and
@@ -384,6 +407,13 @@ class Tower:
         projectile.relic_damage_vs_early_route_multiplier = self.relic_damage_vs_early_route_multiplier
         projectile.relic_damage_vs_high_hp_multiplier = self.relic_damage_vs_high_hp_multiplier
         projectile.relic_overkill_carry_fraction = self.relic_overkill_carry_fraction
+        projectile.relic_knockback_chance = self.relic_knockback_chance
+        projectile.relic_knockback_effect = self.relic_knockback_effect
+        projectile.relic_mark_chance = self.relic_mark_chance
+        projectile.relic_mark_effect = self.relic_mark_effect
+        projectile.relic_damage_vs_flying_multiplier = self.relic_damage_vs_flying_multiplier
+        projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
+        projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 

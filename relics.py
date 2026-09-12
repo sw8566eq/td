@@ -49,6 +49,19 @@ continuously every frame the way last_stand_damage_multiplier's own live
 check is: a tower's position never changes once placed, so nothing about
 its neighbor count can change between one of those events and the next.
 
+A later batch filling in remaining category gaps (knockback/mark-chance,
+anti-flying/shielded/healer damage, Splitter counterplay) mostly extended
+the existing per-tower shape (knockback_chance/knockback_effect and
+mark_chance/mark_effect follow poison/slow's exact chance-gated pattern;
+damage_vs_flying_multiplier/damage_vs_shielded_multiplier/damage_vs_
+healer_multiplier join the ungated per-tower multiplier group). One
+relic in that batch, containment_charges, doesn't fit per-tower at all,
+though -- an 8th shape: splitter_child_damage is a flat per-floor value
+read straight off RelicModifiers by Game.update()'s own dead-enemy drain
+loop (the one place Enemy.pending_spawns is ever read), not threaded
+through Tower/Projectile construction like every per-tower field above,
+since nothing about it varies by which tower landed the killing blow.
+
 Unlike a tower card, a relic isn't gated by meta_progression.py -- every
 registered relic is always eligible to be offered in any run. There are
 few enough relics, and few enough relic-draft floors per run, that
@@ -180,6 +193,46 @@ class Relic:
     # overkill's own bonus -- see projectile.OVERKILL_CARRY_RANGE for the
     # fixed pixel range its carry-over bounce searches within.
     overkill_carry_fraction: float = 0.0
+    # concussive_rounds' own chance-gated roll, same shape as poison_
+    # chance/slow_chance/chain_chance above -- knockback_duration is the
+    # *raw* per-relic value (seconds of forward path progress undone, the
+    # same unit KnockbackTower's own knockback_duration already uses),
+    # folded into RelicModifiers.knockback_effect the same way slow's own
+    # raw factor/duration fold into slow_effect.
+    knockback_chance: float = 0.0
+    knockback_duration: float = 0.0
+    # disorienting_flash's own chance-gated roll -- mark_multiplier/
+    # mark_duration are the *raw* per-relic values, folded into
+    # RelicModifiers.mark_effect the same way slow's own raw fields fold
+    # into slow_effect. Combined via max()/max() across relics, matching
+    # Enemy.apply_mark()'s own combine semantics exactly (see its
+    # docstring) -- unlike slow_factor, a bigger mark multiplier is always
+    # the stronger effect.
+    mark_chance: float = 0.0
+    mark_multiplier: float = 1.0
+    mark_duration: float = 0.0
+    # flak_rounds'/breach_charges' own bonuses -- ungated straight
+    # multiplies, same shape as damage_vs_slowed_multiplier/damage_vs_
+    # early_route_multiplier/damage_vs_high_hp_multiplier above. Checked
+    # against the target's own *current* is_flying/shield state at hit
+    # time (duck-typed via getattr, like every other per-enemy check in
+    # Projectile._apply_hit_effects), not its species identity.
+    damage_vs_flying_multiplier: float = 1.0
+    damage_vs_shielded_multiplier: float = 1.0
+    # containment_charges' own bonus -- a flat damage magnitude (summed
+    # across relics, same as overkill_carry_fraction's own shape, not a
+    # multiplier), applied once to each of a killed SplitterEnemy's own
+    # freshly-spawned children before they ever join self.enemies. Unlike
+    # every other tower-facing field on this class, this one is read
+    # straight off RelicModifiers by Game.update()'s own dead-enemy drain
+    # loop, not threaded through Tower/Projectile -- it has no per-tower
+    # or per-shot variation to justify that plumbing.
+    splitter_child_damage: float = 0.0
+    # suppression_directive's own bonus -- ungated straight multiply, same
+    # shape as flak_rounds/breach_charges above. Checked against the
+    # target's own current heal_rate > 0 (HealerEnemy's own attribute),
+    # duck-typed the same way.
+    damage_vs_healer_multiplier: float = 1.0
 
 
 RELICS = {
@@ -351,6 +404,38 @@ RELICS = {
         "Damage beyond what's needed to kill an enemy carries over to a nearby enemy, at 50% strength.",
         overkill_carry_fraction=0.5,
     ),
+    "concussive_rounds": Relic(
+        "concussive_rounds", "Concussive Rounds",
+        "18% chance for any hit to also knock its target back.",
+        knockback_chance=0.18, knockback_duration=0.3,
+    ),
+    # Deliberately weaker than BeaconTower's own base mark (1.20x, 3.0s) --
+    # same "the dedicated tower stays the strongest source" reasoning
+    # venomous_coating's own comment gives for poison.
+    "disorienting_flash": Relic(
+        "disorienting_flash", "Disorienting Flash",
+        "15% chance for any hit to also mark its target.",
+        mark_chance=0.15, mark_multiplier=1.15, mark_duration=2.0,
+    ),
+    "flak_rounds": Relic(
+        "flak_rounds", "Flak Rounds", "+25% damage to airborne enemies.",
+        damage_vs_flying_multiplier=1.25,
+    ),
+    "breach_charges": Relic(
+        "breach_charges", "Breach Charges",
+        "+25% damage to enemies currently protected by a shield.",
+        damage_vs_shielded_multiplier=1.25,
+    ),
+    "containment_charges": Relic(
+        "containment_charges", "Containment Charges",
+        "Killing an enemy that splits on death also damages what it splits into.",
+        splitter_child_damage=18,
+    ),
+    "suppression_directive": Relic(
+        "suppression_directive", "Suppression Directive",
+        "+20% damage to enemies that heal others.",
+        damage_vs_healer_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -413,7 +498,7 @@ class RelicModifiers:
     shares with starting_lives_bonus -- see this field's own comment above
     for why it's a normal per-floor field instead.
 
-    Two more fields don't fit the "recurs every floor, for as long as
+    Three more fields don't fit the "recurs every floor, for as long as
     it's held" framing above either, and are resolved elsewhere entirely:
     misers_coffer's gold_per_floor_bonus_while_unspent folds into
     gold_per_floor_bonus above, but only conditionally (see compose_relic_
@@ -422,7 +507,12 @@ class RelicModifiers:
     other field here which stays constant for as long as the relic is
     held. guardians_reprieve has no field here at all (see RELICS' own
     comment on it) -- checked directly against run.relics in
-    Game._lose_a_life instead."""
+    Game._lose_a_life instead. splitter_child_damage (containment_charges'
+    own bonus) does have a field here, unlike guardians_reprieve, but
+    -- unlike every tower-facing field above -- is read straight off this
+    class by Game.update()'s own dead-enemy drain loop rather than
+    threaded through Tower/Projectile: it's a flat per-floor value with no
+    per-tower or per-shot variation to justify that plumbing."""
     starting_gold_multiplier: float = 1.0
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
@@ -453,6 +543,14 @@ class RelicModifiers:
     damage_vs_early_route_multiplier: float = 1.0
     damage_vs_high_hp_multiplier: float = 1.0
     overkill_carry_fraction: float = 0.0
+    knockback_chance: float = 0.0
+    knockback_effect: float = None
+    mark_chance: float = 0.0
+    mark_effect: tuple = None
+    damage_vs_flying_multiplier: float = 1.0
+    damage_vs_shielded_multiplier: float = 1.0
+    splitter_child_damage: float = 0.0
+    damage_vs_healer_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -466,10 +564,12 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     conditionally-revoked one, respectively; see relics.py's own module
     docstring for both.
 
-    poison_effect and crit_damage_multiplier are the two fields that aren't
-    a plain sum/multiply, and both are gated on the relic actually
-    granting the chance that uses them (poison_chance > 0 / crit_chance >
-    0 respectively) -- a relic with a nonzero damage/multiplier field but
+    poison_effect and crit_damage_multiplier are two of several fields that
+    aren't a plain sum/multiply (chain_effect/slow_effect/mark_effect/
+    knockback_effect are each a chance-gated tuple-or-max() too, following
+    the same shape poison_effect sets below), and both are gated on the
+    relic actually granting the chance that uses them (poison_chance > 0 /
+    crit_chance > 0 respectively) -- a relic with a nonzero damage/multiplier field but
     zero chance of its own contributes nothing, the same way a relic with
     zero of everything already contributes nothing. crit_damage_multiplier
     takes the max() across relics rather than multiplying -- two crit
@@ -515,6 +615,14 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     damage_vs_early_route_multiplier = 1.0
     damage_vs_high_hp_multiplier = 1.0
     overkill_carry_fraction = 0.0
+    knockback_chance = 0.0
+    knockback_effect = None
+    mark_chance = 0.0
+    mark_effect = None
+    damage_vs_flying_multiplier = 1.0
+    damage_vs_shielded_multiplier = 1.0
+    splitter_child_damage = 0.0
+    damage_vs_healer_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -583,6 +691,25 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
                     min(slow_effect[0], relic.slow_factor),
                     max(slow_effect[1], relic.slow_duration),
                 )
+        if relic.knockback_chance > 0:
+            knockback_chance += relic.knockback_chance
+            if knockback_effect is None:
+                knockback_effect = relic.knockback_duration
+            else:
+                knockback_effect = max(knockback_effect, relic.knockback_duration)
+        if relic.mark_chance > 0:
+            mark_chance += relic.mark_chance
+            if mark_effect is None:
+                mark_effect = (relic.mark_multiplier, relic.mark_duration)
+            else:
+                mark_effect = (
+                    max(mark_effect[0], relic.mark_multiplier),
+                    max(mark_effect[1], relic.mark_duration),
+                )
+        damage_vs_flying_multiplier *= relic.damage_vs_flying_multiplier
+        damage_vs_shielded_multiplier *= relic.damage_vs_shielded_multiplier
+        damage_vs_healer_multiplier *= relic.damage_vs_healer_multiplier
+        splitter_child_damage += relic.splitter_child_damage
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -614,4 +741,12 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         damage_vs_early_route_multiplier=damage_vs_early_route_multiplier,
         damage_vs_high_hp_multiplier=damage_vs_high_hp_multiplier,
         overkill_carry_fraction=overkill_carry_fraction,
+        knockback_chance=knockback_chance,
+        knockback_effect=knockback_effect,
+        mark_chance=mark_chance,
+        mark_effect=mark_effect,
+        damage_vs_flying_multiplier=damage_vs_flying_multiplier,
+        damage_vs_shielded_multiplier=damage_vs_shielded_multiplier,
+        splitter_child_damage=splitter_child_damage,
+        damage_vs_healer_multiplier=damage_vs_healer_multiplier,
     )

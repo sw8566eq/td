@@ -50,6 +50,29 @@ mark_effect (a Beacon-style tower's own field, not relic-driven -- see
 tower.BeaconTower) is a (damage_multiplier, duration) pair applied via
 enemy.apply_mark(), the same shape as slow_effect/poison_effect above.
 
+A later relic batch filled in the remaining gaps in this same "tower's
+own field, separate relic-chance-rolled field" pattern: relic_knockback_
+chance/relic_knockback_effect and relic_mark_chance/relic_mark_effect
+follow slow/poison's exact chance-gated shape, just calling enemy.
+apply_knockback()/apply_mark() instead. relic_damage_vs_flying_
+multiplier/relic_damage_vs_shielded_multiplier/relic_damage_vs_healer_
+multiplier join the ungated Chilling Precision/Choke Point/Giant Slayer
+block, checked against the target's own current is_flying/shield/
+heal_rate state (duck-typed via getattr, not a species check) rather than
+max_hp or route progress -- each guarded on its own relic_* field being
+non-neutral first, same as every check in that block, so a run holding
+neither relic never even attempts the shield/heal_rate getattr (neither
+is a base Enemy attribute, unlike is_flying, so an ungated attempt would
+hit Python's slower missing-attribute path on every hit against every
+other species).
+
+A Containment Charges-style relic's own flat per-child damage is
+deliberately NOT handled here, unlike every mechanism above -- it has no
+per-tower or per-shot variation to justify threading it through Tower/
+Projectile at all, so Game.update()'s own dead-enemy drain loop applies
+it directly from self.relic_modifiers, the one place enemy.pending_spawns
+is ever read to begin with.
+
 crit_chance/crit_damage_multiplier (BasicTower's own native crit) and
 execute_hp_threshold/execute_damage_multiplier (SniperTower's own native
 Execute, an ungated bonus once a target's remaining HP fraction drops at
@@ -91,6 +114,11 @@ class Projectile:
                  relic_damage_vs_early_route_multiplier=1.0,
                  relic_damage_vs_high_hp_multiplier=1.0,
                  relic_overkill_carry_fraction=0.0,
+                 relic_knockback_chance=0.0, relic_knockback_effect=None,
+                 relic_mark_chance=0.0, relic_mark_effect=None,
+                 relic_damage_vs_flying_multiplier=1.0,
+                 relic_damage_vs_shielded_multiplier=1.0,
+                 relic_damage_vs_healer_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
@@ -148,6 +176,20 @@ class Projectile:
         self.relic_damage_vs_early_route_multiplier = relic_damage_vs_early_route_multiplier
         self.relic_damage_vs_high_hp_multiplier = relic_damage_vs_high_hp_multiplier
         self.relic_overkill_carry_fraction = relic_overkill_carry_fraction
+        # Concussive Rounds/Disorienting Flash-style relics -- same
+        # chance-gated shape as relic_poison_chance/relic_slow_chance
+        # above, triggering enemy.apply_knockback()/apply_mark() instead.
+        self.relic_knockback_chance = relic_knockback_chance
+        self.relic_knockback_effect = relic_knockback_effect
+        self.relic_mark_chance = relic_mark_chance
+        self.relic_mark_effect = relic_mark_effect
+        # Flak Rounds/Breach Charges/Suppression Directive-style relics --
+        # ungated multiplies, same shape as relic_damage_vs_slowed_
+        # multiplier above, checked against the target's own current
+        # is_flying/shield/heal_rate state.
+        self.relic_damage_vs_flying_multiplier = relic_damage_vs_flying_multiplier
+        self.relic_damage_vs_shielded_multiplier = relic_damage_vs_shielded_multiplier
+        self.relic_damage_vs_healer_multiplier = relic_damage_vs_healer_multiplier
         # BasicTower's own native crit mechanic -- tower-driven, not relic-
         # driven, so kept as its own pair rather than folded into relic_
         # crit_chance/relic_crit_damage_multiplier above (the exact same
@@ -312,6 +354,25 @@ class Projectile:
             damage *= self.relic_damage_vs_early_route_multiplier
         if getattr(enemy, "max_hp", 0.0) > GIANT_SLAYER_HP_THRESHOLD:
             damage *= self.relic_damage_vs_high_hp_multiplier
+        # Flak Rounds/Breach Charges/Suppression Directive -- three more
+        # ungated per-enemy multipliers, same shape as the three just
+        # above, checked against the target's own *current* is_flying/
+        # shield/heal_rate state (duck-typed via getattr, not a species
+        # check) rather than max_hp/route-progress. Unlike is_flying (a
+        # base Enemy attribute, always present), shield/heal_rate only
+        # exist on ShieldedEnemy/HealerEnemy instances -- guarded on the
+        # relic's own multiplier being non-neutral first, so a run that
+        # doesn't hold Breach Charges/Suppression Directive never even
+        # attempts the getattr against every other species (a plain
+        # attribute lookup is cheap; one that has to fall through to a
+        # missing-attribute default on every hit, for the common no-relic
+        # case, isn't worth paying unconditionally).
+        if getattr(enemy, "is_flying", False):
+            damage *= self.relic_damage_vs_flying_multiplier
+        if self.relic_damage_vs_shielded_multiplier != 1.0 and getattr(enemy, "shield", 0) > 0:
+            damage *= self.relic_damage_vs_shielded_multiplier
+        if self.relic_damage_vs_healer_multiplier != 1.0 and getattr(enemy, "heal_rate", 0) > 0:
+            damage *= self.relic_damage_vs_healer_multiplier
         # hp_before, hoisted up from beside Overkill's own check further
         # below (see its comment there for the full rationale) since
         # Execute needs the same pre-hit hp reading -- both reads happen
@@ -376,8 +437,29 @@ class Projectile:
         # A Beacon-style tower's own mark -- see enemy.apply_mark().
         if self.mark_effect is not None:
             enemy.apply_mark(*self.mark_effect)
+        # A Disorienting Flash-style relic's mark roll -- same "once per
+        # enemy actually hit, independent of the tower's own mark_effect
+        # above" shape as the slow/poison relic rolls elsewhere in this
+        # method. Enemy.apply_mark()'s own max()/max() refresh semantics
+        # mean a successful roll here on a hit that's ALSO already marked
+        # (e.g. from BeaconTower itself) just keeps the stronger of the
+        # two.
+        if (
+            self.relic_mark_chance and self.relic_mark_effect is not None
+            and random.random() < self.relic_mark_chance
+        ):
+            enemy.apply_mark(*self.relic_mark_effect)
         if self.knockback_duration:
             enemy.apply_knockback(enemy.speed * self.knockback_duration)
+        # A Concussive Rounds-style relic's knockback roll -- same "once
+        # per enemy actually hit, independent of the tower's own
+        # knockback_duration above" shape. Converted to a pixel distance
+        # the same way the tower-driven knockback just above already is.
+        if (
+            self.relic_knockback_chance and self.relic_knockback_effect is not None
+            and random.random() < self.relic_knockback_chance
+        ):
+            enemy.apply_knockback(enemy.speed * self.relic_knockback_effect)
         # relic_poison_ignores_shield (a Corrosive Poison-style relic)
         # threads through to Enemy.take_poison_damage() via apply_poison()
         # either way -- a tower's own poison_effect and a Venomous

@@ -1040,6 +1040,14 @@ def test_non_splitter_enemies_never_queue_pending_spawns():
         assert enemy.pending_spawns == [], name
 
 
+# Containment Charges (a relic granting splitter_child_damage) is tested at
+# the Game level, not here -- Game.update()'s own dead-enemy drain loop
+# applies it directly from self.relic_modifiers, not Projectile/enemy.py, so
+# it has nothing to exercise via a bare Projectile/SplitterEnemy pair alone.
+# See test_run.py's own overcrowded_circuits-style "through game_update"
+# tests for the equivalent pattern.
+
+
 # --- Healer enemy ---
 
 def test_healer_is_registered():

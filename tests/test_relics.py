@@ -415,3 +415,95 @@ def test_compose_relic_modifiers_new_fields_are_order_independent():
         "overcrowded_circuits", "corrosive_poison", "aftershock", "chilling_precision",
     ])
     assert forward == backward
+
+
+# --- 6 more relics filling category gaps (knockback/mark chance,
+# anti-flying/shielded/healer, Splitter counterplay) ------------------
+
+
+def test_compose_relic_modifiers_sums_knockback_chance():
+    modifiers = compose_relic_modifiers(["concussive_rounds", "concussive_rounds"])
+    assert modifiers.knockback_chance == pytest.approx(RELICS["concussive_rounds"].knockback_chance * 2)
+
+
+def test_compose_relic_modifiers_takes_the_max_knockback_effect(monkeypatch):
+    weaker_knockback = Relic("test_weaker_knockback", "", "", knockback_chance=0.1, knockback_duration=0.1)
+    monkeypatch.setitem(RELICS, "test_weaker_knockback", weaker_knockback)
+    modifiers = compose_relic_modifiers(["concussive_rounds", "test_weaker_knockback"])
+    assert modifiers.knockback_effect == RELICS["concussive_rounds"].knockback_duration
+
+
+def test_compose_relic_modifiers_no_knockback_relic_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.knockback_chance == 0.0
+    assert modifiers.knockback_effect is None
+
+
+def test_compose_relic_modifiers_sums_mark_chance():
+    modifiers = compose_relic_modifiers(["disorienting_flash", "disorienting_flash"])
+    assert modifiers.mark_chance == pytest.approx(RELICS["disorienting_flash"].mark_chance * 2)
+
+
+def test_compose_relic_modifiers_builds_mark_effect_from_the_relics_own_fields():
+    modifiers = compose_relic_modifiers(["disorienting_flash"])
+    relic = RELICS["disorienting_flash"]
+    assert modifiers.mark_effect == (relic.mark_multiplier, relic.mark_duration)
+
+
+def test_compose_relic_modifiers_combines_two_mark_relics_via_max(monkeypatch):
+    # Matches Enemy.apply_mark()'s own combine semantics exactly (see its
+    # docstring): both the multiplier AND the duration take max() -- unlike
+    # slow_factor, a bigger mark multiplier is always the stronger effect.
+    weak_mark = Relic("test_weak_mark", "", "", mark_chance=0.1, mark_multiplier=1.1, mark_duration=1.0)
+    strong_mark = Relic("test_strong_mark", "", "", mark_chance=0.2, mark_multiplier=1.3, mark_duration=4.0)
+    monkeypatch.setitem(RELICS, "test_weak_mark", weak_mark)
+    monkeypatch.setitem(RELICS, "test_strong_mark", strong_mark)
+    modifiers = compose_relic_modifiers(["test_weak_mark", "test_strong_mark"])
+    assert modifiers.mark_chance == pytest.approx(0.3)
+    assert modifiers.mark_effect == (1.3, 4.0)
+
+
+def test_compose_relic_modifiers_no_mark_relic_leaves_mark_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.mark_chance == 0.0
+    assert modifiers.mark_effect is None
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_flying_multiplier():
+    modifiers = compose_relic_modifiers(["flak_rounds", "flak_rounds"])
+    assert modifiers.damage_vs_flying_multiplier == RELICS["flak_rounds"].damage_vs_flying_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_shielded_multiplier():
+    modifiers = compose_relic_modifiers(["breach_charges", "breach_charges"])
+    assert modifiers.damage_vs_shielded_multiplier == RELICS["breach_charges"].damage_vs_shielded_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_healer_multiplier():
+    modifiers = compose_relic_modifiers(["suppression_directive", "suppression_directive"])
+    assert modifiers.damage_vs_healer_multiplier == RELICS["suppression_directive"].damage_vs_healer_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_splitter_child_damage():
+    modifiers = compose_relic_modifiers(["containment_charges", "containment_charges"])
+    assert modifiers.splitter_child_damage == pytest.approx(RELICS["containment_charges"].splitter_child_damage * 2)
+
+
+def test_compose_relic_modifiers_no_relic_gap_fillers_leave_them_all_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.damage_vs_flying_multiplier == 1.0
+    assert modifiers.damage_vs_shielded_multiplier == 1.0
+    assert modifiers.damage_vs_healer_multiplier == 1.0
+    assert modifiers.splitter_child_damage == 0.0
+
+
+def test_compose_relic_modifiers_relic_gap_fillers_are_order_independent():
+    forward = compose_relic_modifiers([
+        "concussive_rounds", "disorienting_flash", "flak_rounds",
+        "breach_charges", "containment_charges", "suppression_directive",
+    ])
+    backward = compose_relic_modifiers([
+        "suppression_directive", "containment_charges", "breach_charges",
+        "flak_rounds", "disorienting_flash", "concussive_rounds",
+    ])
+    assert forward == backward
