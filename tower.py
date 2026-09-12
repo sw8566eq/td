@@ -38,6 +38,10 @@ def _format_buff_percent(value):
     return f"+{round((value - 1) * 100)}%"
 
 
+def _format_chance_percent(value):
+    return f"{round(value * 100)}%"
+
+
 def _format_ramp_per_hit(value):
     return f"+{round(value * 100)}%/hit"
 
@@ -697,24 +701,31 @@ class BasicTower(Tower):
     # numbers don't always make for a fun upgrade path. Range still uses
     # the generic LEVEL_STAT_MULTIPLIERS.
     LEVEL_STAT_MULTIPLIER_OVERRIDES = {"damage": {1: 1.0, 2: 1.7, 3: 2.6}}
-    # Basic has no distinctive EXTRA_STATS mechanic to name a specialization
-    # after (same boat as Sniper), so its own options stay damage/fire_rate
-    # flavored like the generic placeholder -- but with its own names/
-    # tuning rather than silently inheriting Tower's. Keys are kept as the
-    # literal "power"/"precision" (not renamed to match the new flavor)
-    # since several tests in test_tower_leveling.py/test_game.py exercise
-    # the generic specialize() mechanism via a default-constructed
-    # BasicTower and hardcode those two key strings.
+    # A native crit mechanic -- flat across levels (not in LEVEL_SCALED_
+    # STATS), only ever moved by specialization below, same "level ->
+    # generic curve, specialization -> the tower's own mechanic" split
+    # every other tower's signature stat already follows.
+    crit_chance = 0.15
+    crit_damage_multiplier = 1.6
+    EXTRA_STATS = (
+        ("Crit chance", "crit_chance", _format_chance_percent),
+        ("Crit multiplier", "crit_damage_multiplier", _format_buff_percent),
+    )
+    # Keys are kept as the literal "power"/"precision" (not renamed to
+    # match the new crit flavor) since several tests in test_tower_
+    # leveling.py/test_game.py exercise the generic specialize() mechanism
+    # via a default-constructed BasicTower and hardcode those two key
+    # strings -- only the values/flavor text below are new.
     SPECIALIZATIONS = {
         "power": {
-            "display_name": "Heavy Rounds",
-            "description": "Hits noticeably harder.",
-            "stat_multipliers": {"damage": 1.45},
+            "display_name": "Piercing Strikes",
+            "description": "Crits hit much harder.",
+            "stat_multipliers": {"crit_damage_multiplier": 1.375},  # 1.6 -> 2.2
         },
         "precision": {
-            "display_name": "Overclock",
-            "description": "Fires much faster.",
-            "stat_multipliers": {"fire_rate": 1.35},
+            "display_name": "Keen Eye",
+            "description": "Crits much more often.",
+            "stat_multipliers": {"crit_chance": 1.333},  # 0.15 -> ~0.20
         },
     }
 
@@ -722,6 +733,7 @@ class BasicTower(Tower):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(), sprite_name="projectile_basic", source=self,
+            crit_chance=self.crit_chance, crit_damage_multiplier=self.crit_damage_multiplier,
         )
 
 
@@ -893,9 +905,11 @@ class LightningTower(Tower):
 
 class SniperTower(Tower):
     """Very high damage, very long range, slow fire rate -- a glass-cannon
-    single-target pick with no special mechanic at all: create_projectile()
-    reuses Projectile exactly as BasicTower does, just with far more
-    extreme numbers."""
+    single-target pick with a native "Execute" mechanic: bonus damage
+    against a target already at or below execute_hp_threshold of its own
+    max_hp (a genuinely new condition, distinct from every other max-HP/
+    route/slow-based check in this codebase -- see projectile.py's own
+    docstring)."""
     cost = 130
     range = 220
     damage = 45
@@ -903,21 +917,28 @@ class SniperTower(Tower):
     projectile_speed = 500.0
     sprite_name = "tower_sniper"
     display_name = "Sniper"
-    # Like Basic, Sniper has no distinctive EXTRA_STATS mechanic to key a
-    # specialization off -- its own options just lean further into what it
-    # already is (a glass cannon), with names to match. Unlike Basic, no
-    # test hardcodes Sniper's specific key strings, so these are free to be
-    # genuinely new rather than reusing "power"/"precision".
+    # Flat across levels (not in LEVEL_SCALED_STATS), only ever moved by
+    # specialization below, same shape as Basic's own crit_chance/
+    # crit_damage_multiplier.
+    execute_hp_threshold = 0.30
+    execute_damage_multiplier = 1.75
+    EXTRA_STATS = (
+        ("Execute threshold", "execute_hp_threshold", _format_chance_percent),
+        ("Execute multiplier", "execute_damage_multiplier", _format_buff_percent),
+    )
+    # Unlike Basic, no test hardcodes Sniper's specific key strings, but
+    # they're kept as-is anyway (only the values/flavor text are new) to
+    # minimize churn.
     SPECIALIZATIONS = {
         "armor_piercing": {
-            "display_name": "Armor Piercing",
-            "description": "Even harder-hitting shots.",
-            "stat_multipliers": {"damage": 1.5},
+            "display_name": "Executioner's Round",
+            "description": "Finishing blows hit harder.",
+            "stat_multipliers": {"execute_damage_multiplier": 1.4},  # 1.75 -> 2.45
         },
         "extended_scope": {
-            "display_name": "Extended Scope",
-            "description": "Reaches much further.",
-            "stat_multipliers": {"range": 1.4},
+            "display_name": "Precision Marking",
+            "description": "Executes enemies sooner.",
+            "stat_multipliers": {"execute_hp_threshold": 1.5},  # 0.30 -> 0.45
         },
     }
 
@@ -925,6 +946,8 @@ class SniperTower(Tower):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(), sprite_name="projectile_sniper", source=self,
+            execute_hp_threshold=self.execute_hp_threshold,
+            execute_damage_multiplier=self.execute_damage_multiplier,
         )
 
 

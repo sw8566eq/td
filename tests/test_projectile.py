@@ -260,6 +260,81 @@ def test_relic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
     assert normal.damage_taken == 10
 
 
+# --- BasicTower's own native crit mechanic (crit_chance/
+# crit_damage_multiplier -- distinct from relic_crit_chance/relic_crit_
+# damage_multiplier above, same "tower's own field, separate from the
+# relic's own version of a similar idea" split slow_effect/relic_slow_
+# effect already establish) ---
+
+def test_basic_crit_always_boosts_damage_at_chance_one():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        crit_chance=1.0, crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 20
+
+
+def test_basic_crit_never_applies_at_chance_zero():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        crit_chance=0.0, crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_basic_crit_and_relic_crit_can_both_roll_on_the_same_hit():
+    # Independent rolls, same as any other tower's own effect stacking with
+    # a relic's own version of a similar idea -- both succeeding compounds
+    # rather than one overriding the other.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        crit_chance=1.0, crit_damage_multiplier=2.0,
+        relic_crit_chance=1.0, relic_crit_damage_multiplier=1.5,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 30  # 10 * 2.0 * 1.5
+
+
+def test_basic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
+    target = FakeEnemy((0, 0))
+    crit = FakeEnemy((5, 0))
+    normal = FakeEnemy((10, 0))
+    draws = iter([0.1, 0.1, 0.9])
+    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
+        crit_chance=0.5, crit_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, crit, normal])
+
+    assert target.damage_taken == 20
+    assert crit.damage_taken == 20
+    assert normal.damage_taken == 10
+
+
+def test_no_basic_crit_bonus_when_chance_is_zero_by_default():
+    # Every other tower's projectile leaves crit_chance at its neutral
+    # default (0.0) -- must not call random.random() at all.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
 def test_relic_chain_always_bounces_at_chance_one():
     target = FakeEnemy((0, 0))
     nearby = FakeEnemy((10, 0))
@@ -707,6 +782,71 @@ def test_no_giant_slayer_bonus_when_no_relic_is_held():
     projectile.update(dt=1.0, enemies=[target])
 
     assert target.damage_taken == 10
+
+
+# --- SniperTower's own native Execute mechanic (execute_hp_threshold/
+# execute_damage_multiplier) -- an ungated per-enemy check, like Giant
+# Slayer above, but keyed on the target's own *current* remaining-HP
+# fraction rather than its species' max_hp ---
+
+def test_execute_boosts_damage_against_a_low_hp_enemy():
+    target = FakeEnemy((0, 0))
+    target.max_hp = 100
+    target.hp = 30  # exactly at the threshold below
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        execute_hp_threshold=0.3, execute_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 20
+
+
+def test_execute_does_not_apply_above_the_hp_threshold():
+    target = FakeEnemy((0, 0))
+    target.max_hp = 100
+    target.hp = 31
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        execute_hp_threshold=0.3, execute_damage_multiplier=2.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_execute_bonus_when_multiplier_is_neutral_by_default():
+    # Every other tower's projectile leaves execute_damage_multiplier at
+    # its neutral default (1.0) -- must stay a no-op even against an
+    # enemy that would otherwise qualify.
+    target = FakeEnemy((0, 0))
+    target.max_hp = 100
+    target.hp = 1
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_execute_and_giant_slayer_can_both_apply_to_the_same_hit():
+    # Independent ungated checks, same "compose rather than override" shape
+    # every other pair of ungated per-enemy multipliers in this block
+    # already follows.
+    target = FakeEnemy((0, 0))
+    target.max_hp = GIANT_SLAYER_HP_THRESHOLD + 1
+    target.hp = 1
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        execute_hp_threshold=0.3, execute_damage_multiplier=2.0,
+        relic_damage_vs_high_hp_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 25  # 10 * 1.25 * 2.0
 
 
 # --- Aftershock (relic-driven chance to also slow the hit target) ---

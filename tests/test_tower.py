@@ -242,20 +242,70 @@ def test_other_towers_do_not_chain():
         assert projectile.chain_range == 0.0, name
 
 
+def test_basic_tower_projectile_carries_its_crit_mechanic():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.crit_chance == BasicTower.crit_chance
+    assert projectile.crit_damage_multiplier == BasicTower.crit_damage_multiplier
+
+
+def test_basic_tower_specialization_boosts_carry_through_to_the_projectile():
+    power_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        power_tower.upgrade()
+    base_crit_damage = power_tower.crit_damage_multiplier
+    power_tower.specialize("power")
+    projectile = power_tower.create_projectile(FakeEnemy())
+    assert projectile.crit_damage_multiplier == power_tower.crit_damage_multiplier
+    assert projectile.crit_damage_multiplier > base_crit_damage
+
+    precision_tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(BasicTower.MAX_LEVEL - 1):
+        precision_tower.upgrade()
+    base_crit_chance = precision_tower.crit_chance
+    precision_tower.specialize("precision")
+    projectile = precision_tower.create_projectile(FakeEnemy())
+    assert projectile.crit_chance == precision_tower.crit_chance
+    assert projectile.crit_chance > base_crit_chance
+
+
 def test_sniper_tower_is_registered():
     assert TOWER_TYPES["sniper"] is SniperTower
 
 
-def test_sniper_tower_has_no_special_projectile_mechanic():
-    # A pure high-damage/long-range/slow-fire-rate pick -- no splash, slow,
-    # knockback, chain, or poison, same as BasicTower.
+def test_sniper_tower_projectile_carries_its_execute_mechanic():
+    # A high-damage/long-range/slow-fire-rate pick with one native
+    # mechanic (Execute, bonus damage vs. a nearly-dead target) -- no
+    # splash, slow, knockback, chain, or poison alongside it.
     tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
     projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.execute_hp_threshold == SniperTower.execute_hp_threshold
+    assert projectile.execute_damage_multiplier == SniperTower.execute_damage_multiplier
     assert projectile.splash_radius == 0
     assert projectile.slow_effect is None
     assert projectile.knockback_duration == 0.0
     assert projectile.chain_range == 0.0
     assert projectile.poison_effect is None
+
+
+def test_sniper_tower_specialization_boosts_carry_through_to_the_projectile():
+    armor_piercing_tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(SniperTower.MAX_LEVEL - 1):
+        armor_piercing_tower.upgrade()
+    base_execute_damage = armor_piercing_tower.execute_damage_multiplier
+    armor_piercing_tower.specialize("armor_piercing")
+    projectile = armor_piercing_tower.create_projectile(FakeEnemy())
+    assert projectile.execute_damage_multiplier == armor_piercing_tower.execute_damage_multiplier
+    assert projectile.execute_damage_multiplier > base_execute_damage
+
+    extended_scope_tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(SniperTower.MAX_LEVEL - 1):
+        extended_scope_tower.upgrade()
+    base_execute_threshold = extended_scope_tower.execute_hp_threshold
+    extended_scope_tower.specialize("extended_scope")
+    projectile = extended_scope_tower.create_projectile(FakeEnemy())
+    assert projectile.execute_hp_threshold == extended_scope_tower.execute_hp_threshold
+    assert projectile.execute_hp_threshold > base_execute_threshold
 
 
 def test_poison_tower_is_registered():
