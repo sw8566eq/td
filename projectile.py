@@ -49,6 +49,17 @@ consumes it.
 mark_effect (a Beacon-style tower's own field, not relic-driven -- see
 tower.BeaconTower) is a (damage_multiplier, duration) pair applied via
 enemy.apply_mark(), the same shape as slow_effect/poison_effect above.
+
+crit_chance/crit_damage_multiplier (BasicTower's own native crit) and
+execute_hp_threshold/execute_damage_multiplier (SniperTower's own native
+Execute, an ungated bonus once a target's remaining HP fraction drops at
+or below the threshold) are two more tower-driven, not relic-driven,
+per-enemy effects -- the exact same "tower's own field, separate from the
+relic's own version of a similar idea" split slow_effect/poison_effect
+already establish against relic_slow_effect/relic_poison_effect. Execute
+joins the ungated Chilling Precision/Choke Point/Giant Slayer block since
+it never rolls; the crit roll is resolved immediately before relic_crit_
+chance's own roll, same "tower's own effect first" ordering.
 """
 
 import random
@@ -79,7 +90,9 @@ class Projectile:
                  relic_poison_ignores_shield=False,
                  relic_damage_vs_early_route_multiplier=1.0,
                  relic_damage_vs_high_hp_multiplier=1.0,
-                 relic_overkill_carry_fraction=0.0):
+                 relic_overkill_carry_fraction=0.0,
+                 crit_chance=0.0, crit_damage_multiplier=1.0,
+                 execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -135,6 +148,22 @@ class Projectile:
         self.relic_damage_vs_early_route_multiplier = relic_damage_vs_early_route_multiplier
         self.relic_damage_vs_high_hp_multiplier = relic_damage_vs_high_hp_multiplier
         self.relic_overkill_carry_fraction = relic_overkill_carry_fraction
+        # BasicTower's own native crit mechanic -- tower-driven, not relic-
+        # driven, so kept as its own pair rather than folded into relic_
+        # crit_chance/relic_crit_damage_multiplier above (the exact same
+        # "tower's own field, separate from the relic's own version of a
+        # similar idea" split slow_effect/relic_slow_effect and poison_
+        # effect/relic_poison_effect already establish). Neutral defaults
+        # mean every other tower's projectiles never roll this at all.
+        self.crit_chance = crit_chance
+        self.crit_damage_multiplier = crit_damage_multiplier
+        # SniperTower's own native "Execute" mechanic -- bonus damage
+        # against a target already below execute_hp_threshold of its own
+        # max_hp. Ungated (no chance roll), so it joins the other ungated
+        # per-enemy multipliers in _apply_hit_effects rather than the
+        # chance-rolled block below them.
+        self.execute_hp_threshold = execute_hp_threshold
+        self.execute_damage_multiplier = execute_damage_multiplier
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -283,6 +312,34 @@ class Projectile:
             damage *= self.relic_damage_vs_early_route_multiplier
         if getattr(enemy, "max_hp", 0.0) > GIANT_SLAYER_HP_THRESHOLD:
             damage *= self.relic_damage_vs_high_hp_multiplier
+        # hp_before, hoisted up from beside Overkill's own check further
+        # below (see its comment there for the full rationale) since
+        # Execute needs the same pre-hit hp reading -- both reads happen
+        # before _apply_direct_damage changes anything, so sharing one
+        # getattr() here is a pure reuse, not a behavior change.
+        hp_before = getattr(enemy, "hp", 0.0)
+        # SniperTower's own Execute mechanic -- bonus damage once the
+        # target's own remaining HP fraction drops at/below
+        # execute_hp_threshold. Distinct from Giant Slayer's max_hp check
+        # just above (that one's about a species' raw toughness; this one's
+        # about how close *this* enemy already is to dying) and from
+        # Overkill's own post-hit carry-to-a-neighbor mechanic further
+        # below (this fires before the hit, Overkill after). Guarded on
+        # execute_damage_multiplier != 1.0 first -- same "cheap guard
+        # before the real check" shape the crit roll just below uses
+        # (guarded on crit_chance before ever calling random()) -- so a
+        # non-Sniper tower's hit never even reads max_hp.
+        if self.execute_damage_multiplier != 1.0:
+            max_hp = getattr(enemy, "max_hp", 0.0)
+            if max_hp and hp_before <= max_hp * self.execute_hp_threshold:
+                damage *= self.execute_damage_multiplier
+        # BasicTower's own native crit roll -- same "once per enemy this
+        # projectile actually hits" shape as the relic crit roll just
+        # below, and deliberately resolved first (tower's own effect, then
+        # the relic's own version of a similar idea), mirroring poison_
+        # effect/slow_effect's own ordering against their relic equivalents.
+        if self.crit_chance and random.random() < self.crit_chance:
+            damage *= self.crit_damage_multiplier
         # A Lucky Strikes-style relic's crit roll happens here, once per
         # enemy this projectile actually hits (see this method's own call
         # sites -- once for a direct hit, once per enemy in a splash
@@ -293,17 +350,16 @@ class Projectile:
         # run's projectiles never call random.random() at all.
         if self.relic_crit_chance and random.random() < self.relic_crit_chance:
             damage *= self.relic_crit_damage_multiplier
-        # hp_before/applied are captured for Overkill's own check, below --
-        # applied is the amount that actually reached hp (not necessarily
-        # the nominal `damage` above, once a shield/armor phase absorbs
-        # part of it -- see Enemy.take_damage's own docstring), so
-        # `applied > hp_before` is exactly "this hit killed with room to
-        # spare." getattr with a default, like the other per-enemy checks
-        # above -- a lightweight test double that doesn't track hp at all
-        # (it's meaningless there since relic_overkill_carry_fraction
-        # defaults to 0.0, short-circuiting the check below before
-        # hp_before is ever read) is unaffected.
-        hp_before = getattr(enemy, "hp", 0.0)
+        # hp_before (captured above, alongside Execute's own read of it) and
+        # applied are used for Overkill's own check, below -- applied is
+        # the amount that actually reached hp (not necessarily the nominal
+        # `damage` above, once a shield/armor phase absorbs part of it --
+        # see Enemy.take_damage's own docstring), so `applied > hp_before`
+        # is exactly "this hit killed with room to spare." A lightweight
+        # test double that doesn't track hp at all reads hp_before as 0.0
+        # (getattr's own default) -- meaningless there since relic_
+        # overkill_carry_fraction defaults to 0.0, short-circuiting the
+        # check below before hp_before is ever used.
         applied = self._apply_direct_damage(enemy, damage)
         if self.slow_effect is not None:
             enemy.apply_slow(*self.slow_effect)
