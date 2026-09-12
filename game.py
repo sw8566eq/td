@@ -2014,6 +2014,13 @@ class Game:
         tower.relic_damage_vs_early_route_multiplier = self.relic_modifiers.damage_vs_early_route_multiplier
         tower.relic_damage_vs_high_hp_multiplier = self.relic_modifiers.damage_vs_high_hp_multiplier
         tower.relic_overkill_carry_fraction = self.relic_modifiers.overkill_carry_fraction
+        tower.relic_knockback_chance = self.relic_modifiers.knockback_chance
+        tower.relic_knockback_effect = self.relic_modifiers.knockback_effect
+        tower.relic_mark_chance = self.relic_modifiers.mark_chance
+        tower.relic_mark_effect = self.relic_modifiers.mark_effect
+        tower.relic_damage_vs_flying_multiplier = self.relic_modifiers.damage_vs_flying_multiplier
+        tower.relic_damage_vs_shielded_multiplier = self.relic_modifiers.damage_vs_shielded_multiplier
+        tower.relic_damage_vs_healer_multiplier = self.relic_modifiers.damage_vs_healer_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
@@ -2239,7 +2246,18 @@ class Game:
                 # SplitterEnemy is the only species that ever populates
                 # this -- empty for everything else, so extending
                 # unconditionally needs no per-species special-casing (see
-                # Enemy.pending_spawns).
+                # Enemy.pending_spawns). A Containment Charges-style
+                # relic's own flat damage is applied here, once per child,
+                # right before they ever join self.enemies -- the one
+                # place pending_spawns is ever read at all, so this is a
+                # flat per-floor value read straight off self.relic_
+                # modifiers, not something threaded through every Tower/
+                # Projectile the way a per-tower relic field would need to
+                # be (nothing about this varies by which tower landed the
+                # killing blow).
+                if self.relic_modifiers.splitter_child_damage:
+                    for child in enemy.pending_spawns:
+                        child.take_damage(self.relic_modifiers.splitter_child_damage)
                 still_alive.extend(enemy.pending_spawns)
             elif enemy.reached_goal:
                 self._lose_a_life()

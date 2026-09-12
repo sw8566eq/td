@@ -27,6 +27,7 @@ import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
+from enemy import SplitterEnemy
 from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
@@ -1173,6 +1174,60 @@ def test_overcrowded_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
     assert tower.relic_tower_density_radius == relic.tower_density_radius
     assert tower.relic_tower_density_damage_bonus_per_neighbor == relic.tower_density_damage_bonus_per_neighbor
     assert tower.relic_tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
+
+
+def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
+    # containment_charges is deliberately absent here -- unlike every other
+    # relic in this batch, its splitter_child_damage has no per-tower
+    # variation, so it's never copied onto a Tower at all (see
+    # test_containment_charges_damages_a_splitters_children_through_game_
+    # update below for where it's actually exercised).
+    game.start_new_run(seed=1)
+    game.active_run.relics = [
+        "concussive_rounds", "disorienting_flash", "flak_rounds",
+        "breach_charges", "suppression_directive",
+    ]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_knockback_chance == RELICS["concussive_rounds"].knockback_chance
+    assert tower.relic_knockback_effect == RELICS["concussive_rounds"].knockback_duration
+    assert tower.relic_mark_chance == RELICS["disorienting_flash"].mark_chance
+    assert tower.relic_mark_effect == (
+        RELICS["disorienting_flash"].mark_multiplier, RELICS["disorienting_flash"].mark_duration
+    )
+    assert tower.relic_damage_vs_flying_multiplier == RELICS["flak_rounds"].damage_vs_flying_multiplier
+    assert tower.relic_damage_vs_shielded_multiplier == RELICS["breach_charges"].damage_vs_shielded_multiplier
+    assert tower.relic_damage_vs_healer_multiplier == RELICS["suppression_directive"].damage_vs_healer_multiplier
+    assert not hasattr(tower, "relic_splitter_child_damage")
+
+
+def test_containment_charges_damages_a_splitters_children_through_game_update(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "containment_charges", Relic(
+        "containment_charges", "", "", splitter_child_damage=5,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["containment_charges"]
+    _enter_first_node(game)
+    assert game.relic_modifiers.splitter_child_damage == 5
+
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+    splitter = SplitterEnemy(waypoints, wave_number=1)
+    splitter.take_damage(splitter.max_hp)  # a killing blow, queues pending_spawns
+    assert splitter.is_dead
+    children = list(splitter.pending_spawns)
+    game.enemies = [splitter]
+
+    game.update(dt=0.01)
+
+    assert len(children) == SplitterEnemy.SPLIT_COUNT
+    for child in children:
+        assert child.hp == pytest.approx(child.max_hp - 5)
+        assert child in game.enemies
 
 
 def test_overcrowded_circuits_density_bonus_counts_neighboring_towers_through_game_update(game, monkeypatch):

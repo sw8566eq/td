@@ -78,8 +78,8 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
-  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Twenty-nine
-  relics across seven effect shapes -- the original three, plus four more added since: **per-floor**
+  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Thirty-five
+  relics across eight effect shapes -- the original three, plus five more added since: **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
   **one-time** (`starting_lives_bonus`, applied directly at draft-pick time instead, see
@@ -105,7 +105,15 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   Coating-style relic roll into `enemy.apply_poison()`'s new `ignore_shield` parameter, and Overkill
   fires once a hit's `applied` damage exceeds the target's pre-hit hp, bouncing the excess to the
   nearest other enemy within `projectile.OVERKILL_CARRY_RANGE` via the same non-recursive
-  `_find_chain_target`/`_apply_direct_damage` hop `arcing_rounds`' own bounce uses);
+  `_find_chain_target`/`_apply_direct_damage` hop `arcing_rounds`' own bounce uses). A later batch
+  added five more per-tower fields the same way: `knockback_chance`+`knockback_effect` and
+  `mark_chance`+`mark_effect` are chance-gated rolls following `poison_chance`/`slow_chance`'s exact
+  shape (calling `enemy.apply_knockback()`/`apply_mark()`), and `damage_vs_flying_multiplier`/
+  `damage_vs_shielded_multiplier`/`damage_vs_healer_multiplier` join the ungated per-enemy multiplier
+  group above them, checked against the target's own current `is_flying`/`shield`/`heal_rate` state
+  (each guarded on the relic's own multiplier being non-neutral before the `getattr`, since `shield`/
+  `heal_rate` -- unlike `is_flying`, a base `Enemy` attribute -- only exist on `ShieldedEnemy`/
+  `HealerEnemy` instances);
   **escalating-per-floor** (`veterans_momentum`'s `tower_damage_growth_per_floor`, folded into
   `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- fed the current
   node's *row* now that a run is a branching map rather than a flat sequence (see `RunState.
@@ -121,7 +129,7 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `last_stand_fire_rate_multiplier`, both relic effects resolved every frame against changing game
   state -- `Economy.is_on_last_life` -- rather than once at floor-load/construction time, via a single
   `Tower.set_last_stand_multiplier()` call, called from `Game.update()`'s existing two-pass tower
-  loop, that sets both live values together since both relics key off the exact same condition); and
+  loop, that sets both live values together since both relics key off the exact same condition);
   **per-tower-density (live-reactive)** (`overcrowded_circuits`' `tower_density_radius`/
   `tower_density_damage_bonus_per_neighbor`/`tower_density_damage_bonus_cap`, resolved from each
   tower's own live neighbor count rather than one global condition -- but, unlike the other
@@ -131,7 +139,12 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   handed, the same shape `SupportTower.update()` already uses for its own aura broadcast, rather than
   a caller reducing it to a bare count first -- for every tower whenever the board's own tower set
   actually changes (`try_place_tower`/`try_sell_tower`/`resume_saved_run`), not from `Game.update()`'s
-  per-frame loop at all). `guardians_reprieve` has no `RelicModifiers` field at all
+  per-frame loop at all); and **flat, non-tower** (`containment_charges`' `splitter_child_damage` --
+  unlike every field above, has no per-tower or per-shot variation to justify threading through
+  `Tower`/`Projectile` at all, so `Game.update()`'s own dead-enemy drain loop reads it straight off
+  `self.relic_modifiers` and applies it once to each of a killed `SplitterEnemy`'s own children,
+  right where `Enemy.pending_spawns` is already the one place that list is ever read). `guardians_
+  reprieve` has no `RelicModifiers` field at all
   (same shape as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in
   `Game._lose_a_life()`, the interception point for the enemy-reached-goal life loss, gated on
   `RunState.used_guardians_reprieve` (a one-time-per-run charge) and a no-op under
