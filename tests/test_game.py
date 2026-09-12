@@ -226,7 +226,10 @@ def test_paused_escape_also_resumes(playing_game):
     assert playing_game.running is True
 
 
-def test_paused_r_restarts_the_level_and_resumes_playing(playing_game):
+def test_paused_r_arms_a_restart_confirmation_without_resetting_yet(playing_game):
+    # R no longer restarts immediately -- it only arms a confirmation (see
+    # _handle_keydown's PAUSED branch), so a stray press can't discard an
+    # in-progress run/floor by itself.
     playing_game.state = GameState.PAUSED
     playing_game.economy.gold = 0
     playing_game.economy.lives = 1
@@ -234,10 +237,64 @@ def test_paused_r_restarts_the_level_and_resumes_playing(playing_game):
 
     playing_game._handle_keydown(pygame.K_r)
 
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
+    assert playing_game.economy.gold == 0
+    assert playing_game.economy.lives == 1
+    assert playing_game.towers == ["fake"]
+
+
+def test_paused_r_twice_restarts_the_level_and_resumes_playing(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.economy.gold = 0
+    playing_game.economy.lives = 1
+    playing_game.towers = ["fake"]
+
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+    playing_game._handle_keydown(pygame.K_r)  # confirms it
+
     assert playing_game.state == GameState.PLAYING
+    assert playing_game.pause_restart_confirm_pending is False
     assert playing_game.economy.gold == playing_game.level.starting_gold
     assert playing_game.economy.lives == playing_game.level.starting_lives
     assert playing_game.towers == []
+
+
+def test_paused_escape_while_restart_confirm_pending_cancels_back_to_the_pause_menu(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.economy.gold = 0
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_ESCAPE)
+
+    # Back to the ordinary paused menu -- still PAUSED, not PLAYING -- with
+    # nothing reset.
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is False
+    assert playing_game.economy.gold == 0
+
+
+def test_paused_unbound_key_while_restart_confirm_pending_is_a_no_op(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_z)
+
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
+
+
+def test_paused_p_while_restart_confirm_pending_is_a_no_op(playing_game):
+    # P is deliberately not a synonym for Esc here -- only R/Esc resolve a
+    # pending confirmation, so a reflexive P mid-confirm can't be misread
+    # as "resume playing" when nothing's been decided yet.
+    playing_game.state = GameState.PAUSED
+    playing_game._handle_keydown(pygame.K_r)  # arms the confirmation
+
+    playing_game._handle_keydown(pygame.K_p)
+
+    assert playing_game.state == GameState.PAUSED
+    assert playing_game.pause_restart_confirm_pending is True
 
 
 def test_paused_q_quits(playing_game):
@@ -2316,6 +2373,12 @@ def test_render_menu_with_a_saved_run_does_not_crash(playing_game):
 
 def test_render_pause_menu_with_save_available_does_not_crash(playing_game):
     playing_game.state = GameState.PAUSED
+    playing_game.render()
+
+
+def test_render_pause_menu_restart_confirmation_does_not_crash(playing_game):
+    playing_game.state = GameState.PAUSED
+    playing_game.pause_restart_confirm_pending = True
     playing_game.render()
 
 
