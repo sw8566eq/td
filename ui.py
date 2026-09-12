@@ -182,7 +182,7 @@ def _format_currency(value, unlimited):
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
-             wave_preview=None, shop_currency=None):
+             wave_preview=None, shop_currency=None, floor_label=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -232,7 +232,14 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
     lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
-    wave_text = font.render(_format_wave_label(wave_manager), True, settings.COLOR_TEXT)
+    # floor_label ("Floor N/M") piggybacks onto the Wave line the same way
+    # shop_currency piggybacks onto Gold above -- same "no headroom for a
+    # fourth line" reason (see the comment there). None outside an active
+    # run, same gate shop_currency uses.
+    wave_label = _format_wave_label(wave_manager)
+    if floor_label is not None:
+        wave_label += f"   {floor_label}"
+    wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
 
     surface.blit(gold_text, (info_x, hud_rect.y + 8))
     surface.blit(lives_text, (info_x, hud_rect.y + 36))
