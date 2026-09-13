@@ -266,7 +266,7 @@ def resolve_event_option(run, option, item_rng, meta_progression_path=None):
 
     granted = {}
     if option.grant_relic:
-        picks = relics.relic_offer(item_rng, run, count=1)
+        picks = relics.relic_offer(item_rng, run, count=1, meta_progression_path=meta_progression_path)
         if picks:
             key = picks[0]
             run.relics.append(key)

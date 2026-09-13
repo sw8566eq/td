@@ -80,7 +80,9 @@ def build_offer(rng, run, meta_progression_path=None):
     tower_choices = card_pool.draft_offer(
         rng, run, count=TOWER_OFFER_COUNT, meta_progression_path=meta_progression_path,
     )
-    relic_choices = relics.relic_offer(rng, run, count=RELIC_OFFER_COUNT)
+    relic_choices = relics.relic_offer(
+        rng, run, count=RELIC_OFFER_COUNT, meta_progression_path=meta_progression_path,
+    )
     return (
         [ShopItem("tower", name, TOWER_PRICE) for name in tower_choices]
         + [ShopItem("relic", key, RELIC_PRICE) for key in relic_choices]

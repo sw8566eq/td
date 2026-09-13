@@ -18,10 +18,27 @@ own -- it unlocks a specific TOWER_TYPES entry, which already has a
 display_name; toasting/describing an unlock reads that off TOWER_TYPES
 directly (see Game._queue_meta_unlock_toasts) rather than duplicating it
 here where it could drift out of sync.
+
+RelicMetaUnlock/LevelMetaUnlock below extend the same threshold-crossing
+mechanics to two more content kinds -- relics.py's own RELICS and
+levels.py's own LEVELS -- once there was finally new content (the relic-
+gaps and multi-lane-levels batches) worth gating behind a deeper curve
+than the original 7-tower one, which fully exhausts within a handful of
+runs. Deliberately two more small, separate classes rather than
+generalizing MetaUnlock into one class with a "kind" discriminator --
+MetaUnlock is read directly (`unlock.tower_name`) in a few places and
+heavily covered by existing tests; a second, additive registry per
+content kind is safer than teaching that one class to be polymorphic.
+Both stay genuinely optional gating, same spirit as the tower curve: only
+the *newest* relics/levels are ever gated, every relic/level that shipped
+before this existed remains permanently ungated (relics.py's own
+docstring used to say relics are never account-gated at all -- see its
+own note on why that's now only true of the pre-existing 29).
 """
 
 import threshold_unlocks
 from json_io import module_relative_path
+from levels import LEVELS
 
 SCHEMA_VERSION = 1
 META_PROGRESSION_PATH = module_relative_path(__file__, "meta_progression.json")
@@ -65,13 +82,72 @@ META_UNLOCKS = {
     "unlock_beacon": MetaUnlock("unlock_beacon", "beacon", "runs_played", 3),
 }
 
-# Game._handle_boss_defeated bumps a "bosses_defeated" counter here (via
-# _record_meta_progress) every time a run's final boss's authored waves
-# clear for the first time -- nothing in META_UNLOCKS is keyed off it yet
-# (a future relic/level meta-unlock gated on it is a natural fit, once one
-# exists that wants a genuinely hard-to-reach threshold), but bump_counter()
-# tracks any counter name unconditionally regardless of whether a registry
-# entry reads it yet, so the counter itself is already accumulating.
+
+class RelicMetaUnlock:
+    """One registry entry -- `relic_key` (a relics.RELICS key) becomes
+    offerable account-wide once `counter` reaches `goal`. Same shape as
+    MetaUnlock, kept as its own class rather than a generalized one -- see
+    this module's own docstring."""
+
+    def __init__(self, key, relic_key, counter, goal):
+        self.key = key
+        self.relic_key = relic_key
+        self.counter = counter
+        self.goal = goal
+
+
+# Only the newest relic batch (the knockback/mark/anti-flying/shielded/
+# healer/Splitter-counterplay one) gets any gating consideration -- every
+# relic that shipped before this existed stays permanently ungated, same
+# "only the non-starter subset" precedent META_UNLOCKS sets for towers.
+# Thresholds are deliberately well past every META_UNLOCKS one above (that
+# curve fully exhausts by runs_played<=3), so there's still something to
+# chase long after every tower is already unlocked.
+# unlock_containment_charges gated on bosses_defeated is a deliberate
+# cross-chunk payoff: Game._handle_boss_defeated bumps that counter every
+# time a run's final boss's authored waves clear for the first time, so
+# this is "beat the final boss once" rather than a grind threshold.
+RELIC_META_UNLOCKS = {
+    "unlock_flak_rounds": RelicMetaUnlock(
+        "unlock_flak_rounds", "flak_rounds", "total_floors_cleared", 25,
+    ),
+    "unlock_breach_charges": RelicMetaUnlock(
+        "unlock_breach_charges", "breach_charges", "runs_played", 10,
+    ),
+    "unlock_containment_charges": RelicMetaUnlock(
+        "unlock_containment_charges", "containment_charges", "bosses_defeated", 1,
+    ),
+}
+
+
+class LevelMetaUnlock:
+    """One registry entry -- `level_id` (a levels.LEVELS key) becomes
+    drawable into a run's map once `counter` reaches `goal`. Same shape as
+    MetaUnlock/RelicMetaUnlock."""
+
+    def __init__(self, key, level_id, counter, goal):
+        self.key = key
+        self.level_id = level_id
+        self.counter = counter
+        self.goal = goal
+
+
+# Only the hardest of Chunk C's 4 new multi-lane levels is gated -- most
+# new content stays immediately available, matching the design note in
+# this module's own docstring; a run whose map can't draw a gated level id
+# just never offers that node's floor, same as any other seed variance.
+LEVEL_META_UNLOCKS = {
+    "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
+}
+
+# Every registry above shares one JSON file's flat {"counters": ..,
+# "unlocked": {key, ...}} state -- a single combined dict lets bump() below
+# unlock across all three content kinds from one shared counter (e.g.
+# bosses_defeated feeding unlock_containment_charges) without needing to
+# know in advance which registry a given counter_name belongs to. Key
+# namespaces never collide (every key is its own "unlock_<name>" string),
+# so merging is safe.
+ALL_UNLOCKS = {**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}
 
 
 def load_meta_progression(path=META_PROGRESSION_PATH):
@@ -87,14 +163,17 @@ def save_meta_progression(state, path=META_PROGRESSION_PATH):
 
 def bump(counter_name, amount=1, path=META_PROGRESSION_PATH):
     """Bump `counter_name` by `amount` and return the list of unlock keys
-    newly unlocked by this bump (in registry insertion order). For a
-    counter that's a simple +1-(or more)-per-event tally -- every counter
-    above is one of these; achievements.py's sibling set_counter() (for a
-    counter driven by an already-deduplicated external count, like its own
+    newly unlocked by this bump (in registry insertion order), across all
+    three of META_UNLOCKS/RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS at once
+    (see ALL_UNLOCKS) -- a caller doesn't (and shouldn't need to) know
+    which content kind a given counter_name happens to gate. For a counter
+    that's a simple +1-(or more)-per-event tally -- every counter above is
+    one of these; achievements.py's sibling set_counter() (for a counter
+    driven by an already-deduplicated external count, like its own
     distinct_levels_cleared) has no equivalent here yet since nothing
     needs it -- threshold_unlocks.set_counter() already exists to mirror
     that shape if a future counter does."""
-    return threshold_unlocks.bump_counter(META_UNLOCKS, counter_name, amount, path, SCHEMA_VERSION)
+    return threshold_unlocks.bump_counter(ALL_UNLOCKS, counter_name, amount, path, SCHEMA_VERSION)
 
 
 def unlocked_tower_pool(path=META_PROGRESSION_PATH):
@@ -105,3 +184,27 @@ def unlocked_tower_pool(path=META_PROGRESSION_PATH):
     card_pool.STARTER_TOWERS directly)."""
     state = load_meta_progression(path)
     return {unlock.tower_name for key, unlock in META_UNLOCKS.items() if key in state["unlocked"]}
+
+
+def unlocked_relic_pool(path=META_PROGRESSION_PATH):
+    """Every relics.RELICS key unlocked account-wide via RELIC_META_UNLOCKS
+    so far -- relics._default_relic_pool()'s own pool is every RELICS key
+    *not* gated here, plus this (mirrors unlocked_tower_pool's shape)."""
+    state = load_meta_progression(path)
+    return {unlock.relic_key for key, unlock in RELIC_META_UNLOCKS.items() if key in state["unlocked"]}
+
+
+def unlocked_level_pool(path=META_PROGRESSION_PATH):
+    """levels.LEVELS, minus whatever LEVEL_META_UNLOCKS entries haven't
+    been unlocked yet -- unlike unlocked_tower_pool/unlocked_relic_pool
+    (a small "what's been added" set a caller still has to combine with
+    the rest of its own pool), this returns the whole ready-to-use pool
+    directly: LEVEL_META_UNLOCKS gates only 1 of 15 levels today, so
+    exposing "what's locked" and making every caller re-derive "everything
+    else" would be the more awkward shape for the common case. Passed
+    straight into run_map.generate_run_map's own level_pool param."""
+    state = load_meta_progression(path)
+    locked_ids = {
+        unlock.level_id for key, unlock in LEVEL_META_UNLOCKS.items() if key not in state["unlocked"]
+    }
+    return {level_id: level for level_id, level in LEVELS.items() if level_id not in locked_ids}

@@ -78,8 +78,11 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
-  `draft_offer`) and `compose_relic_modifiers()`. Not unlock-gated, unlike tower cards. Thirty-five
-  relics across eight effect shapes -- the original three, plus five more added since: **per-floor**
+  `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
+  3 of the 35 (the newest batch's `flak_rounds`/`breach_charges`/`containment_charges`) are gated at
+  all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional `unlocked_pool`/
+  `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
+  below). Thirty-five relics across eight effect shapes -- the original three, plus five more added since: **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
   **one-time** (`starting_lives_bonus`, applied directly at draft-pick time instead, see
@@ -868,6 +871,44 @@ packaged build. Before this was factored out, each independently wrote the same
   skipping -- strengthened, not weakened, by the branching map: row 0 is always Combat (see "The
   run's branching map" above), so a Shop node can never be reachable before at least one floor has
   cleared.
+  Once `META_UNLOCKS`' 7-tower curve started feeling exhausted too quickly (every tower unlocks
+  within `runs_played<=3`), two more small, additive registries extended it to the *newest* relics
+  and levels specifically -- `RelicMetaUnlock`/`RELIC_META_UNLOCKS` (`relic_key`/`counter`/`goal`,
+  same shape as `MetaUnlock`) and `LevelMetaUnlock`/`LEVEL_META_UNLOCKS` (`level_id` in place of
+  `relic_key`) -- deliberately two more genuinely separate classes rather than teaching `MetaUnlock`
+  a "kind" discriminator, since it's read directly (`unlock.tower_name`) in a few places and heavily
+  covered by existing tests. Design mirrors the tower curve exactly: only the newest content is ever
+  gated (the relic-category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`; one of
+  the four multi-lane levels, `Quad Muster`, id `14`) -- every relic/level that shipped before either
+  registry existed stays permanently, unconditionally available, same "only the non-starter subset"
+  precedent `META_UNLOCKS` already sets for towers. Thresholds sit well past `META_UNLOCKS`' own
+  curve (`runs_played`/`total_floors_cleared` goals in the 10-25 range) so there's still something to
+  chase long after every tower is unlocked; `unlock_containment_charges` is gated on `bosses_defeated`
+  specifically as a deliberate cross-chunk payoff with the run's final boss (see that section above)
+  -- "beat the boss once" rather than a grind threshold.
+  `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}`) is what `bump()`
+  actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON file's flat
+  `{"counters": .., "unlocked": {key, ...}}` state already spans all three content kinds (key
+  namespaces never collide), so one bump of a shared counter name (`bosses_defeated`,
+  `total_floors_cleared`, `runs_played`) can cross thresholds in more than one registry at once
+  without the caller needing to know which kind a given counter happens to gate.
+  `unlocked_relic_pool()`/`unlocked_level_pool()` mirror `unlocked_tower_pool()`'s shape, with one
+  difference: `unlocked_level_pool()` returns the whole ready-to-use `LEVELS`-minus-locked-ids pool
+  directly (passed straight into `run_map.generate_run_map`'s own `level_pool` param from
+  `Game.start_new_run`) rather than just the small "what's been added" set the other two return,
+  since only 1 of 15 levels is ever gated -- making every caller re-derive "everything else" would be
+  the more awkward shape for the common case. `relics._default_relic_pool()` mirrors
+  `card_pool._default_unlocked_pool()` exactly (every `RELICS` key not gated, plus whatever
+  `unlocked_relic_pool()` says is unlocked, in `RELICS`' own stable registry order) and is threaded
+  through `relic_offer()`'s own optional `unlocked_pool`/`meta_progression_path` params the same way
+  `draft_offer()` already has them -- `shop.build_offer()`/`events.resolve_event_option()` both
+  already received a `meta_progression_path` param for the tower half of their offer and just needed
+  to start forwarding it to `relic_offer()` too; `Game._enter_treasure_node()`'s own direct
+  `relic_offer()` call previously passed no path argument at all, now passes
+  `self.meta_progression_path`. `Game._queue_meta_unlock_toasts()` dispatches on which of the three
+  registries a newly-unlocked key belongs to (`"New tower/relic/level unlocked: ..."`, name read off
+  `TOWER_TYPES`/`RELICS`/`LEVELS` respectively, since none of the three unlock classes carry a
+  `display_name` of their own) rather than assuming every key `bump()` returns is a tower unlock.
 - `run_history.py` records `{seed: best_floors_cleared}`, written once per run by
   `_record_run_permadeath()`. Per-seed max rather than last-write, which is what makes a replayed
   seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
