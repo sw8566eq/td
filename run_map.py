@@ -76,8 +76,16 @@ MAX_SAME_TYPE_PER_ROW_FRACTION = 0.5
 # No Elite node before this row -- a fresh run's opening rows stay a plain
 # Combat/Shop/Event/Rest/Treasure mix, so a brand-new deck never has to face
 # the harder escalation multiplier (see run_escalation.apply_elite_
-# multiplier) before it's had a couple of floors to grow.
-MIN_ELITE_ROW = 2
+# multiplier) before it's had a couple of floors to grow. Deliberately ==
+# run_escalation.EARLY_GRACE_ROWS (not imported from there to avoid a
+# run_map <-> run_escalation import cycle -- see that module's own comment
+# on the same constant) -- rows 0-2 are also where _level_pool_for_row
+# still draws from the single-lane "simple" tier, switching to multi-lane
+# levels exactly at row 3 (the same row Elite first becomes possible and
+# early-grace's own discount fully fades) -- a player's first fully-
+# escalated fight and their first multi-lane fight land on the same row
+# either way, never a row apart.
+MIN_ELITE_ROW = 3
 # This row always has at least one Rest node, forced onto it after the
 # weighted draw if it didn't produce one on its own -- unlike Shop (left
 # purely to chance, a deliberate design choice, see CLAUDE.md), a run should

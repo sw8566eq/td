@@ -12,7 +12,7 @@ floor once its authored waves run out). This is the *between-floors*
 escalation layered on top of that, growing once per floor rather than once
 per wave.
 
-Rows 0-1 get an *early grace* discount instead of the growth above -- a
+Rows 0-2 get an *early grace* discount instead of the growth above -- a
 real full-run playtest ([[td-floor1-wave2-difficulty-spike]] in memory)
 found the opposite of the intended "ease players in" shape: a brand-new
 run's own opening floor was its least forgiving one, not its most. A
@@ -35,6 +35,37 @@ Practice mode, unlike every other floor -- Practice is exactly "the raw
 level, undiscounted," which is the point of it as a place to learn a
 level's real difficulty; the grace period is specifically a run-openers-
 only kindness.
+
+Widened from an original rows-0-1 window (EARLY_GRACE_ROWS=2) after
+following the intended arc all the way through: a player who clears the
+graced floors, visits a Shop, and drafts a couple of relics/tower
+unlocks still hit a wall immediately on reaching row 3 -- not a repeat
+of the wave 1/2 problem above, but a second, structural one.
+run_map._level_pool_for_row switches from single-lane to multi-lane
+levels exactly at row 3, the same row grace used to end at -- so a
+player's first fully-escalated fight and their first-ever multi-lane
+fight (needing roughly double the tower investment, one defense per
+lane, from the very first wave) used to land on the same row, with
+reduced lives already spent clearing the graced floors and only one
+floor's worth of shop currency banked. Extending the grace window (and
+MIN_ELITE_ROW alongside it, see run_map.py's own comment) by one more
+row doesn't remove that structural coincidence -- level tier and grace
+still change on the same row, just row 3 instead of row 2 -- but it
+does give a player one more graced floor's income, one more shop/event
+opportunity, and a materially larger life cushion heading into it,
+which a live playthrough confirmed for a 2-lane row-3 level (see
+[[td-floor1-wave2-difficulty-spike]] again).
+
+**Known open question, not yet resolved**: a live playthrough against a
+*3*-lane row-3 level (three spawns merging toward two goals, wave 1
+already 18 enemies vs. the 2-lane level's 13) still lost the run
+outright across several attempted strategies, even with this wider
+grace window and two Shop visits' worth of relics/tower unlocks banked
+first. Whether that's this specific level's own wave-1 tuning, 3-lane
+levels needing more than a 2-lane level does structurally, or genuinely
+needing a further grace extension, is unconfirmed -- worth a dedicated
+investigation before changing these constants again rather than
+guessing at another bump.
 """
 
 from dataclasses import dataclass
@@ -48,11 +79,11 @@ _HP_GROWTH_PER_FLOOR = 0.12
 _SPEED_GROWTH_PER_FLOOR = 0.02
 _GOLD_GROWTH_PER_FLOOR = 0.05
 
-# Early grace (see this module's own docstring) -- rows 0-1 get an inverse
+# Early grace (see this module's own docstring) -- rows 0-2 get an inverse
 # discount instead of the growth above, tapering linearly to zero by
 # EARLY_GRACE_ROWS (deliberately == run_map.MIN_ELITE_ROW, not imported
 # from there to avoid a run_map <-> run_escalation import cycle -- both
-# already independently encode "row 2 is where the run gets serious", so
+# already independently encode "row 3 is where the run gets serious", so
 # keeping them in sync by hand if either ever changes is a one-line check,
 # not a real coordination burden). HP gets by far the largest discount,
 # same "HP is the most cliff-inducing stat" lesson ELITE_HP_MULTIPLIER's
@@ -64,10 +95,10 @@ _GOLD_GROWTH_PER_FLOOR = 0.05
 # with towers alone than a tankier one, so it's touched more gently in
 # either direction). Gold is bumped up front rather than eased in like
 # HP/speed are, deliberately overshooting where the growth curve above
-# would otherwise put it at row 0/1 -- the whole point is affording a
+# would otherwise put it at row 0-2 -- the whole point is affording a
 # real opening board (3 starter towers, not 2) from the very first
 # floor, not a gradual ramp toward that.
-EARLY_GRACE_ROWS = 2
+EARLY_GRACE_ROWS = 3
 EARLY_GRACE_HP_DISCOUNT = 0.5
 EARLY_GRACE_SPEED_DISCOUNT = 0.15
 EARLY_GRACE_GOLD_BONUS = 0.5
@@ -141,7 +172,8 @@ def escalation_for_floor(floor_index):
     fold in the early-grace discount (see this module's own docstring);
     enemy_gold_multiplier doesn't (kill-gold reward isn't the problem the
     grace period targets, starting gold is -- see starting_gold_multiplier
-    below) and keeps growing exactly as it always has, even at row 0/1."""
+    below) and keeps growing exactly as it always has, even within the
+    grace window."""
     grace = _early_grace_factor(floor_index)
     return FloorEscalation(
         enemy_hp_multiplier=(1.0 + _HP_GROWTH_PER_FLOOR * floor_index) * (1.0 - EARLY_GRACE_HP_DISCOUNT * grace),
