@@ -62,16 +62,22 @@ loop (the one place Enemy.pending_spawns is ever read), not threaded
 through Tower/Projectile construction like every per-tower field above,
 since nothing about it varies by which tower landed the killing blow.
 
-Unlike a tower card, a relic isn't gated by meta_progression.py -- every
-registered relic is always eligible to be offered in any run. There are
-few enough relics, and few enough relic-draft floors per run, that
-account-wide unlock-gating would add a second progression system for a
+Unlike a tower card, most relics aren't gated by meta_progression.py --
+every relic that shipped before the relic-category-gaps batch (all 29 of
+them) is always eligible to be offered in any run; there are few enough
+relics, and few enough relic-draft floors per run, that account-wide
+unlock-gating every relic would add a second progression system for a
 card type explicitly framed as secondary/optional (see the plan's design
-resolution), not a proportional amount of extra depth.
+resolution), not a proportional amount of extra depth. Once the original
+tower curve started feeling exhausted too quickly, though, a handful of
+the *newest* relics became a natural place to extend it further -- see
+meta_progression.RELIC_META_UNLOCKS and _default_relic_pool() below,
+mirroring card_pool._default_unlocked_pool's own shape exactly.
 """
 
 from dataclasses import dataclass
 
+import meta_progression
 from rng_sampling import sample_up_to
 
 
@@ -441,13 +447,28 @@ RELICS = {
 DEFAULT_RELIC_OFFER_COUNT = 3
 
 
-def relic_offer(rng, run, count=DEFAULT_RELIC_OFFER_COUNT):
+def _default_relic_pool(meta_progression_path):
+    """Every RELICS key not gated by meta_progression.RELIC_META_UNLOCKS,
+    plus whatever that registry says this player has unlocked account-wide
+    so far, in RELICS' own stable registry order -- same "stable order
+    feeds rng.sample" reasoning card_pool._default_unlocked_pool documents
+    for towers."""
+    gated = {unlock.relic_key for unlock in meta_progression.RELIC_META_UNLOCKS.values()}
+    unlocked_gated = meta_progression.unlocked_relic_pool(meta_progression_path)
+    return [key for key in RELICS if key not in gated or key in unlocked_gated]
+
+
+def relic_offer(rng, run, count=DEFAULT_RELIC_OFFER_COUNT, unlocked_pool=None, meta_progression_path=None):
     """`count` relic keys offered as a relic draft's choices, drawn from
-    RELICS minus whatever `run.relics` already has -- same shape as
-    card_pool.draft_offer, just for the other card type. Returns fewer
-    than `count` once the pool is exhausted rather than raising (see
-    rng_sampling.sample_up_to)."""
-    candidates = [key for key in RELICS if key not in run.relics]
+    `unlocked_pool` (default: _default_relic_pool() above, reading
+    `meta_progression_path` -- same injectable-path convention every
+    on-disk-state module in this codebase uses) minus whatever `run.relics`
+    already has -- same shape as card_pool.draft_offer, just for the other
+    card type. Returns fewer than `count` once the pool is exhausted
+    rather than raising (see rng_sampling.sample_up_to)."""
+    if unlocked_pool is None:
+        unlocked_pool = _default_relic_pool(meta_progression_path or meta_progression.META_PROGRESSION_PATH)
+    candidates = [key for key in unlocked_pool if key not in run.relics]
     return sample_up_to(rng, candidates, count)
 
 

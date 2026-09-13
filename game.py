@@ -395,6 +395,12 @@ class Game:
         used to allow. `seed` is overridable (_start_daily_challenge passes
         one derived from today's date; tests want determinism).
 
+        The map is generated from meta_progression.unlocked_level_pool()
+        rather than the raw LEVELS registry -- today that's every level
+        except the one LEVEL_META_UNLOCKS gates (see that module), so a
+        fresh account's map simply never draws it until unlocked; nothing
+        else about map generation needs to know gating exists.
+
         `is_daily` pins the run's own difficulty to "normal" rather than
         snapshotting the player's own live sticky preference, so every
         player's Daily Run score is comparable regardless of their own
@@ -419,8 +425,9 @@ class Game:
         conclusion."""
         self._resumed_from_save = False
         seed = seed if seed is not None else random.Random().getrandbits(32)
+        level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
         self.active_run = RunState(
-            seed=seed, map=run_map.generate_run_map(random.Random(seed)),
+            seed=seed, map=run_map.generate_run_map(random.Random(seed), level_pool=level_pool),
             difficulty="normal" if is_daily else self.difficulty,
             unlocked_towers=list(card_pool.STARTER_TOWERS), is_daily=is_daily,
         )
@@ -815,7 +822,7 @@ class Game:
         run.shop_currency += currency
         self.treasure_granted_currency = currency
         rng = self._run_rng(run, _TREASURE_RNG_STREAM, node.id)
-        picks = relics.relic_offer(rng, run, count=1)
+        picks = relics.relic_offer(rng, run, count=1, meta_progression_path=self.meta_progression_path)
         self.treasure_granted_relic = picks[0] if picks else None
         if picks:
             self._grant_relic(picks[0])
@@ -1945,15 +1952,25 @@ class Game:
 
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         """Same toast presentation _queue_achievement_toasts uses, for
-        meta_progression.META_UNLOCKS keys instead of achievements.
-        ACHIEVEMENTS -- names the tower a card unlock actually grants
-        (read off TOWER_TYPES, since a MetaUnlock has no display_name of
-        its own -- see meta_progression.py's own docstring) rather than
-        the registry entry's own key."""
+        meta_progression.py's own unlock registries instead of
+        achievements.ACHIEVEMENTS -- names whatever a card unlock actually
+        grants (read off TOWER_TYPES/relics.RELICS/LEVELS, since none of
+        MetaUnlock/RelicMetaUnlock/LevelMetaUnlock carry a display_name of
+        their own -- see meta_progression.py's own docstring) rather than
+        the registry entry's own key. meta_progression.bump() draws newly-
+        unlocked keys from all three registries at once (see its own
+        ALL_UNLOCKS), so this checks each in turn rather than assuming
+        every key is a tower unlock."""
         for key in newly_unlocked_keys:
-            unlock = meta_progression.META_UNLOCKS[key]
-            tower_display_name = TOWER_TYPES[unlock.tower_name].display_name
-            self._queue_toast(f"New tower unlocked: {tower_display_name}!")
+            if key in meta_progression.META_UNLOCKS:
+                unlock = meta_progression.META_UNLOCKS[key]
+                self._queue_toast(f"New tower unlocked: {TOWER_TYPES[unlock.tower_name].display_name}!")
+            elif key in meta_progression.RELIC_META_UNLOCKS:
+                unlock = meta_progression.RELIC_META_UNLOCKS[key]
+                self._queue_toast(f"New relic unlocked: {relics.RELICS[unlock.relic_key].display_name}!")
+            else:
+                unlock = meta_progression.LEVEL_META_UNLOCKS[key]
+                self._queue_toast(f"New level unlocked: {LEVELS[unlock.level_id].name}!")
 
     def _queue_toast(self, text):
         """Queue one rising/fading toast, stacked below however many are

@@ -186,6 +186,31 @@ def test_start_new_run_is_deterministic_for_a_fixed_seed(game):
     assert first_map == second_map
 
 
+def test_start_new_run_never_draws_a_gated_level_before_it_is_unlocked(game):
+    # unlock_quad_muster gates level 14 behind runs_played >= 15 -- a
+    # fresh meta_progression.json (see the `game` fixture) starts every
+    # counter at 0, so no seed should ever draw it onto the map.
+    for seed in range(30):
+        game.start_new_run(seed=seed)
+        level_ids = {node.level_id for row in game.active_run.map.rows for node in row}
+        assert 14 not in level_ids
+
+
+def test_start_new_run_can_draw_a_gated_level_once_its_threshold_is_crossed(game):
+    meta_progression.bump("runs_played", amount=15, path=game.meta_progression_path)
+
+    drew_it = any(
+        14 in {node.level_id for row in _start_new_run_map(game, seed).rows for node in row}
+        for seed in range(60)
+    )
+    assert drew_it
+
+
+def _start_new_run_map(game, seed):
+    game.start_new_run(seed=seed)
+    return game.active_run.map
+
+
 def test_start_new_run_without_a_seed_still_produces_a_playable_run(game):
     game.start_new_run()
 
@@ -1670,6 +1695,22 @@ def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
     game.update(dt=0.01)
 
     assert any("New tower unlocked" in toast.text for toast in game.achievement_toasts)
+
+
+def test_queue_meta_unlock_toasts_handles_a_relic_unlock_key(game):
+    # _queue_meta_unlock_toasts must dispatch on which of META_UNLOCKS/
+    # RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS a key belongs to, not assume
+    # every key is a tower unlock (meta_progression.bump() can now return
+    # any of the three -- see its own ALL_UNLOCKS).
+    game._queue_meta_unlock_toasts(["unlock_containment_charges"])
+
+    assert any("New relic unlocked: Containment Charges" in toast.text for toast in game.achievement_toasts)
+
+
+def test_queue_meta_unlock_toasts_handles_a_level_unlock_key(game):
+    game._queue_meta_unlock_toasts(["unlock_quad_muster"])
+
+    assert any("New level unlocked: Quad Muster" in toast.text for toast in game.achievement_toasts)
 
 
 # --- Saving and resuming a run mid-flight ---

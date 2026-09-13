@@ -2,6 +2,8 @@ import json
 
 import meta_progression
 from card_pool import STARTER_TOWERS
+from levels import LEVELS
+from relics import RELICS
 from tower import TOWER_TYPES
 
 
@@ -77,8 +79,15 @@ def test_bump_ignores_other_counters_thresholds(tmp_path):
     newly_unlocked = meta_progression.bump("runs_played", amount=10, path=path)
 
     # runs_played crossing 10 must never unlock unlock_lightning
-    # (total_floors_cleared, 10) just because the raw numbers line up.
-    assert set(newly_unlocked) == {"unlock_sniper", "unlock_support", "unlock_beacon"}
+    # (total_floors_cleared, 10) just because the raw numbers line up --
+    # but it does cross every registry's own runs_played-gated entries
+    # whose goal is <= 10 at once (bump() unlocks across META_UNLOCKS/
+    # RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS together, see meta_progression.
+    # ALL_UNLOCKS) -- unlock_quad_muster's own runs_played goal of 15 isn't
+    # reached yet at 10.
+    assert set(newly_unlocked) == {
+        "unlock_sniper", "unlock_support", "unlock_beacon", "unlock_breach_charges",
+    }
 
 
 def test_every_meta_unlock_targets_a_real_non_starter_tower():
@@ -106,3 +115,60 @@ def test_unlocked_tower_pool_reflects_crossed_thresholds(tmp_path):
     meta_progression.bump("total_floors_cleared", amount=1, path=path)
 
     assert meta_progression.unlocked_tower_pool(path=path) == {"knockback"}
+
+
+# --- Relic/level meta-unlocks (deliberately no "every relic/level is
+# gated" exhaustiveness invariant -- unlike towers, most relics/levels are
+# permanently ungated by design, see meta_progression.py's own docstring
+# and relics.py's) ---
+
+
+def test_every_relic_meta_unlock_targets_a_real_relic():
+    for key, unlock in meta_progression.RELIC_META_UNLOCKS.items():
+        assert unlock.relic_key in RELICS, key
+
+
+def test_every_level_meta_unlock_targets_a_real_level():
+    for key, unlock in meta_progression.LEVEL_META_UNLOCKS.items():
+        assert unlock.level_id in LEVELS, key
+
+
+def test_unlocked_relic_pool_is_empty_with_no_progress(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    assert meta_progression.unlocked_relic_pool(path=path) == set()
+
+
+def test_unlocked_relic_pool_reflects_crossed_thresholds(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("bosses_defeated", amount=1, path=path)
+
+    assert meta_progression.unlocked_relic_pool(path=path) == {"containment_charges"}
+
+
+def test_unlocked_level_pool_excludes_a_gated_level_with_no_progress(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    pool = meta_progression.unlocked_level_pool(path=path)
+
+    assert 14 not in pool
+    # every ungated level (everything except the one LEVEL_META_UNLOCKS
+    # entry above) is still present, same "only the newest content is
+    # ever gated" precedent RELIC_META_UNLOCKS follows.
+    assert set(pool.keys()) == set(LEVELS.keys()) - {14}
+
+
+def test_unlocked_level_pool_includes_the_gated_level_once_unlocked(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("runs_played", amount=15, path=path)
+
+    assert 14 in meta_progression.unlocked_level_pool(path=path)
+
+
+def test_bump_across_registries_returns_keys_from_every_kind_in_one_call(tmp_path):
+    # bosses_defeated only ever feeds RELIC_META_UNLOCKS today -- confirms
+    # ALL_UNLOCKS' merge actually reaches a non-tower registry, not just
+    # the runs_played coincidence test_bump_ignores_other_counters_
+    # thresholds above already exercises.
+    path = tmp_path / "meta_progression.json"
+    newly_unlocked = meta_progression.bump("bosses_defeated", amount=1, path=path)
+
+    assert newly_unlocked == ["unlock_containment_charges"]

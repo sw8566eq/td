@@ -2,6 +2,7 @@ import random
 
 import pytest
 
+import meta_progression
 from relics import RELICS, Relic, RelicModifiers, compose_relic_modifiers, relic_offer
 from run_map import generate_run_map
 from run_state import RunState
@@ -41,6 +42,26 @@ def test_relic_offer_is_deterministic_for_a_fixed_rng_seed():
     first = relic_offer(random.Random(7), run, count=2)
     second = relic_offer(random.Random(7), run, count=2)
     assert first == second
+
+
+def test_relic_offer_excludes_gated_relics_before_they_are_unlocked(tmp_path):
+    path = tmp_path / "meta_progression.json"  # fresh -- every counter at 0
+    run = _run()
+
+    offer = relic_offer(random.Random(1), run, count=len(RELICS), meta_progression_path=path)
+
+    gated = {unlock.relic_key for unlock in meta_progression.RELIC_META_UNLOCKS.values()}
+    assert not gated & set(offer)
+
+
+def test_relic_offer_includes_a_gated_relic_once_its_threshold_is_crossed(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("bosses_defeated", amount=1, path=path)  # unlocks containment_charges
+    run = _run()
+
+    offer = relic_offer(random.Random(1), run, count=len(RELICS), meta_progression_path=path)
+
+    assert "containment_charges" in offer
 
 
 def test_compose_relic_modifiers_with_no_relics_is_a_no_op():
