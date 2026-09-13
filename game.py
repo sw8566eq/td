@@ -830,13 +830,17 @@ class Game:
 
     def _scaled_starting_gold(self, level, mode, extra_multiplier=1.0):
         """`level.starting_gold` scaled by `mode.starting_gold_multiplier`
-        and `extra_multiplier` (a relic's own starting_gold_multiplier, see
-        RelicModifiers) -- the exact formula _load_level_object() uses to
-        construct every floor's own fresh starting Economy.
-        `extra_multiplier` is folded into the same single `round()` call
-        rather than applied as a separate step afterward, so the result
-        matches what a single combined multiplier would have rounded to,
-        not round(round(x) * y) double-rounding to a different result."""
+        and `extra_multiplier` -- the exact formula _load_level_object()
+        uses to construct every floor's own fresh starting Economy.
+        `extra_multiplier` is whatever the caller composes it from (a
+        relic's own starting_gold_multiplier alone for a non-run load;
+        that times run_escalation.FloorEscalation's own starting_gold_
+        multiplier too for a run floor, folding in the early-grace bonus
+        on rows 0-1 -- see run_escalation.py's own docstring) folded into
+        the same single `round()` call rather than applied as a separate
+        step afterward, so the result matches what a single combined
+        multiplier would have rounded to, not round(round(x) * y)
+        double-rounding to a different result."""
         return round(level.starting_gold * mode.starting_gold_multiplier * extra_multiplier)
 
     def _apply_one_time_relic_bonus(self, relic):
@@ -936,7 +940,9 @@ class Game:
         # construction every floor, not just floor 0.
         mode = difficulty.DIFFICULTY_MODES[difficulty_override or self.difficulty]
         self.economy = Economy(
-            self._scaled_starting_gold(level, mode, relic_modifiers.starting_gold_multiplier),
+            self._scaled_starting_gold(
+                level, mode, relic_modifiers.starting_gold_multiplier * escalation.starting_gold_multiplier,
+            ),
             round(level.starting_lives * mode.starting_lives_multiplier),
             unlimited_gold=self.unlimited_gold or sandbox,
             invulnerable=sandbox,
