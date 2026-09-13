@@ -810,8 +810,21 @@ def test_war_chest_multiplies_starting_gold_on_every_floor_not_just_once(game):
 
     mode = DIFFICULTY_MODES[game.active_run.difficulty]
     multiplier = RELICS["war_chest"].starting_gold_multiplier
-    assert gold_floor_2 == round(LEVELS[2].starting_gold * mode.starting_gold_multiplier * multiplier)
-    assert gold_floor_3 == round(LEVELS[3].starting_gold * mode.starting_gold_multiplier * multiplier)
+    # Both rows also carry whatever early-grace starting-gold bonus their
+    # own row still has (see run_escalation.py) -- row 2 (still inside the
+    # grace window) and row 3 (grace-free) get genuinely different
+    # escalation multipliers here, which is itself part of what this test
+    # proves: the relic keeps reapplying fresh each floor regardless of
+    # what else that floor's own gold formula composes in.
+    from run_escalation import escalation_for_floor
+    escalation_2 = escalation_for_floor(2)
+    escalation_3 = escalation_for_floor(3)
+    assert gold_floor_2 == round(
+        LEVELS[2].starting_gold * mode.starting_gold_multiplier * multiplier * escalation_2.starting_gold_multiplier
+    )
+    assert gold_floor_3 == round(
+        LEVELS[3].starting_gold * mode.starting_gold_multiplier * multiplier * escalation_3.starting_gold_multiplier
+    )
 
 
 def test_sturdy_gate_grants_a_one_time_lives_bonus_when_bought(game):
