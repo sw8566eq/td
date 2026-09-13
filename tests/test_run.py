@@ -378,9 +378,11 @@ def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
     # test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_easy
     # -- one integration test proving the wiring multiplies
     # mode.X * escalation.X rather than one replacing the other;
-    # escalation_for_floor's own formula (no-op at floor 0, strictly
-    # increasing after) is already exhaustively covered by
-    # tests/test_run_escalation.py, so it isn't re-proven here.
+    # escalation_for_floor's own formula (growth-only past the early-grace
+    # window, see run_escalation.py) is already exhaustively covered by
+    # tests/test_run_escalation.py, so it isn't re-proven here. Row 3 is
+    # used deliberately, past EARLY_GRACE_ROWS, so this test doesn't also
+    # have to account for the grace discount.
     game.difficulty = "hard"
     _begin_run_with_map(game, ["combat"] * 4)
 
@@ -837,7 +839,14 @@ def test_relic_enemy_speed_multiplier_composes_into_wave_manager(game):
 
     _enter_first_node(game)
 
-    assert game.wave_manager.enemy_speed_multiplier == RELICS["tangled_roots"].enemy_speed_multiplier
+    # Composes with row 0's own early-grace speed discount too (see
+    # run_escalation.py) -- mode.enemy_speed_multiplier is normal's 1.0x,
+    # a no-op, so left out of the expected product below.
+    from run_escalation import escalation_for_floor
+    escalation = escalation_for_floor(0)
+    assert game.wave_manager.enemy_speed_multiplier == pytest.approx(
+        escalation.enemy_speed_multiplier * RELICS["tangled_roots"].enemy_speed_multiplier
+    )
 
 
 def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
@@ -1733,15 +1742,16 @@ def test_saving_mid_run_captures_the_active_run(game):
 
 def test_resuming_a_saved_run_restores_active_run(game):
     start_first_floor(game, seed=1)
+    gold_before_spend = game.economy.gold  # row 0's own starting gold, whatever it scales to
     game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
     game.active_run.shop_currency = 42  # a run-level field, distinct from economy.gold below
     # economy.gold is never re-synced onto RunState at all now -- battle
     # gold doesn't carry between floors any more (see CLAUDE.md's "Two
     # currencies" section) -- so a save taken mid-floor genuinely captures
-    # numbers from two unrelated places here: economy.gold (350 after this)
-    # is what a resume should restore live play to; active_run.shop_
-    # currency (42) is this run's own separately-persisted currency,
-    # untouched by this frame's battle-gold spending.
+    # numbers from two unrelated places here: economy.gold (gold_before_
+    # spend + 200 after this) is what a resume should restore live play
+    # to; active_run.shop_currency (42) is this run's own separately-
+    # persisted currency, untouched by this frame's battle-gold spending.
     game.economy.gold += 200
     run_before = game.active_run
     game.save_run()
@@ -1756,7 +1766,7 @@ def test_resuming_a_saved_run_restores_active_run(game):
     assert game.active_run.current_node_id == run_before.current_node_id
     assert game.active_run.shop_currency == run_before.shop_currency
     assert game.active_run.lives == run_before.lives
-    assert game.economy.gold == 350
+    assert game.economy.gold == gold_before_spend + 200
     assert game.state == GameState.PLAYING
 
 
@@ -1879,7 +1889,15 @@ def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_li
     game._continue_saved_run()
 
     assert game.active_run.difficulty == "normal"
-    assert game.wave_manager.enemy_hp_multiplier == DIFFICULTY_MODES["normal"].enemy_hp_multiplier
+    # Composes with row 0's own early-grace hp discount too (see
+    # run_escalation.py) -- still proves the pin (not "easy", the live
+    # setting at resume time) by composing against normal's own
+    # multiplier specifically.
+    from run_escalation import escalation_for_floor
+    escalation = escalation_for_floor(0)
+    assert game.wave_manager.enemy_hp_multiplier == pytest.approx(
+        DIFFICULTY_MODES["normal"].enemy_hp_multiplier * escalation.enemy_hp_multiplier
+    )
 
 
 def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
@@ -1950,7 +1968,12 @@ def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
 
     assert game.active_run.difficulty == "normal"
     level = LEVELS[game.current_level_id]
-    assert game.economy.gold == level.starting_gold  # normal's 1.0x, not hard's 0.85x
+    # normal's 1.0x, not hard's 0.85x -- still scaled by row 0's own
+    # early-grace starting-gold bonus (see run_escalation.py), which
+    # applies regardless of difficulty.
+    from run_escalation import escalation_for_floor
+    escalation = escalation_for_floor(0)
+    assert game.economy.gold == round(level.starting_gold * escalation.starting_gold_multiplier)
 
 
 def test_daily_run_records_floors_cleared_on_game_over_and_keeps_the_best_score(game):
