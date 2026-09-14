@@ -19,6 +19,7 @@ SETTINGS_PATH = module_relative_path(__file__, "player_settings.json")
 
 DEFAULTS = {
     "fullscreen": False,
+    "sound_enabled": True,
     "difficulty": "normal",
     "window_size": [settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT],
 }
@@ -27,6 +28,7 @@ DEFAULTS = {
 def _merge_with_defaults(data):
     merged = dict(DEFAULTS)
     merged["fullscreen"] = bool(data.get("fullscreen", DEFAULTS["fullscreen"]))
+    merged["sound_enabled"] = bool(data.get("sound_enabled", DEFAULTS["sound_enabled"]))
     merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
     merged["window_size"] = _coerce_window_size(data.get("window_size"))
     return merged

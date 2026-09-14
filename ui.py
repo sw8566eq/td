@@ -1118,12 +1118,13 @@ WINDOW_SIZE_PRESETS = {
     "window_1600x960": (1600, 960),
 }
 
-# "fullscreen" toggles on/off; each difficulty.DIFFICULTY_ORDER key picks
-# that difficulty.DIFFICULTY_MODES entry directly (so get_clicked_settings_
-# option's result plugs straight into Game.set_difficulty with no
-# translation); each WINDOW_SIZE_PRESETS key likewise plugs straight into
-# Game.set_window_size; "back" returns to the menu.
-SETTINGS_OPTION_ORDER = ["fullscreen", *DIFFICULTY_ORDER, *WINDOW_SIZE_PRESETS, "back"]
+# "fullscreen"/"sound" each toggle on/off; each difficulty.DIFFICULTY_ORDER
+# key picks that difficulty.DIFFICULTY_MODES entry directly (so
+# get_clicked_settings_option's result plugs straight into Game.
+# set_difficulty with no translation); each WINDOW_SIZE_PRESETS key
+# likewise plugs straight into Game.set_window_size; "back" returns to the
+# menu.
+SETTINGS_OPTION_ORDER = ["fullscreen", "sound", *DIFFICULTY_ORDER, *WINDOW_SIZE_PRESETS, "back"]
 
 
 def _settings_button_rect(index):
@@ -1171,14 +1172,17 @@ def _draw_settings_button(surface, font, rect, label, selected):
     surface.blit(text, text.get_rect(center=rect.center))
 
 
-def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, difficulty_key,
-                          window_size):
+def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, sound_enabled,
+                          difficulty_key, window_size):
     surface.fill(settings.COLOR_BG)
     title = font.render("Settings", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
 
     fullscreen_label = f"Fullscreen: {'On' if fullscreen else 'Off'}"
     _draw_settings_button(surface, small_font, settings_rects["fullscreen"], fullscreen_label, fullscreen)
+
+    sound_label = f"Sound: {'On' if sound_enabled else 'Off'}"
+    _draw_settings_button(surface, small_font, settings_rects["sound"], sound_label, sound_enabled)
 
     for key in DIFFICULTY_ORDER:
         label = f"Difficulty: {DIFFICULTY_MODES[key].display_name}"

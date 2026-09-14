@@ -979,6 +979,97 @@ following this same three-step shape: a class in `effects.py`, a per-frame event
 produces the event, and one drain site in `Game.update()` -- never a new effect spawned directly
 from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering.
 
+### Audio
+
+`audio.py` mirrors `assets.py` closely (read that module's own docstring first): every sound is
+referenced elsewhere by a logical name (`"tower_placed"`, `"enemy_killed"`, ...), never a file
+path. `SoundManager` (constructed once on `Game` as `self.audio`, right after `self.assets`,
+reusing `assets.DEFAULT_ASSET_ROOT` directly rather than recomputing the same path a second way --
+both modules' files live in the same directory, so it's the identical root) looks the name up in
+`SOUND_MANIFEST` for a relative path under `assets/sfx/` plus a fallback synthesis recipe -- a
+tuple of `SynthSpec` "notes" (waveform, an optional linear frequency sweep, a simple
+attack/decay/sustain/release envelope) -- if the file exists it's loaded and decoded by SDL exactly
+like a real sprite; otherwise it's synthesized in pure Python (`array`/`math`/`random`, no numpy)
+into a raw PCM buffer handed to `pygame.mixer.Sound(buffer=...)`. This is audio's counterpart to
+`AssetManager`'s colored-rect placeholders -- a deliberately "chiptune" aesthetic matching the
+game's own placeholder-shape visual style, not an attempt at realism -- and the same "dropping a
+real file in is a files-only change" precedent applies to `assets/sfx/`. Synthesized sounds are
+cached per `SoundManager` instance for the process's own lifetime, never written to disk --
+`assets/sfx/` stays empty except its own `.gitkeep` until a human drops real files in, exactly like
+every other `assets/` subfolder. Like `AssetManager`, `get()` itself stays lazy (synthesizes/loads a
+cue on its own first request), but `SoundManager.preload_all()` exists to pay every cue's one-time
+synthesis cost up front instead, on demand -- a rare cue (`"boss_defeated"`, played once per run at
+a dramatic moment) landing its own ~15-20ms of synthesis as a frame hitch on exactly the frame it
+needs to play cleanly would be the worst possible time for that cost. `main.py` (a real launch
+only) calls it once, right after constructing `Game()` and before `game.run()` starts the frame
+loop, so play sees a warm cache before combat ever starts. It's deliberately *not* called from
+`SoundManager.__init__`/`Game.__init__` themselves, though -- every test's own `Game()`/
+`playing_game` fixture (and the `run-td` skill's own driver) also constructs a real `Game()`, many
+times over, with no use for a warm cache; folding preloading into construction itself would make
+every one of those pay the full ~100ms manifest-wide synthesis cost too, for no benefit any of them
+can use -- measured to nearly triple the whole test suite's wall time for exactly that reason.
+
+Unlike a placeholder `Surface`, a synthesized sound's raw bytes are coupled to the mixer's *actual*
+initialized sample format -- `pygame.mixer.get_init()`'s own return (frequency/size/channels), not
+necessarily what `Game.__init__` requested it with -- so `SoundManager` reads that back once at
+construction and builds a matching encoder (bit depth, signedness, channel count) generically
+rather than assuming one fixed shape (`audio._encoder_for`). An unrecognized format disables
+*synthesis only*; a real on-disk file still plays regardless, since SDL decodes those independently
+of anything this module builds by hand. `pygame.mixer.init()` itself is wrapped in a `try`/`except`
+in `Game.__init__`, same "fall back gracefully rather than crash" spirit as `AssetManager`'s own
+placeholder fallback -- a machine with genuinely no audio device (not even a dummy/null one
+configured) leaves the game fully playable with sound silently, permanently disabled for that
+session; `SoundManager` itself independently checks `pygame.mixer.get_init()` right after, so it
+finds out the mixer never came up regardless of which branch ran, with no result needing to thread
+through from `Game.__init__`. `SoundManager.__init__` also raises `pygame.mixer.set_num_channels()`
+from SDL_mixer's default of 8 to `audio.NUM_CHANNELS` (32) itself, right there rather than at
+whichever call site happens to construct it -- a busy board can have well over a dozen towers
+firing, several projectiles resolving, and an enemy dying all in the same frame, and `Sound.play()`
+simply drops a cue rather than stealing a channel once every one is already busy, so every
+`SoundManager` gets this fix for free regardless of construction path (`Game.__init__`, a test, ...)
+rather than needing each caller to remember the extra call.
+
+`Tower.FIRE_SOUND` (a single logical-name string, the same shape as `sprite_name`, not a registry
+like `EXTRA_STATS`/`SPECIALIZATIONS`, since a tower only ever has one fire cue) names which cue a
+tower's own shot plays; a couple of subclasses override the base class's generic default to group
+towers into a few audibly distinct families rather than one bespoke sound per tower type
+(`CannonTower`'s heavier thump, `LightningTower`'s zap) -- `SupportTower` sets it to `None`
+(defense in depth; it never attacks at all, so it never reaches the code path below regardless).
+`Tower.fired_this_frame` extends the *spirit* of the drain-a-per-frame-event-list idiom above to
+sound, but as a plain bool rather than a list: set once per successful shot in `update()` (the
+exact spot `shots_fired` increments), read and reset by `Game.update()`'s existing two-pass tower
+loop into a `self.audio.play(tower.FIRE_SOUND)` call. A bool, not a list, because one `update()`
+call can structurally fire at most once -- unlike `Enemy.damage_events`/`Projectile.impact_events`,
+there's nothing here that could ever accumulate more than one same-frame entry to iterate, so a
+list would only add an allocate/iterate/clear cost every frame for every tower with nothing to show
+for it. Every other cue reuses an event list or call site this codebase already had for an
+unrelated reason, rather than any new
+plumbing into `Tower`/`Enemy`/`WaveManager` themselves (same "never call out to a presentation
+concern from inside simulation code" rule the visual-effects idiom already establishes): enemy-hit
+(small vs. splash, keyed off `splash_radius is not None`) and enemy-killed ride
+`Projectile.impact_events`/the existing death-poof `ExpandingRing` spawn site; wave start is a new
+before/after check on `WaveManager.state` transitioning into `SPAWNING`, mirroring the existing
+`current_wave_number`/`authored_waves_cleared` before/after checks right next to it in
+`Game.update()` (catches wave 1 via `skip_delay()`, every later authored wave, and every
+endless-generated wave uniformly, since `_begin_wave()` is the only place that state is ever
+entered); tower placed/upgraded/specialized/sold, floor cleared, boss defeated, game over/victory,
+a Shop-purchased relic or plain tower unlock, and a Treasure/Random-Event-granted relic or tower
+(the latter two resolved inside `events.resolve_event_option`, which can't call back into `Game` --
+see its own docstring -- so `Game._resolve_event_choice` plays the matching cue itself, off that
+function's own `{"relic": key}`/`{"tower": name}` return, rather than inheriting one from
+`_grant_relic`/`_try_buy_shop_item` the way the Shop and Treasure paths do) all play from whichever
+`Game`-level method already owned that event. Achievement/meta-progression unlocks share one cue
+via `_queue_toast()`'s own single choke point, which also means a boss-defeat frame layers its own
+dedicated fanfare underneath that same generic toast ding -- accepted as reasonable layering, not a
+bug. Every failure path (an unaffordable purchase, an unbuildable placement, ...) stays exactly as
+silent as it already was -- no new "denied" sound anywhere, mirroring each of those methods'
+existing silent-no-op precedent.
+
+`GameState.SETTINGS`'s "Sound: On/Off" row is `self.sound_enabled`, persisted via
+`player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
+`set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). Sound has no
+volume slider in v1, just the one toggle.
+
 ### Assets
 
 Every sprite is referenced elsewhere by a logical name (`"tower_basic"`, `"enemy_grunt"`, ...),

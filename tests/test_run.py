@@ -45,6 +45,7 @@ from conftest import (
     mock_mouse_pos,
     clear_mouse_mock,
     start_first_floor,
+    spy_on_audio,
 )
 
 
@@ -331,6 +332,16 @@ def test_floor_clear_enters_floor_cleared_and_captures_lives_and_shop_currency(g
     assert game.active_run.current_row == 0
     assert game.active_run.lives == 3
     assert game.active_run.shop_currency == shop.income_for_floor(0, 9999, is_elite=False)
+
+
+def test_floor_clear_plays_the_floor_cleared_sound(game):
+    start_first_floor(game, seed=1)
+    finish_all_waves(game)
+    played = spy_on_audio(game)
+
+    game.update(dt=0.01)
+
+    assert "floor_cleared" in played
 
 
 def test_floor_clear_never_reaches_classic_victory(game):
@@ -1082,6 +1093,27 @@ def test_adrenaline_rush_only_boosts_fire_rate_while_down_to_the_last_life(game)
     assert tower.effective_fire_rate() == base_fire_rate
 
 
+def test_lose_a_life_plays_the_life_lost_sound(game):
+    start_first_floor(game, seed=1)
+    game.economy.lives = 3
+    played = spy_on_audio(game)
+
+    game._lose_a_life()
+
+    assert played == ["life_lost"]
+
+
+def test_guardians_reprieve_interception_plays_no_life_lost_sound(game):
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["guardians_reprieve"]
+    game.economy.lives = 1
+    played = spy_on_audio(game)
+
+    game._lose_a_life()  # intercepted -- the charge is spent, not a real loss
+
+    assert played == []
+
+
 def test_guardians_reprieve_saves_the_run_from_permadeath_once(game):
     start_first_floor(game, seed=1)
     game.active_run.relics = ["guardians_reprieve"]
@@ -1434,6 +1466,17 @@ def test_boss_defeated_flips_once_the_boss_nodes_authored_waves_clear(game):
     assert game.state == GameState.PLAYING
 
 
+def test_boss_defeated_plays_the_boss_defeated_sound(game):
+    _begin_run_with_map(game, ["combat", "boss"])
+    game._enter_node("1-0")
+    _clear_the_current_waves_final_authored_wave(game)
+    played = spy_on_audio(game)
+
+    game.update(dt=0.01)
+
+    assert "boss_defeated" in played
+
+
 def test_boss_defeated_does_not_flip_for_an_ordinary_combat_node(game):
     _begin_run_with_map(game, ["combat", "combat"])
     game._enter_node("1-0")
@@ -1601,6 +1644,18 @@ def test_permadeath_ends_the_run_but_preserves_active_run_state(game):
     assert game.state == GameState.GAME_OVER
     assert game.active_run is not None
     assert game.active_run.seed == seed
+
+
+def test_permadeath_plays_the_game_over_sound(game):
+    start_first_floor(game, seed=1)
+    game.economy.lives = 1
+    game.enemies = []
+    game.economy.lose_life()
+    played = spy_on_audio(game)
+
+    game.update(dt=0.01)
+
+    assert "game_over" in played
 
 
 def test_permadeath_in_sandbox_mode_records_no_run_history_or_meta_progress(game):

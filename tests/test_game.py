@@ -36,6 +36,7 @@ from conftest import (
     make_game,
     mock_mouse_pos,
     clear_mouse_mock,
+    spy_on_audio,
 )
 
 
@@ -204,6 +205,25 @@ def test_time_scale_speeds_up_enemy_movement(playing_game):
     scaled_distance = enemy.distance_traveled - baseline_distance
 
     assert scaled_distance == pytest.approx(enemy.speed * 0.1 * 3.0)
+
+
+def test_starting_wave_one_plays_the_wave_start_sound(playing_game):
+    playing_game.wave_manager.skip_delay()  # AWAITING_START -> BETWEEN_WAVES, timer zeroed
+    played = spy_on_audio(playing_game)
+
+    playing_game.update(dt=0.01)  # timer already <= 0 -- begins wave 1 this same tick
+
+    assert played == ["wave_start"]
+
+
+def test_a_frame_with_no_wave_transition_plays_no_wave_start_sound(playing_game):
+    playing_game.wave_manager.skip_delay()
+    playing_game.update(dt=0.01)  # wave 1 has already begun
+    played = spy_on_audio(playing_game)
+
+    playing_game.update(dt=0.01)  # mid-wave -- no new transition into SPAWNING
+
+    assert "wave_start" not in played
 
 
 def test_speed_button_click_cycles_time_scale(playing_game):
@@ -644,6 +664,18 @@ def test_try_sell_tower_removes_it_and_refunds_gold(playing_game):
     assert tower not in playing_game.towers
     assert playing_game.economy.gold == gold_before + refund
     assert playing_game.grid.is_buildable(anchor_col, anchor_row)
+
+
+def test_try_sell_tower_plays_the_tower_sold_sound(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    played = spy_on_audio(playing_game)
+
+    assert playing_game.try_sell_tower(tower) is True
+
+    assert played == ["tower_sold"]
 
 
 def test_try_sell_tower_keeps_it_in_sold_towers_for_the_results_screen(playing_game):
@@ -1265,6 +1297,32 @@ def test_try_place_tower_records_the_towers_built_achievement_counter(playing_ga
     assert counters["towers_built"] == 1
 
 
+def test_try_place_tower_plays_the_tower_placed_sound(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    played = spy_on_audio(playing_game)
+
+    playing_game.try_place_tower(anchor_col, anchor_row)
+
+    # Not asserted as the *only* sound played: a fresh game's very first
+    # tower placed also crosses the "towers_built" achievement's own
+    # threshold, which plays its own "achievement_toast" cue via
+    # _queue_toast -- see test_try_place_tower_records_the_towers_built_
+    # achievement_counter just above.
+    assert "tower_placed" in played
+
+
+def test_try_place_tower_plays_no_sound_on_failure(playing_game):
+    path_col, path_row = next(iter(playing_game.grid.path_cells))
+    n = settings.SUBTILES_PER_TILE
+    playing_game.selected_tower_name = "basic"
+    played = spy_on_audio(playing_game)
+
+    assert playing_game.try_place_tower(path_col * n, path_row * n) is False
+
+    assert played == []
+
+
 def test_try_place_tower_does_not_record_an_achievement_in_sandbox_mode(playing_game):
     playing_game.sandbox = True
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
@@ -1297,6 +1355,18 @@ def test_try_upgrade_tower_succeeds_and_deducts_gold(playing_game):
     assert playing_game.try_upgrade_tower(tower) is True
     assert tower.level == 2
     assert playing_game.economy.gold == gold_before - cost
+
+
+def test_try_upgrade_tower_plays_the_tower_upgraded_sound(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    played = spy_on_audio(playing_game)
+
+    assert playing_game.try_upgrade_tower(tower) is True
+
+    assert played == ["tower_upgraded"]
 
 
 def test_maxing_a_tower_records_the_towers_maxed_achievement_counter_once(playing_game):
@@ -1780,6 +1850,16 @@ def test_settings_click_toggles_fullscreen(game):
     assert game.fullscreen is False
 
 
+def test_settings_click_toggles_sound(game):
+    assert game.sound_enabled is True
+    game._handle_settings_click(game.settings_rects["sound"].center)
+    assert game.sound_enabled is False
+    assert game.audio.enabled is False
+    game._handle_settings_click(game.settings_rects["sound"].center)
+    assert game.sound_enabled is True
+    assert game.audio.enabled is True
+
+
 def test_settings_click_picks_a_difficulty(game):
     game._handle_settings_click(game.settings_rects["hard"].center)
     assert game.difficulty == "hard"
@@ -1809,6 +1889,7 @@ def test_settings_click_on_back_returns_to_menu(game):
 def test_settings_click_off_any_button_is_a_no_op(game):
     game._handle_settings_click((0, 0))
     assert game.fullscreen is False
+    assert game.sound_enabled is True
     assert game.difficulty == "normal"
 
 
@@ -1816,6 +1897,12 @@ def test_fullscreen_setting_persists_to_the_settings_file(game):
     game.set_fullscreen(True)
     reloaded = player_settings.load_settings(game.settings_path)
     assert reloaded["fullscreen"] is True
+
+
+def test_sound_setting_persists_to_the_settings_file(game):
+    game.set_sound_enabled(False)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["sound_enabled"] is False
 
 
 def test_difficulty_setting_persists_to_the_settings_file(game):
