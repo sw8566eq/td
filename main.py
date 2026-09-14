@@ -30,6 +30,13 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     game = Game(unlimited_gold=args.unlimited_gold)
+    # Warm every sound cue's synthesis cache now, before the frame loop
+    # starts, rather than paying each cue's one-time cost mid-play on
+    # whatever frame first triggers it -- see SoundManager.preload_all's
+    # own docstring for why this lives here (a real launch only) rather
+    # than inside Game.__init__ itself (which every test's own fixture
+    # also constructs, many times over, with no use for a warm cache).
+    game.audio.preload_all()
     if args.editor:
         game.state = GameState.EDITOR
     game.run()

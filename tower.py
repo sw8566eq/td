@@ -55,6 +55,14 @@ class Tower:
     sprite_name = ""
     display_name = "Tower"
 
+    # Logical audio.SOUND_MANIFEST name played once per successful shot
+    # (see fired_this_frame below) -- same single-string-per-class shape as
+    # sprite_name, not a registry like EXTRA_STATS/SPECIALIZATIONS, since a
+    # tower only ever has one fire cue. None means silent; SupportTower
+    # sets that (defense in depth -- it never reaches the fire loop that
+    # would set fired_this_frame at all, since it has its own update()).
+    FIRE_SOUND = "tower_fire_default"
+
     # True only for SupportTower -- a tower that never attacks at all, just
     # buffs other towers in range (see SupportTower.update()). Gates the
     # stats panel's hard-coded Damage/Range/Fire-rate and Targeting rows
@@ -159,6 +167,17 @@ class Tower:
         self.shots_hit = 0
         self.damage_dealt = 0.0
         self.kills = 0
+
+        # A same-frame flag in the spirit of Enemy.damage_events/
+        # Projectile.impact_events's own drain-a-per-frame-event-list idiom
+        # (see CLAUDE.md's "Visual effects" section) -- set once per
+        # successful fire in update() below, read (and reset) into an
+        # audio.SoundManager.play(FIRE_SOUND) call by Game.update()'s
+        # existing two-pass tower loop. A plain bool, not a list, since one
+        # update() call can structurally fire at most once -- there's
+        # nothing here to accumulate several same-frame events the way a
+        # splash/chain hit's several impact_events entries can.
+        self.fired_this_frame = False
 
         # Recomputed every frame by reset_aura()/receive_aura() (see
         # Game.update()'s two-pass tower loop) -- 1.0 means "no support
@@ -386,6 +405,7 @@ class Tower:
             return
 
         self.shots_fired += 1
+        self.fired_this_frame = True
         projectile = self.create_projectile(target)
         # Relic-driven, chance-based hit effects apply uniformly to every
         # tower's shots -- copied onto the projectile here, the one choke
@@ -746,6 +766,7 @@ class CannonTower(Tower):
     splash_radius = 55
     sprite_name = "tower_cannon"
     display_name = "Cannon"
+    FIRE_SOUND = "tower_fire_heavy"
     EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
     # A lobbed, ground-impact blast has nothing to detonate against in
     # midair -- see enemy.py's FlyingEnemy.
@@ -872,6 +893,7 @@ class LightningTower(Tower):
     max_chain_targets = float("inf")  # arcs to every unvisited enemy it can reach, no cap
     sprite_name = "tower_lightning"
     display_name = "Lightning"
+    FIRE_SOUND = "tower_fire_zap"
     EXTRA_STATS = (
         ("Chain range", "chain_range", _format_px),
         ("Max targets", "max_chain_targets", _format_count),
@@ -1135,6 +1157,7 @@ class SupportTower(Tower):
     sprite_name = "tower_support"
     display_name = "Support"
     IS_SUPPORT = True
+    FIRE_SOUND = None  # never fires -- see the class docstring above
 
     buff_damage_multiplier = 1.25
     buff_range_multiplier = 1.15

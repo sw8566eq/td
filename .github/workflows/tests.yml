@@ -11,12 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Game() and a couple of AssetManager tests open a real pygame
-      # window; the SDL "dummy" driver lets that happen with no real
-      # display. tests/conftest.py (for every Game-level module) and
-      # tests/test_assets.py already set this themselves before pygame is
-      # touched, so it's set here mainly for clarity/robustness rather than
-      # because CI would fail without it.
+      # window and initialize the audio mixer; the SDL "dummy" drivers let
+      # that happen with no real display or sound device. tests/conftest.py
+      # (for every Game-level module) and tests/test_assets.py/
+      # tests/test_audio.py already set these themselves before pygame is
+      # touched, so they're set here mainly for clarity/robustness rather
+      # than because CI would fail without them.
       SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
     steps:
       - uses: actions/checkout@v4
 

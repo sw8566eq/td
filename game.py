@@ -8,6 +8,7 @@ from enum import Enum, auto
 import pygame
 
 import achievements
+import audio
 import card_pool
 import daily_challenge
 import difficulty
@@ -249,6 +250,7 @@ class Game:
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
         saved_settings = player_settings.load_settings(self.settings_path)
         self.fullscreen = saved_settings["fullscreen"]
+        self.sound_enabled = saved_settings["sound_enabled"]
         # Windowed size -- read here so the very first apply_display_mode()
         # call below already restores it (today's actual prior behavior:
         # dragging the window to a new size was never persisted across a
@@ -275,6 +277,23 @@ class Game:
         self.tiny_font = pygame.font.SysFont(None, 16)  # tower upgrade badges
 
         self.assets = AssetManager()
+
+        # Defensive, same "fall back gracefully rather than crash" spirit
+        # as AssetManager's own placeholder fallback -- a sandboxed runner
+        # or a real machine with no audio device at all (not even a dummy/
+        # null one configured) can make pygame.mixer.init() raise, and the
+        # game must still run with sound silently disabled rather than
+        # fail to start. audio.SoundManager independently checks pygame.
+        # mixer.get_init() itself right after (and raises its own channel
+        # count/preloads its own cues from there too), so it finds out the
+        # mixer never came up regardless of which branch below ran -- no
+        # result needs threading through from here.
+        try:
+            pygame.mixer.init()
+        except pygame.error:
+            pass
+        self.audio = audio.SoundManager(enabled=self.sound_enabled)
+
         self.settings_rects = ui.build_settings_rects()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
@@ -572,6 +591,7 @@ class Game:
         )
         self._record_meta_progress("total_floors_cleared")
         self._cache_tower_results()
+        self.audio.play("floor_cleared")
         self.state = GameState.FLOOR_CLEARED
 
     def _record_run_permadeath(self):
@@ -619,6 +639,7 @@ class Game:
         self.active_run.boss_defeated = True
         self._record_meta_progress("bosses_defeated")
         self._record_achievement("bosses_defeated")
+        self.audio.play("boss_defeated")
         self._queue_toast("Boss defeated! Fighting on for score...")
 
     # --- The run's own branching map ---
@@ -745,6 +766,7 @@ class Game:
             self._grant_relic(item.key)
         else:
             run.unlocked_towers.append(item.key)
+            self.audio.play("tower_unlocked_shop")
         self.shop_purchased_indices.add(index)
 
     def _grant_relic(self, relic_key):
@@ -758,6 +780,7 @@ class Game:
         can't call back into Game)."""
         self.active_run.relics.append(relic_key)
         self._apply_one_time_relic_bonus(relics.RELICS[relic_key])
+        self.audio.play("relic_acquired")
 
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
@@ -797,6 +820,16 @@ class Game:
         self.event_resolution = events.resolve_event_option(
             run, option, item_rng, meta_progression_path=self.meta_progression_path,
         )
+        # events.resolve_event_option grants its own relic/tower directly
+        # onto `run` rather than routing through _grant_relic/
+        # _try_buy_shop_item (see that function's own docstring for why it
+        # can't call back into Game) -- so, unlike those two, it needs its
+        # own explicit sound here rather than inheriting one from a shared
+        # call site. Same two cues either way.
+        if "relic" in self.event_resolution:
+            self.audio.play("relic_acquired")
+        elif "tower" in self.event_resolution:
+            self.audio.play("tower_unlocked_shop")
         self.event_chosen_option = option
         self.event_phase = "resolved"
 
@@ -1029,6 +1062,11 @@ class Game:
         self.apply_display_mode()
         self._save_player_settings()
 
+    def set_sound_enabled(self, value):
+        self.sound_enabled = bool(value)
+        self.audio.set_enabled(self.sound_enabled)
+        self._save_player_settings()
+
     def set_difficulty(self, key):
         if key in difficulty.DIFFICULTY_MODES:
             self.difficulty = key
@@ -1048,6 +1086,7 @@ class Game:
         player_settings.save_settings(
             {
                 "fullscreen": self.fullscreen,
+                "sound_enabled": self.sound_enabled,
                 "difficulty": self.difficulty,
                 "window_size": list(self.window_size),
             },
@@ -1831,6 +1870,8 @@ class Game:
         option = ui.get_clicked_settings_option(pos, self.settings_rects)
         if option == "fullscreen":
             self.set_fullscreen(not self.fullscreen)
+        elif option == "sound":
+            self.set_sound_enabled(not self.sound_enabled)
         elif option in difficulty.DIFFICULTY_MODES:
             self.set_difficulty(option)
         elif option in ui.WINDOW_SIZE_PRESETS:
@@ -1989,6 +2030,7 @@ class Game:
         self.achievement_toasts.append(effects.FloatingText(
             (settings.PLAY_WIDTH // 2, y), text, lifetime=3.0, rise_speed=8.0, color=settings.COLOR_GOLD,
         ))
+        self.audio.play("achievement_toast")
 
     def _handle_click(self, pos):
         if self.state != GameState.PLAYING:
@@ -2119,6 +2161,7 @@ class Game:
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
+        self.audio.play("tower_placed")
         return True
 
     def _construct_tower(self, tower_cls, anchor_col, anchor_row):
@@ -2231,6 +2274,7 @@ class Game:
         # later no-op call.
         if tower.is_max_level:
             self._record_achievement("towers_maxed")
+        self.audio.play("tower_upgraded")
         return True
 
     def try_specialize_tower(self, tower, key):
@@ -2245,6 +2289,7 @@ class Game:
         self._spend_gold(cost)
         tower.specialize(key)
         self._record_achievement("towers_specialized")
+        self.audio.play("tower_upgraded")
         return True
 
     def try_sell_tower(self, tower):
@@ -2258,6 +2303,7 @@ class Game:
         self._recompute_tower_density_bonuses()  # a removed neighbor may affect others' counts too
         if self.selected_tower is tower:
             self.selected_tower = None
+        self.audio.play("tower_sold")
         return True
 
     def _tower_results(self):
@@ -2301,6 +2347,7 @@ class Game:
             run.used_guardians_reprieve = True
             return
         self.economy.lose_life()
+        self.audio.play("life_lost")
 
     def _spend_gold(self, amount):
         """The one choke point for actually spending gold -- every place
@@ -2343,6 +2390,13 @@ class Game:
             tower.set_last_stand_multiplier(last_stand_active)
         for tower in self.towers:
             tower.update(dt, self.enemies, self.projectiles, self.towers)
+            # In the spirit of the impact/damage drains just below --
+            # Tower.fired_this_frame is set once per successful shot in
+            # Tower.update() itself (see tower.py), read and reset here
+            # since this loop already visits every tower.
+            if tower.fired_this_frame:
+                self.audio.play(tower.FIRE_SOUND)
+                tower.fired_this_frame = False
 
         for projectile in self.projectiles:
             projectile.update(dt, self.enemies)
@@ -2362,6 +2416,7 @@ class Game:
                     impact_pos, max_radius=max_radius, duration=duration,
                     color=settings.COLOR_RANGE_PREVIEW,
                 ))
+                self.audio.play("enemy_hit_splash" if splash_radius else "enemy_hit_small")
             projectile.impact_events.clear()
         self.projectiles = [p for p in self.projectiles if not p.dead]
 
@@ -2429,6 +2484,7 @@ class Game:
                 self.impact_effects.append(effects.ExpandingRing(
                     enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
                 ))
+                self.audio.play("enemy_killed")
             elif enemy.reached_goal:
                 self._lose_a_life()
             else:
@@ -2452,8 +2508,17 @@ class Game:
         # for an endless-loaded node, so authored_waves_cleared is the
         # signal that actually can.
         wave_number_before_update = self.wave_manager.current_wave_number
+        wave_state_before_update = self.wave_manager.state
         boss_cleared_before = self.wave_manager.authored_waves_cleared
         self.enemies.extend(self.wave_manager.update(dt, self.enemies))
+        # Same before/after idiom as wave_number_before_update/
+        # boss_cleared_before just below -- catches wave 1 (via
+        # skip_delay()), every later authored wave, and every endless-
+        # generated wave uniformly, since _begin_wave() is the only place
+        # WaveState.SPAWNING is ever entered.
+        if (wave_state_before_update != WaveState.SPAWNING
+                and self.wave_manager.state == WaveState.SPAWNING):
+            self.audio.play("wave_start")
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
@@ -2462,6 +2527,7 @@ class Game:
 
         if self.economy.is_out_of_lives:
             self.state = GameState.GAME_OVER
+            self.audio.play("game_over")
             self._cache_tower_results()
             self._delete_save_if_this_run_was_resumed()
             if self.active_run is not None:
@@ -2486,6 +2552,7 @@ class Game:
                 self._advance_run_floor()
             else:
                 self.state = GameState.VICTORY
+                self.audio.play("victory")
                 self._cache_tower_results()
                 self._delete_save_if_this_run_was_resumed()
 
@@ -2502,7 +2569,7 @@ class Game:
         if self.state == GameState.SETTINGS:
             ui.draw_settings_screen(
                 self.screen, self.font, self.small_font, self.settings_rects,
-                self.fullscreen, self.difficulty, self.window_size,
+                self.fullscreen, self.sound_enabled, self.difficulty, self.window_size,
             )
             pygame.display.flip()
             return

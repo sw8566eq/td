@@ -1,12 +1,14 @@
 """Shared fixtures and helpers for the Game-level test modules.
 
-Game() opens a real pygame window, so this module forces the SDL dummy
-video driver before pygame ever gets touched -- these tests must be able
-to run headless in CI/sandboxes with no real display, same as the manual
-smoke tests this project has been relying on during development. Living in
-conftest.py means that happens once, before any test module in this
-directory is imported, rather than each of them having to remember to do
-it first (test_assets.py still does its own, since it stands alone).
+Game() opens a real pygame window and initializes the audio mixer, so this
+module forces the SDL dummy video *and* audio drivers before pygame ever
+gets touched -- these tests must be able to run headless in CI/sandboxes
+with no real display or sound device, same as the manual smoke tests this
+project has been relying on during development. Living in conftest.py
+means that happens once, before any test module in this directory is
+imported, rather than each of them having to remember to do it first
+(test_assets.py and test_audio.py still do their own, since they stand
+alone).
 
 The Game-level tests are split across three modules by concern, all of
 them drawing their fixtures from here: test_game.py (state machine, input
@@ -21,6 +23,7 @@ editor, wave editor, and level browser screens as driven by Game).
 import os
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 import pytest  # noqa: E402
@@ -178,6 +181,17 @@ def mock_key_mods(mods):
     on, so tests needing a specific modifier state (Ctrl+Z/Ctrl+Y) mock it
     directly instead."""
     pygame.key.get_mods = lambda: mods
+
+
+def spy_on_audio(game):
+    """Replace game.audio.play with a recorder and return the list it
+    appends logical sound names to -- lets a test assert on *which* cue a
+    game event triggers without needing a real audio device (there isn't
+    one under the dummy driver) or touching pygame.mixer.Sound at all,
+    which is an immutable C type that can't be monkeypatched directly."""
+    played = []
+    game.audio.play = played.append
+    return played
 
 
 def clear_key_mods():

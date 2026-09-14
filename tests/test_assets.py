@@ -7,17 +7,20 @@ these tests must not become flaky just because someone's mid-way through
 adding a sprite pack.
 
 A couple of tests below open a real pygame window, so this module forces
-the SDL dummy video driver before pygame ever gets touched -- same as
-test_game.py, and for the same reason: these must run headless in CI/
-sandboxes with no real display, regardless of test collection order (this
-file collects before test_game.py alphabetically, so it can't rely on that
-module's own os.environ.setdefault() having already run).
+the SDL dummy video (and, for the same belt-and-suspenders reason, audio)
+driver before pygame ever gets touched -- same as test_game.py/
+test_audio.py, and for the same reason: these must run headless in CI/
+sandboxes with no real display or sound device, regardless of test
+collection order (this file collects before test_game.py alphabetically,
+so it can't rely on that module's own os.environ.setdefault() having
+already run).
 """
 
 import os
 import tempfile
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 import pytest  # noqa: E402
