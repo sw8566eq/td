@@ -756,7 +756,7 @@ class Game:
         can't drift."""
         run = self.active_run
         item = self.draft_choices[index]
-        price = shop.price_for(item, len(self.shop_purchased_indices))
+        price = shop.price_for(item, len(self.shop_purchased_indices), self.relic_modifiers.shop_price_multiplier)
         unlimited = self.economy.unlimited_gold
         if not shop.can_afford(run.shop_currency, price, unlimited):
             return
@@ -2218,6 +2218,9 @@ class Game:
         tower.relic_damage_vs_flying_multiplier = self.relic_modifiers.damage_vs_flying_multiplier
         tower.relic_damage_vs_shielded_multiplier = self.relic_modifiers.damage_vs_shielded_multiplier
         tower.relic_damage_vs_healer_multiplier = self.relic_modifiers.damage_vs_healer_multiplier
+        tower.relic_damage_vs_fast_multiplier = self.relic_modifiers.damage_vs_fast_multiplier
+        tower.relic_splash_radius_bonus_multiplier = self.relic_modifiers.tower_splash_radius_multiplier
+        tower.relic_lightning_chain_range_bonus_multiplier = self.relic_modifiers.lightning_chain_range_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
@@ -2652,6 +2655,7 @@ class Game:
                 self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
                 self.shop_purchased_indices, self.active_run.shop_currency,
                 self.shop_continue_button_rect, self.economy.unlimited_gold,
+                self.relic_modifiers.shop_price_multiplier,
             )
             pygame.display.flip()
             return

@@ -1,6 +1,9 @@
 import pygame
 
-from projectile import CHOKE_POINT_DISTANCE_THRESHOLD, GIANT_SLAYER_HP_THRESHOLD, OVERKILL_CARRY_RANGE, Projectile
+from projectile import (
+    CHOKE_POINT_DISTANCE_THRESHOLD, FAST_ENEMY_SPEED_THRESHOLD, GIANT_SLAYER_HP_THRESHOLD,
+    OVERKILL_CARRY_RANGE, Projectile,
+)
 
 
 class FakeEnemy:
@@ -777,6 +780,44 @@ def test_giant_slayer_does_not_apply_at_or_below_the_hp_threshold():
 def test_no_giant_slayer_bonus_when_no_relic_is_held():
     target = FakeEnemy((0, 0))
     target.max_hp = GIANT_SLAYER_HP_THRESHOLD + 1
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+# --- Interceptor Rounds (damage vs. a high-max-speed enemy) ---
+
+def test_interceptor_rounds_boosts_damage_against_a_fast_enemy():
+    target = FakeEnemy((0, 0))
+    target.max_speed = FAST_ENEMY_SPEED_THRESHOLD + 1
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_fast_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12
+
+
+def test_interceptor_rounds_does_not_apply_below_the_speed_threshold():
+    target = FakeEnemy((0, 0))
+    target.max_speed = FAST_ENEMY_SPEED_THRESHOLD - 1
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_fast_multiplier=1.20,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_interceptor_rounds_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.max_speed = FAST_ENEMY_SPEED_THRESHOLD + 1
     projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
 
     projectile.update(dt=1.0, enemies=[target])

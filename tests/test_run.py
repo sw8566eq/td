@@ -592,6 +592,31 @@ def test_buying_a_shop_item_deducts_its_escalated_price(game):
     assert game.active_run.shop_currency == currency_before - first_price - second_price
 
 
+def test_haggling_permit_relic_discounts_what_a_shop_purchase_charges(game):
+    # Unlike _enter_run_shop's plain default map, this run needs
+    # haggling_permit already held *before* the first floor loads, since
+    # relic_modifiers (what Game._try_buy_shop_item actually reads) is
+    # only ever recomputed at floor-load time -- see CLAUDE.md's own
+    # "every rng a node needs" section for the same "resolved once, at
+    # load time" shape this mirrors.
+    _begin_run_with_map(game, ["combat", "shop", "combat"], relics=["haggling_permit"])
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._enter_node("1-0")
+    assert len(game.draft_choices) >= 1
+    game.active_run.shop_currency = 9999
+    undiscounted_price = shop.price_for(game.draft_choices[0], 0)
+    currency_before = game.active_run.shop_currency
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    charged = currency_before - game.active_run.shop_currency
+    assert charged == shop.price_for(game.draft_choices[0], 0, discount_multiplier=0.85)
+    assert charged < undiscounted_price
+
+
 def test_buying_an_unaffordable_shop_item_does_nothing(game):
     _enter_run_shop(game)
     game.active_run.shop_currency = 0
@@ -1265,7 +1290,8 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = [
         "concussive_rounds", "disorienting_flash", "flak_rounds",
-        "breach_charges", "suppression_directive",
+        "breach_charges", "suppression_directive", "interceptor_rounds",
+        "shockwave_rounds", "arc_conductor",
     ]
     _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
@@ -1283,6 +1309,9 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     assert tower.relic_damage_vs_flying_multiplier == RELICS["flak_rounds"].damage_vs_flying_multiplier
     assert tower.relic_damage_vs_shielded_multiplier == RELICS["breach_charges"].damage_vs_shielded_multiplier
     assert tower.relic_damage_vs_healer_multiplier == RELICS["suppression_directive"].damage_vs_healer_multiplier
+    assert tower.relic_damage_vs_fast_multiplier == RELICS["interceptor_rounds"].damage_vs_fast_multiplier
+    assert tower.relic_splash_radius_bonus_multiplier == RELICS["shockwave_rounds"].tower_splash_radius_multiplier
+    assert tower.relic_lightning_chain_range_bonus_multiplier == RELICS["arc_conductor"].lightning_chain_range_multiplier
     assert not hasattr(tower, "relic_splitter_child_damage")
 
 

@@ -902,7 +902,8 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, a
 
 
 def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, hovered_index,
-                       purchased_indices, shop_currency, continue_button_rect, unlimited_gold=False):
+                       purchased_indices, shop_currency, continue_button_rect, unlimited_gold=False,
+                       discount_multiplier=1.0):
     """`choices` is a list of shop.ShopItem, mixing both card kinds
     together now that one shop visit offers towers and relics at once (see
     shop.build_offer) -- each item carries its own `kind` ("tower"/
@@ -914,7 +915,11 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     the layout, so the row doesn't reflow while shopping. `unlimited_gold`
     (see economy.py's own docstring) makes every item read as affordable
     regardless of `shop_currency`, mirroring how it already does for
-    battle gold in the build menu (see draw_hud). A full-screen state (see
+    battle gold in the build menu (see draw_hud). `discount_multiplier`
+    (a Haggling Permit-style relic's own shop_price_multiplier, default
+    1.0) is passed straight through to price_for -- see that function's
+    own docstring for why this and Game._try_buy_shop_item must always
+    agree on "the current price." A full-screen state (see
     GameState's own comment on why), not an overlay on a frozen board the
     way draw_victory_screen/draw_game_over_screen still are -- a Shop visit
     is reached from the map now, not always immediately after a fresh
@@ -937,7 +942,7 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
         # visit has already bought in total, not on which item it is (see
         # Game._try_buy_shop_item, which computes the identical value at
         # the moment of an actual purchase).
-        price = price_for(item, len(purchased_indices))
+        price = price_for(item, len(purchased_indices), discount_multiplier)
         affordable = can_afford(shop_currency, price, unlimited_gold)
         draw_card = _draw_relic_card if item.kind == "relic" else _draw_draft_card
         draw_card(surface, font, small_font, draft_choice_rects[index], item.key,

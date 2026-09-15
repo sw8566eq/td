@@ -510,20 +510,46 @@ def test_compose_relic_modifiers_sums_splitter_child_damage():
     assert modifiers.splitter_child_damage == pytest.approx(RELICS["containment_charges"].splitter_child_damage * 2)
 
 
+def test_compose_relic_modifiers_multiplies_damage_vs_fast_multiplier():
+    modifiers = compose_relic_modifiers(["interceptor_rounds", "interceptor_rounds"])
+    assert modifiers.damage_vs_fast_multiplier == RELICS["interceptor_rounds"].damage_vs_fast_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_tower_splash_radius_multiplier():
+    modifiers = compose_relic_modifiers(["shockwave_rounds", "shockwave_rounds"])
+    assert modifiers.tower_splash_radius_multiplier == RELICS["shockwave_rounds"].tower_splash_radius_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_lightning_chain_range_multiplier():
+    modifiers = compose_relic_modifiers(["arc_conductor", "arc_conductor"])
+    assert modifiers.lightning_chain_range_multiplier == RELICS["arc_conductor"].lightning_chain_range_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_shop_price_multiplier():
+    modifiers = compose_relic_modifiers(["haggling_permit", "haggling_permit"])
+    assert modifiers.shop_price_multiplier == RELICS["haggling_permit"].shop_price_multiplier ** 2
+
+
 def test_compose_relic_modifiers_no_relic_gap_fillers_leave_them_all_neutral():
     modifiers = compose_relic_modifiers(["prospectors_charm"])
     assert modifiers.damage_vs_flying_multiplier == 1.0
     assert modifiers.damage_vs_shielded_multiplier == 1.0
     assert modifiers.damage_vs_healer_multiplier == 1.0
     assert modifiers.splitter_child_damage == 0.0
+    assert modifiers.damage_vs_fast_multiplier == 1.0
+    assert modifiers.tower_splash_radius_multiplier == 1.0
+    assert modifiers.lightning_chain_range_multiplier == 1.0
+    assert modifiers.shop_price_multiplier == 1.0
 
 
 def test_compose_relic_modifiers_relic_gap_fillers_are_order_independent():
     forward = compose_relic_modifiers([
         "concussive_rounds", "disorienting_flash", "flak_rounds",
         "breach_charges", "containment_charges", "suppression_directive",
+        "interceptor_rounds", "shockwave_rounds", "arc_conductor", "haggling_permit",
     ])
     backward = compose_relic_modifiers([
+        "haggling_permit", "arc_conductor", "shockwave_rounds", "interceptor_rounds",
         "suppression_directive", "containment_charges", "breach_charges",
         "flak_rounds", "disorienting_flash", "concussive_rounds",
     ])
