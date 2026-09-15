@@ -92,6 +92,15 @@ MIN_ELITE_ROW = 3
 # never be able to go the *entire* back half with zero chances to recover
 # lost lives.
 GUARANTEED_REST_ROW = ROW_COUNT - 2
+# Treasure's own weight (4/100, the lowest of any NODE_TYPE_WEIGHTS entry)
+# has no guarantee of its own otherwise -- across a typical run's ~4
+# randomized rows, expected Treasure nodes per run is well under 1, so a
+# run can plausibly see zero of them, unlike Rest above. Mirrors
+# GUARANTEED_REST_ROW's exact injection shape (see _assign_node_types) on
+# a distinct row -- row 2, roughly mid-run, so every run gets at least one
+# guaranteed relic-shopping stop before the back half.
+GUARANTEED_TREASURE_ROW = 2
+assert GUARANTEED_TREASURE_ROW != GUARANTEED_REST_ROW
 
 # Rest node healing -- flat + a small per-row scale-up, so a Rest reached
 # late in a run (when lives lost cost more to claw back) heals a bit more
@@ -191,9 +200,10 @@ def _assign_node_types(rng, row_index, width):
     the final row is always all-boss (see generate_run_map); every row
     between them is a weighted random draw from NODE_TYPES, capped at
     MAX_SAME_TYPE_PER_ROW_FRACTION of the row so one row can't degenerate
-    into a single repeated type, with Elite excluded below MIN_ELITE_ROW
-    and a Rest node forced in on GUARANTEED_REST_ROW if the draw didn't
-    already produce one."""
+    into a single repeated type, with Elite excluded below MIN_ELITE_ROW,
+    a Rest node forced in on GUARANTEED_REST_ROW, and a Treasure node
+    forced in on GUARANTEED_TREASURE_ROW, in each case only if the draw
+    didn't already produce one on its own."""
     if row_index == 0:
         return ["combat"] * width
     if row_index == ROW_COUNT - 1:
@@ -217,6 +227,8 @@ def _assign_node_types(rng, row_index, width):
 
     if row_index == GUARANTEED_REST_ROW and "rest" not in types:
         types[rng.randrange(width)] = "rest"
+    if row_index == GUARANTEED_TREASURE_ROW and "treasure" not in types:
+        types[rng.randrange(width)] = "treasure"
     return types
 
 
