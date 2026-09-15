@@ -696,14 +696,19 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Gained relic: {RELICS[resolution['relic']].display_name}")
     if resolution.get("tower"):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
+    if resolution.get("relic_given_up"):
+        lines.append(f"Gave up relic: {RELICS[resolution['relic_given_up']].display_name}")
     return lines or ["Nothing else happened."]
 
 
-def draw_event_screen(surface, font, small_font, event, option_rects, hovered_index, phase,
+def draw_event_screen(surface, font, small_font, event, options, option_rects, hovered_index, phase,
                        chosen_option=None, resolution=None):
     """`phase` is "choose" (the event's options are still on offer) or
     "resolved" (one's been picked -- `chosen_option`/`resolution` describe
-    what happened; see Game._resolve_event_choice)."""
+    what happened; see Game._resolve_event_choice). `options` is
+    Game.event_options (see events.available_options), not event.options
+    directly -- may be shorter if a relic_cost option got dropped; always
+    the same length as option_rects, so the two can never desync."""
     surface.fill(settings.COLOR_BG)
     title = font.render(event.display_name, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 70)))
@@ -715,7 +720,7 @@ def draw_event_screen(surface, font, small_font, event, option_rects, hovered_in
         y += text.get_height() + 4
 
     if phase == "choose":
-        for index, option in enumerate(event.options):
+        for index, option in enumerate(options):
             rect = option_rects[index]
             fill_color = settings.COLOR_BUTTON_SELECTED if index == hovered_index else settings.COLOR_HUD_BG
             pygame.draw.rect(surface, fill_color, rect, border_radius=8)

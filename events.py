@@ -9,6 +9,12 @@ tower unlocks that already exist and already persist appropriately on
 RunState -- never battle gold (Economy.gold), which doesn't exist yet before
 a floor loads and resets fresh every floor regardless (see CLAUDE.md's "Two
 currencies" section).
+
+Relics/tower unlocks otherwise only ever flow one direction (granted, never
+spent) -- EventOption.relic_cost is the one exception, letting an option
+also require giving up a relic the run already holds; see its own comment
+and available_options()/resolve_event_option() below for the full shape,
+including why the given-up relic must be drawn before it's removed.
 """
 
 from dataclasses import dataclass
@@ -20,7 +26,7 @@ _EVENT_ORDER = (
     "wandering_merchant", "ancient_shrine", "abandoned_camp", "friendly_duel",
     "traveling_healer", "cursed_idol", "old_battlefield", "collapsed_vault",
     "traveling_smith", "omen_of_ruin", "quartermasters_cache", "unclaimed_cache",
-    "crumbling_shrine",
+    "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
 )
 
 
@@ -33,6 +39,20 @@ class EventOption:
     lives_delta: int = 0  # can be negative -- resolve_event_option clamps at >=1, never kills via an event
     grant_relic: bool = False
     unlock_random_tower: bool = False
+    # A genuinely new resource direction -- every option above only ever
+    # grants relics/towers, never spends one. True means this option also
+    # requires giving up a relic the run already holds (see
+    # available_options/resolve_event_option below); available_options
+    # drops the option entirely once run.relics is empty, mirroring
+    # relics.relic_offer's own "return fewer, don't crash" precedent for a
+    # relic pool that's run dry. An option with relic_cost=True must be
+    # the LAST option in its Event's own tuple -- available_options only
+    # ever truncates the tail, so every earlier index's identity stays
+    # stable regardless of whether this option gets filtered out (several
+    # existing tests click "the first rendered option" without forcing
+    # which event gets picked, and would silently break if an early-index
+    # option could vanish).
+    relic_cost: bool = False
 
 
 @dataclass(frozen=True)
@@ -236,6 +256,56 @@ EVENTS = {
             EventOption("walk_on", "Walk on", "You leave the shrine undisturbed."),
         ),
     ),
+    "traveling_collector": Event(
+        "traveling_collector", "Traveling Collector",
+        "A collector is fascinated by whatever you're carrying.",
+        options=(
+            EventOption(
+                "sell_trinkets", "Sell her some trinkets instead (+6 shop currency)",
+                "You part with a few odds and ends.",
+                shop_currency_delta=6,
+            ),
+            EventOption("decline", "Decline and move on", "You keep everything and walk away."),
+            # Deliberately last -- see EventOption.relic_cost's own comment
+            # on why an option with relic_cost=True can never be placed
+            # earlier in an event's own tuple.
+            EventOption(
+                "trade_relic", "Trade a relic for a different one (+10 shop currency)",
+                "You hand over one of your relics; the collector hands back a "
+                "different one, plus some currency for your trouble.",
+                shop_currency_delta=10, grant_relic=True, relic_cost=True,
+            ),
+        ),
+    ),
+    "stranded_caravan": Event(
+        "stranded_caravan", "Stranded Caravan",
+        "A caravan lost a wheel and can't go on -- they're liquidating before scavengers find them.",
+        options=(
+            EventOption(
+                "buy_the_schematics", "Buy the schematics (-9 shop currency, unlock a tower)",
+                "You buy the blueprint outright.",
+                shop_currency_delta=-9, unlock_random_tower=True,
+            ),
+            EventOption(
+                "take_the_supplies", "Take the unguarded supplies (+12 shop currency)",
+                "You take what's easy to carry.",
+                shop_currency_delta=12,
+            ),
+            EventOption("leave_them_be", "Leave them to their luck", "You decide it isn't your business."),
+        ),
+    ),
+    "restless_veteran": Event(
+        "restless_veteran", "Restless War Veteran",
+        "A war veteran, done with fighting, wants to pass on what she's carrying before she goes.",
+        options=(
+            EventOption(
+                "accept_her_gift", "Accept her gift (unlock a tower, +5 shop currency)",
+                "She hands over both without asking anything in return.",
+                unlock_random_tower=True, shop_currency_delta=5,
+            ),
+            EventOption("wish_her_well", "Wish her well and let her go", "You let her continue on her way."),
+        ),
+    ),
 }
 
 # Registry insertion order isn't guaranteed stable input for rng.choice the
@@ -254,15 +324,39 @@ def pick_event(rng):
     return EVENTS[rng.choice(_EVENT_ORDER)]
 
 
+def available_options(event, run):
+    """`event.options`, minus any relic_cost option `run` can't actually
+    pay (no relics held) -- mirrors relics.relic_offer's own "return
+    fewer, don't crash" precedent for a pool that's run dry, applied here
+    to a fixed option tuple instead of a sampled list. Only ever truncates
+    the tail (see EventOption.relic_cost's own comment on why a relic_cost
+    option must be the last one in its tuple), so every remaining option
+    keeps its original index -- callers that render/index by position
+    (Game._enter_event_node's rect count, _handle_event_click/
+    _resolve_event_choice's indexing) can use this list directly without
+    it ever desyncing against what's actually on screen."""
+    return [option for option in event.options if not option.relic_cost or run.relics]
+
+
 def resolve_event_option(run, option, item_rng, meta_progression_path=None):
     """Apply `option`'s effects directly onto `run`, returning a small
     {"relic": key} / {"tower": name} / {} dict describing what (if
-    anything) was granted, for the resolved screen to describe. `item_rng`
-    is a fresh, stateless random.Random (see Game._resolve_event_choice) --
-    keyed on the option actually chosen, not the event itself, so only the
-    branch actually taken needs to be reproducible."""
+    anything) was granted, for the resolved screen to describe -- plus
+    "relic_given_up" when option.relic_cost fired. `item_rng` is a fresh,
+    stateless random.Random (see Game._resolve_event_choice) -- keyed on
+    the option actually chosen, not the event itself, so only the branch
+    actually taken needs to be reproducible."""
     run.shop_currency = max(0, run.shop_currency + option.shop_currency_delta)
     run.lives = max(1, run.lives + option.lives_delta)
+
+    # Drawn now, while still present in run.relics, so relics.relic_offer's
+    # own "already held" exclusion below can't hand the exact same relic
+    # right back -- but not actually removed until after that draw
+    # completes (see the bottom of this function), the same "compute
+    # first, mutate last" ordering that keeps the two independent.
+    given_up_relic = None
+    if option.relic_cost and run.relics:
+        given_up_relic = item_rng.choice(run.relics)
 
     granted = {}
     if option.grant_relic:
@@ -283,4 +377,7 @@ def resolve_event_option(run, option, item_rng, meta_progression_path=None):
         if picks:
             run.unlocked_towers.append(picks[0])
             granted["tower"] = picks[0]
+    if given_up_relic is not None:
+        run.relics.remove(given_up_relic)
+        granted["relic_given_up"] = given_up_relic
     return granted

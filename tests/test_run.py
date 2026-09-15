@@ -28,6 +28,7 @@ import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
 from enemy import SplitterEnemy
+import events
 from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
@@ -2286,7 +2287,8 @@ def test_render_a_three_option_event_does_not_crash(game):
     _begin_run_with_map(game, ["combat", "event"])
     game._enter_node("1-0")
     game.current_event = EVENTS["collapsed_vault"]
-    game.event_option_rects = ui.build_event_option_rects(len(game.current_event.options))
+    game.event_options = list(game.current_event.options)
+    game.event_option_rects = ui.build_event_option_rects(len(game.event_options))
     assert len(game.event_option_rects) == 3
 
     game.render()  # the "choose" phase, with all 3 options on screen
@@ -2296,6 +2298,43 @@ def test_render_a_three_option_event_does_not_crash(game):
     assert game.event_phase == "resolved"
     assert game.event_chosen_option is game.current_event.options[2]
     game.render()  # the "resolved" phase
+
+
+def test_render_traveling_collector_with_a_relic_held_offers_the_trade(game, monkeypatch):
+    # Forces traveling_collector specifically (rather than hunting for a
+    # seed that draws it) via events.pick_event -- the one hook
+    # _enter_event_node itself calls through, so this still exercises the
+    # real _enter_event_node/available_options/draw_event_screen/
+    # _handle_event_click pipeline end to end, not a hand-rolled stand-in.
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["traveling_collector"])
+    _begin_run_with_map(game, ["combat", "event"], relics=["war_chest"])
+    game._enter_node("1-0")
+    assert len(game.event_options) == 3  # all 3, including the relic_cost trade
+    assert game.event_options[-1].relic_cost
+
+    game.render()  # the "choose" phase, all 3 options on screen
+
+    game._handle_event_click(game.event_option_rects[-1].center)  # the relic_cost trade
+
+    assert game.event_phase == "resolved"
+    assert "war_chest" not in game.active_run.relics
+    assert game.event_resolution["relic_given_up"] == "war_chest"
+    game.render()  # the "resolved" phase
+
+
+def test_render_traveling_collector_without_a_relic_drops_the_trade_option(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["traveling_collector"])
+    _begin_run_with_map(game, ["combat", "event"], relics=[])
+    game._enter_node("1-0")
+    assert len(game.event_options) == 2  # the relic_cost trade is dropped
+    assert len(game.event_option_rects) == 2
+
+    game.render()  # must not crash despite current_event.options having 3 entries
+
+    game._handle_event_click(game.event_option_rects[-1].center)  # the last *available* option
+
+    assert game.event_phase == "resolved"
+    assert not game.event_chosen_option.relic_cost
 
 
 def test_render_rest_does_not_crash(game):
