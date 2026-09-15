@@ -2342,6 +2342,45 @@ def test_render_map_does_not_crash(game):
     game.render()
 
 
+def test_render_map_with_a_hovered_node_does_not_crash(game):
+    # Exercises _draw_map_node_tooltip's own code path -- the render above
+    # only ever hits the "nothing hovered" branch, since the headless
+    # driver's mouse position defaults to wherever it happens to already
+    # be, essentially never exactly over a node.
+    game.start_new_run(seed=1)
+    assert game.state == GameState.MAP
+
+    node_id = game.active_run.map.start_node_ids[0]
+    mock_mouse_pos(game.map_node_rects[node_id].center)
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
+
+
+def test_hovering_a_map_node_draws_its_tooltip(game):
+    # Row 0 (not the topmost row) so the tooltip anchors above the node as
+    # usual, rather than flipping below it the way a node sitting right at
+    # ui.MAP_TOP would -- see _draw_map_node_tooltip's own docstring.
+    _begin_run_with_map(game, ["combat", "combat"])
+    node_rect = game.map_node_rects["0-0"]
+    sample_point = (node_rect.centerx, node_rect.top - ui.MAP_TOOLTIP_GAP - 5)
+
+    mock_mouse_pos((0, 0))  # nowhere near any node
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
+    assert tuple(game.screen.get_at(sample_point))[:3] != settings.COLOR_HUD_BG
+
+    mock_mouse_pos(node_rect.center)
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
+    assert tuple(game.screen.get_at(sample_point))[:3] == settings.COLOR_HUD_BG
+
+
 def test_render_playing_during_a_run_does_not_crash(game):
     # Exercises the HUD's floor_label branch specifically -- test_game.py's
     # own PLAYING render smoke tests all use classic/Practice play, which

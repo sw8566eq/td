@@ -16,6 +16,7 @@ import settings
 from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
+from levels import LEVELS
 from relics import RELICS
 from shop import can_afford, price_for
 from tower import TOWER_TYPES
@@ -569,6 +570,31 @@ MAP_NODE_TYPE_COLORS = {
     "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
     "boss": settings.COLOR_NODE_BOSS,
 }
+# Full names (unlike MAP_NODE_TYPE_LABELS' single in-circle glyph above) --
+# the map legend and a hovered node's own tooltip both use these instead of
+# titlecasing the raw node_type string, so a future rename of the internal
+# key (unlikely, but see e.g. how many other registries in this codebase
+# separate an internal key from its display_name) can't silently change
+# what the player reads without a matching, deliberate edit here too.
+MAP_NODE_TYPE_NAMES = {
+    "combat": "Combat", "elite": "Elite", "shop": "Shop", "event": "Event",
+    "rest": "Rest", "treasure": "Treasure", "boss": "Boss",
+}
+# One honest, local sentence per node type -- what a hovered node's own
+# tooltip shows below its name (see _draw_map_node_tooltip). Describes only
+# what that TYPE of node always does, never a specific node's own contents
+# (a Shop/Event visit's actual offer/prompt is never known until entered),
+# same "say exactly what it does, nothing more" precedent relics.py's own
+# registry and events.py's own options already set.
+MAP_NODE_TYPE_DESCRIPTIONS = {
+    "combat": "A regular floor fight.",
+    "elite": "A harder floor -- pays more Shop currency on clear.",
+    "shop": "Spend Shop currency on new towers and relics.",
+    "event": "A short encounter with a few fixed choices.",
+    "rest": "Heals some of your lives, no choice involved.",
+    "treasure": "A guaranteed relic, plus some Shop currency.",
+    "boss": "The run's final fight -- continues endlessly once cleared.",
+}
 
 
 def build_map_node_rects(game_map):
@@ -598,6 +624,89 @@ def get_clicked_map_node(pos, node_rects):
     return _key_of_rect_containing(pos, node_rects)
 
 
+# Legend: a small always-visible key for the map's node-type colors, in the
+# left margin the node columns themselves never use (MAP_COLS=4 columns
+# start at col_width -- see build_map_node_rects -- leaving x < col_width
+# blank apart from the bottom-left Esc hint, well below where this ends).
+MAP_LEGEND_X = 20
+MAP_LEGEND_TOP = MAP_TOP
+MAP_LEGEND_ROW_HEIGHT = 22
+MAP_LEGEND_SWATCH_RADIUS = 7
+
+
+def _draw_map_legend(surface, small_font):
+    """One row per NODE_TYPE: a color swatch matching that type's node fill
+    (MAP_NODE_TYPE_COLORS) plus its name (MAP_NODE_TYPE_NAMES) -- iterates
+    MAP_NODE_TYPE_COLORS directly rather than a separately-maintained order
+    list, so this can never drift out of sync with the node types that
+    actually exist. Always drawn in each type's own full color, regardless
+    of whether any node of that type happens to be visited/available/locked
+    right now -- a legend that dimmed to match node state would be
+    describing "what you're currently allowed to enter," not "what each
+    color means," which is the whole point of a fixed reference key."""
+    y = MAP_LEGEND_TOP
+    for node_type, color in MAP_NODE_TYPE_COLORS.items():
+        pygame.draw.circle(surface, color, (MAP_LEGEND_X, y), MAP_LEGEND_SWATCH_RADIUS)
+        pygame.draw.circle(surface, settings.COLOR_TEXT, (MAP_LEGEND_X, y), MAP_LEGEND_SWATCH_RADIUS, width=1)
+        label = small_font.render(MAP_NODE_TYPE_NAMES[node_type], True, settings.COLOR_TEXT_DIM)
+        surface.blit(label, (MAP_LEGEND_X + MAP_LEGEND_SWATCH_RADIUS + 8, y - label.get_height() // 2))
+        y += MAP_LEGEND_ROW_HEIGHT
+
+
+# Tooltip: a small floating box for whichever node is currently hovered --
+# see _draw_map_node_tooltip. Sized to its own content each time it's drawn
+# (no fixed width/height reserved anywhere else on the screen for it),
+# since a Combat node's tooltip has an extra line (the level name) a Shop/
+# Rest/Event/Treasure node's own tooltip never does.
+MAP_TOOLTIP_PADDING = 8
+MAP_TOOLTIP_LINE_HEIGHT = 18
+MAP_TOOLTIP_MAX_WIDTH = 220
+MAP_TOOLTIP_GAP = 6  # clearance between the node's own circle and the box
+
+
+def _draw_map_node_tooltip(surface, small_font, node, node_rect):
+    """The hovered node's own type name, the specific level name for a
+    Combat/Elite/Boss node (LEVELS[node.level_id] -- naming it ahead of
+    time reveals nothing a player couldn't already infer from the node's
+    color, since the whole map is shown up front, never fog-of-war -- see
+    generate_run_map's own docstring), and one honest, local sentence
+    (MAP_NODE_TYPE_DESCRIPTIONS) describing what that node TYPE always
+    does -- never a specific Shop/Event visit's own offer or prompt, which
+    isn't decided until the node is actually entered. Shown for a hovered
+    node regardless of its visited/available/locked state, same "nothing
+    hidden" reasoning the legend above follows.
+
+    Anchored above the node by default, flipped below it instead if that
+    would run off the top of the screen (true for most of the boss row,
+    which sits right at MAP_TOP) -- and clamped horizontally so an edge
+    column's own tooltip never draws off the left/right of the screen."""
+    body_lines = []
+    if node.level_id is not None:
+        body_lines.append(LEVELS[node.level_id].name)
+    body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
+
+    title_surface = small_font.render(MAP_NODE_TYPE_NAMES[node.node_type], True, settings.COLOR_TEXT)
+    body_surfaces = [small_font.render(line, True, settings.COLOR_TEXT_DIM) for line in body_lines]
+    all_surfaces = [title_surface] + body_surfaces
+
+    box = pygame.Rect(
+        0, 0,
+        max(s.get_width() for s in all_surfaces) + MAP_TOOLTIP_PADDING * 2,
+        len(all_surfaces) * MAP_TOOLTIP_LINE_HEIGHT + MAP_TOOLTIP_PADDING * 2,
+    )
+    box.midbottom = (node_rect.centerx, node_rect.top - MAP_TOOLTIP_GAP)
+    if box.top < 0:
+        box.midtop = (node_rect.centerx, node_rect.bottom + MAP_TOOLTIP_GAP)
+    box.left = max(4, min(box.left, settings.SCREEN_WIDTH - box.width - 4))
+
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, box, border_radius=6)
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, box, width=2, border_radius=6)
+    y = box.top + MAP_TOOLTIP_PADDING
+    for line_surface in all_surfaces:
+        surface.blit(line_surface, (box.left + MAP_TOOLTIP_PADDING, y))
+        y += MAP_TOOLTIP_LINE_HEIGHT
+
+
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None):
     """The run's whole branching map, shown in full from the very first
@@ -608,7 +717,10 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     `lives`/`shop_currency` are optional (None outside of an active run,
     same "nothing to show" spirit draw_hud's own shop_currency param
     follows) -- shown as a small readout up top since this screen has no
-    HUD of its own to read them from otherwise."""
+    HUD of its own to read them from otherwise. A fixed legend (_draw_map_
+    legend) explains what each node color means; hovering any node adds a
+    floating tooltip (_draw_map_node_tooltip) with that specific node's own
+    type, level name (if any), and a one-line description."""
     surface.fill(settings.COLOR_BG)
     title = font.render("Choose your path", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
@@ -648,6 +760,13 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     surface.blit(hint, hint.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT - 30)))
     esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
     surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
+
+    _draw_map_legend(surface, small_font)
+    # Drawn last, on top of everything else -- a floating tooltip should
+    # never be occluded by a node circle or an edge line it happens to sit
+    # near.
+    if hovered_node_id is not None:
+        _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id])
 
 
 # --- Random Event / Rest / Treasure screens (the run map's other three
