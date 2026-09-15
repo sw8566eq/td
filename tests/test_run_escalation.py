@@ -28,16 +28,22 @@ def test_floor_zero_gets_the_full_early_grace_discount():
 
 def test_early_grace_fades_completely_by_early_grace_rows():
     # Rejoins the plain growth-only formula exactly at EARLY_GRACE_ROWS --
-    # no discount, no gold bonus, identical to what the formula produced
-    # before the grace period existed.
+    # no discount, no grace-driven gold bonus, identical to what the
+    # formula produced before the grace period existed. starting_gold_
+    # multiplier has its own always-on per-floor growth independent of
+    # grace (see run_escalation.py's own docstring), so it settles at that
+    # growth term's own value here, not at the neutral 1.0 enemy_hp/speed_
+    # multiplier settle at -- the taper's own contribution is what's
+    # verified as fully gone, not the field as a whole.
     escalation = escalation_for_floor(EARLY_GRACE_ROWS)
     assert escalation.enemy_hp_multiplier == pytest.approx(1.0 + 0.12 * EARLY_GRACE_ROWS)
     assert escalation.enemy_speed_multiplier == pytest.approx(1.0 + 0.02 * EARLY_GRACE_ROWS)
-    assert escalation.starting_gold_multiplier == 1.0
-    # And every later row stays exactly there -- the taper never goes
-    # negative/re-applies past the grace window.
+    assert escalation.starting_gold_multiplier == pytest.approx(1.0 + 0.05 * EARLY_GRACE_ROWS)
+    # And every later row keeps climbing at that same flat rate -- unlike
+    # enemy_hp/speed_multiplier, this field never plateaus once the grace
+    # taper itself is gone.
     later = escalation_for_floor(EARLY_GRACE_ROWS + 5)
-    assert later.starting_gold_multiplier == 1.0
+    assert later.starting_gold_multiplier == pytest.approx(1.0 + 0.05 * (EARLY_GRACE_ROWS + 5))
 
 
 def test_escalation_grows_monotonically_with_floor_index():
@@ -55,15 +61,23 @@ def test_escalation_grows_monotonically_with_floor_index():
         previous = current
 
 
-def test_starting_gold_multiplier_shrinks_monotonically_to_one():
-    # The inverse shape from enemy_hp/speed/gold above -- starts high,
-    # decreases every row until it settles at the neutral 1.0.
+def test_starting_gold_multiplier_dips_through_the_grace_window_then_grows():
+    # Two additive effects, not one shape: the early-grace bonus (large,
+    # tapers to 0 by EARLY_GRACE_ROWS) dominates the much smaller flat
+    # per-floor growth while it's active, so the sum still strictly
+    # decreases every row through the graced window even though growth is
+    # quietly climbing underneath it the whole time -- then, once grace
+    # itself hits 0, growth is all that's left and the sum climbs again
+    # for the rest of the run instead of settling at a neutral 1.0.
     previous = escalation_for_floor(0).starting_gold_multiplier
-    for floor_index in range(1, EARLY_GRACE_ROWS + 3):
+    for floor_index in range(1, EARLY_GRACE_ROWS + 1):
         current = escalation_for_floor(floor_index).starting_gold_multiplier
-        assert current <= previous
+        assert current < previous
         previous = current
-    assert previous == 1.0
+    for floor_index in range(EARLY_GRACE_ROWS + 1, EARLY_GRACE_ROWS + 10):
+        current = escalation_for_floor(floor_index).starting_gold_multiplier
+        assert current > previous
+        previous = current
 
 
 def test_elite_and_boss_multipliers_never_touch_starting_gold():

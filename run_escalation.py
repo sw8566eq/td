@@ -24,12 +24,17 @@ was tested against) arrives. The grace discount directly targets both
 halves of that spiral: cheaper-to-kill, slower enemies (more of a solo
 tower's hits actually land a kill, so the economy doesn't stall) and a
 starting-gold bump (affording a real opening board from floor 0, not
-just from floor 2 onward). Tapers linearly to zero by EARLY_GRACE_ROWS,
-rejoining the growth formula above exactly there -- every row from
-EARLY_GRACE_ROWS onward, and every Elite/boss multiplier below, is
-completely unaffected (EARLY_GRACE_ROWS deliberately equals run_map.
-MIN_ELITE_ROW, so an Elite node -- never reachable before that row --
-can never overlap the grace window either). This intentionally makes a
+just from floor 2 onward). Tapers linearly to zero by EARLY_GRACE_ROWS --
+every row from EARLY_GRACE_ROWS onward, and every Elite/boss multiplier
+below, sees zero contribution *from grace itself* (EARLY_GRACE_ROWS
+deliberately equals run_map.MIN_ELITE_ROW, so an Elite node -- never
+reachable before that row -- can never overlap the grace window either).
+starting_gold_multiplier keeps growing past that row regardless, on its
+own flat per-floor rate independent of grace (see
+_STARTING_GOLD_GROWTH_PER_FLOOR below) -- a harder, later floor should
+still open with more to build a board from, not just the run's opening
+floors, so unlike enemy_hp/speed_multiplier there's no "flat forever
+after the grace window" plateau for this one field. This intentionally makes a
 run's own floor 0 diverge from that same level played standalone in
 Practice mode, unlike every other floor -- Practice is exactly "the raw
 level, undiscounted," which is the point of it as a place to learn a
@@ -78,6 +83,17 @@ from dataclasses import dataclass
 _HP_GROWTH_PER_FLOOR = 0.12
 _SPEED_GROWTH_PER_FLOOR = 0.02
 _GOLD_GROWTH_PER_FLOOR = 0.05
+
+# Same per-floor rate as _GOLD_GROWTH_PER_FLOOR above (a kept-independent
+# constant, not a derived alias, matching this module's own "one dial per
+# knob" style even where two dials start at the same value) -- but applied
+# to the floor's own *starting* Economy rather than compounding across
+# every kill within it, so its cumulative effect on any one floor is much
+# smaller than enemy_gold_multiplier's own. A starting point, not yet
+# headless-playtested: the goal is simply that a harder, later floor also
+# hands the player a bigger opening board to face it with, on top of
+# whatever the early-grace bonus below already gives rows 0-2.
+_STARTING_GOLD_GROWTH_PER_FLOOR = 0.05
 
 # Early grace (see this module's own docstring) -- rows 0-2 get an inverse
 # discount instead of the growth above, tapering linearly to zero by
@@ -148,11 +164,15 @@ class FloorEscalation:
     enemy_gold_multiplier: float = 1.0
     # Unlike the three enemy_* fields above, this scales the floor's own
     # starting Economy (Game._scaled_starting_gold), not anything
-    # WaveManager reads -- only the early-grace discount below ever sets
-    # it away from the neutral 1.0 default; Elite/boss never touch it
-    # (see apply_elite_multiplier/apply_boss_multiplier), since neither is
-    # about handing the player more to prepare *with*, just a harder
-    # fight and a bigger payout *from* it.
+    # WaveManager reads. Two independent effects add into it: the
+    # early-grace bonus (rows 0-2 only, tapering to zero) and a flat
+    # per-floor growth that keeps going for every floor after that, so a
+    # harder, later floor still opens with more to build a board from, not
+    # just the run's opening floors -- see _STARTING_GOLD_GROWTH_PER_FLOOR
+    # above. Elite/boss never touch it (see apply_elite_multiplier/
+    # apply_boss_multiplier), since neither is about handing the player
+    # more to prepare *with*, just a harder fight and a bigger payout
+    # *from* it.
     starting_gold_multiplier: float = 1.0
 
 
@@ -173,7 +193,12 @@ def escalation_for_floor(floor_index):
     enemy_gold_multiplier doesn't (kill-gold reward isn't the problem the
     grace period targets, starting gold is -- see starting_gold_multiplier
     below) and keeps growing exactly as it always has, even within the
-    grace window."""
+    grace window. starting_gold_multiplier itself is two additive effects,
+    not one: the early-grace bonus (fades to 0 by EARLY_GRACE_ROWS) plus a
+    flat per-floor growth that runs for every floor, grace window included
+    -- so the multiplier dips over rows 0-2 as the (much larger) grace
+    bonus fades faster than the flat growth accumulates, bottoms out right
+    at EARLY_GRACE_ROWS, and climbs from there for the rest of the run."""
     grace = _early_grace_factor(floor_index)
     return FloorEscalation(
         enemy_hp_multiplier=(1.0 + _HP_GROWTH_PER_FLOOR * floor_index) * (1.0 - EARLY_GRACE_HP_DISCOUNT * grace),
@@ -181,7 +206,9 @@ def escalation_for_floor(floor_index):
             (1.0 + _SPEED_GROWTH_PER_FLOOR * floor_index) * (1.0 - EARLY_GRACE_SPEED_DISCOUNT * grace)
         ),
         enemy_gold_multiplier=1.0 + _GOLD_GROWTH_PER_FLOOR * floor_index,
-        starting_gold_multiplier=1.0 + EARLY_GRACE_GOLD_BONUS * grace,
+        starting_gold_multiplier=(
+            1.0 + EARLY_GRACE_GOLD_BONUS * grace + _STARTING_GOLD_GROWTH_PER_FLOOR * floor_index
+        ),
     )
 
 
