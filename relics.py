@@ -239,6 +239,33 @@ class Relic:
     # target's own current heal_rate > 0 (HealerEnemy's own attribute),
     # duck-typed the same way.
     damage_vs_healer_multiplier: float = 1.0
+    # interceptor_rounds' own bonus -- ungated straight multiply, same
+    # shape as flak_rounds/breach_charges/suppression_directive above.
+    # Checked against the target's own max_speed (a fixed per-species
+    # ceiling, not its live speed) against projectile.
+    # FAST_ENEMY_SPEED_THRESHOLD.
+    damage_vs_fast_multiplier: float = 1.0
+    # shockwave_rounds' own bonus -- ungated straight multiply, read once
+    # per tower at construction time (Game._construct_tower), same
+    # pipeline as tower_range_multiplier, applied to any tower with a
+    # splash_radius attribute (Cannon, Knockback -- not Beacon, whose
+    # mark_splash_radius is a distinctly-named field this doesn't touch).
+    tower_splash_radius_multiplier: float = 1.0
+    # arc_conductor's own bonus -- Lightning-tower-exclusive, mirroring
+    # support_aura_range_multiplier's own shape: set on every tower
+    # harmlessly at construction time, but only ever read inside
+    # LightningTower.create_projectile(). max_chain_targets is
+    # deliberately not a field here -- it's already unbounded, so a
+    # "+N targets" relic would be meaningless.
+    lightning_chain_range_multiplier: float = 1.0
+    # haggling_permit's own bonus -- ungated straight multiply, read by
+    # shop.price_for()'s own discount_multiplier parameter rather than
+    # through Tower/Projectile at all (the Shop's own prices aren't a
+    # per-tower or per-shot concern), the one relic-driven discount on the
+    # shop-currency side of the economy -- quartermasters_favor already
+    # covers the battle-gold side (Tower.upgrade_cost()/specialization_
+    # cost()).
+    shop_price_multiplier: float = 1.0
 
 
 RELICS = {
@@ -442,6 +469,26 @@ RELICS = {
         "+20% damage to enemies that heal others.",
         damage_vs_healer_multiplier=1.20,
     ),
+    "interceptor_rounds": Relic(
+        "interceptor_rounds", "Interceptor Rounds",
+        "+20% damage to enemies that move especially fast.",
+        damage_vs_fast_multiplier=1.20,
+    ),
+    "shockwave_rounds": Relic(
+        "shockwave_rounds", "Shockwave Rounds",
+        "+20% splash radius for every tower that has one, every floor.",
+        tower_splash_radius_multiplier=1.20,
+    ),
+    "arc_conductor": Relic(
+        "arc_conductor", "Arc Conductor",
+        "Lightning tower chains reach 25% further, every floor.",
+        lightning_chain_range_multiplier=1.25,
+    ),
+    "haggling_permit": Relic(
+        "haggling_permit", "Haggling Permit",
+        "Shop prices are 15% lower, every floor.",
+        shop_price_multiplier=0.85,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -533,7 +580,11 @@ class RelicModifiers:
     -- unlike every tower-facing field above -- is read straight off this
     class by Game.update()'s own dead-enemy drain loop rather than
     threaded through Tower/Projectile: it's a flat per-floor value with no
-    per-tower or per-shot variation to justify that plumbing."""
+    per-tower or per-shot variation to justify that plumbing. shop_price_
+    multiplier (haggling_permit's own bonus) is a fourth outlier of this
+    same kind -- read straight off this class by shop.price_for()'s own
+    discount_multiplier parameter, since the Shop's own prices aren't a
+    per-tower or per-shot concern either."""
     starting_gold_multiplier: float = 1.0
     gold_per_floor_bonus: int = 0
     enemy_gold_multiplier: float = 1.0
@@ -572,6 +623,10 @@ class RelicModifiers:
     damage_vs_shielded_multiplier: float = 1.0
     splitter_child_damage: float = 0.0
     damage_vs_healer_multiplier: float = 1.0
+    damage_vs_fast_multiplier: float = 1.0
+    tower_splash_radius_multiplier: float = 1.0
+    lightning_chain_range_multiplier: float = 1.0
+    shop_price_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -644,6 +699,10 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     damage_vs_shielded_multiplier = 1.0
     splitter_child_damage = 0.0
     damage_vs_healer_multiplier = 1.0
+    damage_vs_fast_multiplier = 1.0
+    tower_splash_radius_multiplier = 1.0
+    lightning_chain_range_multiplier = 1.0
+    shop_price_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -731,6 +790,10 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         damage_vs_shielded_multiplier *= relic.damage_vs_shielded_multiplier
         damage_vs_healer_multiplier *= relic.damage_vs_healer_multiplier
         splitter_child_damage += relic.splitter_child_damage
+        damage_vs_fast_multiplier *= relic.damage_vs_fast_multiplier
+        tower_splash_radius_multiplier *= relic.tower_splash_radius_multiplier
+        lightning_chain_range_multiplier *= relic.lightning_chain_range_multiplier
+        shop_price_multiplier *= relic.shop_price_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -770,4 +833,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         damage_vs_shielded_multiplier=damage_vs_shielded_multiplier,
         splitter_child_damage=splitter_child_damage,
         damage_vs_healer_multiplier=damage_vs_healer_multiplier,
+        damage_vs_fast_multiplier=damage_vs_fast_multiplier,
+        tower_splash_radius_multiplier=tower_splash_radius_multiplier,
+        lightning_chain_range_multiplier=lightning_chain_range_multiplier,
+        shop_price_multiplier=shop_price_multiplier,
     )

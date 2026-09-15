@@ -5,6 +5,7 @@ from run_map import generate_run_map
 from run_state import RunState
 from shop import (
     ELITE_INCOME_MULTIPLIER,
+    PRICE_ESCALATION,
     RELIC_OFFER_COUNT,
     RELIC_PRICE,
     TOWER_OFFER_COUNT,
@@ -96,6 +97,27 @@ def test_price_for_escalates_with_purchases_this_visit():
     second = price_for(item, purchases_this_visit=1)
     third = price_for(item, purchases_this_visit=2)
     assert first < second < third
+
+
+def test_price_for_defaults_to_no_discount():
+    item = ShopItem("tower", "basic", 8)
+    assert price_for(item, purchases_this_visit=0) == price_for(item, purchases_this_visit=0, discount_multiplier=1.0)
+
+
+def test_price_for_applies_a_haggling_permit_style_discount():
+    item = ShopItem("tower", "basic", 8)
+    full_price = price_for(item, purchases_this_visit=0)
+    discounted = price_for(item, purchases_this_visit=0, discount_multiplier=0.85)
+    assert discounted < full_price
+    assert discounted == round(full_price * 0.85)
+
+
+def test_price_for_discount_and_escalation_compose():
+    item = ShopItem("relic", "war_chest", 10)
+    escalated_only = price_for(item, purchases_this_visit=2)
+    escalated_and_discounted = price_for(item, purchases_this_visit=2, discount_multiplier=0.85)
+    assert escalated_and_discounted == round(item.base_price * PRICE_ESCALATION ** 2 * 0.85)
+    assert escalated_and_discounted < escalated_only
 
 
 # --- income_for_floor ---

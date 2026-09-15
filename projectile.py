@@ -33,14 +33,18 @@ retroactively counts itself as "vs. a slowed enemy"), Choke Point
 (relic_damage_vs_early_route_multiplier, gated on enemy.distance_traveled
 < CHOKE_POINT_DISTANCE_THRESHOLD), Giant Slayer
 (relic_damage_vs_high_hp_multiplier, gated on enemy.max_hp >
-GIANT_SLAYER_HP_THRESHOLD), Aftershock (relic_slow_chance/
-relic_slow_effect, same chance-gated shape as the existing poison/chain
-relic rolls, just calling enemy.apply_slow()), and Overkill
-(relic_overkill_carry_fraction, checked after the hit resolves: any
-damage beyond what was needed to kill carries to the nearest other enemy
-within OVERKILL_CARRY_RANGE via _find_chain_target/_apply_direct_damage,
-the same non-recursive single hop Arcing Rounds' own bounce already
-uses). CHOKE_POINT_DISTANCE_THRESHOLD/GIANT_SLAYER_HP_THRESHOLD/
+GIANT_SLAYER_HP_THRESHOLD), Interceptor Rounds (relic_damage_vs_fast_
+multiplier, gated on enemy.max_speed >= FAST_ENEMY_SPEED_THRESHOLD -- a
+fixed per-species ceiling, not the live speed attribute, so a target
+slowed by Frost/Aftershock doesn't lose the bonus just because its
+current speed dropped), Aftershock (relic_slow_chance/relic_slow_effect,
+same chance-gated shape as the existing poison/chain relic rolls, just
+calling enemy.apply_slow()), and Overkill (relic_overkill_carry_fraction,
+checked after the hit resolves: any damage beyond what was needed to kill
+carries to the nearest other enemy within OVERKILL_CARRY_RANGE via
+_find_chain_target/_apply_direct_damage, the same non-recursive single
+hop Arcing Rounds' own bounce already uses). CHOKE_POINT_DISTANCE_
+THRESHOLD/GIANT_SLAYER_HP_THRESHOLD/FAST_ENEMY_SPEED_THRESHOLD/
 OVERKILL_CARRY_RANGE are plain module constants here, not Relic fields --
 relics.py has no import dependency on tower.py/projectile.py, and every
 existing per-mechanic constant already lives beside the mechanic that
@@ -95,10 +99,14 @@ import pygame
 # there's nothing to tune independently of the relic description itself.
 # Overkill's own search radius for a carry-over bounce target, the same
 # idea as arcing_rounds' own chain_range but a separate constant since the
-# two mechanisms are otherwise unrelated.
+# two mechanisms are otherwise unrelated. Interceptor Rounds' own cutoff
+# sits strictly between SplitterChildEnemy's max_speed (160) and
+# FlyingEnemy's (180), so it captures Scout (220) and Flying (180) without
+# also catching SplitterChild or anything slower.
 CHOKE_POINT_DISTANCE_THRESHOLD = 200
 GIANT_SLAYER_HP_THRESHOLD = 100
 OVERKILL_CARRY_RANGE = 90
+FAST_ENEMY_SPEED_THRESHOLD = 170
 
 
 class Projectile:
@@ -119,6 +127,7 @@ class Projectile:
                  relic_damage_vs_flying_multiplier=1.0,
                  relic_damage_vs_shielded_multiplier=1.0,
                  relic_damage_vs_healer_multiplier=1.0,
+                 relic_damage_vs_fast_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
@@ -190,6 +199,10 @@ class Projectile:
         self.relic_damage_vs_flying_multiplier = relic_damage_vs_flying_multiplier
         self.relic_damage_vs_shielded_multiplier = relic_damage_vs_shielded_multiplier
         self.relic_damage_vs_healer_multiplier = relic_damage_vs_healer_multiplier
+        # Interceptor Rounds-style relic -- ungated multiply, checked
+        # against the target's own max_speed (a fixed per-species ceiling,
+        # not live speed) in _apply_hit_effects.
+        self.relic_damage_vs_fast_multiplier = relic_damage_vs_fast_multiplier
         # BasicTower's own native crit mechanic -- tower-driven, not relic-
         # driven, so kept as its own pair rather than folded into relic_
         # crit_chance/relic_crit_damage_multiplier above (the exact same
@@ -354,6 +367,8 @@ class Projectile:
             damage *= self.relic_damage_vs_early_route_multiplier
         if getattr(enemy, "max_hp", 0.0) > GIANT_SLAYER_HP_THRESHOLD:
             damage *= self.relic_damage_vs_high_hp_multiplier
+        if getattr(enemy, "max_speed", 0.0) >= FAST_ENEMY_SPEED_THRESHOLD:
+            damage *= self.relic_damage_vs_fast_multiplier
         # Flak Rounds/Breach Charges/Suppression Directive -- three more
         # ungated per-enemy multipliers, same shape as the three just
         # above, checked against the target's own *current* is_flying/

@@ -648,10 +648,15 @@ LEVELS[15] = _multi_lane_level(
 # Levels 16-17: the run map's own dedicated boss-tier pool (see
 # run_map.BOSS_LEVEL_IDS) -- reserved exclusively for the final row, never
 # drawn by _level_pool_for_row's ordinary complex-tier band the way Levels
-# 6-11 are. Their final wave ends in {"final_boss": 1} (ENEMY_TYPES'
-# FinalBossEnemy) rather than {"boss": N} -- see test_levels.py's own
-# split between "every ordinary level's final wave has a boss" and "every
-# boss-tier level's final wave has the final boss instead." Both topologies
+# 6-11 are. Their final waves end in a final-boss species (ENEMY_TYPES'
+# FinalBossEnemy/FinalBossShieldedEnemy) rather than {"boss": N} -- see
+# test_levels.py's own split between "every ordinary level's final wave
+# has a boss" and "every boss-tier level's final wave has a final boss
+# species instead." The two levels deliberately use different final-boss
+# species (Level 16 keeps FinalBossEnemy's reinforcement-summon fight,
+# Level 17 uses FinalBossShieldedEnemy's shield-pulse one instead), so the
+# run's two possible boss encounters are genuinely distinct fights, not
+# just different topology around an identical one. Both topologies
 # were verified with pathing.validate_topology directly against candidate
 # corner lists before being wired in here, the same "verify programmatically
 # before committing to a design" lesson Chunk C's own Level 14 (Quad Muster)
@@ -725,7 +730,7 @@ LEVEL_17_WAVE_SPECS = [
      LEVEL_17_SPAWN_BOTTOM: {"scout": 13, "flying": 7, "shielded": 5, "splitter": 4}},
     {LEVEL_17_SPAWN_TOP: {"grunt": 13, "tank": 8, "healer": 4, "splitter": 5},
      LEVEL_17_SPAWN_BOTTOM: {"scout": 14, "flying": 8, "shielded": 6}},
-    {LEVEL_17_SPAWN_TOP: {"grunt": 13, "tank": 9, "final_boss": 1},
+    {LEVEL_17_SPAWN_TOP: {"grunt": 13, "tank": 9, "final_boss_shielded": 1},
      LEVEL_17_SPAWN_BOTTOM: {"scout": 14, "flying": 8, "shielded": 6}},
 ]
 

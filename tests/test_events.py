@@ -1,7 +1,7 @@
 import random
 
 from card_pool import STARTER_TOWERS
-from events import EVENTS, pick_event, resolve_event_option
+from events import EVENTS, available_options, pick_event, resolve_event_option
 from relics import RELICS
 from run_map import MapNode, RunMap
 from run_state import RunState
@@ -33,6 +33,16 @@ def test_every_events_option_keys_are_unique_within_that_event():
         assert len(keys) == len(set(keys))
 
 
+def test_a_relic_cost_option_is_always_the_last_option_in_its_event():
+    # events.py itself already enforces this with a module-level assert at
+    # import time (see EventOption.relic_cost's own comment on why it
+    # matters) -- this test re-confirms the same rule as an ordinary,
+    # individually-reportable pytest failure too, rather than relying
+    # solely on collection-time import failing.
+    for event in EVENTS.values():
+        assert not any(option.relic_cost for option in event.options[:-1]), event.key
+
+
 def test_every_event_has_at_least_one_option_with_a_real_effect():
     # Not every option needs an effect -- "walk away"/"leave it"/"decline"
     # are deliberately safe, no-op alternatives (a genuine no-risk-no-
@@ -41,7 +51,7 @@ def test_every_event_has_at_least_one_option_with_a_real_effect():
     for event in EVENTS.values():
         assert any(
             option.shop_currency_delta != 0 or option.lives_delta != 0
-            or option.grant_relic or option.unlock_random_tower
+            or option.grant_relic or option.unlock_random_tower or option.relic_cost
             for option in event.options
         ), f"{event.key} has no option that does anything"
 
@@ -254,3 +264,135 @@ def test_crumbling_shrine_options():
     resolve_event_option(run, walk_on, random.Random(1))
     assert run.shop_currency == 0
     assert run.lives == 5
+
+
+# --- The 3 events added in this batch: Traveling Collector (a genuinely
+# new "spend a relic you hold" resource direction), Stranded Caravan and
+# Restless Veteran (leaning on unlock_random_tower, previously
+# under-represented at only 3/13 events).
+
+
+def test_traveling_collector_options():
+    event = EVENTS["traveling_collector"]
+    assert len(event.options) == 3
+
+    sell_trinkets, decline, trade_relic = event.options
+    assert trade_relic.relic_cost  # must be last -- see EventOption.relic_cost's own comment
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, sell_trinkets, random.Random(1))
+    assert run.shop_currency == 6
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, decline, random.Random(1))
+    assert run.shop_currency == 0
+
+    run = _run(shop_currency=0, relics=["war_chest"])
+    granted = resolve_event_option(run, trade_relic, random.Random(1))
+    assert run.shop_currency == 10
+    assert granted["relic_given_up"] == "war_chest"
+    assert "war_chest" not in run.relics
+    assert granted["relic"] in run.relics
+    assert granted["relic"] != "war_chest"
+
+
+def test_stranded_caravan_options(tmp_path):
+    event = EVENTS["stranded_caravan"]
+    assert len(event.options) == 3
+
+    buy, take, leave = event.options
+
+    run = _run(shop_currency=20, unlocked_towers=[])
+    granted = resolve_event_option(run, buy, random.Random(1), meta_progression_path=tmp_path / "meta.json")
+    assert run.shop_currency == 11
+    assert granted["tower"] in run.unlocked_towers
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, take, random.Random(1))
+    assert run.shop_currency == 12
+
+    run = _run(shop_currency=20)
+    resolve_event_option(run, leave, random.Random(1))
+    assert run.shop_currency == 20
+
+
+def test_restless_veteran_options(tmp_path):
+    event = EVENTS["restless_veteran"]
+    assert len(event.options) == 2
+
+    accept, decline = event.options
+
+    run = _run(shop_currency=0, unlocked_towers=[])
+    granted = resolve_event_option(run, accept, random.Random(1), meta_progression_path=tmp_path / "meta.json")
+    assert run.shop_currency == 5
+    assert granted["tower"] in run.unlocked_towers
+
+    run = _run(shop_currency=0)
+    resolve_event_option(run, decline, random.Random(1))
+    assert run.shop_currency == 0
+
+
+# --- available_options (relic_cost filtering) ---
+
+
+def test_available_options_includes_relic_cost_option_when_a_relic_is_held():
+    event = EVENTS["traveling_collector"]
+    run = _run(relics=["war_chest"])
+    assert available_options(event, run) == list(event.options)
+
+
+def test_available_options_drops_relic_cost_option_when_no_relic_is_held():
+    event = EVENTS["traveling_collector"]
+    run = _run(relics=[])
+    options = available_options(event, run)
+    assert len(options) == len(event.options) - 1
+    assert all(not option.relic_cost for option in options)
+    # Only the tail was dropped -- every remaining option keeps its
+    # original index (see EventOption.relic_cost's own comment on why).
+    assert options == list(event.options[:-1])
+
+
+def test_available_options_never_drops_a_non_relic_cost_option():
+    for event in EVENTS.values():
+        run = _run(relics=[])
+        options = available_options(event, run)
+        non_relic_cost_count = sum(1 for option in event.options if not option.relic_cost)
+        assert len(options) >= non_relic_cost_count
+
+
+# --- resolve_event_option's relic-given-up mechanics ---
+
+
+def test_resolve_event_option_relic_cost_removes_the_given_up_relic():
+    option = next(o for e in EVENTS.values() for o in e.options if o.relic_cost)
+    run = _run(relics=["war_chest"])
+
+    granted = resolve_event_option(run, option, random.Random(1))
+
+    assert granted["relic_given_up"] == "war_chest"
+    assert "war_chest" not in run.relics
+
+
+def test_resolve_event_option_relic_cost_never_redraws_the_same_relic():
+    # war_chest is the only relic held, so a naive "remove first, draw
+    # second" ordering could legally hand it right back once relic_offer's
+    # own already-held exclusion no longer sees it.
+    option = next(o for e in EVENTS.values() for o in e.options if o.relic_cost)
+    for seed in range(20):
+        run = _run(relics=["war_chest"])
+        granted = resolve_event_option(run, option, random.Random(seed))
+        assert granted["relic"] != "war_chest"
+
+
+def test_resolve_event_option_relic_cost_is_a_noop_when_no_relic_is_held():
+    # Calling directly, bypassing available_options entirely -- confirms
+    # the guard lives in resolve_event_option itself, not only in the
+    # filtering layer above it. The option's own grant_relic still fires
+    # independently (it isn't gated on relics being held) -- only the
+    # relic_cost side is a no-op here.
+    option = next(o for e in EVENTS.values() for o in e.options if o.relic_cost)
+    run = _run(relics=[])
+
+    granted = resolve_event_option(run, option, random.Random(1))
+
+    assert "relic_given_up" not in granted

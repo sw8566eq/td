@@ -13,6 +13,7 @@ from levels import LEVELS
 from run_map import (
     BOSS_LEVEL_IDS,
     GUARANTEED_REST_ROW,
+    GUARANTEED_TREASURE_ROW,
     MAX_SAME_TYPE_PER_ROW_FRACTION,
     MIN_ELITE_ROW,
     NODE_TYPES,
@@ -136,6 +137,12 @@ def test_guaranteed_rest_row_always_has_at_least_one_rest_node():
     for seed in _SEEDS:
         game_map = generate_run_map(random.Random(seed))
         assert any(node.node_type == "rest" for node in game_map.rows[GUARANTEED_REST_ROW])
+
+
+def test_guaranteed_treasure_row_always_has_at_least_one_treasure_node():
+    for seed in _SEEDS:
+        game_map = generate_run_map(random.Random(seed))
+        assert any(node.node_type == "treasure" for node in game_map.rows[GUARANTEED_TREASURE_ROW])
 
 
 def test_no_row_exceeds_the_same_type_cap():

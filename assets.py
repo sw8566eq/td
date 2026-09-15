@@ -62,6 +62,7 @@ SPRITE_MANIFEST = {
     "enemy_splitter_child": ("enemies/splitter_child.png", (235, 175, 100), "circle"),
     "enemy_healer": ("enemies/healer.png", (120, 230, 160), "circle"),
     "enemy_final_boss": ("enemies/final_boss.png", (60, 10, 90), "circle"),
+    "enemy_final_boss_shielded": ("enemies/final_boss_shielded.png", (30, 60, 140), "circle"),
     "projectile_basic": ("projectiles/bullet.png", (255, 255, 0), "circle"),
     "projectile_cannon": ("projectiles/ball.png", (90, 90, 90), "circle"),
     "projectile_frost": ("projectiles/shard.png", (150, 220, 255), "circle"),

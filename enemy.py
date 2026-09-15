@@ -1,20 +1,22 @@
 """Enemy base class, concrete species, and the ENEMY_TYPES registry.
 
 Enemy carries all shared movement/HP/slow logic plus per-wave scaling, all
-as overridable class attributes. Ships with nine species -- GruntEnemy
+as overridable class attributes. Ships with ten species -- GruntEnemy
 (baseline), ScoutEnemy (fast/low-HP), TankEnemy (slow/high-HP), BossEnemy
 (a level's one-off final-wave heavyweight), ShieldedEnemy (a regenerating
 shield absorbs damage before HP does), FlyingEnemy (only a tower with
 can_target_flying -- see tower.py -- can hit it), SplitterEnemy (splits
 into weaker children on death -- see Enemy.pending_spawns), HealerEnemy
 (passively heals nearby enemies -- see Enemy.receive_heal()), FinalBossEnemy
-(the run map's own final-row boss -- BossEnemy plus a live reinforcement-
-summon mechanic, also via Enemy.pending_spawns) -- and a new one is written
-the same way towers are: subclass Enemy, override stats (and update()/
-take_damage() too, if it needs genuinely different behavior like a shield),
-then add one line to ENEMY_TYPES. Levels reference enemies by their
-registry name string in wave_specs (see levels.py), so WaveManager never
-needs to know about concrete Enemy subclasses directly.
+(one of the run map's two final-row boss species -- BossEnemy plus a live
+reinforcement-summon mechanic, also via Enemy.pending_spawns),
+FinalBossShieldedEnemy (the run map's other final-row boss species --
+BossEnemy plus a periodic self-shield pulse instead) -- and a new one is
+written the same way towers are: subclass Enemy, override stats (and
+update()/take_damage() too, if it needs genuinely different behavior like
+a shield), then add one line to ENEMY_TYPES. Levels reference enemies by
+their registry name string in wave_specs (see levels.py), so WaveManager
+never needs to know about concrete Enemy subclasses directly.
 """
 
 import pygame
@@ -207,11 +209,12 @@ class Enemy:
         """Called only by update()'s own poison-tick handling above -- the
         one hook a subclass overrides to change how a damage-over-time
         tick interacts with its own damage-absorption mechanic (see
-        ShieldedEnemy's override below). The base implementation is just a
-        polymorphic call to take_damage(): `ignore_shield` is meaningless
-        without a shield to ignore, so every species except ShieldedEnemy
-        inherits this unmodified -- structurally keeping BossEnemy's armor
-        phase and SplitterEnemy's split-on-death untouched by a Corrosive
+        ShieldedEnemy's and FinalBossShieldedEnemy's own overrides below).
+        The base implementation is just a polymorphic call to
+        take_damage(): `ignore_shield` is meaningless without a shield to
+        ignore, so every species except those two inherits this
+        unmodified -- structurally keeping BossEnemy's armor phase and
+        SplitterEnemy's split-on-death untouched by a Corrosive
         Poison-style relic, not via any runtime species check."""
         return self.take_damage(amount)
 
@@ -523,6 +526,88 @@ class FinalBossEnemy(BossEnemy):
                 self.pending_spawns.append(child)
 
 
+class FinalBossShieldedEnemy(BossEnemy):
+    """A second final-boss species (see run_map.BOSS_LEVEL_IDS) -- Level
+    17's own fight, distinct from FinalBossEnemy's reinforcement-summon
+    one used by Level 16. Also subclasses BossEnemy directly and inherits
+    Enrage/Armor completely unmodified, but its own extra mechanic is a
+    periodic self-shield pulse instead of summoned adds: every
+    SHIELD_PULSE_INTERVAL seconds while still alive, it grants itself
+    pulse_shield worth SHIELD_PULSE_FRACTION of its own *current* max_hp
+    (read live in update(), never cached -- see BossEnemy's own docstring
+    on why Enrage/Armor thresholds read max_hp live, the same reasoning
+    applies here), which take_damage() absorbs from before any of it ever
+    reaches BossEnemy's own armor-phase/enrage checks -- the same
+    absorb-then-delegate shape ShieldedEnemy.take_damage() already
+    establishes, just pulsed on a timer rather than continuously
+    regenerating. Deliberately named pulse_shield, not shield/max_shield --
+    WaveManager._spawn_enemy has a hasattr(enemy, "max_shield") patch-up
+    hardcoded for ShieldedEnemy's own difficulty-scaling model that would
+    otherwise misfire here against a field sized a completely different
+    way.
+
+    take_poison_damage() also needs its own override, unlike FinalBossEnemy
+    (which inherits Enemy's base hook unmodified) -- without one, a
+    Corrosive Poison tick with ignore_shield=True would still call
+    self.take_damage() (this class's own override, via the base hook's
+    polymorphic dispatch) and silently keep hitting the pulse shield
+    anyway, breaking that relic's own "always breaks through" text for
+    this one boss specifically."""
+    base_hp = 900
+    hp_per_wave = 70
+    base_reward = 250
+    reward_per_wave = 30
+    sprite_name = "enemy_final_boss_shielded"
+    radius = 34
+
+    SHIELD_PULSE_INTERVAL = 10.0  # seconds between pulses -- reasoned, not playtested
+    SHIELD_PULSE_FRACTION = 0.15  # of current max_hp per pulse -- reasoned, not playtested
+
+    def __init__(self, waypoints_px, wave_number):
+        super().__init__(waypoints_px, wave_number)
+        self.pulse_shield = 0.0
+        # First pulse lands after one full interval, mirroring
+        # FinalBossEnemy's own summon_timer -- the boss starts each fight
+        # unshielded, not already fully charged.
+        self.shield_pulse_timer = self.SHIELD_PULSE_INTERVAL
+
+    def take_damage(self, amount):
+        if self.is_dead or self.reached_goal:
+            return 0.0
+        if self.pulse_shield > 0:
+            absorbed = min(self.pulse_shield, amount)
+            self.pulse_shield -= absorbed
+            amount -= absorbed
+        if amount > 0:
+            return super().take_damage(amount)
+        return 0.0  # fully absorbed by the pulse shield -- no hp damage dealt
+
+    def take_poison_damage(self, amount, ignore_shield):
+        if not ignore_shield:
+            return super().take_poison_damage(amount, ignore_shield)
+        # Bypasses only this class's own pulse-shield absorption -- calls
+        # BossEnemy.take_damage directly (not self.take_damage, which
+        # would re-enter this override), the same "skip one specific
+        # override, not the whole chain" shape ShieldedEnemy.
+        # take_poison_damage() already establishes for its own shield.
+        return BossEnemy.take_damage(self, amount)
+
+    def update(self, dt, enemies=None):
+        super().update(dt, enemies)
+        if self.is_dead or self.reached_goal:
+            return
+        self.shield_pulse_timer -= dt
+        if self.shield_pulse_timer <= 0:
+            self.shield_pulse_timer += self.SHIELD_PULSE_INTERVAL
+            self.pulse_shield = self.max_hp * self.SHIELD_PULSE_FRACTION
+
+    def draw(self, surface, assets):
+        super().draw(surface, assets)
+        if self.pulse_shield > 0:
+            center = (int(self.pos.x), int(self.pos.y))
+            pygame.draw.circle(surface, (90, 160, 255), center, self.radius + 8, width=2)
+
+
 class ShieldedEnemy(Enemy):
     """A regenerating shield absorbs damage before HP does: take_damage()
     depletes the shield first and only spills any remainder into HP, and
@@ -740,4 +825,5 @@ ENEMY_TYPES = {
     "splitter": SplitterEnemy,
     "healer": HealerEnemy,
     "final_boss": FinalBossEnemy,
+    "final_boss_shielded": FinalBossShieldedEnemy,
 }

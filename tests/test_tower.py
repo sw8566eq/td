@@ -3,7 +3,7 @@ import pytest
 
 from projectile import Projectile
 from tower import (
-    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, KnockbackTower, LightningTower,
+    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, CannonTower, KnockbackTower, LightningTower,
     PoisonTower, SniperTower, SupportTower, Tower,
 )
 
@@ -240,6 +240,36 @@ def test_other_towers_do_not_chain():
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.chain_range == 0.0, name
+
+
+def test_arc_conductor_relic_widens_lightning_chain_range():
+    # relic_lightning_chain_range_bonus_multiplier is set at construction
+    # time (Game._construct_tower), not baked into chain_range itself --
+    # confirms create_projectile() actually reads it.
+    tower = LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_chain_range = tower.chain_range
+    tower.relic_lightning_chain_range_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.chain_range == base_chain_range * 1.25
+
+
+def test_arc_conductor_relic_does_not_affect_other_towers():
+    for name, tower_cls in TOWER_TYPES.items():
+        if name in ("lightning", "support"):
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        tower.relic_lightning_chain_range_bonus_multiplier = 1.25
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.chain_range == 0.0, name
+
+
+def test_shockwave_rounds_relic_widens_cannon_and_knockback_splash_radius():
+    for tower_cls in (CannonTower, KnockbackTower):
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        base_splash_radius = tower.splash_radius
+        tower.relic_splash_radius_bonus_multiplier = 1.20
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.splash_radius == base_splash_radius * 1.20, tower_cls.__name__
 
 
 def test_basic_tower_projectile_carries_its_crit_mechanic():

@@ -696,14 +696,19 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Gained relic: {RELICS[resolution['relic']].display_name}")
     if resolution.get("tower"):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
+    if resolution.get("relic_given_up"):
+        lines.append(f"Gave up relic: {RELICS[resolution['relic_given_up']].display_name}")
     return lines or ["Nothing else happened."]
 
 
-def draw_event_screen(surface, font, small_font, event, option_rects, hovered_index, phase,
+def draw_event_screen(surface, font, small_font, event, options, option_rects, hovered_index, phase,
                        chosen_option=None, resolution=None):
     """`phase` is "choose" (the event's options are still on offer) or
     "resolved" (one's been picked -- `chosen_option`/`resolution` describe
-    what happened; see Game._resolve_event_choice)."""
+    what happened; see Game._resolve_event_choice). `options` is
+    Game.event_options (see events.available_options), not event.options
+    directly -- may be shorter if a relic_cost option got dropped; always
+    the same length as option_rects, so the two can never desync."""
     surface.fill(settings.COLOR_BG)
     title = font.render(event.display_name, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 70)))
@@ -715,7 +720,7 @@ def draw_event_screen(surface, font, small_font, event, option_rects, hovered_in
         y += text.get_height() + 4
 
     if phase == "choose":
-        for index, option in enumerate(event.options):
+        for index, option in enumerate(options):
             rect = option_rects[index]
             fill_color = settings.COLOR_BUTTON_SELECTED if index == hovered_index else settings.COLOR_HUD_BG
             pygame.draw.rect(surface, fill_color, rect, border_radius=8)
@@ -902,7 +907,8 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, a
 
 
 def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, hovered_index,
-                       purchased_indices, shop_currency, continue_button_rect, unlimited_gold=False):
+                       purchased_indices, shop_currency, continue_button_rect, unlimited_gold=False,
+                       discount_multiplier=1.0):
     """`choices` is a list of shop.ShopItem, mixing both card kinds
     together now that one shop visit offers towers and relics at once (see
     shop.build_offer) -- each item carries its own `kind` ("tower"/
@@ -914,7 +920,11 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     the layout, so the row doesn't reflow while shopping. `unlimited_gold`
     (see economy.py's own docstring) makes every item read as affordable
     regardless of `shop_currency`, mirroring how it already does for
-    battle gold in the build menu (see draw_hud). A full-screen state (see
+    battle gold in the build menu (see draw_hud). `discount_multiplier`
+    (a Haggling Permit-style relic's own shop_price_multiplier, default
+    1.0) is passed straight through to price_for -- see that function's
+    own docstring for why this and Game._try_buy_shop_item must always
+    agree on "the current price." A full-screen state (see
     GameState's own comment on why), not an overlay on a frozen board the
     way draw_victory_screen/draw_game_over_screen still are -- a Shop visit
     is reached from the map now, not always immediately after a fresh
@@ -937,7 +947,7 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
         # visit has already bought in total, not on which item it is (see
         # Game._try_buy_shop_item, which computes the identical value at
         # the moment of an actual purchase).
-        price = price_for(item, len(purchased_indices))
+        price = price_for(item, len(purchased_indices), discount_multiplier)
         affordable = can_afford(shop_currency, price, unlimited_gold)
         draw_card = _draw_relic_card if item.kind == "relic" else _draw_draft_card
         draw_card(surface, font, small_font, draft_choice_rects[index], item.key,
@@ -1301,7 +1311,7 @@ HELP_LINES = [
     "Build: click a tower button, then click a buildable tile to place it",
     "Right-click clears your current selection without placing anything",
     "Click a tower to pin its stats -- Targeting / Upgrade / Sell in the sidebar",
-    "Targeting cycles first / last / strongest / closest -- who gets shot",
+    "Targeting cycles first / last / strongest / closest / weakest -- who gets shot",
     "At max level, Upgrade becomes two permanent Specialize choices",
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",

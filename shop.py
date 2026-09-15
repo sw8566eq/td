@@ -89,11 +89,17 @@ def build_offer(rng, run, meta_progression_path=None):
     )
 
 
-def price_for(item, purchases_this_visit):
+def price_for(item, purchases_this_visit, discount_multiplier=1.0):
     """`item`'s actual cost, escalated by how many other items this same
     shop visit has already bought (0 for the first purchase, so the first
-    item bought each visit always costs exactly its own base_price)."""
-    return round(item.base_price * PRICE_ESCALATION ** purchases_this_visit)
+    item bought each visit always costs exactly its own base_price), then
+    discounted by a Haggling Permit-style relic's own shop_price_multiplier
+    (default 1.0, a no-op, so every pre-existing call site/test is
+    unaffected). Both callers -- ui.draw_draft_screen's own price preview
+    and Game._try_buy_shop_item's actual charge -- must derive "the
+    current price" from this exact same function with the exact same
+    inputs, or the displayed and charged prices could drift apart."""
+    return round(item.base_price * PRICE_ESCALATION ** purchases_this_visit * discount_multiplier)
 
 
 def can_afford(shop_currency, price, unlimited=False):

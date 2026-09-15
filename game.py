@@ -218,6 +218,14 @@ class Game:
         # event_option_rects are only meaningful in the first phase,
         # event_chosen_option/event_resolution only in the second.
         self.current_event = None
+        # The subset of current_event.options this run can actually choose
+        # from right now (see events.available_options) -- a relic_cost
+        # option is dropped once run.relics is empty. event_option_rects
+        # is built from len(event_options), not len(current_event.options),
+        # so the two can never desync; _handle_event_click/
+        # _resolve_event_choice index into this list too, never the raw
+        # event's own options tuple.
+        self.event_options = []
         self.event_option_rects = []
         self.event_phase = "choose"
         self.event_chosen_option = None
@@ -756,7 +764,7 @@ class Game:
         can't drift."""
         run = self.active_run
         item = self.draft_choices[index]
-        price = shop.price_for(item, len(self.shop_purchased_indices))
+        price = shop.price_for(item, len(self.shop_purchased_indices), self.relic_modifiers.shop_price_multiplier)
         unlimited = self.economy.unlimited_gold
         if not shop.can_afford(run.shop_currency, price, unlimited):
             return
@@ -785,11 +793,15 @@ class Game:
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
         (see events.pick_event) deterministically from this node's own id,
-        so the same seed always shows the same event at the same node."""
+        so the same seed always shows the same event at the same node.
+        event_options (see events.available_options) is what's actually
+        rendered/clickable -- may be shorter than current_event.options
+        itself if a relic_cost option got dropped."""
         run = self.active_run
         rng = self._run_rng(run, _EVENT_RNG_STREAM, node.id)
         self.current_event = events.pick_event(rng)
-        self.event_option_rects = ui.build_event_option_rects(len(self.current_event.options))
+        self.event_options = events.available_options(self.current_event, run)
+        self.event_option_rects = ui.build_event_option_rects(len(self.event_options))
         self.event_phase = "choose"
         self.event_chosen_option = None
         self.event_resolution = None
@@ -811,7 +823,7 @@ class Game:
     def _resolve_event_choice(self, index):
         run = self.active_run
         node_id = run.current_node_id
-        option = self.current_event.options[index]
+        option = self.event_options[index]
         # Keyed on the option actually chosen (not the event itself, and
         # not just the node) -- see events.resolve_event_option's own
         # docstring for why only the branch actually taken needs to be
@@ -2218,6 +2230,9 @@ class Game:
         tower.relic_damage_vs_flying_multiplier = self.relic_modifiers.damage_vs_flying_multiplier
         tower.relic_damage_vs_shielded_multiplier = self.relic_modifiers.damage_vs_shielded_multiplier
         tower.relic_damage_vs_healer_multiplier = self.relic_modifiers.damage_vs_healer_multiplier
+        tower.relic_damage_vs_fast_multiplier = self.relic_modifiers.damage_vs_fast_multiplier
+        tower.relic_splash_radius_bonus_multiplier = self.relic_modifiers.tower_splash_radius_multiplier
+        tower.relic_lightning_chain_range_bonus_multiplier = self.relic_modifiers.lightning_chain_range_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
@@ -2652,13 +2667,15 @@ class Game:
                 self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
                 self.shop_purchased_indices, self.active_run.shop_currency,
                 self.shop_continue_button_rect, self.economy.unlimited_gold,
+                self.relic_modifiers.shop_price_multiplier,
             )
             pygame.display.flip()
             return
 
         if self.state == GameState.EVENT and self.active_run is not None:
             ui.draw_event_screen(
-                self.screen, self.font, self.small_font, self.current_event, self.event_option_rects,
+                self.screen, self.font, self.small_font, self.current_event, self.event_options,
+                self.event_option_rects,
                 self._hovered_event_option(), self.event_phase, self.event_chosen_option, self.event_resolution,
             )
             pygame.display.flip()
@@ -2818,9 +2835,9 @@ class Game:
         return ui.get_clicked_map_node(pygame.mouse.get_pos(), self.map_node_rects)
 
     def _hovered_event_option(self):
-        """Index into self.current_event.options/event_option_rects the
-        mouse is currently over, or None -- same purpose _hovered_draft_
-        choice serves for the Shop screen's own cards."""
+        """Index into self.event_options/event_option_rects the mouse is
+        currently over, or None -- same purpose _hovered_draft_choice
+        serves for the Shop screen's own cards."""
         return ui.get_clicked_event_option(pygame.mouse.get_pos(), self.event_option_rects)
 
     def _stats_panel_subject(self, hovered_tower):

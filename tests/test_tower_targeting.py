@@ -105,13 +105,21 @@ def test_targeting_mode_closest_picks_nearest_to_the_tower():
     assert tower.acquire_target([far, near]) is near
 
 
+def test_targeting_mode_weakest_picks_lowest_hp():
+    tower = make_tower(range_=100)
+    tower.targeting_mode = "weakest"
+    weak = FakeEnemy((10, 0), hp=10)
+    strong = FakeEnemy((10, 0), hp=500)
+    assert tower.acquire_target([weak, strong]) is weak
+
+
 def test_cycle_targeting_mode_advances_through_every_mode_and_wraps():
     tower = make_tower()
     seen = [tower.targeting_mode]
     for _ in range(len(tower.TARGETING_MODES)):
         tower.cycle_targeting_mode()
         seen.append(tower.targeting_mode)
-    assert seen == ["first", "last", "strongest", "closest", "first"]
+    assert seen == ["first", "last", "strongest", "closest", "weakest", "first"]
 
 
 def test_acquire_target_excludes_flying_enemy_when_tower_cannot_target_flying():

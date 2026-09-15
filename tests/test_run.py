@@ -28,6 +28,7 @@ import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
 from enemy import SplitterEnemy
+import events
 from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
 from levels import LEVELS
@@ -98,14 +99,17 @@ def _find_buildable_row(game, count):
     raise AssertionError("no matching buildable row found")
 
 
-def _enter_run_shop(game, seed=1):
+def _enter_run_shop(game, seed=1, **run_overrides):
     """Navigate `game` to a Shop screen via a controlled, guaranteed-shop
     map (row 0 combat -> row 1 shop -> row 2 boss combat) -- a real seeded
     map doesn't guarantee a Shop node is reachable at any particular row
     (see CLAUDE.md's "Shop cadence" design note), so tests exercising the
     shop screen's own mechanics use this fixed layout instead of hunting
-    for a seed that happens to produce one."""
-    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=seed)
+    for a seed that happens to produce one. `**run_overrides` passes
+    straight through to _begin_run_with_map (e.g. relics=[...]) for tests
+    that need a relic already held *before* the first floor loads -- see
+    that helper's own docstring for why that matters."""
+    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=seed, **run_overrides)
     game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
@@ -590,6 +594,25 @@ def test_buying_a_shop_item_deducts_its_escalated_price(game):
 
     game._handle_draft_click(game.draft_choice_rects[1].center)
     assert game.active_run.shop_currency == currency_before - first_price - second_price
+
+
+def test_haggling_permit_relic_discounts_what_a_shop_purchase_charges(game):
+    # relics=["haggling_permit"] must reach _begin_run_with_map *before*
+    # the first floor loads -- relic_modifiers (what Game._try_buy_shop_item
+    # actually reads) is only ever recomputed at floor-load time, see
+    # CLAUDE.md's own "every rng a node needs" section for the same
+    # "resolved once, at load time" shape this mirrors.
+    _enter_run_shop(game, relics=["haggling_permit"])
+    assert len(game.draft_choices) >= 1
+    game.active_run.shop_currency = 9999
+    undiscounted_price = shop.price_for(game.draft_choices[0], 0)
+    currency_before = game.active_run.shop_currency
+
+    game._handle_draft_click(game.draft_choice_rects[0].center)
+
+    charged = currency_before - game.active_run.shop_currency
+    assert charged == shop.price_for(game.draft_choices[0], 0, discount_multiplier=0.85)
+    assert charged < undiscounted_price
 
 
 def test_buying_an_unaffordable_shop_item_does_nothing(game):
@@ -1265,7 +1288,8 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = [
         "concussive_rounds", "disorienting_flash", "flak_rounds",
-        "breach_charges", "suppression_directive",
+        "breach_charges", "suppression_directive", "interceptor_rounds",
+        "shockwave_rounds", "arc_conductor",
     ]
     _enter_first_node(game)
     anchor_col, anchor_row = find_buildable_anchor(game)
@@ -1283,6 +1307,9 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     assert tower.relic_damage_vs_flying_multiplier == RELICS["flak_rounds"].damage_vs_flying_multiplier
     assert tower.relic_damage_vs_shielded_multiplier == RELICS["breach_charges"].damage_vs_shielded_multiplier
     assert tower.relic_damage_vs_healer_multiplier == RELICS["suppression_directive"].damage_vs_healer_multiplier
+    assert tower.relic_damage_vs_fast_multiplier == RELICS["interceptor_rounds"].damage_vs_fast_multiplier
+    assert tower.relic_splash_radius_bonus_multiplier == RELICS["shockwave_rounds"].tower_splash_radius_multiplier
+    assert tower.relic_lightning_chain_range_bonus_multiplier == RELICS["arc_conductor"].lightning_chain_range_multiplier
     assert not hasattr(tower, "relic_splitter_child_damage")
 
 
@@ -2257,7 +2284,8 @@ def test_render_a_three_option_event_does_not_crash(game):
     _begin_run_with_map(game, ["combat", "event"])
     game._enter_node("1-0")
     game.current_event = EVENTS["collapsed_vault"]
-    game.event_option_rects = ui.build_event_option_rects(len(game.current_event.options))
+    game.event_options = list(game.current_event.options)
+    game.event_option_rects = ui.build_event_option_rects(len(game.event_options))
     assert len(game.event_option_rects) == 3
 
     game.render()  # the "choose" phase, with all 3 options on screen
@@ -2267,6 +2295,43 @@ def test_render_a_three_option_event_does_not_crash(game):
     assert game.event_phase == "resolved"
     assert game.event_chosen_option is game.current_event.options[2]
     game.render()  # the "resolved" phase
+
+
+def test_render_traveling_collector_with_a_relic_held_offers_the_trade(game, monkeypatch):
+    # Forces traveling_collector specifically (rather than hunting for a
+    # seed that draws it) via events.pick_event -- the one hook
+    # _enter_event_node itself calls through, so this still exercises the
+    # real _enter_event_node/available_options/draw_event_screen/
+    # _handle_event_click pipeline end to end, not a hand-rolled stand-in.
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["traveling_collector"])
+    _begin_run_with_map(game, ["combat", "event"], relics=["war_chest"])
+    game._enter_node("1-0")
+    assert len(game.event_options) == 3  # all 3, including the relic_cost trade
+    assert game.event_options[-1].relic_cost
+
+    game.render()  # the "choose" phase, all 3 options on screen
+
+    game._handle_event_click(game.event_option_rects[-1].center)  # the relic_cost trade
+
+    assert game.event_phase == "resolved"
+    assert "war_chest" not in game.active_run.relics
+    assert game.event_resolution["relic_given_up"] == "war_chest"
+    game.render()  # the "resolved" phase
+
+
+def test_render_traveling_collector_without_a_relic_drops_the_trade_option(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["traveling_collector"])
+    _begin_run_with_map(game, ["combat", "event"], relics=[])
+    game._enter_node("1-0")
+    assert len(game.event_options) == 2  # the relic_cost trade is dropped
+    assert len(game.event_option_rects) == 2
+
+    game.render()  # must not crash despite current_event.options having 3 entries
+
+    game._handle_event_click(game.event_option_rects[-1].center)  # the last *available* option
+
+    assert game.event_phase == "resolved"
+    assert not game.event_chosen_option.relic_cost
 
 
 def test_render_rest_does_not_crash(game):

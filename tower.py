@@ -82,7 +82,7 @@ class Tower:
     # cycle_targeting_mode() (the stats panel's "Targeting: ..." row). "first"
     # reproduces this class's original, only-ever behavior (furthest along
     # the path) exactly -- see _target_first.
-    TARGETING_MODES = ("first", "last", "strongest", "closest")
+    TARGETING_MODES = ("first", "last", "strongest", "closest", "weakest")
 
     MAX_LEVEL = 3
     # Default multiplier applied to a LEVEL_SCALED_STATS entry at a given
@@ -210,6 +210,17 @@ class Tower:
         self.relic_sell_refund_bonus = 0.0
         self.relic_aura_range_bonus_multiplier = 1.0
         self.relic_aura_strength_bonus_multiplier = 1.0
+        # Shockwave Rounds-style relic -- same construction-time shape as
+        # relic_range_bonus_multiplier above, consumed only by whichever
+        # concrete tower actually has a splash_radius attribute (Cannon,
+        # Knockback) in its own create_projectile(); harmless on every
+        # other tower, which never reads it.
+        self.relic_splash_radius_bonus_multiplier = 1.0
+        # Arc Conductor-style relic -- Lightning-tower-exclusive, mirroring
+        # relic_aura_range_bonus_multiplier's own shape: set on every
+        # tower harmlessly, but only ever read inside LightningTower's own
+        # create_projectile().
+        self.relic_lightning_chain_range_bonus_multiplier = 1.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -279,6 +290,12 @@ class Tower:
         # Suppression Directive-style relic -- ungated multiply, read
         # against the target's own current heal_rate.
         self.relic_damage_vs_healer_multiplier = 1.0
+        # Interceptor Rounds-style relic -- ungated multiply, read by
+        # Projectile against enemy.max_speed (a fixed per-species ceiling,
+        # same reasoning as Giant Slayer's own max_hp check -- a slowed
+        # fast enemy shouldn't lose the bonus just because its live speed
+        # dropped).
+        self.relic_damage_vs_fast_multiplier = 1.0
         # Containment Charges-style relic is deliberately NOT one of these
         # relic_* fields -- it's a flat per-floor value with no per-tower
         # variation, so Game.update()'s own dead-enemy drain loop reads
@@ -434,6 +451,7 @@ class Tower:
         projectile.relic_damage_vs_flying_multiplier = self.relic_damage_vs_flying_multiplier
         projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
         projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
+        projectile.relic_damage_vs_fast_multiplier = self.relic_damage_vs_fast_multiplier
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
@@ -473,6 +491,9 @@ class Tower:
     def _target_strongest(self, candidates):
         return max(candidates, key=lambda e: e.hp)
 
+    def _target_weakest(self, candidates):
+        return min(candidates, key=lambda e: e.hp)
+
     def _target_closest(self, candidates):
         return min(candidates, key=lambda e: self.pos.distance_to(e.pos))
 
@@ -490,6 +511,7 @@ class Tower:
         "last": _target_last,
         "strongest": _target_strongest,
         "closest": _target_closest,
+        "weakest": _target_weakest,
     }
 
     def in_range(self, enemy, effective_range=None):
@@ -789,7 +811,8 @@ class CannonTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.effective_damage(), splash_radius=self.splash_radius,
+            damage=self.effective_damage(),
+            splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             sprite_name="projectile_cannon", source=self,
         )
 
@@ -838,8 +861,8 @@ class FrostTower(Tower):
 class KnockbackTower(Tower):
     cost = 90
     range = 90
-    damage = 6
-    fire_rate = 0.8
+    damage = 8
+    fire_rate = 0.9
     projectile_speed = 300.0
     splash_radius = 70  # hits every enemy in this radius of the impact, not just the target
     # Seconds of each hit enemy's own forward progress to undo -- not a
@@ -874,7 +897,8 @@ class KnockbackTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.effective_damage(), splash_radius=self.splash_radius,
+            damage=self.effective_damage(),
+            splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             knockback_duration=self.knockback_duration,
             sprite_name="projectile_knockback", source=self,
         )
@@ -919,7 +943,8 @@ class LightningTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.effective_damage(), chain_range=self.chain_range,
+            damage=self.effective_damage(),
+            chain_range=self.chain_range * self.relic_lightning_chain_range_bonus_multiplier,
             max_chain_targets=self.max_chain_targets,
             sprite_name="projectile_lightning", source=self,
         )
