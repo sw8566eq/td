@@ -51,7 +51,11 @@ class EventOption:
     # stable regardless of whether this option gets filtered out (several
     # existing tests click "the first rendered option" without forcing
     # which event gets picked, and would silently break if an early-index
-    # option could vanish).
+    # option could vanish). Enforced below EVENTS itself, not just here in
+    # prose -- a module-level assert, the same load-bearing-invariant shape
+    # _EVENT_ORDER's own already uses, so a future event violating this
+    # rule fails at import time instead of only under the narrow runtime
+    # conditions that would actually surface the desync.
     relic_cost: bool = False
 
 
@@ -313,6 +317,16 @@ EVENTS = {
 # comment on the identical risk) -- _EVENT_ORDER above is the fixed order
 # pick_event samples from, independent of however EVENTS itself is written.
 assert set(_EVENT_ORDER) == set(EVENTS.keys())
+# A machine-checked version of EventOption.relic_cost's own "must be last"
+# comment, rather than trusting every future event author to remember and
+# honor a rule stated only in prose -- catches a violation at import time
+# (the same moment the _EVENT_ORDER check above does) instead of only
+# under the narrow conditions (a relics-empty run, a test that doesn't
+# force which event it lands on) that would actually surface a desync.
+assert all(
+    not any(option.relic_cost for option in event.options[:-1])
+    for event in EVENTS.values()
+), "an EventOption with relic_cost=True must be the last option in its Event"
 
 
 def pick_event(rng):

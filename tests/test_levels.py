@@ -226,7 +226,14 @@ def _wave_species(wave):
 # of this test file could.
 _FINAL_BOSS_SPECIES_BY_LEVEL = {16: "final_boss", 17: "final_boss_shielded"}
 _FINAL_BOSS_SPECIES = set(_FINAL_BOSS_SPECIES_BY_LEVEL.values())
-assert set(_FINAL_BOSS_SPECIES_BY_LEVEL) == set(BOSS_LEVEL_IDS)
+
+
+def test_final_boss_species_by_level_covers_every_boss_level_id():
+    # A regular test, not a bare module-level assert, so a mismatch (e.g.
+    # BOSS_LEVEL_IDS growing without a matching entry added here) shows up
+    # as a normal, individually-reportable test failure like every other
+    # invariant check in this file, rather than a collection-time error.
+    assert set(_FINAL_BOSS_SPECIES_BY_LEVEL) == set(BOSS_LEVEL_IDS)
 
 
 def test_every_levels_final_wave_includes_a_boss_or_final_boss():

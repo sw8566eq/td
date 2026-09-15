@@ -33,6 +33,16 @@ def test_every_events_option_keys_are_unique_within_that_event():
         assert len(keys) == len(set(keys))
 
 
+def test_a_relic_cost_option_is_always_the_last_option_in_its_event():
+    # events.py itself already enforces this with a module-level assert at
+    # import time (see EventOption.relic_cost's own comment on why it
+    # matters) -- this test re-confirms the same rule as an ordinary,
+    # individually-reportable pytest failure too, rather than relying
+    # solely on collection-time import failing.
+    for event in EVENTS.values():
+        assert not any(option.relic_cost for option in event.options[:-1]), event.key
+
+
 def test_every_event_has_at_least_one_option_with_a_real_effect():
     # Not every option needs an effect -- "walk away"/"leave it"/"decline"
     # are deliberately safe, no-op alternatives (a genuine no-risk-no-

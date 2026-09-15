@@ -99,14 +99,17 @@ def _find_buildable_row(game, count):
     raise AssertionError("no matching buildable row found")
 
 
-def _enter_run_shop(game, seed=1):
+def _enter_run_shop(game, seed=1, **run_overrides):
     """Navigate `game` to a Shop screen via a controlled, guaranteed-shop
     map (row 0 combat -> row 1 shop -> row 2 boss combat) -- a real seeded
     map doesn't guarantee a Shop node is reachable at any particular row
     (see CLAUDE.md's "Shop cadence" design note), so tests exercising the
     shop screen's own mechanics use this fixed layout instead of hunting
-    for a seed that happens to produce one."""
-    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=seed)
+    for a seed that happens to produce one. `**run_overrides` passes
+    straight through to _begin_run_with_map (e.g. relics=[...]) for tests
+    that need a relic already held *before* the first floor loads -- see
+    that helper's own docstring for why that matters."""
+    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=seed, **run_overrides)
     game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
@@ -594,18 +597,12 @@ def test_buying_a_shop_item_deducts_its_escalated_price(game):
 
 
 def test_haggling_permit_relic_discounts_what_a_shop_purchase_charges(game):
-    # Unlike _enter_run_shop's plain default map, this run needs
-    # haggling_permit already held *before* the first floor loads, since
-    # relic_modifiers (what Game._try_buy_shop_item actually reads) is
-    # only ever recomputed at floor-load time -- see CLAUDE.md's own
-    # "every rng a node needs" section for the same "resolved once, at
-    # load time" shape this mirrors.
-    _begin_run_with_map(game, ["combat", "shop", "combat"], relics=["haggling_permit"])
-    game._enter_node("0-0")
-    finish_all_waves(game)
-    game.update(dt=0.01)
-    game._enter_map()
-    game._enter_node("1-0")
+    # relics=["haggling_permit"] must reach _begin_run_with_map *before*
+    # the first floor loads -- relic_modifiers (what Game._try_buy_shop_item
+    # actually reads) is only ever recomputed at floor-load time, see
+    # CLAUDE.md's own "every rng a node needs" section for the same
+    # "resolved once, at load time" shape this mirrors.
+    _enter_run_shop(game, relics=["haggling_permit"])
     assert len(game.draft_choices) >= 1
     game.active_run.shop_currency = 9999
     undiscounted_price = shop.price_for(game.draft_choices[0], 0)
