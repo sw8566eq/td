@@ -4,6 +4,7 @@ import settings
 from editor import TOOL_ORDER
 from enemy import ENEMY_TYPES
 from levels import Level
+from run_map import NODE_TYPES
 from shop import ShopItem
 from tower import TOWER_TYPES
 from ui import (
@@ -23,6 +24,11 @@ from ui import (
     LEVEL_SELECT_TOP,
     LEVEL_THUMBNAIL_HEIGHT,
     LEVEL_THUMBNAIL_WIDTH,
+    MAP_NODE_TYPE_COLORS,
+    MAP_NODE_TYPE_DESCRIPTIONS,
+    MAP_NODE_TYPE_LABELS,
+    MAP_NODE_TYPE_NAMES,
+    MAP_TOOLTIP_MAX_WIDTH,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
     WAVE_UNIT_ROWS_BOTTOM,
@@ -986,3 +992,31 @@ def test_specialization_descriptions_fit_the_panel_width():
             assert width <= usable_width, (
                 f"{name}/{key}: {spec['description']!r} is {width}px, panel fits {usable_width}px"
             )
+
+
+# --- Run map: legend + hovered-node tooltip ---
+
+def test_every_node_type_has_a_color_a_label_a_name_and_a_description():
+    # The four MAP_NODE_TYPE_* dicts (color for the node fill, single-glyph
+    # label for inside the circle, full name and one-line description for
+    # the legend/tooltip) must all cover exactly the same keys -- run_map.
+    # NODE_TYPES is the authoritative list, so a future node type added
+    # there and forgotten in any one of these four would otherwise only
+    # surface as a KeyError deep inside a render call.
+    for node_type in NODE_TYPES:
+        assert node_type in MAP_NODE_TYPE_COLORS, node_type
+        assert node_type in MAP_NODE_TYPE_LABELS, node_type
+        assert node_type in MAP_NODE_TYPE_NAMES, node_type
+        assert node_type in MAP_NODE_TYPE_DESCRIPTIONS, node_type
+
+
+def test_node_type_descriptions_fit_the_tooltip_width():
+    pygame.font.init()
+    small_font = pygame.font.SysFont(None, 22)  # matches Game.small_font
+    for node_type, description in MAP_NODE_TYPE_DESCRIPTIONS.items():
+        # Allowed to wrap (_draw_map_node_tooltip word-wraps it), but never
+        # to a single word so long _wrap_text can't break it at all --
+        # that would silently overflow the box no matter how it's wrapped.
+        for word in description.split(" "):
+            width = small_font.size(word)[0]
+            assert width <= MAP_TOOLTIP_MAX_WIDTH, f"{node_type}: {word!r} alone is {width}px"
