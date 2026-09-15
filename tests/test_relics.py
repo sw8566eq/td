@@ -285,6 +285,19 @@ def test_compose_relic_modifiers_multiplies_support_aura_multipliers():
     assert modifiers.support_aura_strength_multiplier == relic.support_aura_strength_multiplier ** 2
 
 
+def test_overdrive_array_contributes_only_aura_strength():
+    # A second support_aura_strength_multiplier relic, deliberately
+    # strength-only -- range stays neutral without resonant_field also held.
+    # (The multiply-with-resonant_field case is already covered generically
+    # by test_compose_relic_modifiers_multiplies_support_aura_multipliers
+    # above, composing resonant_field with itself -- swapping in
+    # overdrive_array would exercise the exact same aggregation lines, not
+    # a new one, so it's deliberately not duplicated here.)
+    modifiers = compose_relic_modifiers(["overdrive_array"])
+    assert modifiers.support_aura_strength_multiplier == RELICS["overdrive_array"].support_aura_strength_multiplier
+    assert modifiers.support_aura_range_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_is_order_independent():
     forward = compose_relic_modifiers(["prospectors_charm", "war_chest", "sturdy_gate"])
     backward = compose_relic_modifiers(["sturdy_gate", "war_chest", "prospectors_charm"])
@@ -383,6 +396,23 @@ def test_compose_relic_modifiers_no_density_relic_leaves_it_neutral():
     assert modifiers.tower_density_radius == 0.0
     assert modifiers.tower_density_damage_bonus_per_neighbor == 0.0
     assert modifiers.tower_density_damage_bonus_cap == 0.0
+
+
+def test_reinforced_chassis_is_functional_standalone():
+    # A second, independently-functional density relic -- own radius/rate/
+    # cap, no dependency on overcrowded_circuits to do anything (unlike a
+    # relic that only widens/raises a cap with no rate of its own). (The
+    # combine-with-overcrowded_circuits case is already covered generically
+    # by test_compose_relic_modifiers_takes_the_max_tower_density_radius/
+    # _sums_tower_density_bonus_rate_and_cap above, composing
+    # overcrowded_circuits with a synthetic stand-in -- swapping in
+    # reinforced_chassis would exercise the exact same max()/sum lines, not
+    # a new one, so it's deliberately not duplicated here.)
+    modifiers = compose_relic_modifiers(["reinforced_chassis"])
+    relic = RELICS["reinforced_chassis"]
+    assert modifiers.tower_density_radius == relic.tower_density_radius
+    assert modifiers.tower_density_damage_bonus_per_neighbor == relic.tower_density_damage_bonus_per_neighbor
+    assert modifiers.tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
 
 
 def test_compose_relic_modifiers_takes_the_max_last_stand_fire_rate_multiplier(monkeypatch):

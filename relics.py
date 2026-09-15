@@ -489,6 +489,28 @@ RELICS = {
         "Shop prices are 15% lower, every floor.",
         shop_price_multiplier=0.85,
     ),
+    # A second, independently-functional density relic -- same shape as
+    # overcrowded_circuits itself (own radius/per-neighbor rate/cap, no
+    # dependency on that relic to do something), so this alone is never a
+    # dud; the two combine via compose_relic_modifiers' existing max()/sum/
+    # sum aggregation (radius max()'d, rate and cap summed) the exact same
+    # way two poison- or slow-granting relics already combine.
+    "reinforced_chassis": Relic(
+        "reinforced_chassis", "Reinforced Chassis",
+        "+1.5% tower damage for every other tower within 100 pixels of it, capped at +15%, every floor.",
+        tower_density_radius=100, tower_density_damage_bonus_per_neighbor=0.015,
+        tower_density_damage_bonus_cap=0.15,
+    ),
+    # A second support_aura_strength_multiplier relic -- resonant_field
+    # already covers both range and strength together; this one is
+    # strength-only, so a Support-focused run doesn't need to draft the
+    # exact same card twice to feel its aura compound. Ungated straight
+    # multiply, same as resonant_field's own two fields.
+    "overdrive_array": Relic(
+        "overdrive_array", "Overdrive Array",
+        "Support tower auras buff 20% more, every floor.",
+        support_aura_strength_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
