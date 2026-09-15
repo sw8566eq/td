@@ -266,6 +266,25 @@ class Relic:
     # covers the battle-gold side (Tower.upgrade_cost()/specialization_
     # cost()).
     shop_price_multiplier: float = 1.0
+    # storm_core's own bonus -- Lightning-tower-exclusive, set on every
+    # tower harmlessly at construction time like lightning_chain_range_
+    # multiplier, but folded into effective_damage()'s own additive stack
+    # via LightningTower._relic_family_damage_bonus() rather than a plain
+    # create_projectile() multiply -- a damage bonus has to combine with
+    # every other damage source the same additive way, unlike chain_range/
+    # splash_radius below, which aren't part of that stack at all. See
+    # Tower._relic_family_damage_bonus's own docstring for why this needs
+    # a per-class hook instead of a field effective_damage() reads
+    # directly.
+    lightning_damage_multiplier: float = 1.0
+    # heavy_ordnance's own bonus -- Cannon/Knockback-exclusive, same
+    # family_damage_bonus() hook shape as lightning_damage_multiplier
+    # immediately above, just overridden identically by both CannonTower
+    # and KnockbackTower -- the same two towers relic_splash_radius_bonus_
+    # multiplier already reads identically in (that one's still a plain
+    # create_projectile() multiply, since splash_radius isn't part of
+    # effective_damage()'s stack).
+    cannon_knockback_damage_multiplier: float = 1.0
 
 
 RELICS = {
@@ -511,6 +530,33 @@ RELICS = {
         "Support tower auras buff 20% more, every floor.",
         support_aura_strength_multiplier=1.20,
     ),
+    # A third crit relic -- own chance and multiplier, tuned lower than
+    # lucky_strikes/focused_fire on both (so it doesn't dominate when
+    # combined) but fully standalone-functional on its own, same "own
+    # numbers, no dependency on another relic" shape reinforced_chassis
+    # sets for density above.
+    "precision_engineering": Relic(
+        "precision_engineering", "Precision Engineering",
+        "+8% crit chance for every tower, every floor.",
+        crit_chance=0.08, crit_damage_multiplier=1.3,
+    ),
+    # Lightning-tower-exclusive damage multiplier -- see
+    # lightning_damage_multiplier's own comment on the Relic dataclass
+    # above for the read site (LightningTower._relic_family_damage_bonus()).
+    "storm_core": Relic(
+        "storm_core", "Storm Core",
+        "Lightning tower deals 20% more damage, every floor.",
+        lightning_damage_multiplier=1.20,
+    ),
+    # Cannon/Knockback-exclusive damage multiplier -- see
+    # cannon_knockback_damage_multiplier's own comment on the Relic dataclass
+    # above for the read sites (Cannon/KnockbackTower's own identical
+    # _relic_family_damage_bonus() overrides).
+    "heavy_ordnance": Relic(
+        "heavy_ordnance", "Heavy Ordnance",
+        "Cannon and Knockback towers deal 20% more damage, every floor.",
+        cannon_knockback_damage_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -649,6 +695,8 @@ class RelicModifiers:
     tower_splash_radius_multiplier: float = 1.0
     lightning_chain_range_multiplier: float = 1.0
     shop_price_multiplier: float = 1.0
+    lightning_damage_multiplier: float = 1.0
+    cannon_knockback_damage_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -725,6 +773,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     tower_splash_radius_multiplier = 1.0
     lightning_chain_range_multiplier = 1.0
     shop_price_multiplier = 1.0
+    lightning_damage_multiplier = 1.0
+    cannon_knockback_damage_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -816,6 +866,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         tower_splash_radius_multiplier *= relic.tower_splash_radius_multiplier
         lightning_chain_range_multiplier *= relic.lightning_chain_range_multiplier
         shop_price_multiplier *= relic.shop_price_multiplier
+        lightning_damage_multiplier *= relic.lightning_damage_multiplier
+        cannon_knockback_damage_multiplier *= relic.cannon_knockback_damage_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -859,4 +911,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         tower_splash_radius_multiplier=tower_splash_radius_multiplier,
         lightning_chain_range_multiplier=lightning_chain_range_multiplier,
         shop_price_multiplier=shop_price_multiplier,
+        lightning_damage_multiplier=lightning_damage_multiplier,
+        cannon_knockback_damage_multiplier=cannon_knockback_damage_multiplier,
     )
