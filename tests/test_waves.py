@@ -433,6 +433,25 @@ def test_enemy_speed_and_gold_multipliers_scale_a_spawned_enemy():
     assert spawned[0].gold_reward == unscaled.gold_reward * 0.5
 
 
+def test_enemy_gold_multiplier_always_rounds_to_a_whole_number():
+    # Regression: gold is currency, not a simulation quantity like hp/
+    # speed -- a fractional multiplier (difficulty, run escalation, or a
+    # Bounty Hunter's Ledger-style relic, possibly several stacked
+    # together) must round the instant it touches gold_reward, or
+    # Economy.add_gold() -- which does no rounding of its own, it just
+    # adds whatever it's given -- silently turns Economy.gold into a
+    # float for the rest of the run.
+    level = make_level([{"grunt": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           enemy_gold_multiplier=1.15)
+    unscaled = GruntEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].gold_reward == round(unscaled.gold_reward * 1.15)
+    assert isinstance(spawned[0].gold_reward, int)
+
+
 def test_enemy_speed_multiplier_never_exceeds_max_speed():
     # Regression guard: Enemy.__init__ already clamps its own pre-
     # difficulty speed to max_speed, but _spawn_enemy used to multiply by

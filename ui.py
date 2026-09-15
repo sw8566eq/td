@@ -193,8 +193,13 @@ def _format_currency(value, unlimited):
     """Shared "unlimited" display idiom for any gold-like value gated on
     Economy.unlimited_gold -- battle gold and shop currency both read this
     way (see draw_hud/draw_draft_screen) rather than each spelling out its
-    own copy of the same ternary."""
-    return "unlimited" if unlimited else str(value)
+    own copy of the same ternary. round(value), not a bare str(value):
+    every currency in this game is meant to be a whole number, but
+    str() on a float that happens to hold one anyway (100.0) still
+    prints the trailing ".0" -- round() coerces to a genuine int first
+    (a no-op for a value that's already an int), so the player never
+    sees a decimal point here regardless of the underlying type."""
+    return "unlimited" if unlimited else str(round(value))
 
 
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
@@ -726,7 +731,13 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
 
     if lives is not None and shop_currency is not None:
-        info = small_font.render(f"Lives: {lives}   Shop currency: {shop_currency}", True, settings.COLOR_GOLD)
+        # round(), not a bare shop_currency -- see _format_currency's own
+        # comment on why every currency display in this game coerces to a
+        # whole number before rendering, regardless of the underlying
+        # value's type.
+        info = small_font.render(
+            f"Lives: {lives}   Shop currency: {round(shop_currency)}", True, settings.COLOR_GOLD,
+        )
         surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 58)))
 
     for from_id, target_ids in game_map.edges.items():

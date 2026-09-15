@@ -84,6 +84,7 @@ from ui import (
     menu_options,
     wave_unit_content_height,
     wave_unit_max_scroll,
+    _format_currency,
     _format_wave_label,
     _format_wave_preview,
     _relics_overlay_lines,
@@ -304,6 +305,30 @@ def test_format_wave_label_prefers_all_cleared_over_endless():
     # practice, see WaveManager._advance_after_clear).
     label = _format_wave_label(_FakeWaveManager(all_waves_complete=True, endless=True))
     assert label == "All waves cleared!"
+
+
+# --- Currency display (HUD's Gold/Shop line, the run map's Shop readout) ---
+
+def test_format_currency_shows_unlimited_when_flagged():
+    assert _format_currency(100, unlimited=True) == "unlimited"
+
+
+def test_format_currency_shows_a_plain_int_with_no_decimal_point():
+    assert _format_currency(100, unlimited=False) == "100"
+
+
+def test_format_currency_never_shows_a_trailing_decimal_point_for_a_whole_float():
+    # Regression: every currency in this game is meant to be a whole
+    # number, but a bare str() on a float that happens to hold one anyway
+    # (100.0, e.g. from a stray unrounded multiplier upstream) still
+    # prints the trailing ".0" -- this is the display-side safety net for
+    # exactly that class of bug, independent of whatever fixed the value
+    # itself (see waves.py's own enemy_gold_multiplier rounding fix).
+    assert _format_currency(100.0, unlimited=False) == "100"
+
+
+def test_format_currency_rounds_a_genuinely_fractional_value_for_display():
+    assert _format_currency(100.6, unlimited=False) == "101"
 
 
 # --- Relics overlay (HUD) ---
