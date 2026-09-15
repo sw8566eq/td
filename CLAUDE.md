@@ -79,10 +79,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 44 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  3 of the 46 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
   gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
   `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Forty-four relics across eight effect shapes -- the original
+  `meta_progression.py` bullet below). Forty-six relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -104,7 +104,11 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   already-resolved `effective_damage()` result at the `create_projectile()` call site instead (an
   earlier version of this batch did exactly that) would compound multiplicatively against every other
   damage source there rather than adding to them, the one stacking rule that method's own docstring
-  exists to guarantee:
+  exists to guarantee -- plus a seventh batch of two deepening the Mark archetype, both Beacon-
+  tower-exclusive and both the plain-multiply shape (`beacon_splash_radius_multiplier`/`beacon_
+  mark_multiplier`, read only in `BeaconTower.create_projectile()` against `mark_splash_radius`/
+  `mark_damage_multiplier` respectively -- neither is this tower's own shot damage, so neither needs
+  the `_relic_family_damage_bonus()` hook above), none gated:
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);

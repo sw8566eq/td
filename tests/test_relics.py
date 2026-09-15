@@ -570,6 +570,22 @@ def test_compose_relic_modifiers_multiplies_cannon_knockback_damage_multiplier()
     assert modifiers.cannon_knockback_damage_multiplier == RELICS["heavy_ordnance"].cannon_knockback_damage_multiplier ** 2
 
 
+def test_compose_relic_modifiers_multiplies_beacon_splash_radius_multiplier():
+    modifiers = compose_relic_modifiers(["luminous_field", "luminous_field"])
+    assert modifiers.beacon_splash_radius_multiplier == RELICS["luminous_field"].beacon_splash_radius_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_beacon_mark_multiplier():
+    modifiers = compose_relic_modifiers(["signal_amplifier", "signal_amplifier"])
+    assert modifiers.beacon_mark_multiplier == RELICS["signal_amplifier"].beacon_mark_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_beacon_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.beacon_splash_radius_multiplier == 1.0
+    assert modifiers.beacon_mark_multiplier == 1.0
+
+
 def test_precision_engineering_is_functional_standalone():
     # A third crit relic -- own chance/multiplier, no dependency on
     # lucky_strikes/focused_fire to do anything. (The "combine with an

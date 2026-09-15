@@ -235,6 +235,19 @@ class Tower:
         # multiply), just for the Cannon/Knockback pair instead of
         # Lightning alone.
         self.relic_cannon_knockback_damage_bonus_multiplier = 1.0
+        # Luminous Field-style relic -- Beacon-tower-exclusive, plain
+        # construction-time multiply shape (like relic_splash_radius_
+        # bonus_multiplier), read only inside BeaconTower's own
+        # create_projectile() against mark_splash_radius. Not a damage
+        # bonus, so it has no business in the family_damage_bonus() hook.
+        self.relic_beacon_splash_radius_bonus_multiplier = 1.0
+        # Signal Amplifier-style relic -- Beacon-tower-exclusive, same
+        # plain-multiply shape as relic_beacon_splash_radius_bonus_
+        # multiplier immediately above, scaling mark_damage_multiplier
+        # instead -- also not this tower's own shot damage (see
+        # beacon_mark_multiplier's own comment in relics.py), so this too
+        # skips the family_damage_bonus() hook.
+        self.relic_beacon_mark_bonus_multiplier = 1.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -1226,8 +1239,11 @@ class BeaconTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.effective_damage(), splash_radius=self.mark_splash_radius,
-            mark_effect=(self.mark_damage_multiplier, self.mark_duration),
+            damage=self.effective_damage(),
+            splash_radius=self.mark_splash_radius * self.relic_beacon_splash_radius_bonus_multiplier,
+            mark_effect=(
+                self.mark_damage_multiplier * self.relic_beacon_mark_bonus_multiplier, self.mark_duration,
+            ),
             sprite_name="projectile_beacon", source=self,
         )
 
