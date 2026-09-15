@@ -27,7 +27,7 @@ import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
-from enemy import SplitterEnemy
+from enemy import GruntEnemy, SplitterEnemy
 import events
 from events import EVENTS
 from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
@@ -1335,6 +1335,129 @@ def test_containment_charges_damages_a_splitters_children_through_game_update(ga
     for child in children:
         assert child.hp == pytest.approx(child.max_hp - 5)
         assert child in game.enemies
+
+
+def _enter_run_with_relic(game, monkeypatch, relic_key, **relic_kwargs):
+    """Start a run holding exactly one (real-key, artificially-tuned)
+    relic and enter its first node -- shared setup for the Virulent Bloom
+    tests below, all of which just need game.relic_modifiers to reflect
+    one specific relic's own fields without the real registry's tuned
+    numbers getting in the way."""
+    monkeypatch.setitem(RELICS, relic_key, Relic(relic_key, "", "", **relic_kwargs))
+    game.start_new_run(seed=1)
+    game.active_run.relics = [relic_key]
+    _enter_first_node(game)
+
+
+def _poisoned_dying_grunt(pos=(0, 0), damage_per_tick=4, tick_interval=0.5, duration=3.0):
+    """A GruntEnemy that's already dead-while-poisoned -- the exact state
+    Game.update()'s own poison-spread collection looks for. `pos` is
+    itself the waypoint start, matching how every test below only cares
+    about spread *distance*, not actual movement along a route."""
+    enemy = GruntEnemy([pygame.Vector2(pos), pygame.Vector2(pos) + (100, 0)], wave_number=1)
+    enemy.apply_poison(damage_per_tick=damage_per_tick, tick_interval=tick_interval, duration=duration)
+    enemy.take_damage(enemy.max_hp)  # a killing blow while still actively poisoned
+    return enemy
+
+
+def test_virulent_bloom_spreads_poison_to_a_nearby_enemy_on_death(game, monkeypatch):
+    _enter_run_with_relic(game, monkeypatch, "virulent_bloom", poison_spread_radius=60)
+    assert game.relic_modifiers.poison_spread_radius == 60
+
+    dying = _poisoned_dying_grunt()
+    assert dying.is_dead
+    nearby = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(100, 0)], wave_number=1)
+    nearby.pos = pygame.Vector2(30, 0)  # within the 60px spread radius
+    game.enemies = [dying, nearby]
+
+    game.update(dt=0.01)
+
+    assert nearby.poison_time_remaining == pytest.approx(3.0)
+    assert nearby.poison_damage_per_tick == pytest.approx(4)
+    assert nearby.poison_tick_interval == pytest.approx(0.5)
+
+
+def test_virulent_bloom_does_not_reach_an_enemy_outside_the_radius(game, monkeypatch):
+    _enter_run_with_relic(game, monkeypatch, "virulent_bloom", poison_spread_radius=60)
+
+    dying = _poisoned_dying_grunt()
+    far_away = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(500, 0)], wave_number=1)
+    far_away.pos = pygame.Vector2(500, 0)  # well outside the 60px radius
+    game.enemies = [dying, far_away]
+
+    game.update(dt=0.01)
+
+    assert far_away.poison_time_remaining == 0.0
+
+
+def test_virulent_bloom_is_a_noop_without_the_relic(game):
+    game.start_new_run(seed=1)
+    _enter_first_node(game)
+    assert game.relic_modifiers.poison_spread_radius == 0.0
+
+    dying = _poisoned_dying_grunt()
+    nearby = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(100, 0)], wave_number=1)
+    nearby.pos = pygame.Vector2(10, 0)
+    game.enemies = [dying, nearby]
+
+    game.update(dt=0.01)  # must not raise, and must not poison nearby
+
+    assert nearby.poison_time_remaining == 0.0
+
+
+def test_virulent_bloom_ignores_a_death_with_no_active_poison(game, monkeypatch):
+    _enter_run_with_relic(game, monkeypatch, "virulent_bloom", poison_spread_radius=60)
+
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+    dying = GruntEnemy(waypoints, wave_number=1)
+    dying.take_damage(dying.max_hp)  # dies without ever being poisoned
+
+    nearby = GruntEnemy(waypoints, wave_number=1)
+    nearby.pos = pygame.Vector2(10, 0)
+    game.enemies = [dying, nearby]
+
+    game.update(dt=0.01)
+
+    assert nearby.poison_time_remaining == 0.0
+
+
+def test_virulent_bloom_does_not_crash_with_no_other_enemies_alive(game, monkeypatch):
+    _enter_run_with_relic(game, monkeypatch, "virulent_bloom", poison_spread_radius=60)
+
+    game.enemies = [_poisoned_dying_grunt()]
+
+    game.update(dt=0.01)  # must not raise
+
+
+def test_virulent_bloom_combines_two_same_frame_spreads_onto_one_target(game, monkeypatch):
+    # Two enemies die poisoned the same frame, both within radius of one
+    # shared target -- confirms the two apply_poison() calls combine via
+    # that method's own max()-per-field semantics (see its docstring)
+    # rather than one silently clobbering the other, and that neither
+    # dying source is itself reachable as a target (both are excluded
+    # from self.enemies by construction, not by a runtime check -- see
+    # Game.update()'s own comment on why the spread is applied only after
+    # self.enemies = still_alive is set).
+    _enter_run_with_relic(game, monkeypatch, "virulent_bloom", poison_spread_radius=60)
+
+    weaker_tick_shorter_duration = _poisoned_dying_grunt(
+        pos=(0, 0), damage_per_tick=3, tick_interval=0.5, duration=2.0,
+    )
+    stronger_tick_longer_duration = _poisoned_dying_grunt(
+        pos=(20, 0), damage_per_tick=9, tick_interval=0.5, duration=5.0,
+    )
+    target = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(100, 0)], wave_number=1)
+    target.pos = pygame.Vector2(10, 0)  # within 60px of both dying sources
+    game.enemies = [weaker_tick_shorter_duration, stronger_tick_longer_duration, target]
+
+    game.update(dt=0.01)
+
+    # Combined like two poison hits landing on the same enemy: harsher
+    # tick damage and longer duration both win, independent of which
+    # source's own apply_poison() call happened to run first.
+    assert target.poison_damage_per_tick == pytest.approx(9)
+    assert target.poison_time_remaining == pytest.approx(5.0)
+    assert target not in (weaker_tick_shorter_duration, stronger_tick_longer_duration)
 
 
 def test_overcrowded_circuits_density_bonus_counts_neighboring_towers_through_game_update(game, monkeypatch):

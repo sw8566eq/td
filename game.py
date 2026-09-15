@@ -2463,6 +2463,15 @@ class Game:
 
         still_alive = []
         kills_this_frame = 0
+        # Enemies that died still actively poisoned, for a Virulent
+        # Bloom-style relic's own spread -- collected here (while each
+        # enemy's own pos/poison state is still readable) but not applied
+        # until after self.enemies = still_alive below, so every enemy
+        # that died this same frame remains a valid spread source and
+        # every enemy that's still alive after the drain (including one
+        # freshly joined via pending_spawns above) is a valid spread
+        # target, regardless of iteration order within this loop.
+        poison_spread_sources = []
         for enemy in self.enemies:
             # Drained for *every* enemy, dead or alive, before the death/
             # goal/alive split below decides whether the enemy itself
@@ -2506,11 +2515,29 @@ class Game:
                     enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
                 ))
                 self.audio.play("enemy_killed")
+                if self.relic_modifiers.poison_spread_radius and enemy.poison_time_remaining > 0:
+                    poison_spread_sources.append(enemy)
             elif enemy.reached_goal:
                 self._lose_a_life()
             else:
                 still_alive.append(enemy)
         self.enemies = still_alive
+        if poison_spread_sources:
+            # Applied only now, against the final still_alive list, so a
+            # spread can reach an enemy that died-and-was-replaced (a
+            # SplitterEnemy's own children) this same frame but never an
+            # enemy that's actually gone. A freshly-poisoned enemy's own
+            # tick damage is resolved by Enemy.update() on a later frame,
+            # not here, so this can never cascade within the same frame
+            # even if that enemy also dies from something else this tick.
+            radius_sq = self.relic_modifiers.poison_spread_radius ** 2
+            for source in poison_spread_sources:
+                for enemy in self.enemies:
+                    if source.pos.distance_squared_to(enemy.pos) <= radius_sq:
+                        enemy.apply_poison(
+                            source.poison_damage_per_tick, source.poison_tick_interval,
+                            source.poison_time_remaining, source.poison_ignores_shield,
+                        )
         if kills_this_frame:
             # One bump for however many enemies died this tick, not one
             # per enemy -- a splash/chain hit that kills several at once

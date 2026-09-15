@@ -605,6 +605,18 @@ def test_compose_relic_modifiers_no_beam_relic_leaves_them_neutral():
     assert modifiers.beam_max_ramp_bonus == 0.0
 
 
+def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
+    smaller_radius = Relic("test_smaller_spread", "", "", poison_spread_radius=10)
+    monkeypatch.setitem(RELICS, "test_smaller_spread", smaller_radius)
+    modifiers = compose_relic_modifiers(["virulent_bloom", "test_smaller_spread"])
+    assert modifiers.poison_spread_radius == RELICS["virulent_bloom"].poison_spread_radius
+
+
+def test_compose_relic_modifiers_no_virulent_bloom_leaves_poison_spread_radius_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.poison_spread_radius == 0.0
+
+
 def test_precision_engineering_is_functional_standalone():
     # A third crit relic -- own chance/multiplier, no dependency on
     # lucky_strikes/focused_fire to do anything. (The "combine with an

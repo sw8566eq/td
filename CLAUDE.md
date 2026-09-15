@@ -79,10 +79,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 48 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  3 of the 49 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
   gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
   `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Forty-eight relics across eight effect shapes -- the original
+  `meta_progression.py` bullet below). Forty-nine relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -119,7 +119,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   multiplicative relationship between `ramp` and `effective_damage()` is pre-existing, deliberate
   `BeamTower` design (see that class's own docstring on why it was tuned down after a real
   playtest), not something either relic changes, so scaling ramp's own two inputs directly was judged
-  the right shape over routing through `_relic_family_damage_bonus()`, none gated:
+  the right shape over routing through `_relic_family_damage_bonus()` -- plus a ninth batch of one,
+  `virulent_bloom` (`poison_spread_radius`), the one relic in the whole registry that isn't a numeric
+  extension of an existing hook: see the **flat, non-tower** bullet below for the actual new
+  mechanic, none gated:
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
@@ -184,8 +187,22 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   unlike every field above, has no per-tower or per-shot variation to justify threading through
   `Tower`/`Projectile` at all, so `Game.update()`'s own dead-enemy drain loop reads it straight off
   `self.relic_modifiers` and applies it once to each of a killed `SplitterEnemy`'s own children,
-  right where `Enemy.pending_spawns` is already the one place that list is ever read). `guardians_
-  reprieve` has no `RelicModifiers` field at all
+  right where `Enemy.pending_spawns` is already the one place that list is ever read; `virulent_
+  bloom`'s `poison_spread_radius` reads the exact same way -- 0 (not granted) or a spread radius,
+  `max()`'d across relics like `tower_density_radius` -- but from the *other* half of that same
+  drain loop, the `if enemy.is_dead:` branch itself: every enemy that dies still actively poisoned
+  (`enemy.poison_time_remaining > 0`) is collected into a small list as the loop runs, then, only
+  after `self.enemies = still_alive` lands, each collected death re-applies its own live poison
+  state -- `poison_damage_per_tick`/`poison_tick_interval`/`poison_time_remaining`/
+  `poison_ignores_shield`, not a number this relic itself carries -- via `Enemy.apply_poison()` to
+  every enemy still within `poison_spread_radius` of where it died. Deferring the actual spread to
+  after the drain, rather than inline per-enemy, is load-bearing, not just tidy: it's what lets a
+  spread reach an enemy that died-and-was-replaced this same frame (a `SplitterEnemy`'s own
+  children, already joined via `pending_spawns` above) while never touching an enemy that's
+  actually gone, regardless of which order the loop happened to visit deaths in. It also can't
+  cascade within one frame even if a freshly-spread-to enemy also dies from something else that same
+  tick: `apply_poison()` only sets state, the tick damage itself is `Enemy.update()`'s job on a
+  later frame). `guardians_reprieve` has no `RelicModifiers` field at all
   (same shape as `war_chest`/`sturdy_gate`) -- checked directly against `run.relics` in
   `Game._lose_a_life()`, the interception point for the enemy-reached-goal life loss, gated on
   `RunState.used_guardians_reprieve` (a one-time-per-run charge) and a no-op under
