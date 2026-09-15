@@ -2237,6 +2237,8 @@ class Game:
         tower.relic_cannon_knockback_damage_bonus_multiplier = self.relic_modifiers.cannon_knockback_damage_multiplier
         tower.relic_beacon_splash_radius_bonus_multiplier = self.relic_modifiers.beacon_splash_radius_multiplier
         tower.relic_beacon_mark_bonus_multiplier = self.relic_modifiers.beacon_mark_multiplier
+        tower.relic_beam_ramp_bonus_multiplier = self.relic_modifiers.beam_ramp_multiplier
+        tower.relic_beam_max_ramp_bonus = self.relic_modifiers.beam_max_ramp_bonus
         return tower
 
     def _current_footprint_subtiles(self):

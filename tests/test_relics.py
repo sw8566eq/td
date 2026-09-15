@@ -586,6 +586,25 @@ def test_compose_relic_modifiers_no_beacon_relic_leaves_them_neutral():
     assert modifiers.beacon_mark_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_beam_ramp_multiplier():
+    modifiers = compose_relic_modifiers(["focused_optics", "focused_optics"])
+    assert modifiers.beam_ramp_multiplier == RELICS["focused_optics"].beam_ramp_multiplier ** 2
+
+
+def test_compose_relic_modifiers_sums_beam_max_ramp_bonus():
+    # Additive, not multiplicative -- see beam_max_ramp_bonus's own
+    # comment on the Relic dataclass for why (mirrors sell_refund_bonus's
+    # own additive shape).
+    modifiers = compose_relic_modifiers(["sustained_barrage", "sustained_barrage"])
+    assert modifiers.beam_max_ramp_bonus == pytest.approx(RELICS["sustained_barrage"].beam_max_ramp_bonus * 2)
+
+
+def test_compose_relic_modifiers_no_beam_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.beam_ramp_multiplier == 1.0
+    assert modifiers.beam_max_ramp_bonus == 0.0
+
+
 def test_precision_engineering_is_functional_standalone():
     # A third crit relic -- own chance/multiplier, no dependency on
     # lucky_strikes/focused_fire to do anything. (The "combine with an

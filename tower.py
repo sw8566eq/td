@@ -248,6 +248,15 @@ class Tower:
         # beacon_mark_multiplier's own comment in relics.py), so this too
         # skips the family_damage_bonus() hook.
         self.relic_beacon_mark_bonus_multiplier = 1.0
+        # Focused Optics-style relic -- Beam-tower-exclusive, same plain-
+        # multiply shape as the Beacon-exclusive pair above, read only
+        # inside BeamTower's own create_projectile() against ramp_per_hit.
+        self.relic_beam_ramp_bonus_multiplier = 1.0
+        # Sustained Barrage-style relic -- Beam-tower-exclusive, same
+        # plain-read shape as relic_beam_ramp_bonus_multiplier immediately
+        # above, but ADDITIVE onto max_ramp_multiplier (see beam_max_ramp_
+        # bonus's own comment in relics.py for why).
+        self.relic_beam_max_ramp_bonus = 0.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -1186,7 +1195,20 @@ class BeamTower(Tower):
         else:
             self._locked_target = target
             self._consecutive_hits = 0
-        ramp = min(1.0 + self._consecutive_hits * self.ramp_per_hit, self.max_ramp_multiplier)
+        # relic_beam_ramp_bonus_multiplier/relic_beam_max_ramp_bonus (a
+        # Focused Optics/Sustained Barrage-style relic) scale on top of
+        # whatever ramp_per_hit/max_ramp_multiplier currently are --
+        # composing correctly whether or not this tower already chose the
+        # "overcharge" specialization above, which permanently mutates
+        # those same two instance attributes the same way leveling up
+        # mutates self.damage. Inlined (not bound to locals) to match
+        # BeaconTower.create_projectile()'s own inline-scaling style, and
+        # to avoid shadowing self.ramp_per_hit/self.max_ramp_multiplier
+        # with same-named locals.
+        ramp = min(
+            1.0 + self._consecutive_hits * self.ramp_per_hit * self.relic_beam_ramp_bonus_multiplier,
+            self.max_ramp_multiplier + self.relic_beam_max_ramp_bonus,
+        )
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage() * ramp,
