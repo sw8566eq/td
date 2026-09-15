@@ -196,6 +196,24 @@ def test_at_least_six_levels_are_registered():
     assert len(LEVELS) >= 6
 
 
+def test_no_non_boss_level_exceeds_five_waves():
+    # Regression: Levels 5 and 10 used to run a sixth, bigger-numbers-only
+    # wave before their double-boss finale -- trimmed after playtesting
+    # found a 6-wave fight dragged even when the fight itself was easy,
+    # which it structurally can be: every non-boss-tier level (including
+    # these two) is eligible to be drawn for a run's very first node (row
+    # 0, before any relics/upgrades exist -- see
+    # run_map._level_pool_for_row), so "the hardest corridor level"
+    # having the most waves in the game made it the single worst possible
+    # opening fight a new run could roll. Boss-tier levels are exempt --
+    # they're the run's deliberately climactic final fights, never
+    # reachable as an early encounter.
+    for level_id, level in LEVELS.items():
+        if level_id in BOSS_LEVEL_IDS:
+            continue
+        assert len(level.wave_specs) <= 5, level.name
+
+
 def test_every_levels_path_is_distinct():
     # A copy-paste mistake while hand-authoring a new level's corner list is
     # much easier to make silently once there are several -- check every

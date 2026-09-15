@@ -194,15 +194,20 @@ LEVEL_4_WAVE_SPECS.append({LEVEL_4_CORNERS[0]: {"grunt": 12, "scout": 8, "boss":
 
 LEVEL_5_CORNERS = [(0, 2), (2, 2), (2, 7), (5, 7), (5, 1), (8, 1), (8, 7), (11, 7), (11, 1), (14, 1)]
 
-# The hardest hand-tuned single-spawn level: six waves (one more than any
-# other level), ramping through every species and finishing with two
-# bosses at once.
+# The hardest hand-tuned single-spawn level: same five-wave length as
+# every other single-spawn level, but ramps through every species and
+# finishes with two bosses at once rather than the usual one. Used to run
+# a sixth wave (just a bigger-numbers wave with no new species) before the
+# double-boss finale -- trimmed after playtesting found a 6-wave fight
+# dragged even when the fight itself was easy (this level is eligible for
+# a run's very first node, row 0, same as every other single-spawn level
+# -- see run_map._level_pool_for_row -- so "the hardest corridor level"
+# can be a brand-new run's opening fight with no relics/upgrades yet).
 LEVEL_5_WAVE_SPECS = [
     {"grunt": 10, "scout": 4},
     {"grunt": 10, "scout": 8, "tank": 4},
     {"grunt": 12, "scout": 9, "tank": 6, "flying": 6},
     {"grunt": 12, "scout": 10, "tank": 7, "shielded": 5},
-    {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "shielded": 6},
     {"grunt": 12, "scout": 10, "tank": 8, "shielded": 6, "flying": 6, "boss": 2},
 ]
 
@@ -385,26 +390,24 @@ LEVELS[9] = _multi_lane_level(
 )
 
 # Level 10: "Hairpin Gauntlet" -- the densest single-spawn corridor yet:
-# seven full-height hairpins (Level 5, the previous record-holder, has
-# five), each one a fresh column so no two switchbacks ever run parallel
-# through the same rows. A single-spawn corridor via _corridor_level(), same
-# shape as Levels 1-5.
+# seven full-height hairpins (Level 5 has five), each one a fresh column so
+# no two switchbacks ever run parallel through the same rows. A
+# single-spawn corridor via _corridor_level(), same shape as Levels 1-5.
 LEVEL_10_CORNERS = [
     (0, 4), (2, 4), (2, 1), (4, 1), (4, 7), (6, 7), (6, 1), (8, 1),
     (8, 7), (10, 7), (10, 1), (12, 1), (12, 7), (14, 7),
 ]
 
-# One more wave than any single-spawn level except Twin Peaks (which this
-# surpasses in raw counts), ramping through every species -- splitter and
-# healer join partway through, same "introduce them mid-level" pacing
-# Level 1 established -- and closing on a double-boss finale like Twin
-# Peaks' own.
+# Same five-wave length as every other single-spawn level (see Level 5's
+# own comment on why a sixth, bigger-numbers-only wave was trimmed after
+# playtesting), ramping through every species -- splitter and healer join
+# partway through, same "introduce them mid-level" pacing Level 1
+# established -- and closing on a double-boss finale like Twin Peaks' own.
 LEVEL_10_WAVE_SPECS = [
     {"grunt": 12, "scout": 6},
     {"grunt": 12, "scout": 10, "tank": 5},
     {"grunt": 14, "scout": 11, "tank": 7, "splitter": 4},
     {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "healer": 3},
-    {"grunt": 16, "scout": 14, "tank": 9, "flying": 9, "shielded": 7},
     {"grunt": 14, "scout": 12, "tank": 9, "shielded": 7, "flying": 7,
      "splitter": 4, "healer": 3, "boss": 2},
 ]
