@@ -79,10 +79,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 41 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  3 of the 44 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
   gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
   `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Forty-one relics across eight effect shapes -- the original
+  `meta_progression.py` bullet below). Forty-four relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -90,7 +90,21 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   (`reinforced_chassis`, a second density relic alongside `overcrowded_circuits`;
   `overdrive_array`, a second Support-aura-strength relic alongside `resonant_field`) -- both reuse
   existing `RelicModifiers` fields verbatim (no new fields, no new `Tower`/`Projectile` plumbing),
-  none gated:
+  none gated -- plus a sixth batch of three deepening three more archetypes the same way
+  (`precision_engineering`, a third crit relic with its own standalone chance/multiplier;
+  `storm_core`, a Lightning-tower-exclusive damage multiplier; `heavy_ordnance`, the Cannon/
+  Knockback-exclusive counterpart) -- `storm_core`/`heavy_ordnance` are the two fields in this batch
+  that DO need new `Relic`/`RelicModifiers` fields (`lightning_damage_multiplier`/`cannon_knockback_
+  damage_multiplier`) plus a `Game._construct_tower` copy line each, none gated. Unlike every other
+  tower-exclusive relic multiplier in this file (`arc_conductor`/`shockwave_rounds`, read as a plain
+  `create_projectile()` multiply since chain_range/splash_radius aren't part of `effective_damage()`'s
+  own stack), these two *are* a damage bonus, so they fold into that stack instead, additively, via a
+  `Tower._relic_family_damage_bonus()` hook (0.0 on the base class, overridden identically by
+  `LightningTower` and by both `CannonTower`/`KnockbackTower`) -- multiplying either into an
+  already-resolved `effective_damage()` result at the `create_projectile()` call site instead (an
+  earlier version of this batch did exactly that) would compound multiplicatively against every other
+  damage source there rather than adding to them, the one stacking rule that method's own docstring
+  exists to guarantee:
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);

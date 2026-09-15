@@ -2233,6 +2233,8 @@ class Game:
         tower.relic_damage_vs_fast_multiplier = self.relic_modifiers.damage_vs_fast_multiplier
         tower.relic_splash_radius_bonus_multiplier = self.relic_modifiers.tower_splash_radius_multiplier
         tower.relic_lightning_chain_range_bonus_multiplier = self.relic_modifiers.lightning_chain_range_multiplier
+        tower.relic_lightning_damage_bonus_multiplier = self.relic_modifiers.lightning_damage_multiplier
+        tower.relic_cannon_knockback_damage_bonus_multiplier = self.relic_modifiers.cannon_knockback_damage_multiplier
         return tower
 
     def _current_footprint_subtiles(self):

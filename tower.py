@@ -221,6 +221,20 @@ class Tower:
         # tower harmlessly, but only ever read inside LightningTower's own
         # create_projectile().
         self.relic_lightning_chain_range_bonus_multiplier = 1.0
+        # Storm Core-style relic -- Lightning-tower-exclusive damage bonus,
+        # set on every tower harmlessly like relic_lightning_chain_range_
+        # bonus_multiplier immediately above, but read via LightningTower's
+        # own _relic_family_damage_bonus() override (see Tower.effective_
+        # damage()) rather than a plain create_projectile() multiply --
+        # damage bonuses have to fold into that method's own additive
+        # stack, unlike chain_range/splash_radius, which aren't part of it.
+        self.relic_lightning_damage_bonus_multiplier = 1.0
+        # Heavy Ordnance-style relic -- Cannon/Knockback-exclusive damage
+        # bonus, same shape as relic_lightning_damage_bonus_multiplier
+        # immediately above (a family_damage_bonus() hook, not a plain
+        # multiply), just for the Cannon/Knockback pair instead of
+        # Lightning alone.
+        self.relic_cannon_knockback_damage_bonus_multiplier = 1.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -554,30 +568,61 @@ class Tower:
         return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
 
     def effective_damage(self):
-        """self.damage scaled by four independent bonus sources, stacked
+        """self.damage scaled by five independent bonus sources, stacked
         ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus +
-        density_bonus) -- the same "sources don't multiply or max()" rule
-        effective_range() already establishes for its own two sources,
-        generalized to a fourth here: the transient per-frame aura buff
+        density_bonus + family_bonus) -- the same "sources don't multiply
+        or max()" rule effective_range() already establishes for its own
+        two sources, generalized here: the transient per-frame aura buff
         (aura_damage_multiplier, reset every frame -- see reset_aura()/
         receive_aura()), this tower's persistent relic-driven bonus
         (relic_damage_bonus_multiplier, set once at construction -- see
         Game._construct_tower), a Last Stand Charm-style relic's live,
         per-frame-recomputed bonus (relic_last_stand_multiplier -- see
-        set_last_stand_multiplier()), and an Overcrowded Circuits-style
+        set_last_stand_multiplier()), an Overcrowded Circuits-style
         relic's own live density bonus, recomputed whenever the board's
         tower set changes rather than every frame (relic_tower_density_
-        bonus_multiplier -- see set_nearby_tower_bonus()). Every
-        create_projectile() below reads this instead of self.damage
-        directly, so a buffed tower's shots reflect it without each
-        subclass repeating the multiplication."""
+        bonus_multiplier -- see set_nearby_tower_bonus()), and a Storm
+        Core/Heavy Ordnance-style relic's own tower-family-exclusive bonus
+        (_relic_family_damage_bonus() -- 0.0 on this base class, overridden
+        by whichever concrete tower class(es) that relic targets; see that
+        method's own docstring for why it has to be a hook rather than a
+        plain field read here directly). Every create_projectile() below
+        reads this instead of self.damage directly, so a buffed tower's
+        shots reflect it without each subclass repeating the
+        multiplication."""
         return self.damage * (
             1.0
             + (self.aura_damage_multiplier - 1.0)
             + (self.relic_damage_bonus_multiplier - 1.0)
             + (self.relic_last_stand_multiplier - 1.0)
             + (self.relic_tower_density_bonus_multiplier - 1.0)
+            + self._relic_family_damage_bonus()
         )
+
+    def _relic_family_damage_bonus(self):
+        """Hook for a relic that only bonuses a specific tower family's
+        damage (Storm Core for Lightning, Heavy Ordnance for Cannon/
+        Knockback) -- 0.0 (no bonus) on this base class, overridden by
+        whichever concrete tower class(es) that relic targets, each
+        returning `self.relic_<x>_bonus_multiplier - 1.0` the same way
+        effective_damage()'s other four sources already do. This has to be
+        a per-class hook rather than one more plain field read directly in
+        effective_damage() itself: relic_lightning_damage_bonus_multiplier/
+        relic_cannon_knockback_damage_bonus_multiplier are set on *every*
+        tower harmlessly at construction (see Game._construct_tower, same
+        "harmless everywhere, read only where it matters" shape arc_
+        conductor/shockwave_rounds already established), so folding either
+        straight into the base class's own formula unconditionally would
+        silently apply a Lightning-exclusive or Cannon/Knockback-exclusive
+        relic's bonus to every tower type instead of just the one(s) it
+        names -- exactly the class-exclusivity a plain shared field can't
+        express on its own. Earlier versions of Storm Core/Heavy Ordnance
+        instead multiplied their bonus into an already-resolved
+        effective_damage() result at each create_projectile() call site --
+        that kept the exclusivity but broke additive stacking with every
+        other source above (compounding multiplicatively against them
+        instead); this hook is what fixes both at once."""
+        return 0.0
 
     def set_last_stand_multiplier(self, active):
         """Called every frame by Game.update() (alongside reset_aura(), in
@@ -808,6 +853,15 @@ class CannonTower(Tower):
         },
     }
 
+    def _relic_family_damage_bonus(self):
+        # Heavy Ordnance-style relic -- see Tower._relic_family_damage_
+        # bonus's own docstring for why this has to be a per-class
+        # override rather than a plain field effective_damage() reads
+        # directly. KnockbackTower below overrides this identically -- the
+        # same Cannon/Knockback pairing relic_splash_radius_bonus_
+        # multiplier's own read sites already share.
+        return self.relic_cannon_knockback_damage_bonus_multiplier - 1.0
+
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
@@ -894,6 +948,12 @@ class KnockbackTower(Tower):
         },
     }
 
+    def _relic_family_damage_bonus(self):
+        # Heavy Ordnance-style relic -- mirrors CannonTower's own override
+        # of this hook exactly (see its docstring reference on Tower for
+        # why a per-class hook, not a plain field, is required here).
+        return self.relic_cannon_knockback_damage_bonus_multiplier - 1.0
+
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
@@ -939,6 +999,12 @@ class LightningTower(Tower):
             "stat_multipliers": {"damage": 1.5},
         },
     }
+
+    def _relic_family_damage_bonus(self):
+        # Storm Core-style relic -- see Tower._relic_family_damage_bonus's
+        # own docstring for why this has to be a per-class override rather
+        # than a plain field effective_damage() reads directly.
+        return self.relic_lightning_damage_bonus_multiplier - 1.0
 
     def create_projectile(self, target):
         return Projectile(

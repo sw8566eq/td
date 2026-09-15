@@ -560,6 +560,31 @@ def test_compose_relic_modifiers_multiplies_shop_price_multiplier():
     assert modifiers.shop_price_multiplier == RELICS["haggling_permit"].shop_price_multiplier ** 2
 
 
+def test_compose_relic_modifiers_multiplies_lightning_damage_multiplier():
+    modifiers = compose_relic_modifiers(["storm_core", "storm_core"])
+    assert modifiers.lightning_damage_multiplier == RELICS["storm_core"].lightning_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_cannon_knockback_damage_multiplier():
+    modifiers = compose_relic_modifiers(["heavy_ordnance", "heavy_ordnance"])
+    assert modifiers.cannon_knockback_damage_multiplier == RELICS["heavy_ordnance"].cannon_knockback_damage_multiplier ** 2
+
+
+def test_precision_engineering_is_functional_standalone():
+    # A third crit relic -- own chance/multiplier, no dependency on
+    # lucky_strikes/focused_fire to do anything. (The "combine with an
+    # existing crit relic" case is already covered generically by
+    # test_compose_relic_modifiers_sums_crit_chance/_takes_the_max_crit_
+    # damage_multiplier above, composing lucky_strikes with a synthetic
+    # stand-in -- swapping in precision_engineering would exercise the
+    # exact same sum/max() lines, not a new one, so it's deliberately not
+    # duplicated here.)
+    modifiers = compose_relic_modifiers(["precision_engineering"])
+    relic = RELICS["precision_engineering"]
+    assert modifiers.crit_chance == relic.crit_chance
+    assert modifiers.crit_damage_multiplier == relic.crit_damage_multiplier
+
+
 def test_compose_relic_modifiers_no_relic_gap_fillers_leave_them_all_neutral():
     modifiers = compose_relic_modifiers(["prospectors_charm"])
     assert modifiers.damage_vs_flying_multiplier == 1.0

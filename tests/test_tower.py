@@ -253,16 +253,6 @@ def test_arc_conductor_relic_widens_lightning_chain_range():
     assert projectile.chain_range == base_chain_range * 1.25
 
 
-def test_arc_conductor_relic_does_not_affect_other_towers():
-    for name, tower_cls in TOWER_TYPES.items():
-        if name in ("lightning", "support"):
-            continue
-        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
-        tower.relic_lightning_chain_range_bonus_multiplier = 1.25
-        projectile = tower.create_projectile(FakeEnemy())
-        assert projectile.chain_range == 0.0, name
-
-
 def test_shockwave_rounds_relic_widens_cannon_and_knockback_splash_radius():
     for tower_cls in (CannonTower, KnockbackTower):
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
@@ -270,6 +260,68 @@ def test_shockwave_rounds_relic_widens_cannon_and_knockback_splash_radius():
         tower.relic_splash_radius_bonus_multiplier = 1.20
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.splash_radius == base_splash_radius * 1.20, tower_cls.__name__
+
+
+def test_storm_core_relic_boosts_lightning_damage():
+    # relic_lightning_damage_bonus_multiplier is set at construction time
+    # (Game._construct_tower), not baked into damage itself -- confirms
+    # LightningTower's own _relic_family_damage_bonus() override actually
+    # feeds Tower.effective_damage()'s additive stack.
+    tower = LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_damage = tower.effective_damage()
+    tower.relic_lightning_damage_bonus_multiplier = 1.20
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == pytest.approx(base_damage * 1.20)
+
+
+def test_heavy_ordnance_relic_boosts_cannon_and_knockback_damage():
+    for tower_cls in (CannonTower, KnockbackTower):
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        base_damage = tower.effective_damage()
+        tower.relic_cannon_knockback_damage_bonus_multiplier = 1.20
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.damage == pytest.approx(base_damage * 1.20), tower_cls.__name__
+
+
+def test_storm_core_relic_stacks_additively_with_other_damage_relics():
+    # Regression: an earlier version of storm_core/heavy_ordnance
+    # multiplied their bonus into an already-resolved effective_damage()
+    # result at the create_projectile() call site, which compounded
+    # MULTIPLICATIVELY against every other damage source in that method's
+    # own additive stack instead of adding to them -- exactly the
+    # "sources don't multiply or max()" rule effective_damage()'s own
+    # docstring exists to guarantee (see Tower._relic_family_damage_bonus's
+    # docstring for the fix). Confirms two stacked damage bonuses add.
+    tower = LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_damage_bonus_multiplier = 1.25  # a snipers_discipline-style relic
+    tower.relic_lightning_damage_bonus_multiplier = 1.20  # storm_core
+    projectile = tower.create_projectile(FakeEnemy())
+    additive = tower.damage * (1.0 + 0.25 + 0.20)
+    multiplicative = tower.damage * 1.25 * 1.20
+    assert projectile.damage == pytest.approx(additive)
+    assert projectile.damage != pytest.approx(multiplicative)
+
+
+@pytest.mark.parametrize(
+    "relic_attr, projectile_attr, affected_names, expected_fn",
+    [
+        ("relic_lightning_chain_range_bonus_multiplier", "chain_range", ("lightning",), lambda tower: 0.0),
+        ("relic_lightning_damage_bonus_multiplier", "damage", ("lightning",), lambda tower: tower.effective_damage()),
+        (
+            "relic_cannon_knockback_damage_bonus_multiplier", "damage", ("cannon", "knockback"),
+            lambda tower: tower.effective_damage(),
+        ),
+    ],
+)
+def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attr, projectile_attr, affected_names, expected_fn):
+    for name, tower_cls in TOWER_TYPES.items():
+        if name in affected_names or name == "support":
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        expected = expected_fn(tower)
+        setattr(tower, relic_attr, 1.20)
+        projectile = tower.create_projectile(FakeEnemy())
+        assert getattr(projectile, projectile_attr) == pytest.approx(expected), name
 
 
 def test_basic_tower_projectile_carries_its_crit_mechanic():
