@@ -323,6 +323,19 @@ class Relic:
     # itself a multiplier and stacking two multiplicative bonuses on it
     # would compound oddly.
     beam_max_ramp_bonus: float = 0.0
+    # virulent_bloom's own bonus -- a ninth shape, mirroring containment_
+    # charges'/splitter_child_damage's own "flat, non-tower" read site
+    # (Game.update()'s own dead-enemy drain loop) rather than anything
+    # threaded through Tower/Projectile: 0 (not granted) or a spread
+    # radius, max()'d across relics the same way tower_density_radius is.
+    # No per-relic damage/duration numbers needed at all -- the spread
+    # carries over whatever poison was actually killing the enemy (from a
+    # PoisonTower hit, venomous_coating, or both combined), read straight
+    # off the dying enemy's own live poison_damage_per_tick/poison_tick_
+    # interval/poison_time_remaining/poison_ignores_shield (see enemy.py's
+    # apply_poison()/update()) rather than any number this relic itself
+    # carries.
+    poison_spread_radius: float = 0.0
 
 
 RELICS = {
@@ -627,6 +640,13 @@ RELICS = {
         "Beam tower's max ramp is 0.3x higher, every floor.",
         beam_max_ramp_bonus=0.3,
     ),
+    # See poison_spread_radius's own comment on the Relic dataclass above
+    # for the read site (Game.update()'s dead-enemy drain loop).
+    "virulent_bloom": Relic(
+        "virulent_bloom", "Virulent Bloom",
+        "When a poisoned enemy dies, its poison spreads to enemies within 60 pixels.",
+        poison_spread_radius=60,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -771,6 +791,7 @@ class RelicModifiers:
     beacon_mark_multiplier: float = 1.0
     beam_ramp_multiplier: float = 1.0
     beam_max_ramp_bonus: float = 0.0
+    poison_spread_radius: float = 0.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -853,6 +874,7 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     beacon_mark_multiplier = 1.0
     beam_ramp_multiplier = 1.0
     beam_max_ramp_bonus = 0.0
+    poison_spread_radius = 0.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -950,6 +972,7 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         beacon_mark_multiplier *= relic.beacon_mark_multiplier
         beam_ramp_multiplier *= relic.beam_ramp_multiplier
         beam_max_ramp_bonus += relic.beam_max_ramp_bonus
+        poison_spread_radius = max(poison_spread_radius, relic.poison_spread_radius)
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -999,4 +1022,5 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         beacon_mark_multiplier=beacon_mark_multiplier,
         beam_ramp_multiplier=beam_ramp_multiplier,
         beam_max_ramp_bonus=beam_max_ramp_bonus,
+        poison_spread_radius=poison_spread_radius,
     )
