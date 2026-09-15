@@ -6,6 +6,7 @@ from enemy import (
     BossEnemy,
     Enemy,
     FinalBossEnemy,
+    FinalBossShieldedEnemy,
     FlyingEnemy,
     GruntEnemy,
     HealerEnemy,
@@ -263,6 +264,149 @@ def test_final_boss_does_not_summon_once_it_reaches_the_goal():
 
     final_boss.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 1.0)
     assert final_boss.pending_spawns == []
+
+
+# --- FinalBossShieldedEnemy: the run map's other final-boss species (Level
+# 17) -- inherits Enrage/Armor from BossEnemy unmodified, like FinalBossEnemy
+# does, but its own extra mechanic is a periodic self-shield pulse instead
+# of summoned reinforcements. ---
+
+def test_final_boss_shielded_is_registered():
+    assert ENEMY_TYPES["final_boss_shielded"] is FinalBossShieldedEnemy
+
+
+def test_final_boss_shielded_dwarfs_the_regular_boss_in_hp_and_reward():
+    final_boss = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    assert final_boss.max_hp > boss.max_hp
+    assert final_boss.gold_reward > boss.gold_reward
+
+
+def test_final_boss_shielded_still_enrages_and_gets_an_armor_phase():
+    final_boss = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    final_boss.take_damage(final_boss.max_hp * 0.85)  # leaves hp at 15% -- below both thresholds
+    assert final_boss.enraged is True
+    assert final_boss.armor_timer == FinalBossShieldedEnemy.ARMOR_DURATION
+
+
+def test_final_boss_shielded_starts_with_no_pulse_shield():
+    final_boss = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    assert final_boss.pulse_shield == 0.0
+
+
+def test_final_boss_shielded_pulses_a_shield_once_the_interval_elapses():
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.update(dt=FinalBossShieldedEnemy.SHIELD_PULSE_INTERVAL - 0.01)
+    assert final_boss.pulse_shield == 0.0  # not yet
+
+    final_boss.update(dt=0.02)  # crosses the interval
+    assert final_boss.pulse_shield == pytest.approx(
+        final_boss.max_hp * FinalBossShieldedEnemy.SHIELD_PULSE_FRACTION
+    )
+
+
+def test_final_boss_shielded_pulse_reads_live_max_hp_not_a_cached_value():
+    # Same reasoning BossEnemy's own Enrage/Armor thresholds read max_hp
+    # live -- WaveManager._spawn_enemy multiplies max_hp *after*
+    # construction (difficulty scaling), so a value cached in __init__
+    # would size the pulse against the wrong number on Easy/Hard.
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.max_hp *= 2.0  # simulate WaveManager's own post-construction scaling
+    final_boss.update(dt=FinalBossShieldedEnemy.SHIELD_PULSE_INTERVAL + 0.01)
+    assert final_boss.pulse_shield == pytest.approx(
+        final_boss.max_hp * FinalBossShieldedEnemy.SHIELD_PULSE_FRACTION
+    )
+
+
+def test_final_boss_shielded_take_damage_absorbs_from_the_pulse_shield_first():
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.pulse_shield = 20.0
+    starting_hp = final_boss.hp
+
+    applied = final_boss.take_damage(12)
+
+    assert applied == 0.0  # fully absorbed
+    assert final_boss.pulse_shield == 8.0
+    assert final_boss.hp == starting_hp
+
+
+def test_final_boss_shielded_take_damage_spills_past_a_depleted_pulse_shield():
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.pulse_shield = 5.0
+    starting_hp = final_boss.hp
+
+    applied = final_boss.take_damage(12)
+
+    assert final_boss.pulse_shield == 0.0
+    assert applied == 7.0
+    assert final_boss.hp == starting_hp - 7.0
+
+
+def test_final_boss_shielded_take_damage_with_no_pulse_shield_hits_hp_directly():
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    starting_hp = final_boss.hp
+
+    applied = final_boss.take_damage(12)
+
+    assert applied == 12
+    assert final_boss.hp == starting_hp - 12
+
+
+def test_final_boss_shielded_does_not_pulse_once_dead():
+    final_boss = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    final_boss.take_damage(final_boss.max_hp)  # a killing blow
+    assert final_boss.is_dead
+
+    final_boss.update(dt=FinalBossShieldedEnemy.SHIELD_PULSE_INTERVAL + 1.0)
+    assert final_boss.pulse_shield == 0.0
+
+
+def test_final_boss_shielded_take_poison_damage_without_ignore_shield_is_absorbed_normally():
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.pulse_shield = 20.0
+    starting_hp = final_boss.hp
+
+    final_boss.take_poison_damage(4, ignore_shield=False)
+
+    assert final_boss.pulse_shield == 16.0
+    assert final_boss.hp == starting_hp
+
+
+def test_final_boss_shielded_take_poison_damage_with_ignore_shield_bypasses_the_pulse_shield():
+    # But still hits BossEnemy's own armor phase -- Corrosive Poison only
+    # bypasses THIS class's own pulse shield, not the inherited armor
+    # mechanic, same "only a shield, not every damage-absorption" scoping
+    # test_boss_armor_phase_still_fires_against_poison_with_ignore_shield
+    # already establishes for the plain BossEnemy case.
+    final_boss = FinalBossShieldedEnemy(LONG_WAYPOINTS, wave_number=1)
+    final_boss.pulse_shield = 20.0
+    final_boss.armor_timer = FinalBossShieldedEnemy.ARMOR_DURATION
+    starting_hp = final_boss.hp
+
+    applied = final_boss.take_poison_damage(20, ignore_shield=True)
+
+    assert final_boss.pulse_shield == 20.0  # untouched
+    assert applied == max(0.0, 20 - FinalBossShieldedEnemy.ARMOR_FLAT_REDUCTION)
+    assert final_boss.hp == starting_hp - applied
+
+
+def test_final_boss_shielded_draw_shows_a_ring_only_while_pulse_shield_is_up():
+    from assets import AssetManager
+    assets = AssetManager()
+    surface = pygame.Surface((100, 100))
+    surface.fill((0, 0, 0))
+
+    final_boss = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    final_boss.pos = pygame.Vector2(50, 50)
+    ring_y = int(final_boss.pos.y - (final_boss.radius + 8))
+
+    final_boss.draw(surface, assets)
+    assert surface.get_at((int(final_boss.pos.x), ring_y)) == (0, 0, 0, 255)  # no ring yet
+
+    surface.fill((0, 0, 0))
+    final_boss.pulse_shield = 10.0
+    final_boss.draw(surface, assets)
+    assert surface.get_at((int(final_boss.pos.x), ring_y)) != (0, 0, 0, 255)
 
 
 def test_scout_is_faster_and_squishier_than_grunt():
