@@ -223,7 +223,17 @@ class WaveManager:
         # a later speed change that itself clamps to max_speed (e.g.
         # BossEnemy's enrage) would actually *slow the enemy down*.
         enemy.speed = min(enemy.speed * self.enemy_speed_multiplier, enemy.max_speed)
-        enemy.gold_reward *= self.enemy_gold_multiplier
+        # Rounded immediately, unlike max_hp/speed above -- gold is
+        # currency, not a simulation quantity, so it must land on a whole
+        # number the instant a float multiplier (difficulty, run
+        # escalation, a Bounty Hunter's Ledger-style relic, or several
+        # multiplied together) touches it. Economy.add_gold() (the only
+        # place this value is ever consumed, on this enemy's death) has no
+        # rounding of its own -- it just adds whatever it's given -- so an
+        # un-rounded fractional reward here would silently turn Economy.gold
+        # into a float for the rest of the run, compounding further with
+        # every subsequent kill.
+        enemy.gold_reward = round(enemy.gold_reward * self.enemy_gold_multiplier)
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
             enemy.max_shield *= self.enemy_hp_multiplier
             enemy.shield = enemy.max_shield
