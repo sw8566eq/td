@@ -139,10 +139,12 @@ def _corridor_level(level_id, name, corners, wave_specs, starting_gold=150, star
 LEVEL_1_CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
 
 # Hand-authored rather than generate_default_waves(), so it can introduce
-# the other species partway through and cap off with a boss: grunts alone
-# to start, scouts joining wave 2, tanks and splitters wave 3, flying and
-# healers wave 4, and shielded alongside a single BossEnemy on the final
-# wave -- every registered species gets introduced somewhere across this
+# every other species at once mid-level and cap off with a boss: grunts
+# alone to start, then every other species -- scout/tank/splitter/flying/
+# healer -- joining together on wave 2 (capped at 3 waves total means
+# there's no room left to stagger them in one at a time the way a longer
+# level can), and shielded alongside a single BossEnemy on the final wave
+# -- every registered species still gets introduced somewhere across this
 # level's own waves (see test_levels.py's test_level_1_introduces_every_
 # enemy_species_across_its_waves), since this is the first level a new
 # player sees.
@@ -151,9 +153,7 @@ LEVEL_1_CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
 # level below) has just the one spawn.
 LEVEL_1_WAVE_SPECS = [
     {"grunt": 6},
-    {"grunt": 8, "scout": 5},
-    {"grunt": 8, "scout": 6, "tank": 3, "splitter": 3},
-    {"grunt": 10, "scout": 8, "tank": 4, "flying": 4, "healer": 2},
+    {"grunt": 9, "scout": 7, "tank": 4, "splitter": 2, "flying": 3, "healer": 1},
     {"grunt": 8, "scout": 6, "tank": 4, "shielded": 3, "boss": 1},
 ]
 
@@ -163,9 +163,7 @@ LEVEL_2_CORNERS = [(0, 1), (6, 1), (6, 6), (10, 6), (10, 2), (14, 2)]
 # waves throughout to read as "the next level up."
 LEVEL_2_WAVE_SPECS = [
     {"grunt": 7},
-    {"grunt": 8, "scout": 6},
     {"grunt": 9, "scout": 7, "tank": 4},
-    {"grunt": 11, "scout": 9, "tank": 5},
     {"grunt": 9, "scout": 7, "tank": 5, "boss": 1},
 ]
 
@@ -174,35 +172,30 @@ LEVEL_3_CORNERS = [(0, 8), (3, 8), (3, 5), (7, 5), (7, 2), (11, 2), (11, 8), (14
 # More switchbacks than levels 1-2, and correspondingly larger waves.
 LEVEL_3_WAVE_SPECS = [
     {"grunt": 9},
-    {"grunt": 10, "scout": 7},
     {"grunt": 10, "scout": 8, "tank": 5},
-    {"grunt": 12, "scout": 10, "tank": 6, "flying": 5},
     {"grunt": 10, "scout": 8, "tank": 6, "shielded": 4, "boss": 1},
 ]
 
 LEVEL_4_CORNERS = [(0, 0), (0, 3), (13, 3), (13, 0)]
 
 # Built from generate_default_waves() (a plain grunt ramp) for the first
-# four waves -- this level is a quick, simple corridor, not a hand-tuned
+# two waves -- this level is a quick, simple corridor, not a hand-tuned
 # species showcase -- with one hand-built final wave appended for the
 # mandatory boss (see test_levels.py's test_every_levels_final_wave_
 # includes_a_boss, which checks every registered level, not just 1 and 2).
 LEVEL_4_WAVE_SPECS = generate_default_waves(
-    LEVEL_4_CORNERS[0], total_waves=4, enemy_type="grunt", base_count=10, count_step=4,
+    LEVEL_4_CORNERS[0], total_waves=2, enemy_type="grunt", base_count=10, count_step=8,
 )
 LEVEL_4_WAVE_SPECS.append({LEVEL_4_CORNERS[0]: {"grunt": 12, "scout": 8, "boss": 1}})
 
 LEVEL_5_CORNERS = [(0, 2), (2, 2), (2, 7), (5, 7), (5, 1), (8, 1), (8, 7), (11, 7), (11, 1), (14, 1)]
 
-# The hardest hand-tuned single-spawn level: six waves (one more than any
-# other level), ramping through every species and finishing with two
+# The hardest hand-tuned single-spawn level: larger counts than any other
+# level at this tier, ramping through every species and finishing with two
 # bosses at once.
 LEVEL_5_WAVE_SPECS = [
     {"grunt": 10, "scout": 4},
-    {"grunt": 10, "scout": 8, "tank": 4},
-    {"grunt": 12, "scout": 9, "tank": 6, "flying": 6},
     {"grunt": 12, "scout": 10, "tank": 7, "shielded": 5},
-    {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "shielded": 6},
     {"grunt": 12, "scout": 10, "tank": 8, "shielded": 6, "flying": 6, "boss": 2},
 ]
 
@@ -250,9 +243,7 @@ LEVEL_6_LANE_CORNER_LISTS = [
 ]
 LEVEL_6_WAVE_SPECS = [
     {LEVEL_6_SPAWN_TOP: {"grunt": 6}, LEVEL_6_SPAWN_BOTTOM: {"scout": 6}},
-    {LEVEL_6_SPAWN_TOP: {"grunt": 8, "tank": 2}, LEVEL_6_SPAWN_BOTTOM: {"scout": 8, "flying": 3}},
     {LEVEL_6_SPAWN_TOP: {"grunt": 8, "tank": 4}, LEVEL_6_SPAWN_BOTTOM: {"scout": 8, "flying": 5, "shielded": 2}},
-    {LEVEL_6_SPAWN_TOP: {"grunt": 10, "tank": 6}, LEVEL_6_SPAWN_BOTTOM: {"scout": 10, "flying": 6, "shielded": 4}},
     {LEVEL_6_SPAWN_TOP: {"grunt": 10, "tank": 6, "boss": 1},
      LEVEL_6_SPAWN_BOTTOM: {"scout": 10, "flying": 6, "shielded": 4}},
 ]
@@ -294,9 +285,7 @@ LEVEL_7_GOAL_TOP = (14, 1)
 LEVEL_7_GOAL_BOTTOM = (14, 7)
 LEVEL_7_WAVE_SPECS = _single_spawn_waves(LEVEL_7_SPAWN, [
     {"grunt": 8},
-    {"grunt": 9, "scout": 6},
     {"grunt": 10, "scout": 7, "tank": 4},
-    {"grunt": 11, "scout": 8, "tank": 5, "flying": 5},
     {"grunt": 10, "scout": 8, "tank": 6, "shielded": 4, "boss": 1},
 ])
 
@@ -312,9 +301,7 @@ LEVEL_8_GOAL_TOP = (14, 1)
 LEVEL_8_GOAL_BOTTOM = (14, 7)
 LEVEL_8_WAVE_SPECS = [
     {LEVEL_8_SPAWN_TOP: {"grunt": 7}, LEVEL_8_SPAWN_BOTTOM: {"scout": 7}},
-    {LEVEL_8_SPAWN_TOP: {"grunt": 9, "tank": 2}, LEVEL_8_SPAWN_BOTTOM: {"scout": 9, "flying": 3}},
     {LEVEL_8_SPAWN_TOP: {"grunt": 9, "tank": 5}, LEVEL_8_SPAWN_BOTTOM: {"scout": 9, "flying": 6, "shielded": 3}},
-    {LEVEL_8_SPAWN_TOP: {"grunt": 11, "tank": 7}, LEVEL_8_SPAWN_BOTTOM: {"scout": 11, "flying": 7, "shielded": 5}},
     {LEVEL_8_SPAWN_TOP: {"grunt": 11, "tank": 7, "boss": 1},
      LEVEL_8_SPAWN_BOTTOM: {"scout": 11, "flying": 7, "shielded": 5}},
 ]
@@ -328,12 +315,8 @@ LEVEL_9_JUNCTION = (6, 4)
 LEVEL_9_GOAL = (14, 4)
 LEVEL_9_WAVE_SPECS = [
     {LEVEL_9_SPAWN_TOP: {"grunt": 5}, LEVEL_9_SPAWN_MID: {"scout": 5}, LEVEL_9_SPAWN_BOTTOM: {"grunt": 5}},
-    {LEVEL_9_SPAWN_TOP: {"grunt": 6, "tank": 2}, LEVEL_9_SPAWN_MID: {"scout": 7, "flying": 2},
-     LEVEL_9_SPAWN_BOTTOM: {"grunt": 6, "tank": 2}},
     {LEVEL_9_SPAWN_TOP: {"grunt": 7, "tank": 4}, LEVEL_9_SPAWN_MID: {"scout": 8, "flying": 4, "shielded": 2},
      LEVEL_9_SPAWN_BOTTOM: {"grunt": 7, "tank": 4}},
-    {LEVEL_9_SPAWN_TOP: {"grunt": 8, "tank": 5}, LEVEL_9_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
-     LEVEL_9_SPAWN_BOTTOM: {"grunt": 8, "tank": 5}},
     {LEVEL_9_SPAWN_TOP: {"grunt": 8, "tank": 6},
      LEVEL_9_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 4, "boss": 1},
      LEVEL_9_SPAWN_BOTTOM: {"grunt": 8, "tank": 6}},
@@ -394,17 +377,13 @@ LEVEL_10_CORNERS = [
     (8, 7), (10, 7), (10, 1), (12, 1), (12, 7), (14, 7),
 ]
 
-# One more wave than any single-spawn level except Twin Peaks (which this
-# surpasses in raw counts), ramping through every species -- splitter and
-# healer join partway through, same "introduce them mid-level" pacing
-# Level 1 established -- and closing on a double-boss finale like Twin
-# Peaks' own.
+# Larger counts than Twin Peaks throughout, ramping through every species
+# -- splitter and healer join together mid-level, same "introduce the rest
+# at once mid-level" pacing Level 1 established -- and closing on a
+# double-boss finale like Twin Peaks' own.
 LEVEL_10_WAVE_SPECS = [
     {"grunt": 12, "scout": 6},
-    {"grunt": 12, "scout": 10, "tank": 5},
-    {"grunt": 14, "scout": 11, "tank": 7, "splitter": 4},
     {"grunt": 14, "scout": 12, "tank": 8, "flying": 8, "healer": 3},
-    {"grunt": 16, "scout": 14, "tank": 9, "flying": 9, "shielded": 7},
     {"grunt": 14, "scout": 12, "tank": 9, "shielded": 7, "flying": 7,
      "splitter": 4, "healer": 3, "boss": 2},
 ]
@@ -433,19 +412,14 @@ LEVEL_11_GOAL_BOTTOM = (14, 7)
 
 # Per-spawn composition, same split-by-lane style as Triple Crossing: the
 # top/bottom lanes share a grunt/tank mix, the middle lane runs
-# scout/flying/shielded plus this level's showcase of splitter (wave 3) and
-# healer (wave 4) -- the first multi-lane level to feature either.
+# scout/flying/shielded plus this level's showcase of splitter and healer --
+# the first multi-lane level to feature either.
 LEVEL_11_WAVE_SPECS = [
     {LEVEL_11_SPAWN_TOP: {"grunt": 6}, LEVEL_11_SPAWN_MID: {"scout": 6},
      LEVEL_11_SPAWN_BOTTOM: {"grunt": 6}},
-    {LEVEL_11_SPAWN_TOP: {"grunt": 7, "tank": 3}, LEVEL_11_SPAWN_MID: {"scout": 8, "flying": 3},
-     LEVEL_11_SPAWN_BOTTOM: {"grunt": 7, "tank": 3}},
     {LEVEL_11_SPAWN_TOP: {"grunt": 8, "tank": 5, "splitter": 3},
      LEVEL_11_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
      LEVEL_11_SPAWN_BOTTOM: {"grunt": 8, "tank": 5, "splitter": 3}},
-    {LEVEL_11_SPAWN_TOP: {"grunt": 9, "tank": 6},
-     LEVEL_11_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 4, "healer": 3},
-     LEVEL_11_SPAWN_BOTTOM: {"grunt": 9, "tank": 6}},
     {LEVEL_11_SPAWN_TOP: {"grunt": 9, "tank": 7, "boss": 1},
      LEVEL_11_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5, "healer": 3},
      LEVEL_11_SPAWN_BOTTOM: {"grunt": 9, "tank": 7}},
@@ -478,10 +452,7 @@ LEVEL_12_LANE_TOP = [(0, 1), (14, 1)]
 LEVEL_12_LANE_BOTTOM = [(0, 7), (14, 7)]
 LEVEL_12_WAVE_SPECS = [
     {LEVEL_12_LANE_TOP[0]: {"grunt": 7}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 6}},
-    {LEVEL_12_LANE_TOP[0]: {"grunt": 8, "tank": 2}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 8, "flying": 3}},
     {LEVEL_12_LANE_TOP[0]: {"grunt": 9, "tank": 4}, LEVEL_12_LANE_BOTTOM[0]: {"scout": 9, "flying": 4, "shielded": 2}},
-    {LEVEL_12_LANE_TOP[0]: {"grunt": 10, "tank": 5},
-     LEVEL_12_LANE_BOTTOM[0]: {"scout": 10, "flying": 5, "shielded": 3}},
     {LEVEL_12_LANE_TOP[0]: {"grunt": 10, "tank": 5, "boss": 1},
      LEVEL_12_LANE_BOTTOM[0]: {"scout": 9, "flying": 5, "shielded": 3}},
 ]
@@ -515,12 +486,8 @@ LEVEL_13_GOAL_MID = (14, 4)
 LEVEL_13_GOAL_BOTTOM = (14, 7)
 LEVEL_13_WAVE_SPECS = [
     {LEVEL_13_SPAWN_TOP: {"grunt": 6}, LEVEL_13_SPAWN_MID: {"scout": 6}, LEVEL_13_SPAWN_BOTTOM: {"tank": 3}},
-    {LEVEL_13_SPAWN_TOP: {"grunt": 7, "tank": 3}, LEVEL_13_SPAWN_MID: {"scout": 8, "flying": 3},
-     LEVEL_13_SPAWN_BOTTOM: {"tank": 5, "grunt": 4}},
     {LEVEL_13_SPAWN_TOP: {"grunt": 8, "tank": 5}, LEVEL_13_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
      LEVEL_13_SPAWN_BOTTOM: {"tank": 6, "grunt": 5, "splitter": 3}},
-    {LEVEL_13_SPAWN_TOP: {"grunt": 9, "tank": 6}, LEVEL_13_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 4},
-     LEVEL_13_SPAWN_BOTTOM: {"tank": 7, "grunt": 6, "splitter": 4}},
     {LEVEL_13_SPAWN_TOP: {"grunt": 9, "tank": 7, "boss": 1},
      LEVEL_13_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5},
      LEVEL_13_SPAWN_BOTTOM: {"tank": 7, "grunt": 6, "splitter": 4}},
@@ -568,12 +535,8 @@ LEVEL_14_GOAL = (14, 4)
 LEVEL_14_WAVE_SPECS = [
     {LEVEL_14_SPAWN_TOP_A: {"grunt": 5}, LEVEL_14_SPAWN_TOP_B: {"scout": 5},
      LEVEL_14_SPAWN_BOTTOM_A: {"tank": 3}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 5}},
-    {LEVEL_14_SPAWN_TOP_A: {"grunt": 6, "splitter": 2}, LEVEL_14_SPAWN_TOP_B: {"scout": 6, "flying": 3},
-     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 4}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 6, "shielded": 2}},
     {LEVEL_14_SPAWN_TOP_A: {"grunt": 7, "splitter": 3}, LEVEL_14_SPAWN_TOP_B: {"scout": 7, "flying": 4},
      LEVEL_14_SPAWN_BOTTOM_A: {"tank": 5, "healer": 2}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 7, "shielded": 3}},
-    {LEVEL_14_SPAWN_TOP_A: {"grunt": 8, "splitter": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 8, "flying": 5},
-     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 6, "healer": 3}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 8, "shielded": 4}},
     {LEVEL_14_SPAWN_TOP_A: {"grunt": 8, "splitter": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 8, "flying": 5},
      LEVEL_14_SPAWN_BOTTOM_A: {"tank": 6, "healer": 3, "boss": 1},
      LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 8, "shielded": 4}},
@@ -614,12 +577,8 @@ LEVEL_15_BOTTOM_GOAL = (14, 7)
 LEVEL_15_WAVE_SPECS = [
     {LEVEL_15_TOP_SPAWN_A: {"grunt": 6}, LEVEL_15_TOP_SPAWN_B: {"scout": 5},
      LEVEL_15_BOTTOM_SPAWN_A: {"tank": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 6}},
-    {LEVEL_15_TOP_SPAWN_A: {"grunt": 7, "tank": 2}, LEVEL_15_TOP_SPAWN_B: {"scout": 7, "flying": 2},
-     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 4, "splitter": 2}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 7, "shielded": 2}},
     {LEVEL_15_TOP_SPAWN_A: {"grunt": 8, "tank": 4}, LEVEL_15_TOP_SPAWN_B: {"scout": 8, "flying": 4},
      LEVEL_15_BOTTOM_SPAWN_A: {"tank": 5, "splitter": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 8, "shielded": 3}},
-    {LEVEL_15_TOP_SPAWN_A: {"grunt": 9, "tank": 5}, LEVEL_15_TOP_SPAWN_B: {"scout": 9, "flying": 5, "healer": 2},
-     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 6, "splitter": 4}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 9, "shielded": 4}},
     {LEVEL_15_TOP_SPAWN_A: {"grunt": 9, "tank": 6, "boss": 1},
      LEVEL_15_TOP_SPAWN_B: {"scout": 9, "flying": 5, "healer": 2},
      LEVEL_15_BOTTOM_SPAWN_A: {"tank": 6, "splitter": 4},
@@ -672,8 +631,9 @@ LEVEL_16_GOAL = (14, 4)
 
 # Same per-spawn split style Triple Crossing (Level 9) established --
 # top/bottom run grunt/tank, the mid lane runs scout/flying/shielded -- but
-# six waves (one more than Level 9's five) and introducing splitter/healer
-# partway through, the same escalation shape Grand Delta (Level 11) uses.
+# six waves (boss-tier levels are exempt from the ordinary 3-wave cap, see
+# run_map.BOSS_LEVEL_IDS) and introducing splitter/healer partway through,
+# the same escalation shape Grand Delta (Level 11) uses.
 LEVEL_16_WAVE_SPECS = [
     {LEVEL_16_SPAWN_TOP: {"grunt": 7}, LEVEL_16_SPAWN_MID: {"scout": 7},
      LEVEL_16_SPAWN_BOTTOM: {"grunt": 7}},

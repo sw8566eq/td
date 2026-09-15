@@ -196,6 +196,21 @@ def test_at_least_six_levels_are_registered():
     assert len(LEVELS) >= 6
 
 
+def test_no_non_boss_level_exceeds_three_waves():
+    # Balance: a normal encounter used to run 5-6 waves regardless of how
+    # easy the fight itself was -- trimmed to a 3-wave cap so an "easy"
+    # early floor doesn't drag. Boss-tier levels are exempt: they're the
+    # run's deliberately climactic final fights, never reachable as an
+    # early encounter, and Elite nodes draw from this same ordinary pool
+    # rather than a separate, longer one -- Elite stays differentiated
+    # from Combat purely via run_escalation.apply_elite_multiplier's stat
+    # bumps, not a different wave count.
+    for level_id, level in LEVELS.items():
+        if level_id in BOSS_LEVEL_IDS:
+            continue
+        assert len(level.wave_specs) <= 3, level.name
+
+
 def test_every_levels_path_is_distinct():
     # A copy-paste mistake while hand-authoring a new level's corner list is
     # much easier to make silently once there are several -- check every
