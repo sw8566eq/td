@@ -1301,7 +1301,7 @@ HELP_LINES = [
     "Build: click a tower button, then click a buildable tile to place it",
     "Right-click clears your current selection without placing anything",
     "Click a tower to pin its stats -- Targeting / Upgrade / Sell in the sidebar",
-    "Targeting cycles first / last / strongest / closest -- who gets shot",
+    "Targeting cycles first / last / strongest / closest / weakest -- who gets shot",
     "At max level, Upgrade becomes two permanent Specialize choices",
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",

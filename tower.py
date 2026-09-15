@@ -82,7 +82,7 @@ class Tower:
     # cycle_targeting_mode() (the stats panel's "Targeting: ..." row). "first"
     # reproduces this class's original, only-ever behavior (furthest along
     # the path) exactly -- see _target_first.
-    TARGETING_MODES = ("first", "last", "strongest", "closest")
+    TARGETING_MODES = ("first", "last", "strongest", "closest", "weakest")
 
     MAX_LEVEL = 3
     # Default multiplier applied to a LEVEL_SCALED_STATS entry at a given
@@ -473,6 +473,9 @@ class Tower:
     def _target_strongest(self, candidates):
         return max(candidates, key=lambda e: e.hp)
 
+    def _target_weakest(self, candidates):
+        return min(candidates, key=lambda e: e.hp)
+
     def _target_closest(self, candidates):
         return min(candidates, key=lambda e: self.pos.distance_to(e.pos))
 
@@ -490,6 +493,7 @@ class Tower:
         "last": _target_last,
         "strongest": _target_strongest,
         "closest": _target_closest,
+        "weakest": _target_weakest,
     }
 
     def in_range(self, enemy, effective_range=None):
@@ -838,8 +842,8 @@ class FrostTower(Tower):
 class KnockbackTower(Tower):
     cost = 90
     range = 90
-    damage = 6
-    fire_rate = 0.8
+    damage = 8
+    fire_rate = 0.9
     projectile_speed = 300.0
     splash_radius = 70  # hits every enemy in this radius of the impact, not just the target
     # Seconds of each hit enemy's own forward progress to undo -- not a
