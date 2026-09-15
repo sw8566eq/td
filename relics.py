@@ -285,6 +285,26 @@ class Relic:
     # create_projectile() multiply, since splash_radius isn't part of
     # effective_damage()'s stack).
     cannon_knockback_damage_multiplier: float = 1.0
+    # luminous_field's own bonus -- Beacon-tower-exclusive, mirroring
+    # tower_splash_radius_multiplier's exact shape (a plain create_
+    # projectile() multiply, not the family_damage_bonus() hook -- this
+    # scales mark_splash_radius, not damage, so it isn't part of
+    # effective_damage()'s stack at all). Beacon-specific because
+    # shockwave_rounds deliberately excludes Beacon (see that relic's own
+    # comment): Beacon's splash is a marking area, not a damage-dealing
+    # blast radius, so it needs its own dedicated relic rather than
+    # reusing that one.
+    beacon_splash_radius_multiplier: float = 1.0
+    # signal_amplifier's own bonus -- Beacon-tower-exclusive, same plain-
+    # multiply shape as beacon_splash_radius_multiplier immediately above,
+    # but scaling mark_damage_multiplier instead of mark_splash_radius.
+    # Also not a family_damage_bonus() case: mark_damage_multiplier isn't
+    # this tower's own shot damage either -- it is Enemy.apply_mark()'s
+    # own bonus multiplier applied to *every* source's damage against a
+    # marked enemy later (see Enemy.take_damage()), a separate mechanism
+    # from effective_damage() entirely, the same way slow_effect/
+    # chain_effect are.
+    beacon_mark_multiplier: float = 1.0
 
 
 RELICS = {
@@ -557,6 +577,22 @@ RELICS = {
         "Cannon and Knockback towers deal 20% more damage, every floor.",
         cannon_knockback_damage_multiplier=1.20,
     ),
+    # Beacon-tower-exclusive -- see beacon_splash_radius_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (BeaconTower.create_projectile()).
+    "luminous_field": Relic(
+        "luminous_field", "Luminous Field",
+        "Beacon tower marks a 25% larger area, every floor.",
+        beacon_splash_radius_multiplier=1.25,
+    ),
+    # Beacon-tower-exclusive -- see beacon_mark_multiplier's own comment on
+    # the Relic dataclass above for the read site
+    # (BeaconTower.create_projectile()).
+    "signal_amplifier": Relic(
+        "signal_amplifier", "Signal Amplifier",
+        "Beacon tower's mark deals 25% more bonus damage, every floor.",
+        beacon_mark_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -697,6 +733,8 @@ class RelicModifiers:
     shop_price_multiplier: float = 1.0
     lightning_damage_multiplier: float = 1.0
     cannon_knockback_damage_multiplier: float = 1.0
+    beacon_splash_radius_multiplier: float = 1.0
+    beacon_mark_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -775,6 +813,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     shop_price_multiplier = 1.0
     lightning_damage_multiplier = 1.0
     cannon_knockback_damage_multiplier = 1.0
+    beacon_splash_radius_multiplier = 1.0
+    beacon_mark_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -868,6 +908,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         shop_price_multiplier *= relic.shop_price_multiplier
         lightning_damage_multiplier *= relic.lightning_damage_multiplier
         cannon_knockback_damage_multiplier *= relic.cannon_knockback_damage_multiplier
+        beacon_splash_radius_multiplier *= relic.beacon_splash_radius_multiplier
+        beacon_mark_multiplier *= relic.beacon_mark_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -913,4 +955,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         shop_price_multiplier=shop_price_multiplier,
         lightning_damage_multiplier=lightning_damage_multiplier,
         cannon_knockback_damage_multiplier=cannon_knockback_damage_multiplier,
+        beacon_splash_radius_multiplier=beacon_splash_radius_multiplier,
+        beacon_mark_multiplier=beacon_mark_multiplier,
     )

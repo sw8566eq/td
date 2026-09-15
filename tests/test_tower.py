@@ -311,6 +311,10 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             "relic_cannon_knockback_damage_bonus_multiplier", "damage", ("cannon", "knockback"),
             lambda tower: tower.effective_damage(),
         ),
+        (
+            "relic_beacon_splash_radius_bonus_multiplier", "splash_radius", ("beacon",),
+            lambda tower: getattr(tower, "splash_radius", 0.0),
+        ),
     ],
 )
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attr, projectile_attr, affected_names, expected_fn):
@@ -897,5 +901,36 @@ def test_other_towers_have_no_mark_effect():
         if name in ("beacon", "support"):
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        projectile = tower.create_projectile(FakeEnemy())
+        assert projectile.mark_effect is None, name
+
+
+def test_luminous_field_relic_widens_beacon_mark_splash_radius():
+    tower = BeaconTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_splash_radius = tower.mark_splash_radius
+    tower.relic_beacon_splash_radius_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.splash_radius == pytest.approx(base_splash_radius * 1.25)
+
+
+def test_signal_amplifier_relic_boosts_beacon_mark_multiplier():
+    tower = BeaconTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_mark_multiplier = tower.mark_damage_multiplier
+    tower.relic_beacon_mark_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.mark_effect[0] == pytest.approx(base_mark_multiplier * 1.25)
+    assert projectile.mark_effect[1] == tower.mark_duration  # duration untouched
+
+
+def test_beacon_exclusive_relics_do_not_affect_other_towers_mark_effect():
+    # mark_effect is None (not a number) for every non-Beacon tower, which
+    # doesn't fit the numeric parametrized check below -- kept as its own
+    # small test rather than forced into that shape.
+    for name, tower_cls in TOWER_TYPES.items():
+        if name in ("beacon", "support"):
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        tower.relic_beacon_splash_radius_bonus_multiplier = 1.25
+        tower.relic_beacon_mark_bonus_multiplier = 1.25
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.mark_effect is None, name
