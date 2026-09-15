@@ -79,13 +79,18 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 39 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  3 of the 41 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
   gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
   `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Thirty-nine relics across eight effect shapes -- the original
+  `meta_progression.py` bullet below). Forty-one relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
-  `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated):
+  `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
+  plus a fifth batch of two deepening two archetypes that had only one dedicated relic each
+  (`reinforced_chassis`, a second density relic alongside `overcrowded_circuits`;
+  `overdrive_array`, a second Support-aura-strength relic alongside `resonant_field`) -- both reuse
+  existing `RelicModifiers` fields verbatim (no new fields, no new `Tower`/`Projectile` plumbing),
+  none gated:
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
