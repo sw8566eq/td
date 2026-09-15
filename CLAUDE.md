@@ -79,10 +79,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 46 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  3 of the 48 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
   gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
   `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Forty-six relics across eight effect shapes -- the original
+  `meta_progression.py` bullet below). Forty-eight relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -108,7 +108,18 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   tower-exclusive and both the plain-multiply shape (`beacon_splash_radius_multiplier`/`beacon_
   mark_multiplier`, read only in `BeaconTower.create_projectile()` against `mark_splash_radius`/
   `mark_damage_multiplier` respectively -- neither is this tower's own shot damage, so neither needs
-  the `_relic_family_damage_bonus()` hook above), none gated:
+  the `_relic_family_damage_bonus()` hook above), none gated -- plus an eighth batch of two deepening
+  Beam's ramp mechanic, also Beam-tower-exclusive and also plain-multiply/read
+  (`beam_ramp_multiplier`, `beam_max_ramp_bonus` -- the latter additive, mirroring `sell_refund_
+  bonus`'s own shape, since `max_ramp_multiplier` is already itself a multiplier), read only in
+  `BeamTower.create_projectile()` scaling `ramp_per_hit`/`max_ramp_multiplier`, the two inputs to
+  that tower's own `ramp = min(1.0 + consecutive_hits * ramp_per_hit, max_ramp_multiplier)` formula
+  -- worth noting even though `ramp` *does* multiply straight into this tower's actual shot damage
+  (`damage = effective_damage() * ramp`), unlike Beacon's genuinely-separate mark mechanic: that
+  multiplicative relationship between `ramp` and `effective_damage()` is pre-existing, deliberate
+  `BeamTower` design (see that class's own docstring on why it was tuned down after a real
+  playtest), not something either relic changes, so scaling ramp's own two inputs directly was judged
+  the right shape over routing through `_relic_family_damage_bonus()`, none gated:
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);

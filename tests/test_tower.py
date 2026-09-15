@@ -303,27 +303,42 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
 
 
 @pytest.mark.parametrize(
-    "relic_attr, projectile_attr, affected_names, expected_fn",
+    "relic_attrs, projectile_attr, affected_names, expected_fn",
     [
-        ("relic_lightning_chain_range_bonus_multiplier", "chain_range", ("lightning",), lambda tower: 0.0),
-        ("relic_lightning_damage_bonus_multiplier", "damage", ("lightning",), lambda tower: tower.effective_damage()),
+        (("relic_lightning_chain_range_bonus_multiplier",), "chain_range", ("lightning",), lambda tower: 0.0),
         (
-            "relic_cannon_knockback_damage_bonus_multiplier", "damage", ("cannon", "knockback"),
+            ("relic_lightning_damage_bonus_multiplier",), "damage", ("lightning",),
             lambda tower: tower.effective_damage(),
         ),
         (
-            "relic_beacon_splash_radius_bonus_multiplier", "splash_radius", ("beacon",),
+            ("relic_cannon_knockback_damage_bonus_multiplier",), "damage", ("cannon", "knockback"),
+            lambda tower: tower.effective_damage(),
+        ),
+        (
+            ("relic_beacon_splash_radius_bonus_multiplier",), "splash_radius", ("beacon",),
             lambda tower: getattr(tower, "splash_radius", 0.0),
+        ),
+        # Both Beam-exclusive fields set together in one row -- they map to
+        # the same projectile attribute (damage) and expected baseline, so
+        # a bug that leaked one but not the other into a non-Beam tower
+        # isn't constructible; separate rows would only double the
+        # TOWER_TYPES iteration for zero extra coverage. Same shape as
+        # test_beacon_exclusive_relics_do_not_affect_other_towers_mark_
+        # effect below, which sets Beacon's own two fields together too.
+        (
+            ("relic_beam_ramp_bonus_multiplier", "relic_beam_max_ramp_bonus"), "damage", ("beam",),
+            lambda tower: tower.effective_damage(),
         ),
     ],
 )
-def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attr, projectile_attr, affected_names, expected_fn):
+def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
     for name, tower_cls in TOWER_TYPES.items():
         if name in affected_names or name == "support":
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         expected = expected_fn(tower)
-        setattr(tower, relic_attr, 1.20)
+        for relic_attr in relic_attrs:
+            setattr(tower, relic_attr, 1.20)
         projectile = tower.create_projectile(FakeEnemy())
         assert getattr(projectile, projectile_attr) == pytest.approx(expected), name
 
@@ -457,6 +472,32 @@ def test_beam_tower_ramp_is_capped_at_max_ramp_multiplier():
     for _ in range(shots_needed_to_exceed_cap):
         projectile = tower.create_projectile(target)
     assert projectile.damage == pytest.approx(tower.damage * tower.max_ramp_multiplier)
+
+
+def test_focused_optics_relic_ramps_beam_tower_faster():
+    # relic_beam_ramp_bonus_multiplier is set at construction time
+    # (Game._construct_tower), not baked into ramp_per_hit itself --
+    # confirms create_projectile() actually reads it, same shape as
+    # test_beam_tower_ramps_damage_on_consecutive_hits_against_the_same_
+    # target above but with the relic bonus stacked in.
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_beam_ramp_bonus_multiplier = 1.25
+    target = FakeEnemy()
+    tower.create_projectile(target)  # first hit, no ramp yet
+    second = tower.create_projectile(target)
+    assert second.damage == pytest.approx(tower.damage * (1 + tower.ramp_per_hit * 1.25))
+
+
+def test_sustained_barrage_relic_raises_beam_tower_ramp_cap():
+    tower = BeamTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_beam_max_ramp_bonus = 0.3
+    target = FakeEnemy()
+    raised_cap = tower.max_ramp_multiplier + 0.3
+    shots_needed_to_exceed_cap = int(raised_cap / tower.ramp_per_hit) + 5
+    projectile = None
+    for _ in range(shots_needed_to_exceed_cap):
+        projectile = tower.create_projectile(target)
+    assert projectile.damage == pytest.approx(tower.damage * raised_cap)
 
 
 def test_beam_tower_specialization_boosts_carry_through_to_the_projectile():

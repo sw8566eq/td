@@ -305,6 +305,24 @@ class Relic:
     # from effective_damage() entirely, the same way slow_effect/
     # chain_effect are.
     beacon_mark_multiplier: float = 1.0
+    # focused_optics' own bonus -- Beam-tower-exclusive, same plain-
+    # create_projectile()-read shape as the Beacon-exclusive pair above:
+    # ramp_per_hit is an input to BeamTower's own ramp formula
+    # (`ramp = min(1.0 + consecutive_hits * ramp_per_hit, max_ramp_
+    # multiplier)`, then `damage = effective_damage() * ramp`), not one of
+    # effective_damage()'s own additive sources -- the multiplicative
+    # relationship between ramp and effective_damage() is pre-existing,
+    # deliberate BeamTower design (see that class's own docstring on why
+    # it was tuned down after a real playtest), not something this relic
+    # changes, so it doesn't belong in the family_damage_bonus() hook.
+    beam_ramp_multiplier: float = 1.0
+    # sustained_barrage's own bonus -- same Beam-exclusive, plain-read
+    # shape as beam_ramp_multiplier immediately above, but ADDITIVE (not
+    # multiplicative) onto max_ramp_multiplier -- mirrors sell_refund_
+    # bonus's own additive shape, since max_ramp_multiplier is already
+    # itself a multiplier and stacking two multiplicative bonuses on it
+    # would compound oddly.
+    beam_max_ramp_bonus: float = 0.0
 
 
 RELICS = {
@@ -593,6 +611,22 @@ RELICS = {
         "Beacon tower's mark deals 25% more bonus damage, every floor.",
         beacon_mark_multiplier=1.25,
     ),
+    # Beam-tower-exclusive -- see beam_ramp_multiplier's own comment on
+    # the Relic dataclass above for the read site
+    # (BeamTower.create_projectile()).
+    "focused_optics": Relic(
+        "focused_optics", "Focused Optics",
+        "Beam tower ramps 25% faster per hit, every floor.",
+        beam_ramp_multiplier=1.25,
+    ),
+    # Beam-tower-exclusive -- see beam_max_ramp_bonus's own comment on the
+    # Relic dataclass above for the read site
+    # (BeamTower.create_projectile()).
+    "sustained_barrage": Relic(
+        "sustained_barrage", "Sustained Barrage",
+        "Beam tower's max ramp is 0.3x higher, every floor.",
+        beam_max_ramp_bonus=0.3,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -735,6 +769,8 @@ class RelicModifiers:
     cannon_knockback_damage_multiplier: float = 1.0
     beacon_splash_radius_multiplier: float = 1.0
     beacon_mark_multiplier: float = 1.0
+    beam_ramp_multiplier: float = 1.0
+    beam_max_ramp_bonus: float = 0.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -815,6 +851,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     cannon_knockback_damage_multiplier = 1.0
     beacon_splash_radius_multiplier = 1.0
     beacon_mark_multiplier = 1.0
+    beam_ramp_multiplier = 1.0
+    beam_max_ramp_bonus = 0.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -910,6 +948,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         cannon_knockback_damage_multiplier *= relic.cannon_knockback_damage_multiplier
         beacon_splash_radius_multiplier *= relic.beacon_splash_radius_multiplier
         beacon_mark_multiplier *= relic.beacon_mark_multiplier
+        beam_ramp_multiplier *= relic.beam_ramp_multiplier
+        beam_max_ramp_bonus += relic.beam_max_ramp_bonus
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -957,4 +997,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         cannon_knockback_damage_multiplier=cannon_knockback_damage_multiplier,
         beacon_splash_radius_multiplier=beacon_splash_radius_multiplier,
         beacon_mark_multiplier=beacon_mark_multiplier,
+        beam_ramp_multiplier=beam_ramp_multiplier,
+        beam_max_ramp_bonus=beam_max_ramp_bonus,
     )
