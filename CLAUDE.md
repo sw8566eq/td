@@ -79,10 +79,14 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 35 (the newest batch's `flak_rounds`/`breach_charges`/`containment_charges`) are gated at
-  all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional `unlocked_pool`/
-  `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
-  below). Thirty-five relics across eight effect shapes -- the original three, plus five more added since: **per-floor**
+  3 of the 39 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
+  gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
+  `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
+  `meta_progression.py` bullet below). Thirty-nine relics across eight effect shapes -- the original
+  three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
+  (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
+  `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated):
+  **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
   **one-time** (`starting_lives_bonus`, applied directly at draft-pick time instead, see
@@ -256,9 +260,12 @@ Every other row is a weighted-random mix of the six ordinary `NODE_TYPES` (`NODE
 drawn by the mix, only forced onto the final row exactly like `"combat"` is forced onto row 0 -- capped
 at half the row per type (`MAX_SAME_TYPE_PER_ROW_FRACTION`) so a wide row can't degenerate into one
 repeated type. `MIN_ELITE_ROW` keeps Elite off the run's opening rows; `GUARANTEED_REST_ROW` forces
-at least one Rest node onto that one row if the weighted draw didn't already produce one -- deliberately
-**not** mirrored for Shop, which stays pure chance (a run's Shop cadence is meant to vary, unlike Rest's
-"never go the whole back half with no way to recover lives" guarantee). A Combat/Elite node's own
+at least one Rest node onto that one row if the weighted draw didn't already produce one, and
+`GUARANTEED_TREASURE_ROW` (a distinct row, same injection shape) does the same for Treasure -- whose
+own 4/100 weight and lack of any guarantee otherwise meant a run could plausibly see zero of them.
+Both are deliberately **not** mirrored for Shop, which stays pure chance (a run's Shop cadence is
+meant to vary, unlike Rest's "never go the whole back half with no way to recover lives" guarantee,
+or Treasure's "always at least one guaranteed relic-shopping stop"). A Combat/Elite node's own
 level id is drawn from whichever tier its row falls in (`_level_pool_for_row`, partitioned by
 structure -- single-spawn "corridor" levels for earlier rows, multi-spawn "multi-lane" ones for later
 rows -- not a hardcoded id list, so it stays self-maintaining as levels are added) rather than sampled
@@ -276,11 +283,17 @@ The seven node types:
   reached via a map node now rather than automatically after every floor clear (see "Two currencies"
   below for what this replaced).
 - **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`events.py`), each a fixed,
-  honestly-described delta (shop currency, lives, a relic grant, a tower unlock) rather than a
-  hidden-odds gamble, same "say exactly what it does" precedent `relics.py`'s own registry sets.
+  honestly-described delta (shop currency, lives, a relic grant, a tower unlock, or -- since the
+  gaps-and-synergies batch -- giving up a relic already held, `EventOption.relic_cost`) rather than
+  a hidden-odds gamble, same "say exactly what it does" precedent `relics.py`'s own registry sets.
+  `Game.event_options` (`events.available_options(event, run)`) is the actual rendered/clickable
+  subset -- may be shorter than the event's own full `options` tuple if a `relic_cost` option got
+  dropped for holding no relics; a `relic_cost` option must always be the last in its tuple, since
+  filtering only ever truncates the tail, keeping every other option's index stable regardless.
   Two-phase (`Game.event_phase`, "choose" then "resolved") -- `_handle_event_click`/
-  `_resolve_event_choice` apply the chosen option's effect and show what happened; any further
-  click/key then returns to the map.
+  `_resolve_event_choice` apply the chosen option's effect (indexing into `event_options`, never the
+  raw `current_event.options`) and show what happened; any further click/key then returns to the
+  map.
 - **Rest**: `GameState.REST` -- auto-resolves the instant it's entered (`Game._enter_rest_node`), no
   player choice, healing `run.lives` by `run_map.heal_amount_for_row(node.row)` and showing a static
   confirmation screen.
@@ -363,11 +376,14 @@ registry-and-bare-function shape:
   `RELIC_OFFER_COUNT` relics via `relics.relic_offer`, same exclude-what's-already-held rules as
   before). Either half can come back shorter once its own pool is exhausted; `Game._enter_shop_node()`
   still skips the screen entirely only if the *combined* offer is empty.
-- `price_for(item, purchases_this_visit)` -- an item's actual cost, escalated by `PRICE_ESCALATION`
-  for every other item this same shop visit has already bought (0 for the first purchase). Kept as a
-  pure function of a purchase *count*, not mutable per-item state, so `ui.draw_draft_screen` (showing
-  what the *next* purchase would cost) and `Game._try_buy_shop_item` (actually charging it) can't
-  drift apart on what "the current price" means.
+- `price_for(item, purchases_this_visit, discount_multiplier=1.0)` -- an item's actual cost,
+  escalated by `PRICE_ESCALATION` for every other item this same shop visit has already bought (0
+  for the first purchase), then discounted by a Haggling Permit-style relic's own
+  `RelicModifiers.shop_price_multiplier` (default 1.0, a no-op -- `quartermasters_favor` already
+  covers the battle-gold half of the economy, this is the shop-currency half). Kept as a pure
+  function of a purchase *count* (and this one relic-driven multiplier), not mutable per-item state,
+  so `ui.draw_draft_screen` (showing what the *next* purchase would cost) and `Game._try_buy_shop_item`
+  (actually charging it) can't drift apart on what "the current price" means.
 - `income_for_floor(floor_index, leftover_gold, is_elite=False)` -- shop currency earned at a floor
   clear (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (the
   cleared node's own row, mirroring `run_escalation.py`'s own per-floor growth on a much smaller
@@ -430,6 +446,24 @@ unmodified -- `take_damage()` isn't overridden a second time. Its own reinforcem
 lives entirely in `update()`, guarded the same `if self.is_dead or self.reached_goal: return` way
 every other one-time enemy mechanic in this file is.
 
+`FinalBossShieldedEnemy` is a second final-boss species, giving the run's two boss-tier levels
+(`run_map.BOSS_LEVEL_IDS`, 16 and 17) genuinely distinct fights rather than an identical script
+behind different topology -- Level 16 still uses `FinalBossEnemy`, Level 17 uses this one instead
+(`levels.py`'s own `LEVEL_17_WAVE_SPECS`, the only line that changed to wire it in). It also
+subclasses `BossEnemy` directly and inherits Enrage/Armor unmodified, but its own extra mechanic is
+a periodic self-shield pulse in place of summoned reinforcements: every `SHIELD_PULSE_INTERVAL`
+seconds while alive, it grants itself `pulse_shield` worth `SHIELD_PULSE_FRACTION` of its own
+*current* `max_hp` (read live, same reasoning as Enrage/Armor's own thresholds above), which
+`take_damage()` *does* override this time -- absorbing from `pulse_shield` first, then delegating
+whatever's left to `BossEnemy.take_damage()` so armor/enrage still evaluate correctly on the
+remainder, the same absorb-then-delegate shape `ShieldedEnemy.take_damage()` already establishes,
+just pulsed on a timer rather than continuously regenerating. Deliberately named `pulse_shield`, not
+`shield`/`max_shield` -- reusing either name would silently trigger `WaveManager._spawn_enemy`'s
+`hasattr(enemy, "max_shield")` patch-up above, which is hardcoded for `ShieldedEnemy`'s own
+difficulty-scaling model and sizes things a completely different way. It also needs its own
+`take_poison_damage()` override, unlike `FinalBossEnemy` -- see "Mark and Corrosive Poison's
+shield-bypass hook" below for why.
+
 ### Mark and Corrosive Poison's shield-bypass hook
 
 Two mechanics from the tower/relic synergy batch live inside `Enemy` itself rather than
@@ -454,17 +488,23 @@ uniformly, not just a tower's own direct hit resolution:
   hits go through the full existing relic pipeline for free.
 - **Corrosive Poison** (`poison_ignores_shield`, a `RelicModifiers` field) needs a dedicated hook
   because a poison tick applies via a *direct* `self.take_damage(...)` call inside `Enemy.update()`
-  itself, not through `Projectile` -- so bypassing `ShieldedEnemy`'s shield absorption can't be an
-  inline check in `Projectile`. `Enemy.take_poison_damage(amount, ignore_shield)` is the hook
-  `update()`'s poison-tick handling calls instead of `take_damage()` directly: the base
-  implementation is just a polymorphic call to `take_damage()` (meaningless without a shield to
-  ignore), and `ShieldedEnemy` is the *only* species that overrides it -- bypassing its own
-  shield-absorbing `take_damage()` override by calling `Enemy.take_damage(self, amount)` directly
-  when `ignore_shield` is set, while still resetting the shield's regen timer, the same way a
-  normal absorbed hit would. Every other species inherits the base hook unmodified, which is what
-  keeps `BossEnemy`'s armor phase and `SplitterEnemy`'s split-on-death structurally untouched by
-  Corrosive Poison -- not via a runtime species check anywhere, but because only `ShieldedEnemy`
-  ever overrides the hook at all. `Enemy.apply_poison()`'s own `ignore_shield` parameter follows a
+  itself, not through `Projectile` -- so bypassing a shield-style absorption can't be an inline
+  check in `Projectile`. `Enemy.take_poison_damage(amount, ignore_shield)` is the hook `update()`'s
+  poison-tick handling calls instead of `take_damage()` directly: the base implementation is just a
+  polymorphic call to `take_damage()` (meaningless without a shield to ignore), and exactly two
+  species override it -- `ShieldedEnemy` (its regenerating shield) and `FinalBossShieldedEnemy`
+  (its periodic self-shield pulse -- see the run's branching map section above) -- each bypassing
+  its own shield-absorbing `take_damage()` override by calling the shield-less base class's
+  `take_damage()` directly (`Enemy.take_damage(self, amount)` for `ShieldedEnemy`,
+  `BossEnemy.take_damage(self, amount)` for `FinalBossShieldedEnemy`, since the latter still needs
+  to fall through to `BossEnemy`'s own armor/enrage checks) when `ignore_shield` is set.
+  `ShieldedEnemy` also resets its shield's regen timer on this path, the same way a normal absorbed
+  hit would -- `FinalBossShieldedEnemy`'s pulse has no equivalent regen timer to reset, since it
+  refills on a fixed schedule regardless of whether it was hit. Every other species inherits the
+  base hook unmodified, which is what keeps `BossEnemy`'s armor phase and `SplitterEnemy`'s
+  split-on-death structurally untouched by Corrosive Poison -- not via a runtime species check
+  anywhere, but because only those two species ever override the hook at all.
+  `Enemy.apply_poison()`'s own `ignore_shield` parameter follows a
   one-way-ratchet rule, not the `min()`/`max()` its numeric fields use: a genuinely fresh
   application sets it directly, but a refresh of already-active poison ORs it in, so the stronger
   property (bypassing a shield) can never be silently downgraded by a second, weaker application.
