@@ -360,6 +360,17 @@ class Relic:
     # scaling execute_hp_threshold instead (a bigger threshold is the buff
     # direction -- see tower.py's own Wounded Prey comment).
     execute_threshold_multiplier: float = 1.0
+    # glacial_core's own bonus -- Frost-tower-exclusive, same plain-
+    # multiply shape as basic_crit_damage_multiplier/execute_damage_
+    # multiplier above, scaling slow_factor instead. Buff direction here is
+    # INVERTED (<1.0 is stronger), the same inversion FrostTower's own
+    # docstring already documents for slow_factor itself -- the opposite of
+    # every other multiplier in this file.
+    frost_slow_multiplier: float = 1.0
+    # permafrost's own bonus -- Frost-tower-exclusive, same plain-multiply
+    # shape as frost_slow_multiplier immediately above, scaling
+    # slow_duration instead -- the normal ">1.0 is stronger" direction.
+    frost_duration_multiplier: float = 1.0
 
 
 RELICS = {
@@ -703,6 +714,23 @@ RELICS = {
         "Sniper tower's execute triggers against tougher targets, every floor.",
         execute_threshold_multiplier=1.25,
     ),
+    # Frost-tower-exclusive -- see frost_slow_multiplier's own comment on
+    # the Relic dataclass above for the read site (FrostTower.
+    # create_projectile()). 0.8, not 1.25, matching the inverted buff
+    # direction the dataclass field's own comment calls out.
+    "glacial_core": Relic(
+        "glacial_core", "Glacial Core",
+        "Frost tower slows even more, every floor.",
+        frost_slow_multiplier=0.8,
+    ),
+    # Frost-tower-exclusive -- see frost_duration_multiplier's own comment
+    # on the Relic dataclass above for the read site (FrostTower.
+    # create_projectile()).
+    "permafrost": Relic(
+        "permafrost", "Permafrost",
+        "Frost tower's slow lasts much longer, every floor.",
+        frost_duration_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -852,6 +880,8 @@ class RelicModifiers:
     basic_crit_chance_multiplier: float = 1.0
     execute_damage_multiplier: float = 1.0
     execute_threshold_multiplier: float = 1.0
+    frost_slow_multiplier: float = 1.0
+    frost_duration_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -939,6 +969,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     basic_crit_chance_multiplier = 1.0
     execute_damage_multiplier = 1.0
     execute_threshold_multiplier = 1.0
+    frost_slow_multiplier = 1.0
+    frost_duration_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1041,6 +1073,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier *= relic.basic_crit_chance_multiplier
         execute_damage_multiplier *= relic.execute_damage_multiplier
         execute_threshold_multiplier *= relic.execute_threshold_multiplier
+        frost_slow_multiplier *= relic.frost_slow_multiplier
+        frost_duration_multiplier *= relic.frost_duration_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1095,4 +1129,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier=basic_crit_chance_multiplier,
         execute_damage_multiplier=execute_damage_multiplier,
         execute_threshold_multiplier=execute_threshold_multiplier,
+        frost_slow_multiplier=frost_slow_multiplier,
+        frost_duration_multiplier=frost_duration_multiplier,
     )
