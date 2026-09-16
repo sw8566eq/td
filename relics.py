@@ -347,6 +347,19 @@ class Relic:
     # multiply shape as basic_crit_damage_multiplier immediately above,
     # scaling crit_chance instead.
     basic_crit_chance_multiplier: float = 1.0
+    # kill_shot's own bonus -- Sniper-tower-exclusive, same plain-multiply
+    # shape as beacon_mark_multiplier/beam_ramp_multiplier above:
+    # execute_damage_multiplier is a conditional per-hit bonus resolved
+    # inside Projectile (see tower.py's own Kill Shot comment), not part
+    # of effective_damage()'s additive stack, so it skips the
+    # family_damage_bonus() hook. No existing relic references Execute at
+    # all before this pair.
+    execute_damage_multiplier: float = 1.0
+    # wounded_prey's own bonus -- Sniper-tower-exclusive, same plain-
+    # multiply shape as execute_damage_multiplier immediately above,
+    # scaling execute_hp_threshold instead (a bigger threshold is the buff
+    # direction -- see tower.py's own Wounded Prey comment).
+    execute_threshold_multiplier: float = 1.0
 
 
 RELICS = {
@@ -674,6 +687,22 @@ RELICS = {
         "Basic tower crits 25% more often, every floor.",
         basic_crit_chance_multiplier=1.25,
     ),
+    # Sniper-tower-exclusive -- see execute_damage_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (SniperTower.create_projectile()).
+    "kill_shot": Relic(
+        "kill_shot", "Kill Shot",
+        "Sniper tower's execute deals 25% more bonus damage, every floor.",
+        execute_damage_multiplier=1.25,
+    ),
+    # Sniper-tower-exclusive -- see execute_threshold_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (SniperTower.create_projectile()).
+    "wounded_prey": Relic(
+        "wounded_prey", "Wounded Prey",
+        "Sniper tower's execute triggers against tougher targets, every floor.",
+        execute_threshold_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -821,6 +850,8 @@ class RelicModifiers:
     poison_spread_radius: float = 0.0
     basic_crit_damage_multiplier: float = 1.0
     basic_crit_chance_multiplier: float = 1.0
+    execute_damage_multiplier: float = 1.0
+    execute_threshold_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -906,6 +937,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     poison_spread_radius = 0.0
     basic_crit_damage_multiplier = 1.0
     basic_crit_chance_multiplier = 1.0
+    execute_damage_multiplier = 1.0
+    execute_threshold_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1006,6 +1039,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         poison_spread_radius = max(poison_spread_radius, relic.poison_spread_radius)
         basic_crit_damage_multiplier *= relic.basic_crit_damage_multiplier
         basic_crit_chance_multiplier *= relic.basic_crit_chance_multiplier
+        execute_damage_multiplier *= relic.execute_damage_multiplier
+        execute_threshold_multiplier *= relic.execute_threshold_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1058,4 +1093,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         poison_spread_radius=poison_spread_radius,
         basic_crit_damage_multiplier=basic_crit_damage_multiplier,
         basic_crit_chance_multiplier=basic_crit_chance_multiplier,
+        execute_damage_multiplier=execute_damage_multiplier,
+        execute_threshold_multiplier=execute_threshold_multiplier,
     )

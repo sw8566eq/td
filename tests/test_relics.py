@@ -621,6 +621,22 @@ def test_compose_relic_modifiers_no_beam_relic_leaves_them_neutral():
     assert modifiers.beam_max_ramp_bonus == 0.0
 
 
+def test_compose_relic_modifiers_multiplies_execute_damage_multiplier():
+    modifiers = compose_relic_modifiers(["kill_shot", "kill_shot"])
+    assert modifiers.execute_damage_multiplier == RELICS["kill_shot"].execute_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_execute_threshold_multiplier():
+    modifiers = compose_relic_modifiers(["wounded_prey", "wounded_prey"])
+    assert modifiers.execute_threshold_multiplier == RELICS["wounded_prey"].execute_threshold_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_execute_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.execute_damage_multiplier == 1.0
+    assert modifiers.execute_threshold_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
     smaller_radius = Relic("test_smaller_spread", "", "", poison_spread_radius=10)
     monkeypatch.setitem(RELICS, "test_smaller_spread", smaller_radius)

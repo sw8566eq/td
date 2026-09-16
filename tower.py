@@ -268,6 +268,23 @@ class Tower:
         # plain-multiply shape as relic_basic_crit_damage_bonus_multiplier
         # immediately above, scaling crit_chance instead.
         self.relic_basic_crit_chance_bonus_multiplier = 1.0
+        # Kill Shot-style relic -- Sniper-tower-exclusive, same plain-
+        # multiply shape as relic_beacon_mark_bonus_multiplier above:
+        # execute_damage_multiplier is a conditional per-hit bonus applied
+        # inside Projectile (see execute_hp_threshold's own check), not
+        # part of effective_damage()'s additive stack, so this skips the
+        # family_damage_bonus() hook the same way every plain-multiply
+        # relic here does. No existing relic references Execute at all, so
+        # unlike the generic crit_chance/crit_damage_multiplier pair this
+        # mirrors in shape, there is no reuse-vs-exclusive question here.
+        self.relic_execute_damage_bonus_multiplier = 1.0
+        # Wounded Prey-style relic -- Sniper-tower-exclusive, same plain-
+        # multiply shape as relic_execute_damage_bonus_multiplier
+        # immediately above, scaling execute_hp_threshold instead -- a
+        # BIGGER threshold is the buff direction here (executes trigger
+        # against tougher targets), the normal ">1.0 is stronger"
+        # direction, unlike Frost's own inverted slow_factor.
+        self.relic_execute_threshold_bonus_multiplier = 1.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -1093,8 +1110,8 @@ class SniperTower(Tower):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(), sprite_name="projectile_sniper", source=self,
-            execute_hp_threshold=self.execute_hp_threshold,
-            execute_damage_multiplier=self.execute_damage_multiplier,
+            execute_hp_threshold=self.execute_hp_threshold * self.relic_execute_threshold_bonus_multiplier,
+            execute_damage_multiplier=self.execute_damage_multiplier * self.relic_execute_damage_bonus_multiplier,
         )
 
 

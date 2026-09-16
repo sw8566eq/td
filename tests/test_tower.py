@@ -337,6 +337,14 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             ("relic_basic_crit_chance_bonus_multiplier",), "crit_chance", ("basic",),
             lambda tower: 0.0,  # Projectile's own default, same reasoning as crit_damage_multiplier above
         ),
+        (
+            ("relic_execute_damage_bonus_multiplier",), "execute_damage_multiplier", ("sniper",),
+            lambda tower: 1.0,  # Projectile's own default -- non-Sniper towers never pass this kwarg at all
+        ),
+        (
+            ("relic_execute_threshold_bonus_multiplier",), "execute_hp_threshold", ("sniper",),
+            lambda tower: 0.0,  # Projectile's own default, same reasoning as execute_damage_multiplier above
+        ),
     ],
 )
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
@@ -413,6 +421,24 @@ def test_sniper_tower_projectile_carries_its_execute_mechanic():
     assert projectile.knockback_duration == 0.0
     assert projectile.chain_range == 0.0
     assert projectile.poison_effect is None
+
+
+def test_kill_shot_relic_boosts_sniper_execute_damage_multiplier():
+    tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_execute_damage_multiplier = tower.execute_damage_multiplier
+    tower.relic_execute_damage_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.execute_damage_multiplier == pytest.approx(base_execute_damage_multiplier * 1.25)
+    assert projectile.execute_hp_threshold == SniperTower.execute_hp_threshold  # untouched
+
+
+def test_wounded_prey_relic_boosts_sniper_execute_threshold():
+    tower = SniperTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_execute_hp_threshold = tower.execute_hp_threshold
+    tower.relic_execute_threshold_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.execute_hp_threshold == pytest.approx(base_execute_hp_threshold * 1.25)
+    assert projectile.execute_damage_multiplier == SniperTower.execute_damage_multiplier  # untouched
 
 
 def test_sniper_tower_specialization_boosts_carry_through_to_the_projectile():
