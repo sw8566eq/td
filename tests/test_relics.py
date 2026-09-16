@@ -655,6 +655,22 @@ def test_compose_relic_modifiers_no_frost_relic_leaves_them_neutral():
     assert modifiers.frost_duration_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_poison_tower_tick_multiplier():
+    modifiers = compose_relic_modifiers(["toxic_payload", "toxic_payload"])
+    assert modifiers.poison_tower_tick_multiplier == RELICS["toxic_payload"].poison_tower_tick_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_poison_tower_duration_multiplier():
+    modifiers = compose_relic_modifiers(["festering_wound", "festering_wound"])
+    assert modifiers.poison_tower_duration_multiplier == RELICS["festering_wound"].poison_tower_duration_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_poison_tower_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.poison_tower_tick_multiplier == 1.0
+    assert modifiers.poison_tower_duration_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
     smaller_radius = Relic("test_smaller_spread", "", "", poison_spread_radius=10)
     monkeypatch.setitem(RELICS, "test_smaller_spread", smaller_radius)

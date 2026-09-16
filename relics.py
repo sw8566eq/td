@@ -371,6 +371,18 @@ class Relic:
     # shape as frost_slow_multiplier immediately above, scaling
     # slow_duration instead -- the normal ">1.0 is stronger" direction.
     frost_duration_multiplier: float = 1.0
+    # toxic_payload's own bonus -- Poison-tower-exclusive, same
+    # plain-multiply shape as execute_damage_multiplier above, scaling
+    # PoisonTower's own innate poison_damage_per_tick. Named with
+    # "_tower_" in the middle to stay unambiguous next to the existing
+    # generic poison_damage_per_tick field above (part of poison_chance's
+    # own "grant poison to any tower" mechanism) -- this one only ever
+    # touches PoisonTower's own native DoT.
+    poison_tower_tick_multiplier: float = 1.0
+    # festering_wound's own bonus -- Poison-tower-exclusive, same
+    # plain-multiply shape as poison_tower_tick_multiplier immediately
+    # above, scaling PoisonTower's own innate poison_duration instead.
+    poison_tower_duration_multiplier: float = 1.0
 
 
 RELICS = {
@@ -731,6 +743,22 @@ RELICS = {
         "Frost tower's slow lasts much longer, every floor.",
         frost_duration_multiplier=1.25,
     ),
+    # Poison-tower-exclusive -- see poison_tower_tick_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (PoisonTower.create_projectile()).
+    "toxic_payload": Relic(
+        "toxic_payload", "Toxic Payload",
+        "Poison tower's own poison deals 25% more damage per tick, every floor.",
+        poison_tower_tick_multiplier=1.25,
+    ),
+    # Poison-tower-exclusive -- see poison_tower_duration_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (PoisonTower.create_projectile()).
+    "festering_wound": Relic(
+        "festering_wound", "Festering Wound",
+        "Poison tower's own poison lasts much longer, every floor.",
+        poison_tower_duration_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -882,6 +910,8 @@ class RelicModifiers:
     execute_threshold_multiplier: float = 1.0
     frost_slow_multiplier: float = 1.0
     frost_duration_multiplier: float = 1.0
+    poison_tower_tick_multiplier: float = 1.0
+    poison_tower_duration_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -971,6 +1001,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     execute_threshold_multiplier = 1.0
     frost_slow_multiplier = 1.0
     frost_duration_multiplier = 1.0
+    poison_tower_tick_multiplier = 1.0
+    poison_tower_duration_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1075,6 +1107,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         execute_threshold_multiplier *= relic.execute_threshold_multiplier
         frost_slow_multiplier *= relic.frost_slow_multiplier
         frost_duration_multiplier *= relic.frost_duration_multiplier
+        poison_tower_tick_multiplier *= relic.poison_tower_tick_multiplier
+        poison_tower_duration_multiplier *= relic.poison_tower_duration_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1131,4 +1165,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         execute_threshold_multiplier=execute_threshold_multiplier,
         frost_slow_multiplier=frost_slow_multiplier,
         frost_duration_multiplier=frost_duration_multiplier,
+        poison_tower_tick_multiplier=poison_tower_tick_multiplier,
+        poison_tower_duration_multiplier=poison_tower_duration_multiplier,
     )

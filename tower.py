@@ -296,6 +296,19 @@ class Tower:
         # above, scaling slow_duration instead -- the normal ">1.0 is
         # stronger" direction.
         self.relic_frost_duration_bonus_multiplier = 1.0
+        # Toxic Payload-style relic -- Poison-tower-exclusive, same
+        # plain-multiply shape as relic_execute_damage_bonus_multiplier
+        # above, scaling poison_damage_per_tick instead. Named with
+        # "_tower_" in the middle (not relic_poison_tick_bonus_multiplier)
+        # to stay unambiguous next to the existing generic
+        # relic_poison_chance/relic_poison_effect fields below, which
+        # grant/modify poison for *any* tower -- these two are exclusive to
+        # PoisonTower's own innate DoT, a different mechanism entirely.
+        self.relic_poison_tower_tick_bonus_multiplier = 1.0
+        # Festering Wound-style relic -- Poison-tower-exclusive, same
+        # plain-multiply shape as relic_poison_tower_tick_bonus_multiplier
+        # immediately above, scaling poison_duration instead.
+        self.relic_poison_tower_duration_bonus_multiplier = 1.0
         # The configured strength of a Last Stand Charm-style relic, set
         # once at construction like every relic_* field above -- but
         # relic_last_stand_multiplier below it is the one relic-driven
@@ -1167,7 +1180,11 @@ class PoisonTower(Tower):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(),
-            poison_effect=(self.poison_damage_per_tick, self.poison_tick_interval, self.poison_duration),
+            poison_effect=(
+                self.poison_damage_per_tick * self.relic_poison_tower_tick_bonus_multiplier,
+                self.poison_tick_interval,
+                self.poison_duration * self.relic_poison_tower_duration_bonus_multiplier,
+            ),
             sprite_name="projectile_poison", source=self,
         )
 

@@ -2245,6 +2245,8 @@ class Game:
         tower.relic_execute_threshold_bonus_multiplier = self.relic_modifiers.execute_threshold_multiplier
         tower.relic_frost_slow_bonus_multiplier = self.relic_modifiers.frost_slow_multiplier
         tower.relic_frost_duration_bonus_multiplier = self.relic_modifiers.frost_duration_multiplier
+        tower.relic_poison_tower_tick_bonus_multiplier = self.relic_modifiers.poison_tower_tick_multiplier
+        tower.relic_poison_tower_duration_bonus_multiplier = self.relic_modifiers.poison_tower_duration_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
