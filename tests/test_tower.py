@@ -345,6 +345,17 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             ("relic_execute_threshold_bonus_multiplier",), "execute_hp_threshold", ("sniper",),
             lambda tower: 0.0,  # Projectile's own default, same reasoning as execute_damage_multiplier above
         ),
+        # Both Poison-tower-exclusive fields set together in one row -- same
+        # reasoning as the Beam-exclusive row above: they map to the same
+        # projectile attribute (poison_effect) and expected baseline, so a
+        # bug that leaked one but not the other into a non-Poison tower
+        # isn't constructible; separate rows would only double the
+        # TOWER_TYPES iteration for zero extra coverage.
+        (
+            ("relic_poison_tower_tick_bonus_multiplier", "relic_poison_tower_duration_bonus_multiplier"),
+            "poison_effect", ("poison",),
+            lambda tower: None,  # Projectile's own default -- non-Poison towers never pass this kwarg at all
+        ),
     ],
 )
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
@@ -471,6 +482,26 @@ def test_poison_tower_projectile_carries_a_poison_effect():
     assert projectile.poison_effect == (
         PoisonTower.poison_damage_per_tick, PoisonTower.poison_tick_interval, PoisonTower.poison_duration,
     )
+
+
+def test_toxic_payload_relic_boosts_poison_tower_tick_damage():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_tick = tower.poison_damage_per_tick
+    tower.relic_poison_tower_tick_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect[0] == pytest.approx(base_tick * 1.25)
+    assert projectile.poison_effect[1] == PoisonTower.poison_tick_interval  # untouched
+    assert projectile.poison_effect[2] == PoisonTower.poison_duration  # untouched
+
+
+def test_festering_wound_relic_boosts_poison_tower_duration():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_duration = tower.poison_duration
+    tower.relic_poison_tower_duration_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect[2] == pytest.approx(base_duration * 1.25)
+    assert projectile.poison_effect[0] == PoisonTower.poison_damage_per_tick  # untouched
+    assert projectile.poison_effect[1] == PoisonTower.poison_tick_interval  # untouched
 
 
 def test_other_towers_have_no_poison_effect():

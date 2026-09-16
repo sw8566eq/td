@@ -360,6 +360,18 @@ class Relic:
     # scaling execute_hp_threshold instead (a bigger threshold is the buff
     # direction -- see tower.py's own Wounded Prey comment).
     execute_threshold_multiplier: float = 1.0
+    # toxic_payload's own bonus -- Poison-tower-exclusive, same
+    # plain-multiply shape as execute_damage_multiplier above, scaling
+    # PoisonTower's own innate poison_damage_per_tick. Named with
+    # "_tower_" in the middle to stay unambiguous next to the existing
+    # generic poison_damage_per_tick field above (part of poison_chance's
+    # own "grant poison to any tower" mechanism) -- this one only ever
+    # touches PoisonTower's own native DoT.
+    poison_tower_tick_multiplier: float = 1.0
+    # festering_wound's own bonus -- Poison-tower-exclusive, same
+    # plain-multiply shape as poison_tower_tick_multiplier immediately
+    # above, scaling PoisonTower's own innate poison_duration instead.
+    poison_tower_duration_multiplier: float = 1.0
 
 
 RELICS = {
@@ -703,6 +715,22 @@ RELICS = {
         "Sniper tower's execute triggers against tougher targets, every floor.",
         execute_threshold_multiplier=1.25,
     ),
+    # Poison-tower-exclusive -- see poison_tower_tick_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (PoisonTower.create_projectile()).
+    "toxic_payload": Relic(
+        "toxic_payload", "Toxic Payload",
+        "Poison tower's own poison deals 25% more damage per tick, every floor.",
+        poison_tower_tick_multiplier=1.25,
+    ),
+    # Poison-tower-exclusive -- see poison_tower_duration_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (PoisonTower.create_projectile()).
+    "festering_wound": Relic(
+        "festering_wound", "Festering Wound",
+        "Poison tower's own poison lasts much longer, every floor.",
+        poison_tower_duration_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -852,6 +880,8 @@ class RelicModifiers:
     basic_crit_chance_multiplier: float = 1.0
     execute_damage_multiplier: float = 1.0
     execute_threshold_multiplier: float = 1.0
+    poison_tower_tick_multiplier: float = 1.0
+    poison_tower_duration_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -939,6 +969,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     basic_crit_chance_multiplier = 1.0
     execute_damage_multiplier = 1.0
     execute_threshold_multiplier = 1.0
+    poison_tower_tick_multiplier = 1.0
+    poison_tower_duration_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1041,6 +1073,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier *= relic.basic_crit_chance_multiplier
         execute_damage_multiplier *= relic.execute_damage_multiplier
         execute_threshold_multiplier *= relic.execute_threshold_multiplier
+        poison_tower_tick_multiplier *= relic.poison_tower_tick_multiplier
+        poison_tower_duration_multiplier *= relic.poison_tower_duration_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1095,4 +1129,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier=basic_crit_chance_multiplier,
         execute_damage_multiplier=execute_damage_multiplier,
         execute_threshold_multiplier=execute_threshold_multiplier,
+        poison_tower_tick_multiplier=poison_tower_tick_multiplier,
+        poison_tower_duration_multiplier=poison_tower_duration_multiplier,
     )
