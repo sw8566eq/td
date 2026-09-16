@@ -2239,6 +2239,8 @@ class Game:
         tower.relic_beacon_mark_bonus_multiplier = self.relic_modifiers.beacon_mark_multiplier
         tower.relic_beam_ramp_bonus_multiplier = self.relic_modifiers.beam_ramp_multiplier
         tower.relic_beam_max_ramp_bonus = self.relic_modifiers.beam_max_ramp_bonus
+        tower.relic_execute_damage_bonus_multiplier = self.relic_modifiers.execute_damage_multiplier
+        tower.relic_execute_threshold_bonus_multiplier = self.relic_modifiers.execute_threshold_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
