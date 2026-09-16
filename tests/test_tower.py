@@ -194,6 +194,14 @@ def test_other_towers_have_no_knockback():
         assert projectile.knockback_duration == 0.0, name
 
 
+def test_seismic_slam_relic_boosts_knockback_tower_duration():
+    tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_duration = tower.knockback_duration
+    tower.relic_knockback_duration_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.knockback_duration == pytest.approx(base_duration * 1.25)
+
+
 def test_lightning_tower_is_registered():
     assert TOWER_TYPES["lightning"] is LightningTower
 
@@ -365,6 +373,10 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             ("relic_poison_tower_tick_bonus_multiplier", "relic_poison_tower_duration_bonus_multiplier"),
             "poison_effect", ("poison",),
             lambda tower: None,  # Projectile's own default -- non-Poison towers never pass this kwarg at all
+        ),
+        (
+            ("relic_knockback_duration_bonus_multiplier",), "knockback_duration", ("knockback",),
+            lambda tower: 0.0,  # Projectile's own default -- non-Knockback towers never pass this kwarg at all
         ),
     ],
 )

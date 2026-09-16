@@ -671,6 +671,34 @@ def test_compose_relic_modifiers_no_poison_tower_relic_leaves_them_neutral():
     assert modifiers.poison_tower_duration_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_damage_vs_marked_and_slowed_multiplier():
+    modifiers = compose_relic_modifiers(["frostbitten_mark", "frostbitten_mark"])
+    assert modifiers.damage_vs_marked_and_slowed_multiplier == RELICS["frostbitten_mark"].damage_vs_marked_and_slowed_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_marked_and_poisoned_multiplier():
+    modifiers = compose_relic_modifiers(["plague_mark", "plague_mark"])
+    assert modifiers.damage_vs_marked_and_poisoned_multiplier == RELICS["plague_mark"].damage_vs_marked_and_poisoned_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_slowed_and_poisoned_multiplier():
+    modifiers = compose_relic_modifiers(["chill_rot", "chill_rot"])
+    assert modifiers.damage_vs_slowed_and_poisoned_multiplier == RELICS["chill_rot"].damage_vs_slowed_and_poisoned_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_knockback_duration_multiplier():
+    modifiers = compose_relic_modifiers(["seismic_slam", "seismic_slam"])
+    assert modifiers.knockback_duration_multiplier == RELICS["seismic_slam"].knockback_duration_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_combo_or_knockback_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.damage_vs_marked_and_slowed_multiplier == 1.0
+    assert modifiers.damage_vs_marked_and_poisoned_multiplier == 1.0
+    assert modifiers.damage_vs_slowed_and_poisoned_multiplier == 1.0
+    assert modifiers.knockback_duration_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
     smaller_radius = Relic("test_smaller_spread", "", "", poison_spread_radius=10)
     monkeypatch.setitem(RELICS, "test_smaller_spread", smaller_radius)

@@ -2247,6 +2247,10 @@ class Game:
         tower.relic_frost_duration_bonus_multiplier = self.relic_modifiers.frost_duration_multiplier
         tower.relic_poison_tower_tick_bonus_multiplier = self.relic_modifiers.poison_tower_tick_multiplier
         tower.relic_poison_tower_duration_bonus_multiplier = self.relic_modifiers.poison_tower_duration_multiplier
+        tower.relic_damage_vs_marked_and_slowed_multiplier = self.relic_modifiers.damage_vs_marked_and_slowed_multiplier
+        tower.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_modifiers.damage_vs_marked_and_poisoned_multiplier
+        tower.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_modifiers.damage_vs_slowed_and_poisoned_multiplier
+        tower.relic_knockback_duration_bonus_multiplier = self.relic_modifiers.knockback_duration_multiplier
         return tower
 
     def _current_footprint_subtiles(self):

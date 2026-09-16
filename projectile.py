@@ -87,6 +87,22 @@ already establish against relic_slow_effect/relic_poison_effect. Execute
 joins the ungated Chilling Precision/Choke Point/Giant Slayer block since
 it never rolls; the crit roll is resolved immediately before relic_crit_
 chance's own roll, same "tower's own effect first" ordering.
+
+The game's first cross-status combo relics -- relic_damage_vs_marked_and_
+slowed_multiplier (Beacon+Frost), relic_damage_vs_marked_and_poisoned_
+multiplier (Beacon+Poison), and relic_damage_vs_slowed_and_poisoned_
+multiplier (Frost+Poison) -- join the same ungated Chilling Precision/
+Choke Point/Giant Slayer block, but each requires TWO simultaneous enemy
+statuses instead of one. mark_timer/slow_timer/poison_time_remaining are
+all base Enemy attributes present on every enemy (unlike shield/heal_rate
+above), so each is read once into a local (is_marked/is_slowed/
+is_poisoned) at the top of _apply_hit_effects and reused by both its own
+single-status check and every combo check that needs it, rather than
+re-reading the same attribute two or three times. Same "read before this
+hit's own application" ordering Chilling Precision's own comment already
+establishes -- a tower's first-ever hit that both marks and slows a target
+in the same shot (impossible today, since no tower does both, but not
+architecturally ruled out) must not count itself as the qualifying combo.
 """
 
 import random
@@ -128,6 +144,9 @@ class Projectile:
                  relic_damage_vs_shielded_multiplier=1.0,
                  relic_damage_vs_healer_multiplier=1.0,
                  relic_damage_vs_fast_multiplier=1.0,
+                 relic_damage_vs_marked_and_slowed_multiplier=1.0,
+                 relic_damage_vs_marked_and_poisoned_multiplier=1.0,
+                 relic_damage_vs_slowed_and_poisoned_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
@@ -203,6 +222,12 @@ class Projectile:
         # against the target's own max_speed (a fixed per-species ceiling,
         # not live speed) in _apply_hit_effects.
         self.relic_damage_vs_fast_multiplier = relic_damage_vs_fast_multiplier
+        # The game's first cross-status combo relics -- ungated multiplies,
+        # same shape as relic_damage_vs_slowed_multiplier above, but each
+        # gated on TWO simultaneous enemy statuses (see _apply_hit_effects).
+        self.relic_damage_vs_marked_and_slowed_multiplier = relic_damage_vs_marked_and_slowed_multiplier
+        self.relic_damage_vs_marked_and_poisoned_multiplier = relic_damage_vs_marked_and_poisoned_multiplier
+        self.relic_damage_vs_slowed_and_poisoned_multiplier = relic_damage_vs_slowed_and_poisoned_multiplier
         # BasicTower's own native crit mechanic -- tower-driven, not relic-
         # driven, so kept as its own pair rather than folded into relic_
         # crit_chance/relic_crit_damage_multiplier above (the exact same
@@ -361,7 +386,19 @@ class Projectile:
         # Frost tower's first-ever hit on a target would retroactively
         # count itself as "vs. a slowed enemy."
         damage = self.damage
-        if getattr(enemy, "slow_timer", 0.0) > 0:
+        # Hoisted so the combo checks below (and Chilling Precision here)
+        # share one getattr each rather than re-reading the same status --
+        # all three are base Enemy attributes, always present, so no
+        # missing-attribute fallback cost to worry about (unlike shield/
+        # heal_rate just below). Read before this same hit's own slow/mark/
+        # poison application further down, for the same reason Chilling
+        # Precision's own comment already gives: a Frost/Beacon/Poison
+        # tower's first-ever hit on a target must not retroactively count
+        # itself as "vs. an already-slowed/marked/poisoned enemy."
+        is_slowed = getattr(enemy, "slow_timer", 0.0) > 0
+        is_marked = getattr(enemy, "mark_timer", 0.0) > 0
+        is_poisoned = getattr(enemy, "poison_time_remaining", 0.0) > 0
+        if is_slowed:
             damage *= self.relic_damage_vs_slowed_multiplier
         if getattr(enemy, "distance_traveled", 0.0) < CHOKE_POINT_DISTANCE_THRESHOLD:
             damage *= self.relic_damage_vs_early_route_multiplier
@@ -369,6 +406,15 @@ class Projectile:
             damage *= self.relic_damage_vs_high_hp_multiplier
         if getattr(enemy, "max_speed", 0.0) >= FAST_ENEMY_SPEED_THRESHOLD:
             damage *= self.relic_damage_vs_fast_multiplier
+        # The game's first cross-status combo relics -- same ungated shape
+        # as every check above, but each requires TWO simultaneous statuses
+        # (see this method's hoisted is_slowed/is_marked/is_poisoned above).
+        if is_marked and is_slowed:
+            damage *= self.relic_damage_vs_marked_and_slowed_multiplier
+        if is_marked and is_poisoned:
+            damage *= self.relic_damage_vs_marked_and_poisoned_multiplier
+        if is_slowed and is_poisoned:
+            damage *= self.relic_damage_vs_slowed_and_poisoned_multiplier
         # Flak Rounds/Breach Charges/Suppression Directive -- three more
         # ungated per-enemy multipliers, same shape as the three just
         # above, checked against the target's own *current* is_flying/

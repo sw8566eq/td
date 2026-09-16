@@ -384,6 +384,25 @@ class Tower:
         # fast enemy shouldn't lose the bonus just because its live speed
         # dropped).
         self.relic_damage_vs_fast_multiplier = 1.0
+        # The game's first cross-status combo relics -- ungated multiplies,
+        # same shape as relic_damage_vs_slowed_multiplier/relic_damage_vs_
+        # flying_multiplier above, but each gated on TWO simultaneous enemy
+        # statuses (mark_timer/slow_timer/poison_time_remaining, all base
+        # Enemy attributes) rather than one. See Projectile._apply_hit_
+        # effects for the actual gating.
+        self.relic_damage_vs_marked_and_slowed_multiplier = 1.0
+        self.relic_damage_vs_marked_and_poisoned_multiplier = 1.0
+        self.relic_damage_vs_slowed_and_poisoned_multiplier = 1.0
+        # Seismic Slam-style relic -- Knockback-tower-exclusive, same
+        # plain-multiply shape as relic_beam_ramp_bonus_multiplier/relic_
+        # frost_slow_bonus_multiplier above, read only in KnockbackTower.
+        # create_projectile() against its own knockback_duration. Distinct
+        # from relic_knockback_chance/relic_knockback_effect above (a
+        # generic relic that grants a knockback roll to ANY tower) and from
+        # relic_cannon_knockback_damage_bonus_multiplier (Heavy Ordnance,
+        # shared with Cannon, damage-only) -- this is Knockback's own
+        # second exclusive relic, off its 1-relic floor.
+        self.relic_knockback_duration_bonus_multiplier = 1.0
         # Containment Charges-style relic is deliberately NOT one of these
         # relic_* fields -- it's a flat per-floor value with no per-tower
         # variation, so Game.update()'s own dead-enemy drain loop reads
@@ -540,6 +559,9 @@ class Tower:
         projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
         projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
         projectile.relic_damage_vs_fast_multiplier = self.relic_damage_vs_fast_multiplier
+        projectile.relic_damage_vs_marked_and_slowed_multiplier = self.relic_damage_vs_marked_and_slowed_multiplier
+        projectile.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_damage_vs_marked_and_poisoned_multiplier
+        projectile.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_damage_vs_slowed_and_poisoned_multiplier
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
@@ -1038,7 +1060,7 @@ class KnockbackTower(Tower):
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
-            knockback_duration=self.knockback_duration,
+            knockback_duration=self.knockback_duration * self.relic_knockback_duration_bonus_multiplier,
             sprite_name="projectile_knockback", source=self,
         )
 
