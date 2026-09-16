@@ -599,6 +599,22 @@ def test_compose_relic_modifiers_sums_beam_max_ramp_bonus():
     assert modifiers.beam_max_ramp_bonus == pytest.approx(RELICS["sustained_barrage"].beam_max_ramp_bonus * 2)
 
 
+def test_compose_relic_modifiers_multiplies_basic_crit_damage_multiplier():
+    modifiers = compose_relic_modifiers(["adrenaline_rounds", "adrenaline_rounds"])
+    assert modifiers.basic_crit_damage_multiplier == RELICS["adrenaline_rounds"].basic_crit_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_basic_crit_chance_multiplier():
+    modifiers = compose_relic_modifiers(["twitch_reflex", "twitch_reflex"])
+    assert modifiers.basic_crit_chance_multiplier == RELICS["twitch_reflex"].basic_crit_chance_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_basic_crit_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.basic_crit_damage_multiplier == 1.0
+    assert modifiers.basic_crit_chance_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_no_beam_relic_leaves_them_neutral():
     modifiers = compose_relic_modifiers(["prospectors_charm"])
     assert modifiers.beam_ramp_multiplier == 1.0

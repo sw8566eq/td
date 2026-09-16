@@ -336,6 +336,17 @@ class Relic:
     # apply_poison()/update()) rather than any number this relic itself
     # carries.
     poison_spread_radius: float = 0.0
+    # adrenaline_rounds' own bonus -- Basic-tower-exclusive, same plain-
+    # multiply shape as beacon_mark_multiplier/beam_ramp_multiplier above:
+    # crit_damage_multiplier is a per-shot chance-roll outcome (see
+    # tower.py's own Adrenaline Rounds comment), not part of effective_
+    # damage()'s additive stack, so it skips the family_damage_bonus()
+    # hook.
+    basic_crit_damage_multiplier: float = 1.0
+    # twitch_reflex's own bonus -- Basic-tower-exclusive, same plain-
+    # multiply shape as basic_crit_damage_multiplier immediately above,
+    # scaling crit_chance instead.
+    basic_crit_chance_multiplier: float = 1.0
 
 
 RELICS = {
@@ -647,6 +658,22 @@ RELICS = {
         "When a poisoned enemy dies, its poison spreads to enemies within 60 pixels.",
         poison_spread_radius=60,
     ),
+    # Basic-tower-exclusive -- see basic_crit_damage_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (BasicTower.create_projectile()).
+    "adrenaline_rounds": Relic(
+        "adrenaline_rounds", "Adrenaline Rounds",
+        "Basic tower's crits deal 25% more bonus damage, every floor.",
+        basic_crit_damage_multiplier=1.25,
+    ),
+    # Basic-tower-exclusive -- see basic_crit_chance_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (BasicTower.create_projectile()).
+    "twitch_reflex": Relic(
+        "twitch_reflex", "Twitch Reflex",
+        "Basic tower crits 25% more often, every floor.",
+        basic_crit_chance_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -792,6 +819,8 @@ class RelicModifiers:
     beam_ramp_multiplier: float = 1.0
     beam_max_ramp_bonus: float = 0.0
     poison_spread_radius: float = 0.0
+    basic_crit_damage_multiplier: float = 1.0
+    basic_crit_chance_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -875,6 +904,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     beam_ramp_multiplier = 1.0
     beam_max_ramp_bonus = 0.0
     poison_spread_radius = 0.0
+    basic_crit_damage_multiplier = 1.0
+    basic_crit_chance_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -973,6 +1004,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         beam_ramp_multiplier *= relic.beam_ramp_multiplier
         beam_max_ramp_bonus += relic.beam_max_ramp_bonus
         poison_spread_radius = max(poison_spread_radius, relic.poison_spread_radius)
+        basic_crit_damage_multiplier *= relic.basic_crit_damage_multiplier
+        basic_crit_chance_multiplier *= relic.basic_crit_chance_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1023,4 +1056,6 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         beam_ramp_multiplier=beam_ramp_multiplier,
         beam_max_ramp_bonus=beam_max_ramp_bonus,
         poison_spread_radius=poison_spread_radius,
+        basic_crit_damage_multiplier=basic_crit_damage_multiplier,
+        basic_crit_chance_multiplier=basic_crit_chance_multiplier,
     )
