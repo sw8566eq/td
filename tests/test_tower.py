@@ -3,8 +3,8 @@ import pytest
 
 from projectile import Projectile
 from tower import (
-    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, CannonTower, KnockbackTower, LightningTower,
-    PoisonTower, SniperTower, SupportTower, Tower,
+    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, CannonTower, FrostTower, KnockbackTower,
+    LightningTower, PoisonTower, SniperTower, SupportTower, Tower,
 )
 
 
@@ -353,6 +353,27 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             ("relic_execute_threshold_bonus_multiplier",), "execute_hp_threshold", ("sniper",),
             lambda tower: 0.0,  # Projectile's own default, same reasoning as execute_damage_multiplier above
         ),
+        # Both Frost-exclusive fields set together in one row -- same shape
+        # as the Beam-exclusive row above, for the same reason: they map to
+        # the same projectile attribute (slow_effect) and expected
+        # baseline, so a bug that leaked one but not the other into a
+        # non-Frost tower isn't constructible; separate rows would only
+        # double the TOWER_TYPES iteration for zero extra coverage.
+        (
+            ("relic_frost_slow_bonus_multiplier", "relic_frost_duration_bonus_multiplier"), "slow_effect", ("frost",),
+            lambda tower: None,  # Projectile's own default -- non-Frost towers never pass this kwarg at all
+        ),
+        # Both Poison-tower-exclusive fields set together in one row -- same
+        # reasoning as the Beam-exclusive row above: they map to the same
+        # projectile attribute (poison_effect) and expected baseline, so a
+        # bug that leaked one but not the other into a non-Poison tower
+        # isn't constructible; separate rows would only double the
+        # TOWER_TYPES iteration for zero extra coverage.
+        (
+            ("relic_poison_tower_tick_bonus_multiplier", "relic_poison_tower_duration_bonus_multiplier"),
+            "poison_effect", ("poison",),
+            lambda tower: None,  # Projectile's own default -- non-Poison towers never pass this kwarg at all
+        ),
         (
             ("relic_knockback_duration_bonus_multiplier",), "knockback_duration", ("knockback",),
             lambda tower: 0.0,  # Projectile's own default -- non-Knockback towers never pass this kwarg at all
@@ -473,6 +494,24 @@ def test_sniper_tower_specialization_boosts_carry_through_to_the_projectile():
     assert projectile.execute_hp_threshold > base_execute_threshold
 
 
+def test_glacial_core_relic_boosts_frost_slow_factor():
+    tower = FrostTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_slow_factor = tower.slow_factor
+    tower.relic_frost_slow_bonus_multiplier = 0.8  # inverted: <1.0 is stronger
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.slow_effect[0] == pytest.approx(base_slow_factor * 0.8)
+    assert projectile.slow_effect[1] == FrostTower.slow_duration  # untouched
+
+
+def test_permafrost_relic_boosts_frost_slow_duration():
+    tower = FrostTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_slow_duration = tower.slow_duration
+    tower.relic_frost_duration_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.slow_effect[1] == pytest.approx(base_slow_duration * 1.25)
+    assert projectile.slow_effect[0] == FrostTower.slow_factor  # untouched
+
+
 def test_poison_tower_is_registered():
     assert TOWER_TYPES["poison"] is PoisonTower
 
@@ -483,6 +522,26 @@ def test_poison_tower_projectile_carries_a_poison_effect():
     assert projectile.poison_effect == (
         PoisonTower.poison_damage_per_tick, PoisonTower.poison_tick_interval, PoisonTower.poison_duration,
     )
+
+
+def test_toxic_payload_relic_boosts_poison_tower_tick_damage():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_tick = tower.poison_damage_per_tick
+    tower.relic_poison_tower_tick_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect[0] == pytest.approx(base_tick * 1.25)
+    assert projectile.poison_effect[1] == PoisonTower.poison_tick_interval  # untouched
+    assert projectile.poison_effect[2] == PoisonTower.poison_duration  # untouched
+
+
+def test_festering_wound_relic_boosts_poison_tower_duration():
+    tower = PoisonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_duration = tower.poison_duration
+    tower.relic_poison_tower_duration_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.poison_effect[2] == pytest.approx(base_duration * 1.25)
+    assert projectile.poison_effect[0] == PoisonTower.poison_damage_per_tick  # untouched
+    assert projectile.poison_effect[1] == PoisonTower.poison_tick_interval  # untouched
 
 
 def test_other_towers_have_no_poison_effect():

@@ -2243,6 +2243,10 @@ class Game:
         tower.relic_basic_crit_chance_bonus_multiplier = self.relic_modifiers.basic_crit_chance_multiplier
         tower.relic_execute_damage_bonus_multiplier = self.relic_modifiers.execute_damage_multiplier
         tower.relic_execute_threshold_bonus_multiplier = self.relic_modifiers.execute_threshold_multiplier
+        tower.relic_frost_slow_bonus_multiplier = self.relic_modifiers.frost_slow_multiplier
+        tower.relic_frost_duration_bonus_multiplier = self.relic_modifiers.frost_duration_multiplier
+        tower.relic_poison_tower_tick_bonus_multiplier = self.relic_modifiers.poison_tower_tick_multiplier
+        tower.relic_poison_tower_duration_bonus_multiplier = self.relic_modifiers.poison_tower_duration_multiplier
         tower.relic_damage_vs_marked_and_slowed_multiplier = self.relic_modifiers.damage_vs_marked_and_slowed_multiplier
         tower.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_modifiers.damage_vs_marked_and_poisoned_multiplier
         tower.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_modifiers.damage_vs_slowed_and_poisoned_multiplier
