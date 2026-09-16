@@ -73,6 +73,18 @@ tower curve started feeling exhausted too quickly, though, a handful of
 the *newest* relics became a natural place to extend it further -- see
 meta_progression.RELIC_META_UNLOCKS and _default_relic_pool() below,
 mirroring card_pool._default_unlocked_pool's own shape exactly.
+
+A capstone batch closing out the last tower-relic gaps (Basic/Sniper/
+Frost/Poison each getting their own exclusive pair first, in earlier
+batches) shipped the game's first cross-status combo relics --
+frostbitten_mark/plague_mark/chill_rot -- plus seismic_slam, Knockback's
+long-overdue second exclusive relic. The three combo relics reuse the
+existing ungated per-tower multiplier shape (damage_vs_slowed_multiplier
+etc.) verbatim, just gated on two of Enemy's own status timers
+(mark_timer/slow_timer/poison_time_remaining) being nonzero at once
+instead of one -- see Projectile's own module docstring for the read
+site. Ungated, matching every batch since the one "category-gaps" batch
+above.
 """
 
 from dataclasses import dataclass
@@ -360,6 +372,24 @@ class Relic:
     # scaling execute_hp_threshold instead (a bigger threshold is the buff
     # direction -- see tower.py's own Wounded Prey comment).
     execute_threshold_multiplier: float = 1.0
+    # The game's first cross-status combo relics -- ungated multiplies,
+    # same shape as damage_vs_slowed_multiplier above, but each read only
+    # when the target carries TWO simultaneous statuses at once (see
+    # Projectile._apply_hit_effects). frostbitten_mark rewards running a
+    # Beacon (Mark) alongside a Frost (Slow); plague_mark rewards Beacon
+    # alongside Poison; chill_rot rewards Frost alongside Poison -- the
+    # first relics in this game that reward a genuinely *combined* build
+    # rather than any one tower's own mechanic in isolation.
+    damage_vs_marked_and_slowed_multiplier: float = 1.0
+    damage_vs_marked_and_poisoned_multiplier: float = 1.0
+    damage_vs_slowed_and_poisoned_multiplier: float = 1.0
+    # seismic_slam's own bonus -- Knockback-tower-exclusive, same
+    # plain-multiply shape as basic_crit_damage_multiplier/execute_damage_
+    # multiplier above, scaling KnockbackTower's own knockback_duration.
+    # Knockback's second exclusive relic (heavy_ordnance is shared with
+    # Cannon and damage-only; concussive_rounds is a generic relic any
+    # tower can hold) -- brings it off its 1-relic floor.
+    knockback_duration_multiplier: float = 1.0
 
 
 RELICS = {
@@ -703,6 +733,35 @@ RELICS = {
         "Sniper tower's execute triggers against tougher targets, every floor.",
         execute_threshold_multiplier=1.25,
     ),
+    # The game's first cross-status combo relics -- see damage_vs_marked_
+    # and_slowed_multiplier's own comment on the Relic dataclass above for
+    # the read site (Projectile._apply_hit_effects). Tuned higher (1.35)
+    # than a single-status ungated relic (1.20-1.25) since assembling two
+    # towers' worth of build investment is a harder condition to meet than
+    # holding one relic alone.
+    "frostbitten_mark": Relic(
+        "frostbitten_mark", "Frostbitten Mark",
+        "+35% damage to enemies that are both Marked and Slowed.",
+        damage_vs_marked_and_slowed_multiplier=1.35,
+    ),
+    "plague_mark": Relic(
+        "plague_mark", "Plague Mark",
+        "+35% damage to enemies that are both Marked and Poisoned.",
+        damage_vs_marked_and_poisoned_multiplier=1.35,
+    ),
+    "chill_rot": Relic(
+        "chill_rot", "Chill Rot",
+        "+35% damage to enemies that are both Slowed and Poisoned.",
+        damage_vs_slowed_and_poisoned_multiplier=1.35,
+    ),
+    # Knockback-tower-exclusive -- see knockback_duration_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (KnockbackTower.create_projectile()).
+    "seismic_slam": Relic(
+        "seismic_slam", "Seismic Slam",
+        "Knockback tower's own shove is bigger, every floor.",
+        knockback_duration_multiplier=1.25,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -852,6 +911,10 @@ class RelicModifiers:
     basic_crit_chance_multiplier: float = 1.0
     execute_damage_multiplier: float = 1.0
     execute_threshold_multiplier: float = 1.0
+    damage_vs_marked_and_slowed_multiplier: float = 1.0
+    damage_vs_marked_and_poisoned_multiplier: float = 1.0
+    damage_vs_slowed_and_poisoned_multiplier: float = 1.0
+    knockback_duration_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
@@ -939,6 +1002,10 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
     basic_crit_chance_multiplier = 1.0
     execute_damage_multiplier = 1.0
     execute_threshold_multiplier = 1.0
+    damage_vs_marked_and_slowed_multiplier = 1.0
+    damage_vs_marked_and_poisoned_multiplier = 1.0
+    damage_vs_slowed_and_poisoned_multiplier = 1.0
+    knockback_duration_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1041,6 +1108,10 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier *= relic.basic_crit_chance_multiplier
         execute_damage_multiplier *= relic.execute_damage_multiplier
         execute_threshold_multiplier *= relic.execute_threshold_multiplier
+        damage_vs_marked_and_slowed_multiplier *= relic.damage_vs_marked_and_slowed_multiplier
+        damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
+        damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
+        knockback_duration_multiplier *= relic.knockback_duration_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1095,4 +1166,8 @@ def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
         basic_crit_chance_multiplier=basic_crit_chance_multiplier,
         execute_damage_multiplier=execute_damage_multiplier,
         execute_threshold_multiplier=execute_threshold_multiplier,
+        damage_vs_marked_and_slowed_multiplier=damage_vs_marked_and_slowed_multiplier,
+        damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
+        damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
+        knockback_duration_multiplier=knockback_duration_multiplier,
     )

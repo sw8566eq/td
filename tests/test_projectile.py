@@ -825,6 +825,141 @@ def test_no_interceptor_rounds_bonus_when_no_relic_is_held():
     assert target.damage_taken == 10
 
 
+# --- Cross-status combo relics (Frostbitten Mark, Plague Mark, Chill Rot) ---
+# -- the game's first relics that reward TWO simultaneous enemy statuses at
+# once, same ungated shape as Chilling Precision/Choke Point/Giant Slayer
+# above but gated on two getattr checks instead of one.
+
+def test_frostbitten_mark_boosts_damage_against_a_marked_and_slowed_enemy():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 13.5
+
+
+def test_frostbitten_mark_does_not_apply_when_only_marked():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_frostbitten_mark_does_not_apply_when_only_slowed():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 0.0
+    target.slow_timer = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_plague_mark_boosts_damage_against_a_marked_and_poisoned_enemy():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_poisoned_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 13.5
+
+
+def test_plague_mark_does_not_apply_with_only_one_status():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.poison_time_remaining = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_poisoned_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_chill_rot_boosts_damage_against_a_slowed_and_poisoned_enemy():
+    target = FakeEnemy((0, 0))
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_slowed_and_poisoned_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 13.5
+
+
+def test_chill_rot_does_not_apply_with_only_one_status():
+    target = FakeEnemy((0, 0))
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_slowed_and_poisoned_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_combo_relics_do_not_retroactively_count_this_hits_own_statuses():
+    # Regression, same shape as Chilling Precision's own retroactivity
+    # test above: mark_timer/slow_timer must read BEFORE this same hit's
+    # own apply_mark()/apply_slow() calls below them, or a Beacon+Frost
+    # tower's first-ever hit on a fresh target would count itself as the
+    # qualifying combo just because it also applies both statuses.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        slow_effect=(0.5, 2.0), mark_effect=(1.5, 1.0),
+        relic_damage_vs_marked_and_slowed_multiplier=1.35,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10  # not boosted
+    assert target.slow_applied == (0.5, 2.0)  # but both statuses still land
+    assert target.mark_applied == (1.5, 1.0)
+
+
+def test_no_combo_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
 # --- SniperTower's own native Execute mechanic (execute_hp_threshold/
 # execute_damage_multiplier) -- an ungated per-enemy check, like Giant
 # Slayer above, but keyed on the target's own *current* remaining-HP
