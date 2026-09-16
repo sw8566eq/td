@@ -637,6 +637,24 @@ def test_compose_relic_modifiers_no_execute_relic_leaves_them_neutral():
     assert modifiers.execute_threshold_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_frost_slow_multiplier():
+    # Inverted buff direction (<1.0 is stronger) -- glacial_core's own
+    # value is already <1.0, so composing two multiplies it down further.
+    modifiers = compose_relic_modifiers(["glacial_core", "glacial_core"])
+    assert modifiers.frost_slow_multiplier == RELICS["glacial_core"].frost_slow_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_frost_duration_multiplier():
+    modifiers = compose_relic_modifiers(["permafrost", "permafrost"])
+    assert modifiers.frost_duration_multiplier == RELICS["permafrost"].frost_duration_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_frost_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.frost_slow_multiplier == 1.0
+    assert modifiers.frost_duration_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_multiplies_poison_tower_tick_multiplier():
     modifiers = compose_relic_modifiers(["toxic_payload", "toxic_payload"])
     assert modifiers.poison_tower_tick_multiplier == RELICS["toxic_payload"].poison_tower_tick_multiplier ** 2

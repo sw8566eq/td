@@ -285,6 +285,17 @@ class Tower:
         # against tougher targets), the normal ">1.0 is stronger"
         # direction, unlike Frost's own inverted slow_factor.
         self.relic_execute_threshold_bonus_multiplier = 1.0
+        # Glacial Core-style relic -- Frost-tower-exclusive, same
+        # plain-multiply shape as relic_execute_damage_bonus_multiplier
+        # above, scaling slow_factor instead. Buff direction is INVERTED
+        # (<1.0 is stronger) -- see relics.py's own frost_slow_multiplier
+        # comment, mirroring FrostTower's own slow_factor inversion.
+        self.relic_frost_slow_bonus_multiplier = 1.0
+        # Permafrost-style relic -- Frost-tower-exclusive, same plain-
+        # multiply shape as relic_frost_slow_bonus_multiplier immediately
+        # above, scaling slow_duration instead -- the normal ">1.0 is
+        # stronger" direction.
+        self.relic_frost_duration_bonus_multiplier = 1.0
         # Toxic Payload-style relic -- Poison-tower-exclusive, same
         # plain-multiply shape as relic_execute_damage_bonus_multiplier
         # above, scaling poison_damage_per_tick instead. Named with
@@ -971,7 +982,11 @@ class FrostTower(Tower):
     def create_projectile(self, target):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
-            damage=self.effective_damage(), slow_effect=(self.slow_factor, self.slow_duration),
+            damage=self.effective_damage(),
+            slow_effect=(
+                self.slow_factor * self.relic_frost_slow_bonus_multiplier,
+                self.slow_duration * self.relic_frost_duration_bonus_multiplier,
+            ),
             sprite_name="projectile_frost", source=self,
         )
 
