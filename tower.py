@@ -257,6 +257,17 @@ class Tower:
         # above, but ADDITIVE onto max_ramp_multiplier (see beam_max_ramp_
         # bonus's own comment in relics.py for why).
         self.relic_beam_max_ramp_bonus = 0.0
+        # Adrenaline Rounds-style relic -- Basic-tower-exclusive, same
+        # plain-multiply shape as relic_beacon_mark_bonus_multiplier above:
+        # crit_damage_multiplier is a per-shot chance-roll outcome (see
+        # Projectile's own crit resolution), not part of effective_
+        # damage()'s additive stack, so this skips the family_damage_
+        # bonus() hook the same way every plain-multiply relic here does.
+        self.relic_basic_crit_damage_bonus_multiplier = 1.0
+        # Twitch Reflex-style relic -- Basic-tower-exclusive, same
+        # plain-multiply shape as relic_basic_crit_damage_bonus_multiplier
+        # immediately above, scaling crit_chance instead.
+        self.relic_basic_crit_chance_bonus_multiplier = 1.0
         # Kill Shot-style relic -- Sniper-tower-exclusive, same plain-
         # multiply shape as relic_beacon_mark_bonus_multiplier above:
         # execute_damage_multiplier is a conditional per-hit bonus applied
@@ -859,7 +870,8 @@ class BasicTower(Tower):
         return Projectile(
             pos=self.pos, target=target, speed=self.projectile_speed,
             damage=self.effective_damage(), sprite_name="projectile_basic", source=self,
-            crit_chance=self.crit_chance, crit_damage_multiplier=self.crit_damage_multiplier,
+            crit_chance=self.crit_chance * self.relic_basic_crit_chance_bonus_multiplier,
+            crit_damage_multiplier=self.crit_damage_multiplier * self.relic_basic_crit_damage_bonus_multiplier,
         )
 
 

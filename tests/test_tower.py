@@ -330,6 +330,14 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             lambda tower: tower.effective_damage(),
         ),
         (
+            ("relic_basic_crit_damage_bonus_multiplier",), "crit_damage_multiplier", ("basic",),
+            lambda tower: 1.0,  # Projectile's own default -- non-Basic towers never pass this kwarg at all
+        ),
+        (
+            ("relic_basic_crit_chance_bonus_multiplier",), "crit_chance", ("basic",),
+            lambda tower: 0.0,  # Projectile's own default, same reasoning as crit_damage_multiplier above
+        ),
+        (
             ("relic_execute_damage_bonus_multiplier",), "execute_damage_multiplier", ("sniper",),
             lambda tower: 1.0,  # Projectile's own default -- non-Sniper towers never pass this kwarg at all
         ),
@@ -356,6 +364,24 @@ def test_basic_tower_projectile_carries_its_crit_mechanic():
     projectile = tower.create_projectile(FakeEnemy())
     assert projectile.crit_chance == BasicTower.crit_chance
     assert projectile.crit_damage_multiplier == BasicTower.crit_damage_multiplier
+
+
+def test_adrenaline_rounds_relic_boosts_basic_crit_damage_multiplier():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_crit_damage_multiplier = tower.crit_damage_multiplier
+    tower.relic_basic_crit_damage_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.crit_damage_multiplier == pytest.approx(base_crit_damage_multiplier * 1.25)
+    assert projectile.crit_chance == BasicTower.crit_chance  # untouched
+
+
+def test_twitch_reflex_relic_boosts_basic_crit_chance():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_crit_chance = tower.crit_chance
+    tower.relic_basic_crit_chance_bonus_multiplier = 1.25
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.crit_chance == pytest.approx(base_crit_chance * 1.25)
+    assert projectile.crit_damage_multiplier == BasicTower.crit_damage_multiplier  # untouched
 
 
 def test_basic_tower_specialization_boosts_carry_through_to_the_projectile():
