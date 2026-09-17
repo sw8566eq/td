@@ -283,6 +283,30 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
 
 
+FIRST_PLACEMENT_HINT_TEXT = "Click a tower below, then click the grid to place it."
+FIRST_PLACEMENT_HINT_PADDING = 8
+
+
+def draw_first_placement_hint(surface, small_font):
+    """A one-time banner floated just above the HUD entirely, for a player
+    who's never placed a tower in a real run before (see Game.
+    _show_first_placement_hint) -- disappears the instant they place one,
+    on this floor or any later one, and never returns once they have.
+    Anchored above the whole HUD bar (not just the button row within it,
+    which was this function's own first draft -- the Gold/Lives/Wave
+    readout sits beside the buttons at that same height, not below them,
+    so a box only clearing the buttons still covered the Gold line) --
+    floats over the grid instead, which already has no headroom left for
+    a fourth HUD line (see draw_hud's own comment on Gold/Lives/Wave)."""
+    text = small_font.render(FIRST_PLACEMENT_HINT_TEXT, True, settings.COLOR_TEXT)
+    box = pygame.Rect(0, 0, text.get_width() + FIRST_PLACEMENT_HINT_PADDING * 2,
+                       text.get_height() + FIRST_PLACEMENT_HINT_PADDING * 2)
+    box.bottomleft = (BUTTON_MARGIN, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT - 6)
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, box, border_radius=6)
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, box, width=2, border_radius=6)
+    surface.blit(text, (box.left + FIRST_PLACEMENT_HINT_PADDING, box.top + FIRST_PLACEMENT_HINT_PADDING))
+
+
 def _format_wave_label(wave_manager):
     """The HUD's "Wave X/N" line -- pulled out as a pure function (like
     _format_wave_preview below) so its three cases are unit-testable
@@ -465,7 +489,7 @@ def _draw_targeting_row(surface, small_font, subject, targeting_button_rect):
 
 def _draw_panel_hint(surface, small_font, x):
     y = PANEL_PADDING
-    for line in ("Select a tower to build,", "or click a placed tower to", "see its stats, upgrade, or sell it."):
+    for line in ("Hover a tower below to", "preview its stats, or click a", "placed one to upgrade or sell it."):
         hint = small_font.render(line, True, settings.COLOR_TEXT_DIM)
         surface.blit(hint, (x, y))
         y += PANEL_ROW_HEIGHT
@@ -713,7 +737,8 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect):
 
 
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
-                     visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None):
+                     visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
+                     first_run=False):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -725,7 +750,11 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     HUD of its own to read them from otherwise. A fixed legend (_draw_map_
     legend) explains what each node color means; hovering any node adds a
     floating tooltip (_draw_map_node_tooltip) with that specific node's own
-    type, level name (if any), and a one-line description."""
+    type, level name (if any), and a one-line description. `first_run`
+    (Game._map_is_first_run, true for every node visit across a player's
+    whole first run) swaps the bottom hint for a longer, friendlier one
+    explaining what this screen even is -- every run after the first gets
+    the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
     title = font.render("Choose your path", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
@@ -764,11 +793,22 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
             label = small_font.render(MAP_NODE_TYPE_LABELS[node.node_type], True, label_color)
             surface.blit(label, label.get_rect(center=rect.center))
 
+    if not available_node_ids:
+        hint_text = "Nothing left to pick -- press any key"
+    elif first_run:
+        hint_text = "This is your run's map -- click any bright (available) node below to begin. Press H for full controls."
+    else:
+        hint_text = "Click an available node to continue"
     hint = small_font.render(
-        "Click an available node to continue" if available_node_ids else "Nothing left to pick -- press any key",
+        hint_text,
         True, settings.COLOR_TEXT_DIM,
     )
-    surface.blit(hint, hint.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT - 30)))
+    # SCREEN_HEIGHT - 16, not the -30 every other bottom hint in this file
+    # uses -- this one's own first_run text is long enough to need to clear
+    # row 0's own node circles (MAP_BOTTOM's row sits right above it), which
+    # -30 was already only barely doing even for the terser non-first-run
+    # copy.
+    surface.blit(hint, hint.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT - 16)))
     esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
     surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
 

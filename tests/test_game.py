@@ -581,6 +581,67 @@ def test_selection_stays_pinned_in_the_panel_after_the_mouse_moves_away(playing_
     assert subject is tower
 
 
+def test_hovering_an_unselected_build_button_previews_its_stats(playing_game):
+    # The discoverability fix: a tower's stats used to only show up in the
+    # panel once selected to build (see _draw_panel_hint's own updated
+    # text) -- hovering alone now previews them too, same "peek without
+    # committing" shape _hovered_tower already gives a placed tower.
+    mock_mouse_pos(playing_game.button_rects["cannon"].center)
+    try:
+        subject = playing_game._stats_panel_subject(playing_game._hovered_tower())
+    finally:
+        clear_mouse_mock()
+
+    assert subject is TOWER_TYPES["cannon"]
+
+
+def test_hovering_a_build_button_overrides_a_pinned_placed_tower(playing_game):
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    center = playing_game.grid.anchor_to_pixel_center(anchor_col, anchor_row)
+    playing_game._handle_click((int(center.x), int(center.y)))
+    playing_game._handle_click((int(center.x), int(center.y)))
+    assert playing_game.selected_tower is not None  # pinned
+
+    mock_mouse_pos(playing_game.button_rects["cannon"].center)
+    try:
+        subject = playing_game._stats_panel_subject(playing_game._hovered_tower())
+    finally:
+        clear_mouse_mock()
+
+    assert subject is TOWER_TYPES["cannon"]
+
+
+def test_hovering_a_build_button_overrides_the_currently_selected_tower_type(playing_game):
+    playing_game.selected_tower_name = "basic"
+
+    mock_mouse_pos(playing_game.button_rects["cannon"].center)
+    try:
+        subject = playing_game._stats_panel_subject(playing_game._hovered_tower())
+    finally:
+        clear_mouse_mock()
+
+    assert subject is TOWER_TYPES["cannon"]
+
+
+def test_hovering_nowhere_near_the_build_menu_returns_none(playing_game):
+    mock_mouse_pos((0, 0))
+    try:
+        name = playing_game._hovered_build_button_name()
+    finally:
+        clear_mouse_mock()
+
+    assert name is None
+
+
+def test_render_with_a_hovered_build_button_does_not_crash(playing_game):
+    mock_mouse_pos(playing_game.button_rects["cannon"].center)
+    try:
+        playing_game.render()
+    finally:
+        clear_mouse_mock()
+
+
 def test_clicking_a_different_placed_tower_switches_the_selection(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
