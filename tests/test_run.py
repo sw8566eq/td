@@ -222,6 +222,86 @@ def test_start_new_run_without_a_seed_still_produces_a_playable_run(game):
     assert game.state == GameState.MAP
 
 
+# --- First-run onboarding: the map screen's friendlier first-time hint,
+# and the build menu's one-time "how to place a tower" banner. Both key off
+# already-existing account-wide counters (meta_progression's runs_played,
+# achievements' towers_built) rather than any new persisted state -- see
+# Game._enter_map/_load_level_object's own comments on why. ---
+
+
+def test_map_screen_shows_first_run_guidance_before_any_run_has_ever_ended(game):
+    # A fresh meta_progression.json (see the `game` fixture) starts
+    # runs_played at 0 -- _map_is_first_run stays true for every node visit
+    # across this whole run, not just the very first click (runs_played
+    # only ever bumps at permadeath).
+    game.start_new_run(seed=1)
+    assert game._map_is_first_run is True
+
+
+def test_map_screen_drops_first_run_guidance_once_a_run_has_ever_ended(game):
+    meta_progression.bump("runs_played", path=game.meta_progression_path)
+
+    game.start_new_run(seed=1)
+
+    assert game._map_is_first_run is False
+
+
+def test_render_map_screen_on_a_later_run_does_not_crash(game):
+    # test_render_map_does_not_crash (below) already covers the first-run
+    # branch of ui.draw_map_screen's own hint text -- this covers the other
+    # one.
+    meta_progression.bump("runs_played", path=game.meta_progression_path)
+    game.start_new_run(seed=1)
+
+    game.render()
+
+
+def test_first_placement_hint_is_shown_before_any_tower_has_ever_been_placed(game):
+    start_first_floor(game, seed=1)
+    assert game._show_first_placement_hint is True
+
+
+def test_first_placement_hint_is_not_shown_once_a_tower_has_ever_been_placed(game):
+    achievements.bump("towers_built", path=game.achievements_path)
+
+    start_first_floor(game, seed=1)
+
+    assert game._show_first_placement_hint is False
+
+
+def test_first_placement_hint_is_not_shown_in_sandbox_practice_play(game):
+    # Practice always loads sandbox=True (see CLAUDE.md's own "Practice
+    # mode" section) -- a standalone level was never part of a real run,
+    # so it shouldn't gate or satisfy this hint either way.
+    game.load_level(1, sandbox=True)
+    assert game._show_first_placement_hint is False
+
+
+def test_render_with_first_placement_hint_does_not_crash(game):
+    start_first_floor(game, seed=1)
+    assert game._show_first_placement_hint is True  # precondition for the render below
+
+    game.render()
+
+
+def test_first_placement_hint_stops_once_a_tower_is_placed_this_floor(game):
+    # _show_first_placement_hint itself is cached once per floor load (see
+    # _load_level_object's own comment on why), but the actual banner is
+    # also gated on self.towers being empty at render() -- covered here via
+    # the underlying condition, not pixel output, matching this codebase's
+    # own "assert on game state after render(), not on rendered pixels"
+    # precedent (see e.g. _last_panel_subject elsewhere in test_game.py).
+    start_first_floor(game, seed=1)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "basic"
+
+    assert game.try_place_tower(anchor_col, anchor_row) is True
+
+    assert game._show_first_placement_hint is True  # unchanged -- floor-scoped
+    assert game.towers  # but the render()-time gate (`and not self.towers`) is now false
+    game.render()  # exercises that branch without crashing
+
+
 # --- The run-scoped tower pool (what the build menu offers) ---
 
 
@@ -2337,6 +2417,18 @@ def test_render_relics_overlay_does_not_crash(game):
 def test_render_map_does_not_crash(game):
     game.start_new_run(seed=1)
     assert game.state == GameState.MAP
+
+    game.render()
+
+
+def test_render_map_with_nothing_left_to_pick_does_not_crash(game):
+    # Defensive-only branch: normal play never actually returns to the map
+    # screen sitting on a node with no outgoing edges (only the final,
+    # always-endless boss node has none, and _advance_run_floor never
+    # fires for an endless floor -- see CLAUDE.md's "A run ends only by
+    # permadeath"), but ui.draw_map_screen's own "nothing left to pick"
+    # hint text still deserves real coverage, not just an inline default.
+    _begin_run_with_map(game, ["combat", "boss"], current_node_id="1-0")
 
     game.render()
 

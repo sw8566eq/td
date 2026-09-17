@@ -670,8 +670,19 @@ class Game:
         about the map's own layout that ever changes mid-run (unlike
         level_select_rects, this never needs a separate rebuild-on-scroll
         step; see ui.py's own layout comment for why this screen never
-        scrolls)."""
+        scrolls).
+
+        Also (re-)derives _map_is_first_run, read fresh here rather than
+        once in render() -- this screen can sit still on-screen for a
+        while as the player decides where to click, so caching it at
+        entry avoids re-reading meta_progression.json every frame for as
+        long as they linger. runs_played only ever bumps at permadeath
+        (_record_run_permadeath), so this stays True for every node visit
+        across a player's entire first run, not just their first click."""
         self.map_node_rects = ui.build_map_node_rects(self.active_run.map)
+        self._map_is_first_run = (
+            meta_progression.load_meta_progression(self.meta_progression_path)["counters"].get("runs_played", 0) == 0
+        )
         self.state = GameState.MAP
 
     def _available_node_ids(self):
@@ -1017,6 +1028,20 @@ class Game:
 
         self.enemies = []
         self.towers = []
+        # Shown by render() (see ui.draw_first_placement_hint) for as long
+        # as this floor's own self.towers stays empty -- gated once here,
+        # per floor load, rather than re-read every frame in render(),
+        # since achievements.load_achievements() is a disk read. Reuses
+        # achievements.py's own towers_built counter (the same one
+        # "Groundbreaker" unlocks off) as "has this account ever placed a
+        # tower for real" -- not sandbox-gated here the way that counter's
+        # own bump is, so a player who only ever practiced in Sandbox mode
+        # first still sees this hint once on their first real run; a minor,
+        # acceptable redundancy rather than inventing a second counter.
+        self._show_first_placement_hint = (
+            active_run is not None and not sandbox
+            and achievements.load_achievements(self.achievements_path)["counters"].get("towers_built", 0) == 0
+        )
         # A tower sold mid-level is removed from self.towers (see
         # try_sell_tower) but its lifetime stats still belong in this
         # level's post-level results table -- kept here purely so
@@ -2711,6 +2736,7 @@ class Game:
                 self._hovered_map_node(),
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
+                first_run=self._map_is_first_run,
             )
             pygame.display.flip()
             return
@@ -2788,6 +2814,8 @@ class Game:
             floor_label=floor_label,
             boss_defeated=self.active_run.boss_defeated if self.active_run is not None else False,
         )
+        if self._show_first_placement_hint and not self.towers:
+            ui.draw_first_placement_hint(self.screen, self.small_font)
         ui.draw_tower_stats_panel(
             self.screen, self.font, self.small_font, panel_subject, self.economy,
             self.targeting_button_rect,
@@ -2860,6 +2888,14 @@ class Game:
                 return tower
         return None
 
+    def _hovered_build_button_name(self):
+        """The build-menu tower name currently under the mouse, or None --
+        same "hover highlight uses the exact same lookup as the click
+        handler" precedent _hovered_draft_choice/_hovered_map_node set, and
+        what lets _stats_panel_subject preview a tower's stats on hover
+        alone, before it's ever selected to build."""
+        return ui.get_clicked_tower_button(pygame.mouse.get_pos(), self.button_rects)
+
     def _hovered_specialize_key(self, panel_subject):
         """Which of panel_subject's SPECIALIZATIONS the mouse is
         currently over (its Specialize button in the stats panel), or
@@ -2897,13 +2933,19 @@ class Game:
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered
         placed tower (a quick peek at whatever's under the mouse right
-        now); otherwise a placed tower the player clicked to pin open
+        now); otherwise a hovered build-menu button (the same kind of
+        peek, just for a not-yet-built tower type -- lets a player compare
+        towers before committing to one, without first having to select
+        it); otherwise a placed tower the player clicked to pin open
         (self.selected_tower -- stays shown even once the mouse moves
         away, until something else replaces or clears it); otherwise the
         tower type currently selected to build; otherwise None (panel
         shows a hint)."""
         if hovered_tower is not None:
             return hovered_tower
+        hovered_build_name = self._hovered_build_button_name()
+        if hovered_build_name is not None:
+            return TOWER_TYPES[hovered_build_name]
         if self.selected_tower is not None:
             return self.selected_tower
         if self.selected_tower_name is not None:
