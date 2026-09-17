@@ -66,9 +66,25 @@ just be the same coupling spelled out longhand. The hit-testing/query helpers `r
 -- moving them would split one shared source of truth into two copies that could drift. `renderer.py`
 imports `GameState` lazily, inside `render()` itself, to avoid a circular import (`game.py` ->
 `renderer.py` -> `game.py`) that a top-level import would hit before `GameState` is even defined.
-Input handling (`handle_events`/`_handle_keydown`/`_handle_click` and the `_handle_*_click` family)
-is the next planned slice, into an `input_handler.py`, calling back into `Game`'s existing action
-methods exactly as today -- not done yet.
+
+Input handling -- `handle_events`, `_handle_keydown`, the `_handle_*_click` family, and the two
+scroll handlers (`_scroll_level_select`/`_scroll_wave_unit_list`) -- is the second slice, moved into
+`input_handler.InputHandler` (`input_handler.py`) the same way: `Game`'s own method of each name is a
+one-line delegator to the identically-named method on `self.input_handler`. The boundary drawn there
+is "translates a raw pygame event (a key, a click position, a wheel delta) into a decision" moves;
+"given an already-resolved semantic value, does the actual state mutation" stays on `Game` --
+concretely, `_handle_editor_action`/`_handle_wave_editor_action`/`_handle_editor_undo_redo_action`
+(each takes an already-resolved action *string*, not raw input) and every `_enter_*_node`/
+`_resolve_*`/`_rebuild_*_rects` business-logic method stay put, called from `InputHandler` via
+`game.` exactly as they always were called via `self.`. Confirmed before the move: every one of the
+21 relocated methods is only ever called by another one of the 21 (mostly from `handle_events`'s own
+dispatch, or `_handle_click` calling `_handle_panel_action_click`) -- never from anywhere else in
+`game.py` -- so every such call becomes `self.` on the `InputHandler` instance, never `game.`. One
+sharp edge that fell out of this: three of `Game`'s own delegators (`_handle_editor_undo_redo_keydown`,
+`_handle_panel_action_click`, `_handle_static_screen_back_click`) become unreachable except by a
+*direct* call, since the callers that used to reach them are now `InputHandler` methods calling their
+own siblings -- each needed one small dedicated regression test calling the `Game`-level method by
+name to keep coverage honest (see `test_game.py`/`test_game_editor.py`'s own "called directly" tests).
 
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
 played on its own still works exactly as it always did, but that's now Practice, a side path; the

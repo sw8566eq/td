@@ -939,6 +939,30 @@ def test_clicking_the_upgrade_button_when_unaffordable_does_nothing(playing_game
     assert tower.level == 1
 
 
+def test_handle_panel_action_click_called_directly_still_upgrades(playing_game):
+    # Regression guard for Game._handle_panel_action_click's own one-line
+    # delegation to InputHandler (see input_handler.py) -- every other
+    # panel-action test above only reaches the real logic indirectly,
+    # through _handle_click's own internal self._handle_panel_action_click
+    # call, which (now that it lives on InputHandler) never touches this
+    # method's delegator on Game at all.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+    playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.grid.get_tower(anchor_col, anchor_row)
+    playing_game.selected_tower = tower
+
+    mock_mouse_pos(playing_game.upgrade_button_rect.center)
+    try:
+        playing_game.render()  # populates _last_panel_subject, as a real frame would first
+        consumed = playing_game._handle_panel_action_click(playing_game.upgrade_button_rect.center)
+    finally:
+        clear_mouse_mock()
+
+    assert consumed is True
+    assert tower.level == 2
+
+
 def test_clicking_the_upgrade_buttons_rect_at_max_level_specializes_instead(playing_game):
     # Regression test for a real bug: the Upgrade button and the first
     # Specialize button intentionally share a rect (see
@@ -2121,6 +2145,18 @@ def test_achievements_click_off_the_back_button_is_a_no_op(game):
     game.state = GameState.ACHIEVEMENTS
     game._handle_achievements_click((0, 0))
     assert game.state == GameState.ACHIEVEMENTS
+
+
+def test_handle_static_screen_back_click_called_directly_still_returns_to_menu(game):
+    # Regression guard for Game._handle_static_screen_back_click's own
+    # one-line delegation to InputHandler (see input_handler.py) --
+    # _handle_achievements_click/_handle_help_click/_handle_credits_click
+    # (also on InputHandler now) each reach the real logic by calling
+    # self._handle_static_screen_back_click directly on themselves, which
+    # never touches this method's delegator on Game at all.
+    game.state = GameState.ACHIEVEMENTS
+    game._handle_static_screen_back_click(game.achievements_back_rect.center, game.achievements_back_rect)
+    assert game.state == GameState.MENU
 
 
 def test_entering_achievements_reloads_state_from_disk(game):

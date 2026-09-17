@@ -63,6 +63,25 @@ def test_ctrl_z_undoes_in_the_editor(game):
     assert (3, 4) not in game.editor.path_cells
 
 
+def test_handle_editor_undo_redo_keydown_called_directly_still_undoes(game):
+    # Regression guard for Game._handle_editor_undo_redo_keydown's own
+    # one-line delegation to InputHandler (see input_handler.py) -- every
+    # other undo/redo test above only reaches the real logic indirectly,
+    # through _handle_keydown's own internal dispatch, which never touches
+    # this method's delegator on Game at all.
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((3, 4)))
+    assert (3, 4) in game.editor.path_cells
+
+    mock_key_mods(pygame.KMOD_CTRL)
+    try:
+        game._handle_editor_undo_redo_keydown(pygame.K_z)
+    finally:
+        clear_key_mods()
+
+    assert (3, 4) not in game.editor.path_cells
+
+
 def test_z_without_ctrl_does_not_undo_in_the_editor(game):
     game.state = GameState.EDITOR
     game.editor.paint_at(*cell_center_px((3, 4)))

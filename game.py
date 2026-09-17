@@ -14,6 +14,7 @@ import daily_challenge
 import difficulty
 import effects
 import events
+import input_handler
 import meta_progression
 import persistence
 import player_settings
@@ -29,7 +30,7 @@ import shop
 import ui
 from assets import AssetManager
 from economy import Economy
-from editor import SHAPE_TOOLS, Editor
+from editor import Editor
 from grid import Grid
 from levels import LEVELS
 from run_state import RunState
@@ -395,6 +396,10 @@ class Game:
         # See renderer.py's own module docstring for why render() itself
         # is just a one-line delegator to this.
         self.renderer = renderer.Renderer(self)
+        # Same shape, same reasoning -- see input_handler.py's own module
+        # docstring for what moved here and, just as importantly, what
+        # deliberately didn't.
+        self.input_handler = input_handler.InputHandler(self)
 
         self.current_level_id = 1
         self.load_level(self.current_level_id)
@@ -710,13 +715,7 @@ class Game:
         return run.map.edges.get(run.current_node_id, ())
 
     def _handle_map_click(self, pos):
-        """A click on the map screen -- a silent no-op if it didn't land on
-        a currently-available node, same "click does nothing" precedent
-        try_place_tower's own unbuildable-spot case already sets."""
-        node_id = ui.get_clicked_map_node(pos, self.map_node_rects)
-        if node_id is None or node_id not in self._available_node_ids():
-            return
-        self._enter_node(node_id)
+        return self.input_handler._handle_map_click(pos)
 
     def _enter_node(self, node_id):
         """Commit to `node_id` as the run's new current node and dispatch
@@ -769,16 +768,7 @@ class Game:
         self.state = GameState.DRAFT
 
     def _handle_draft_click(self, pos):
-        """A click anywhere on the Shop screen -- either the Continue
-        button (leave the shop and return to the map, buying nothing else)
-        or one of this visit's item cards (attempt to buy it)."""
-        if self.shop_continue_button_rect.collidepoint(pos):
-            self._finish_node(self.active_run.current_node_id)
-            return
-        index = ui.get_clicked_draft_choice(pos, self.draft_choice_rects)
-        if index is None or index in self.shop_purchased_indices:
-            return
-        self._try_buy_shop_item(index)
+        return self.input_handler._handle_draft_click(pos)
 
     def _try_buy_shop_item(self, index):
         """Attempt to buy this visit's item at `index` -- a silent no-op if
@@ -840,17 +830,7 @@ class Game:
         self.state = GameState.EVENT
 
     def _handle_event_click(self, pos):
-        """A click on the Event screen -- in the "resolved" phase (an
-        option's already been picked), any click moves on, same "press any
-        key to continue" spirit FLOOR_CLEARED's own keydown handling uses;
-        otherwise resolves whichever option (if any) was clicked."""
-        if self.event_phase == "resolved":
-            self._finish_node(self.active_run.current_node_id)
-            return
-        index = ui.get_clicked_event_option(pos, self.event_option_rects)
-        if index is None:
-            return
-        self._resolve_event_choice(index)
+        return self.input_handler._handle_event_click(pos)
 
     def _resolve_event_choice(self, index):
         run = self.active_run
@@ -1397,255 +1377,16 @@ class Game:
     # --- Input ---
 
     def handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            elif event.type == pygame.KEYDOWN:
-                self._handle_keydown(event.key)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if self.state == GameState.EDITOR:
-                    self._handle_editor_click(event.pos)
-                elif self.state == GameState.WAVE_EDITOR:
-                    self._handle_wave_editor_click(event.pos)
-                elif self.state == GameState.LEVEL_SELECT:
-                    self._handle_level_select_click(event.pos)
-                elif self.state == GameState.SETTINGS:
-                    self._handle_settings_click(event.pos)
-                elif self.state == GameState.ACHIEVEMENTS:
-                    self._handle_achievements_click(event.pos)
-                elif self.state == GameState.HELP:
-                    self._handle_help_click(event.pos)
-                elif self.state == GameState.CREDITS:
-                    self._handle_credits_click(event.pos)
-                elif self.state == GameState.DRAFT:
-                    self._handle_draft_click(event.pos)
-                elif self.state == GameState.MAP:
-                    self._handle_map_click(event.pos)
-                elif self.state == GameState.EVENT:
-                    self._handle_event_click(event.pos)
-                else:
-                    # REST/TREASURE deliberately have no click handler of
-                    # their own -- same "press any key" precedent FLOOR_
-                    # CLEARED sets (see _handle_keydown), a click there
-                    # just falls through here and no-ops (self.state !=
-                    # PLAYING).
-                    self._handle_click(event.pos)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                self._handle_right_click()
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.state == GameState.EDITOR:
-                self._handle_editor_mouse_up(event.pos)
-            elif event.type == pygame.MOUSEMOTION and self.state == GameState.EDITOR:
-                self._handle_editor_motion(event.pos, event.buttons)
-            elif event.type == pygame.MOUSEWHEEL and self.state == GameState.LEVEL_SELECT:
-                self._scroll_level_select(event.y)
-            elif event.type == pygame.MOUSEWHEEL and self.state == GameState.WAVE_EDITOR:
-                self._scroll_wave_unit_list(event.y)
-            elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
-                # Only while windowed -- a fullscreen window resizing away
-                # from the desktop resolution isn't something the player
-                # actually did (see apply_display_mode's docstring for what
-                # this makes dragging a windowed edge actually do).
-                # set_window_size() persists too, same as a Settings-screen
-                # preset click, so an organic drag survives a relaunch just
-                # the same. That does mean a full (tiny, un-fsync'd) JSON
-                # rewrite on every intermediate size SDL reports while a
-                # drag is in progress, not just once at the end -- a
-                # deliberate choice, not an oversight: there's no distinct
-                # "drag finished" event to defer to here, and debouncing
-                # this write is not worth the added state for a save this
-                # cheap.
-                self.set_window_size(event.size)
+        return self.input_handler.handle_events()
 
     def _handle_keydown(self, key):
-        if self.state == GameState.MENU:
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            else:
-                # letter, not the raw pygame key constant, so this stays in
-                # lockstep with ui.MENU_KEY_HINTS/MENU_KEY_LETTERS -- the
-                # single source of truth for which keys the on-screen hint
-                # list promises do something (see ui.py for why).
-                letter = pygame.key.name(key)
-                if letter == "c" and self.has_saved_run:
-                    self._continue_saved_run()
-                elif letter in ui.MENU_KEY_LETTERS:
-                    if letter == "e":
-                        self.state = GameState.EDITOR
-                    elif letter == "l":
-                        self._enter_level_select()
-                    elif letter == "s":
-                        self.state = GameState.SETTINGS
-                    elif letter == "a":
-                        self._enter_achievements()
-                    elif letter == "h":
-                        self.state = GameState.HELP
-                    elif letter == "d":
-                        self._start_daily_challenge()
-                    elif letter == "b":
-                        self.state = GameState.CREDITS
-                else:
-                    self.start_new_run()
-        elif self.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
-                             GameState.HELP, GameState.CREDITS):
-            # These four share nothing but "Esc goes back to the menu" --
-            # each is otherwise driven entirely by its own click handler
-            # (Settings/Achievements have real buttons; Help/Credits are
-            # fully static). EDITOR isn't folded in here despite starting
-            # with the identical check, since it has real key handling of
-            # its own below Esc (see its own elif right after this one).
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-        elif self.state == GameState.EDITOR:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
-            else:
-                self._handle_editor_undo_redo_keydown(key)
-        elif self.state == GameState.WAVE_EDITOR:
-            if key == pygame.K_ESCAPE:
-                self.state = GameState.EDITOR  # one step back, same as the Back-to-Path button
-            else:
-                self._handle_editor_undo_redo_keydown(key)
-        elif self.state == GameState.LEVEL_SELECT:
-            if key == pygame.K_ESCAPE:
-                # Back to wherever this screen was entered from -- the
-                # menu's L, or the editor's Load Map... (see
-                # _enter_level_select's purpose param).
-                self.state = GameState.MENU if self.level_select_purpose == "play" else GameState.EDITOR
-            elif key == pygame.K_v and self.level_select_purpose == "play":
-                # Arms/disarms endless/survival mode for whichever level
-                # gets picked next -- meaningless while browsing to load a
-                # map into the editor (purpose="edit"), so a no-op there.
-                self.level_select_endless_armed = not self.level_select_endless_armed
-        elif self.state == GameState.PLAYING:
-            if key in (pygame.K_p, pygame.K_ESCAPE):
-                self.state = GameState.PAUSED
-            elif key == pygame.K_SPACE:
-                self.wave_manager.skip_delay()
-            elif key == pygame.K_1:
-                self.set_time_scale(1.0)
-            elif key == pygame.K_2:
-                self.set_time_scale(2.0)
-            elif key == pygame.K_3:
-                self.set_time_scale(3.0)
-            elif key == pygame.K_r and self.active_run is not None:
-                self.state = GameState.RELICS
-        elif self.state == GameState.RELICS:
-            # Nothing to confirm or lose here (unlike PAUSED's own R) --
-            # any key dismisses it, Escape included. That's PAUSED's own
-            # Escape/P-resumes shape, not FLOOR_CLEARED/REST's -- those two
-            # special-case Escape to quit the app instead, which would be
-            # bad UX here (there's a live board underneath, not a result
-            # to leave); nothing else warrants special-casing Escape while
-            # just glancing at your relics.
-            self.state = GameState.PLAYING
-        elif self.state == GameState.PAUSED:
-            if self.pause_restart_confirm_pending:
-                # Only R (confirm) or Esc (cancel, back to the normal pause
-                # menu -- still PAUSED) do anything here; P is deliberately
-                # not treated as a synonym for Esc, unlike the normal pause
-                # menu's own Esc/P-both-resume shape, so a reflexive P
-                # press mid-confirm can't be misread as "resume playing"
-                # when nothing has actually been decided yet.
-                if key == pygame.K_r:
-                    self.reset()  # reset() itself still sees state == PAUSED here
-                    self.state = GameState.PLAYING
-                    self.pause_restart_confirm_pending = False
-                elif key == pygame.K_ESCAPE:
-                    self.pause_restart_confirm_pending = False
-            elif key in (pygame.K_p, pygame.K_ESCAPE):
-                self.state = GameState.PLAYING
-            elif key == pygame.K_r:
-                self.pause_restart_confirm_pending = True
-            elif key == pygame.K_e and self.current_level_id is None:
-                # Only offered (see ui.draw_pause_menu) while playing a
-                # custom level -- self.editor still has whatever was
-                # playtested, untouched, so this is just "stop playing,"
-                # not a reload.
-                self.state = GameState.EDITOR
-            elif key == pygame.K_s and self.can_save_run():
-                self.save_run()
-                self.state = GameState.MENU
-            elif key == pygame.K_q:
-                self.running = False
-        elif self.state == GameState.GAME_OVER:
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            elif key == pygame.K_r:
-                self.reset()
-                self.state = GameState.PLAYING
-        elif self.state == GameState.VICTORY:
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            elif key == pygame.K_r:
-                self.advance_or_replay_level()
-                self.state = GameState.PLAYING
-        elif self.state == GameState.FLOOR_CLEARED:
-            # Escape quits, same as every other post-battle results screen
-            # (VICTORY/GAME_OVER just above) -- any other key returns to
-            # the map, same "press any key to continue" spirit as the
-            # menu's own catch-all, since there's nothing to choose between
-            # here (that's the map screen's job, entered next).
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            else:
-                self._enter_map()
-        elif self.state == GameState.MAP:
-            # No keyboard equivalent for picking a node, same as the build
-            # menu's own tower buttons -- but Escape should still quit, the
-            # same as every other non-PLAYING screen offers.
-            if key == pygame.K_ESCAPE:
-                self.running = False
-        elif self.state == GameState.DRAFT:
-            # No keyboard equivalent for picking a card, same as the build
-            # menu's own tower buttons -- but Escape should still quit, the
-            # same as every other non-PLAYING screen offers, rather than
-            # leaving this the one screen with no keyboard way out at all.
-            if key == pygame.K_ESCAPE:
-                self.running = False
-        elif self.state == GameState.EVENT:
-            # Escape quits, same as every other non-PLAYING screen; any
-            # other key only does something once an option's been chosen
-            # (see _handle_event_click's own "resolved" phase) -- no
-            # keyboard equivalent for picking an option itself, same as
-            # DRAFT above.
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            elif self.event_phase == "resolved":
-                self._finish_node(self.active_run.current_node_id)
-        elif self.state == GameState.REST:
-            # A Rest node has nothing to choose -- it's already resolved
-            # the instant it's entered (see _enter_rest_node) -- so any key
-            # but Escape just continues, same "press any key" spirit as
-            # FLOOR_CLEARED above.
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            else:
-                self._finish_node(self.active_run.current_node_id)
-        elif self.state == GameState.TREASURE:
-            # Same "already resolved on entry, press any key to continue"
-            # shape as REST above.
-            if key == pygame.K_ESCAPE:
-                self.running = False
-            else:
-                self._finish_node(self.active_run.current_node_id)
+        return self.input_handler._handle_keydown(key)
 
     def _handle_right_click(self):
-        if self.state != GameState.PLAYING:
-            return
-        self.selected_tower_name = None
-        self.selected_tower = None
+        return self.input_handler._handle_right_click()
 
     def _handle_editor_undo_redo_keydown(self, key):
-        """Ctrl+Z/Ctrl+Y -- shared by both editor screens' keydown handling
-        (GameState.EDITOR and WAVE_EDITOR), since both mutate the same
-        self.editor. Routes through _handle_editor_undo_redo_action() so
-        there's exactly one place that actually calls undo()/redo(),
-        regardless of whether it was a keypress or an action-button click."""
-        mods = pygame.key.get_mods()
-        if key == pygame.K_z and mods & pygame.KMOD_CTRL:
-            self._handle_editor_undo_redo_action("undo")
-        elif key == pygame.K_y and mods & pygame.KMOD_CTRL:
-            self._handle_editor_undo_redo_action("redo")
+        return self.input_handler._handle_editor_undo_redo_keydown(key)
 
     def _handle_editor_undo_redo_action(self, action):
         """"undo"/"redo" -- shared by both editor screens' action bars
@@ -1664,50 +1405,13 @@ class Game:
     # --- Map editor ---
 
     def _handle_editor_click(self, pos):
-        tool = ui.get_clicked_editor_tool(pos, self.editor_tool_rects)
-        if tool is not None:
-            self.editor.set_tool(tool)
-            return
-
-        action = ui.get_clicked_editor_action(pos, self.editor_action_rects)
-        if action is not None:
-            self._handle_editor_action(action)
-            return
-
-        if self.editor.paste_pending:
-            self.editor.paste_clipboard(self.editor.pixel_to_tile(*pos))
-            self.editor.paste_pending = False
-            return
-
-        if self.editor.active_tool in SHAPE_TOOLS:
-            # Preview-while-dragging tools: this click just starts the
-            # drag -- see _handle_editor_motion/_handle_editor_mouse_up
-            # for how it's previewed/committed.
-            self.editor.begin_shape(self.editor.pixel_to_tile(*pos))
-            return
-
-        # Editor.paint_at() silently ignores a pixel outside the grid
-        # (e.g. over the toolbar/sidebar, neither of which overlaps the
-        # grid's own pixel range), so no further fencing is needed here.
-        self.editor.paint_at(*pos)
+        return self.input_handler._handle_editor_click(pos)
 
     def _handle_editor_motion(self, pos, buttons):
-        if not buttons[0]:  # left button not held -> nothing to drag
-            return
-        if self.editor.active_tool in SHAPE_TOOLS:
-            self.editor.update_shape_preview(self.editor.pixel_to_tile(*pos))
-        else:
-            self.editor.paint_at(*pos)
+        return self.input_handler._handle_editor_motion(pos, buttons)
 
     def _handle_editor_mouse_up(self, pos):
-        """Ends whatever the left button was doing on the grid: a
-        freeform drag-paint stroke (see Editor.begin_stroke(), called
-        from _apply_tool() on the first cell of the stroke), or a Line/
-        Rect/Select drag (committed here instead)."""
-        if self.editor.active_tool in SHAPE_TOOLS:
-            self.editor.commit_shape(self.editor.pixel_to_tile(*pos))
-        else:
-            self.editor.end_stroke()
+        return self.input_handler._handle_editor_mouse_up(pos)
 
     def _handle_editor_action(self, action):
         if action == "back":
@@ -1794,49 +1498,10 @@ class Game:
         self.wave_unit_rects = ui.build_wave_unit_rects(self.wave_unit_scroll_offset)
 
     def _scroll_wave_unit_list(self, wheel_y):
-        # Same sign flip as _scroll_level_select -- pygame's MOUSEWHEEL.y is
-        # positive scrolling away from the player (up the list -> less
-        # scroll_offset) and negative toward them (down the list -> more).
-        max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
-        self.wave_unit_scroll_offset -= wheel_y * ui.WAVE_UNIT_SCROLL_STEP
-        self.wave_unit_scroll_offset = max(0, min(self.wave_unit_scroll_offset, max_scroll))
-        self._rebuild_wave_unit_rects()
+        return self.input_handler._scroll_wave_unit_list(wheel_y)
 
     def _handle_wave_editor_click(self, pos):
-        tab = ui.get_clicked_wave_tab(pos, self._wave_tab_rects())
-        if tab == "add":
-            self.editor.add_wave()
-            return
-        if tab == "remove":
-            self.editor.remove_wave()
-            return
-        if tab is not None:  # an int wave index
-            self.editor.set_active_wave(tab)
-            return
-
-        # A row scrolled above/below the visible list still has a real
-        # (just off-viewport) Rect -- see build_wave_unit_rects -- so a
-        # click outside the scrollable viewport must never match one, same
-        # fence _handle_level_select_click applies to its own rows.
-        unit_key = None
-        if ui.WAVE_UNIT_ROWS_TOP <= pos[1] <= ui.WAVE_UNIT_ROWS_BOTTOM:
-            unit_key = ui.get_clicked_wave_unit_button(pos, self.wave_unit_rects)
-        if unit_key is not None:
-            enemy_name, sign = unit_key
-            self.editor.adjust_unit_count(enemy_name, +1 if sign == "plus" else -1)
-            return
-
-        action = ui.get_clicked_wave_editor_action(pos, self.wave_editor_action_rects)
-        if action is not None:
-            self._handle_wave_editor_action(action)
-            return
-
-        # Not on any button -- maybe a spawn marker in the read-only path
-        # preview was clicked, switching which spawn's counts the +/-
-        # buttons above now target. set_active_spawn() itself already
-        # no-ops for a cell that isn't actually a spawn, so nothing here
-        # needs to fence the click to "did it land on a real marker" first.
-        self.editor.set_active_spawn(self.editor.pixel_to_tile(*pos))
+        return self.input_handler._handle_wave_editor_click(pos)
 
     def _handle_wave_editor_action(self, action):
         if action == "back":
@@ -1903,62 +1568,15 @@ class Game:
         )
 
     def _scroll_level_select(self, wheel_y):
-        # pygame's MOUSEWHEEL.y is positive scrolling away from the
-        # player (up the list -> less scroll_offset) and negative toward
-        # them (down the list -> more) -- hence the sign flip.
-        max_scroll = ui.level_select_max_scroll(len(self.level_select_entries))
-        self.level_select_scroll_offset -= wheel_y * ui.LEVEL_SELECT_SCROLL_STEP
-        self.level_select_scroll_offset = max(0, min(self.level_select_scroll_offset, max_scroll))
-        self._rebuild_level_select_rects()
+        return self.input_handler._scroll_level_select(wheel_y)
 
     def _handle_level_select_click(self, pos):
-        # A row scrolled off the top/bottom still has a real (just
-        # off-viewport) Rect -- see build_level_select_rects -- so a click
-        # outside the visible list area must never match one.
-        if not (ui.LEVEL_SELECT_TOP <= pos[1] <= ui.LEVEL_SELECT_BOTTOM):
-            return
-        key = ui.get_clicked_level_select_entry(pos, self.level_select_rects)
-        if key is None:
-            return
-        if self.level_select_purpose == "edit":
-            self.editor.load_level(self._custom_levels_by_id[key])
-            self.state = GameState.EDITOR
-        elif isinstance(key, int):
-            # Practice mode has no notion of a locked level (see
-            # _enter_level_select) -- picking any built-in id always works.
-            self.load_level(key, endless=self.level_select_endless_armed, sandbox=True)
-            self.state = GameState.PLAYING
-        else:
-            self.load_custom_level(
-                self._custom_levels_by_id[key],
-                endless=self.level_select_endless_armed, sandbox=True,
-            )
-            self.state = GameState.PLAYING
+        return self.input_handler._handle_level_select_click(pos)
 
     # --- Settings ---
 
     def _handle_settings_click(self, pos):
-        # Checked before the SETTINGS_OPTION_ORDER-keyed lookup below --
-        # the Volume -/+ buttons live in their own small rect dict, not
-        # settings_rects, since they're a different shape (inline on the
-        # Sound row, not part of the stacked column) than every other
-        # Settings option -- see ui.build_volume_button_rects' own comment.
-        volume_button = ui.get_clicked_volume_button(pos, self.volume_button_rects)
-        if volume_button is not None:
-            self.adjust_sound_volume(1 if volume_button == "up" else -1)
-            return
-
-        option = ui.get_clicked_settings_option(pos, self.settings_rects)
-        if option == "fullscreen":
-            self.set_fullscreen(not self.fullscreen)
-        elif option == "sound":
-            self.set_sound_enabled(not self.sound_enabled)
-        elif option in difficulty.DIFFICULTY_MODES:
-            self.set_difficulty(option)
-        elif option in ui.WINDOW_SIZE_PRESETS:
-            self.set_window_size(ui.WINDOW_SIZE_PRESETS[option])
-        elif option == "back":
-            self.state = GameState.MENU
+        return self.input_handler._handle_settings_click(pos)
 
     # --- Achievements ---
 
@@ -1972,27 +1590,20 @@ class Game:
         self.state = GameState.ACHIEVEMENTS
 
     def _handle_static_screen_back_click(self, pos, back_rect):
-        """Shared body for every full-screen "click the Back to Menu
-        button" handler below -- kept as separate, per-screen public
-        methods (rather than one handler threaded through handle_events'
-        own click-routing table) so each stays independently named and
-        directly callable, matching how Game's other per-state click
-        handlers are organized."""
-        if back_rect.collidepoint(pos):
-            self.state = GameState.MENU
+        return self.input_handler._handle_static_screen_back_click(pos, back_rect)
 
     def _handle_achievements_click(self, pos):
-        self._handle_static_screen_back_click(pos, self.achievements_back_rect)
+        return self.input_handler._handle_achievements_click(pos)
 
     # --- Help / How to Play ---
 
     def _handle_help_click(self, pos):
-        self._handle_static_screen_back_click(pos, self.help_back_rect)
+        return self.input_handler._handle_help_click(pos)
 
     # --- Credits ---
 
     def _handle_credits_click(self, pos):
-        self._handle_static_screen_back_click(pos, self.credits_back_rect)
+        return self.input_handler._handle_credits_click(pos)
 
     def _delete_save_if_this_run_was_resumed(self):
         """Called from both of update()'s win/loss branches -- a resumed
@@ -2114,107 +1725,10 @@ class Game:
         self.audio.play("achievement_toast")
 
     def _handle_click(self, pos):
-        if self.state != GameState.PLAYING:
-            return
-
-        clicked_button = ui.get_clicked_tower_button(pos, self.button_rects)
-        if clicked_button is not None:
-            self.selected_tower_name = None if clicked_button == self.selected_tower_name else clicked_button
-            self.selected_tower = None  # switching to build mode drops any pinned placed-tower panel
-            return
-
-        if self.skip_button_rect.collidepoint(pos):
-            self.wave_manager.skip_delay()
-            return
-
-        if self.speed_button_rect.collidepoint(pos):
-            self.cycle_time_scale()
-            return
-
-        if self.active_run is not None and self.relics_button_rect.collidepoint(pos):
-            self.state = GameState.RELICS
-            return
-
-        if self._handle_panel_action_click(pos):
-            return
-
-        if pos[0] >= settings.PLAY_WIDTH:
-            return  # click landed in the stats panel but not on a button
-
-        if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
-            return  # click landed in the HUD area but not on a button
-
-        for tower in self.towers:
-            if tower.contains_upgrade_badge(pos):
-                self.try_upgrade_tower(tower)
-                return
-
-        for tower in self.towers:
-            if tower.contains_point(pos):
-                self.selected_tower = tower  # pin it open in the stats panel
-                return
-
-        if self.selected_tower_name is not None:
-            anchor_col, anchor_row = self.grid.placement_anchor(*pos, footprint_subtiles=self._current_footprint_subtiles())
-            self.try_place_tower(anchor_col, anchor_row)
-        else:
-            self.selected_tower = None  # clicked empty ground -> deselect
+        return self.input_handler._handle_click(pos)
 
     def _handle_panel_action_click(self, pos):
-        """Handles a click on the stats panel's Upgrade/Specialize/Sell
-        buttons. Returns True if `pos` was on one of them -- whether or
-        not it actually did anything, e.g. an unaffordable upgrade still
-        "belongs" to that button rather than falling through to the grid
-        underneath it -- so the caller knows to stop processing this click.
-
-        Uses self._last_panel_subject (what render() last showed) rather
-        than re-deriving the subject from _hovered_tower() at click time:
-        by the time the mouse is actually over one of these buttons, it's
-        no tower's tile_rect() ever reaches the panel to check -- so a
-        fresh lookup here always reads as "not hovering anything" and
-        silently falls back to whatever else is pinned/selected, which
-        can easily be a *different* tower than the one whose button the
-        player is actually looking at and clicking."""
-        subject = self._last_panel_subject
-        is_tower = subject in self.towers  # not a build-menu class or None
-
-        if self.targeting_button_rect.collidepoint(pos):
-            # The row isn't drawn for a support tower (see
-            # ui.draw_tower_stats_panel's IS_SUPPORT guard), but this
-            # Rect still occupies that screen position regardless of
-            # subject -- without this guard, a click there while a
-            # support tower is pinned/hovered would silently cycle an
-            # attribute (targeting_mode) it inherits but never reads.
-            if is_tower and not type(subject).IS_SUPPORT:
-                subject.cycle_targeting_mode()
-            return True
-
-        if self.upgrade_button_rect.collidepoint(pos):  # noqa: SIM102 -- kept nested, see the fallthrough comment below
-            if is_tower and not subject.is_max_level:
-                self.try_upgrade_tower(subject)
-                return True
-            # Falls through rather than returning when there's no upgrade
-            # to make: this rect is intentionally shared with the first
-            # Specialize button (see ui.build_specialize_button_rects --
-            # Upgrade and Specialize are mutually exclusive states), so a
-            # maxed, specializable tower's click here needs to reach the
-            # specialize handling below instead of silently doing nothing.
-
-        for index, rect in enumerate(self.specialize_button_rects):
-            if not rect.collidepoint(pos):
-                continue
-            if is_tower and subject.can_specialize:
-                keys = list(subject.SPECIALIZATIONS.keys())
-                if index < len(keys):
-                    self.try_specialize_tower(subject, keys[index])
-            return True
-
-        if self.sell_button_rect.collidepoint(pos):
-            if is_tower:
-                self.try_sell_tower(subject)
-            return True
-
-        return False
+        return self.input_handler._handle_panel_action_click(pos)
 
     def try_place_tower(self, anchor_col, anchor_row):
         if self.selected_tower_name is None:
