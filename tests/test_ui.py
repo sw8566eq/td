@@ -60,6 +60,7 @@ from ui import (
     build_speed_button_rect,
     build_targeting_button_rect,
     build_upgrade_button_rect,
+    build_volume_button_rects,
     build_wave_editor_action_rects,
     build_wave_tab_rects,
     build_wave_unit_rects,
@@ -80,6 +81,7 @@ from ui import (
     get_clicked_level_select_entry,
     get_clicked_settings_option,
     get_clicked_tower_button,
+    get_clicked_volume_button,
     get_clicked_wave_editor_action,
     get_clicked_wave_tab,
     get_clicked_wave_unit_button,
@@ -203,6 +205,37 @@ def test_get_clicked_settings_option_returns_matching_key():
 def test_get_clicked_settings_option_returns_none_outside_all_buttons():
     rects = build_settings_rects()
     assert get_clicked_settings_option((0, 0), rects) is None
+
+
+def test_volume_button_rects_has_a_down_and_an_up_entry():
+    rects = build_volume_button_rects()
+    assert set(rects.keys()) == {"down", "up"}
+
+
+def test_volume_button_rects_sit_to_the_right_of_the_sound_button():
+    sound_rect = build_settings_rects()["sound"]
+    volume_rects = build_volume_button_rects()
+    assert volume_rects["down"].left > sound_rect.right
+    assert volume_rects["up"].left > volume_rects["down"].right
+
+
+def test_volume_button_rects_do_not_overlap_the_settings_column():
+    settings_rects = list(build_settings_rects().values())
+    volume_rects = list(build_volume_button_rects().values())
+    for settings_rect in settings_rects:
+        for volume_rect in volume_rects:
+            assert not settings_rect.colliderect(volume_rect)
+
+
+def test_get_clicked_volume_button_returns_matching_key():
+    rects = build_volume_button_rects()
+    assert get_clicked_volume_button(rects["down"].center, rects) == "down"
+    assert get_clicked_volume_button(rects["up"].center, rects) == "up"
+
+
+def test_get_clicked_volume_button_returns_none_outside_both_buttons():
+    rects = build_volume_button_rects()
+    assert get_clicked_volume_button((0, 0), rects) is None
 
 
 # --- Achievements screen ---

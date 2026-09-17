@@ -354,9 +354,9 @@ class Enemy:
         bar_width, bar_height = self.radius * 2, 4
         x = int(self.pos.x - self.radius)
         y = int(self.pos.y - self.radius - bar_height - 2)
-        pygame.draw.rect(surface, (60, 20, 20), (x, y, bar_width, bar_height))
+        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_BG, (x, y, bar_width, bar_height))
         fill_width = int(bar_width * (self.hp / self.max_hp))
-        pygame.draw.rect(surface, (60, 200, 60), (x, y, fill_width, bar_height))
+        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_FILL, (x, y, fill_width, bar_height))
 
 
 class GruntEnemy(Enemy):
@@ -477,7 +477,7 @@ class BossEnemy(Enemy):
         # once enraged so either state reads at a glance without needing
         # to watch the health bar's exact fraction.
         if self.armor_timer > 0 or self.enraged:
-            color = settings.COLOR_GOLD if self.armor_timer > 0 else (220, 90, 40)
+            color = settings.COLOR_GOLD if self.armor_timer > 0 else settings.COLOR_ENEMY_ENRAGE_RING
             center = (int(self.pos.x), int(self.pos.y))
             pygame.draw.circle(surface, color, center, self.radius + 4, width=2)
 
@@ -604,7 +604,7 @@ class FinalBossShieldedEnemy(BossEnemy):
         super().draw(surface, assets)
         if self.pulse_shield > 0:
             center = (int(self.pos.x), int(self.pos.y))
-            pygame.draw.circle(surface, (90, 160, 255), center, self.radius + 8, width=2)
+            pygame.draw.circle(surface, settings.COLOR_ENEMY_SHIELD_BAR_FILL, center, self.radius + 8, width=2)
 
 
 class ShieldedEnemy(Enemy):
@@ -703,9 +703,9 @@ class ShieldedEnemy(Enemy):
         bar_width, bar_height = self.radius * 2, 3
         x = int(self.pos.x - self.radius)
         y = int(self.pos.y - self.radius - 4 - 2 - bar_height - 2)
-        pygame.draw.rect(surface, (30, 40, 70), (x, y, bar_width, bar_height))
+        pygame.draw.rect(surface, settings.COLOR_ENEMY_SHIELD_BAR_BG, (x, y, bar_width, bar_height))
         fill_width = int(bar_width * (self.shield / self.max_shield))
-        pygame.draw.rect(surface, (90, 160, 255), (x, y, fill_width, bar_height))
+        pygame.draw.rect(surface, settings.COLOR_ENEMY_SHIELD_BAR_FILL, (x, y, fill_width, bar_height))
 
 
 class FlyingEnemy(Enemy):

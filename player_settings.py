@@ -20,6 +20,7 @@ SETTINGS_PATH = module_relative_path(__file__, "player_settings.json")
 DEFAULTS = {
     "fullscreen": False,
     "sound_enabled": True,
+    "sound_volume": 1.0,
     "difficulty": "normal",
     "window_size": [settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT],
 }
@@ -29,9 +30,22 @@ def _merge_with_defaults(data):
     merged = dict(DEFAULTS)
     merged["fullscreen"] = bool(data.get("fullscreen", DEFAULTS["fullscreen"]))
     merged["sound_enabled"] = bool(data.get("sound_enabled", DEFAULTS["sound_enabled"]))
+    merged["sound_volume"] = _coerce_volume(data.get("sound_volume", DEFAULTS["sound_volume"]))
     merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
     merged["window_size"] = _coerce_window_size(data.get("window_size"))
     return merged
+
+
+def _coerce_volume(value):
+    """A corrupt/hand-edited/missing sound_volume (non-numeric, negative,
+    above 1.0) falls back to the default -- same defensive spirit as
+    _coerce_window_size below, just clamping into [0.0, 1.0] rather than
+    rejecting outright, since any out-of-range number still has an obvious
+    in-range meaning (clamp) unlike a malformed window size."""
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return DEFAULTS["sound_volume"]
 
 
 def _coerce_window_size(value):
