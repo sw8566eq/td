@@ -29,7 +29,7 @@ def test_path_cells_include_every_corner():
 def test_path_cells_include_the_full_segment_between_corners():
     grid = make_grid()
     # Segment (0,4) -> (4,4) should cover every column in between at row 4.
-    for col in range(0, 5):
+    for col in range(5):
         assert grid.is_path(col, 4)
     # Segment (4,4) -> (4,1) should cover every row in between at col 4.
     for row in range(1, 5):

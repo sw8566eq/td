@@ -1,2 +1,16 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint.per-file-ignores]
+# Every Tower subclass carries class-level dict registries (EXTRA_STATS,
+# SPECIALIZATIONS, LEVEL_STAT_MULTIPLIER_OVERRIDES, ...) as read-only content
+# tables -- see CLAUDE.md's "Content is registries, not conditionals" -- never
+# mutated at runtime, so the generic mutable-class-default warning doesn't
+# apply to this file's own deliberate pattern.
+"tower.py" = ["RUF012"]
+
+[tool.coverage.run]
+omit = ["tests/*", ".venv/*"]

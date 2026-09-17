@@ -3,8 +3,18 @@ import pytest
 
 from projectile import Projectile
 from tower import (
-    TOWER_TYPES, BasicTower, BeaconTower, BeamTower, CannonTower, FrostTower, KnockbackTower,
-    LightningTower, PoisonTower, SniperTower, SupportTower, Tower,
+    TOWER_TYPES,
+    BasicTower,
+    BeaconTower,
+    BeamTower,
+    CannonTower,
+    FrostTower,
+    KnockbackTower,
+    LightningTower,
+    PoisonTower,
+    SniperTower,
+    SupportTower,
+    Tower,
 )
 
 

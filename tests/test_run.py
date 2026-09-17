@@ -16,8 +16,18 @@ fixtures and helpers for both are in conftest.py.
 
 import pygame
 import pytest
+from conftest import (
+    clear_mouse_mock,
+    find_buildable_anchor,
+    finish_all_waves,
+    make_linear_run_map,
+    mock_mouse_pos,
+    spy_on_audio,
+    start_first_floor,
+)
 
 import achievements
+import events
 import meta_progression
 import progress
 import run_history
@@ -28,9 +38,8 @@ import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
 from enemy import GruntEnemy, SplitterEnemy
-import events
 from events import EVENTS
-from game import GameState, _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM
+from game import _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM, GameState
 from levels import LEVELS
 from relics import RELICS, Relic
 from run_map import MapNode, RunMap
@@ -38,16 +47,6 @@ from run_state import RunState
 from shop import ShopItem
 from tower import TOWER_TYPES
 from waves import WaveState
-
-from conftest import (
-    finish_all_waves,
-    find_buildable_anchor,
-    make_linear_run_map,
-    mock_mouse_pos,
-    clear_mouse_mock,
-    start_first_floor,
-    spy_on_audio,
-)
 
 
 def _begin_run_with_map(game, node_types, seed=1, level_id=1, difficulty=None, **run_overrides):
@@ -57,11 +56,11 @@ def _begin_run_with_map(game, node_types, seed=1, level_id=1, difficulty=None, *
     node-type sequence at specific rows rather than whatever a real seed
     happens to produce (e.g. a guaranteed Shop/Event/Rest/Treasure node, or
     a guaranteed row depth without hunting for a seed)."""
-    kwargs = dict(
-        seed=seed, map=make_linear_run_map(node_types, level_id=level_id),
-        difficulty=difficulty if difficulty is not None else game.difficulty,
-        unlocked_towers=list(STARTER_TOWERS),
-    )
+    kwargs = {
+        "seed": seed, "map": make_linear_run_map(node_types, level_id=level_id),
+        "difficulty": difficulty if difficulty is not None else game.difficulty,
+        "unlocked_towers": list(STARTER_TOWERS),
+    }
     kwargs.update(run_overrides)
     game.active_run = RunState(**kwargs)
     game._enter_map()

@@ -25,13 +25,13 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-import pygame  # noqa: E402
-import pytest  # noqa: E402
+import pygame
+import pytest
 
-import settings  # noqa: E402
-from game import Game, GameState  # noqa: E402
-from levels import Level  # noqa: E402
-from run_map import MapNode, RunMap  # noqa: E402
+import settings
+from game import Game, GameState
+from levels import Level
+from run_map import MapNode, RunMap
 
 
 def make_game(tmp_path, prefix="", **kwargs):

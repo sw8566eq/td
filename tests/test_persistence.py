@@ -5,22 +5,22 @@ from levels import Level
 
 
 def make_branching_level(name="Test Level", **overrides):
-    kwargs = dict(
-        id="custom",
-        name=name,
-        path_cells=frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
-        spawn_cells=((0, 0), (0, 2)),
-        goal_cells=((1, 1),),
+    kwargs = {
+        "id": "custom",
+        "name": name,
+        "path_cells": frozenset({(0, 0), (0, 1), (0, 2), (1, 1)}),
+        "spawn_cells": ((0, 0), (0, 2)),
+        "goal_cells": ((1, 1),),
         # Deliberately a different composition per spawn, and one wave
         # where (0, 2) sits out entirely -- exercises the per-spawn
         # wave_specs shape's round-trip through JSON, not just a
         # single-spawn level's.
-        wave_specs=[{(0, 0): {"grunt": 3}}, {(0, 0): {"grunt": 2}, (0, 2): {"tank": 3}}],
-        starting_gold=200,
-        starting_lives=15,
-        blocked_cells=frozenset({(5, 5)}),
-        branch_weights={((0, 1), (1, 1)): 2.0},
-    )
+        "wave_specs": [{(0, 0): {"grunt": 3}}, {(0, 0): {"grunt": 2}, (0, 2): {"tank": 3}}],
+        "starting_gold": 200,
+        "starting_lives": 15,
+        "blocked_cells": frozenset({(5, 5)}),
+        "branch_weights": {((0, 1), (1, 1)): 2.0},
+    }
     kwargs.update(overrides)
     return Level(**kwargs)
 

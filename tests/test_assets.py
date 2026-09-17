@@ -22,11 +22,11 @@ import tempfile
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-import pygame  # noqa: E402
-import pytest  # noqa: E402
+import pygame
+import pytest
 
-import assets as assets_module  # noqa: E402
-from assets import DEFAULT_ASSET_ROOT, SPRITE_MANIFEST, AssetManager  # noqa: E402
+import assets as assets_module
+from assets import DEFAULT_ASSET_ROOT, SPRITE_MANIFEST, AssetManager
 
 MISSING_ASSET_ROOT = "/nonexistent/path/for/tests/xyz"
 

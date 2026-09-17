@@ -16,12 +16,19 @@ python main.py --editor            # launch straight into the map editor (also r
 pytest                             # full suite
 pytest tests/test_run.py           # one file
 pytest tests/test_grid.py::test_non_path_cell_is_buildable   # one test
-pytest -v                          # what CI runs (.github/workflows/tests.yml)
+pytest -v --cov=. --cov-report=term-missing   # what CI runs (.github/workflows/tests.yml)
+
+ruff check .                       # lint -- also what CI runs, gates the same workflow
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
 
-No linter/formatter is configured. `pyproject.toml` only sets pytest's `pythonpath`.
+`ruff` (lint) and `pytest-cov` (coverage reporting only, no enforced floor yet) are configured in
+`pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]` sections -- no formatter, and no type checker
+(mypy/pyright) yet. `tower.py`'s per-file `RUF012` ignore is deliberate: every `Tower` subclass's
+class-level `EXTRA_STATS`/`SPECIALIZATIONS` dicts are read-only content tables (see "Content is
+registries, not conditionals" below), never mutated at runtime, which is exactly what that rule
+can't tell apart from a genuine mutable-default footgun.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --

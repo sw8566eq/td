@@ -19,6 +19,7 @@ a dead end.
 """
 
 import random
+from itertools import pairwise
 
 
 def neighbors4(cell):
@@ -35,7 +36,7 @@ def path_cells_from_corners(corners):
     can build a path_cells set out of straight runs without going through
     Grid at all."""
     cells = set()
-    for (c1, r1), (c2, r2) in zip(corners, corners[1:]):
+    for (c1, r1), (c2, r2) in pairwise(corners):
         if c1 == c2:
             step = 1 if r2 >= r1 else -1
             for r in range(r1, r2 + step, step):

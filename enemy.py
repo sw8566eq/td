@@ -361,7 +361,6 @@ class Enemy:
 
 class GruntEnemy(Enemy):
     """The baseline species -- uses Enemy's base stats as-is."""
-    pass
 
 
 class ScoutEnemy(Enemy):
