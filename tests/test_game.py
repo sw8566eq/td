@@ -1919,6 +1919,38 @@ def test_settings_click_toggles_sound(game):
     assert game.audio.enabled is True
 
 
+def test_set_sound_volume_clamps_to_the_valid_range(game):
+    game.set_sound_volume(5)
+    assert game.sound_volume == 1.0
+    assert game.audio.volume == 1.0
+    game.set_sound_volume(-5)
+    assert game.sound_volume == 0.0
+    assert game.audio.volume == 0.0
+
+
+def test_adjust_sound_volume_steps_by_the_configured_amount(game):
+    assert game.sound_volume == 1.0  # default, already at the ceiling
+    game.adjust_sound_volume(-1)
+    assert game.sound_volume == pytest.approx(1.0 - game.SOUND_VOLUME_STEP)
+    game.adjust_sound_volume(1)
+    assert game.sound_volume == pytest.approx(1.0)
+
+
+def test_adjust_sound_volume_clamps_past_either_extreme(game):
+    game.adjust_sound_volume(1)  # already at the ceiling -- a no-op, not an overshoot
+    assert game.sound_volume == 1.0
+    for _ in range(20):
+        game.adjust_sound_volume(-1)
+    assert game.sound_volume == 0.0
+
+
+def test_settings_click_on_volume_buttons_adjusts_volume(game):
+    game._handle_settings_click(game.volume_button_rects["down"].center)
+    assert game.sound_volume == pytest.approx(1.0 - game.SOUND_VOLUME_STEP)
+    game._handle_settings_click(game.volume_button_rects["up"].center)
+    assert game.sound_volume == pytest.approx(1.0)
+
+
 def test_settings_click_picks_a_difficulty(game):
     game._handle_settings_click(game.settings_rects["hard"].center)
     assert game.difficulty == "hard"
@@ -1964,6 +1996,12 @@ def test_sound_setting_persists_to_the_settings_file(game):
     assert reloaded["sound_enabled"] is False
 
 
+def test_sound_volume_persists_to_the_settings_file(game):
+    game.set_sound_volume(0.4)
+    reloaded = player_settings.load_settings(game.settings_path)
+    assert reloaded["sound_volume"] == 0.4
+
+
 def test_difficulty_setting_persists_to_the_settings_file(game):
     game.set_difficulty("easy")
     reloaded = player_settings.load_settings(game.settings_path)
@@ -2003,6 +2041,21 @@ def test_a_fresh_game_instance_restores_a_previously_persisted_window_size(tmp_p
     try:
         assert second.window_size == (1440, 840)
         assert second.screen.get_size() == (1440, 840)
+    finally:
+        pygame.quit()
+
+
+def test_a_fresh_game_instance_restores_a_previously_persisted_sound_volume(tmp_path):
+    first = make_game(tmp_path)
+    try:
+        first.set_sound_volume(0.4)
+    finally:
+        pygame.quit()
+
+    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    try:
+        assert second.sound_volume == 0.4
+        assert second.audio.volume == 0.4
     finally:
         pygame.quit()
 

@@ -130,6 +130,11 @@ class Game:
     # Simulation speed multipliers cycled through by the HUD's speed button
     # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
     TIME_SCALES = (1.0, 2.0, 3.0)
+    # Fraction adjusted per click of the Settings screen's Volume -/+
+    # buttons (see set_sound_volume) -- 10 discrete steps from 0% to 100%,
+    # the same "a handful of clicks between extremes" feel TIME_SCALES
+    # above gives, not a literal drag-to-any-value slider.
+    SOUND_VOLUME_STEP = 0.1
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
                  achievements_path=None, save_path=None,
@@ -268,6 +273,7 @@ class Game:
         saved_settings = player_settings.load_settings(self.settings_path)
         self.fullscreen = saved_settings["fullscreen"]
         self.sound_enabled = saved_settings["sound_enabled"]
+        self.sound_volume = saved_settings["sound_volume"]
         # Windowed size -- read here so the very first apply_display_mode()
         # call below already restores it (today's actual prior behavior:
         # dragging the window to a new size was never persisted across a
@@ -309,9 +315,10 @@ class Game:
             pygame.mixer.init()
         except pygame.error:
             pass
-        self.audio = audio.SoundManager(enabled=self.sound_enabled)
+        self.audio = audio.SoundManager(enabled=self.sound_enabled, volume=self.sound_volume)
 
         self.settings_rects = ui.build_settings_rects()
+        self.volume_button_rects = ui.build_volume_button_rects()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
@@ -1113,6 +1120,18 @@ class Game:
         self.audio.set_enabled(self.sound_enabled)
         self._save_player_settings()
 
+    def set_sound_volume(self, value):
+        self.sound_volume = max(0.0, min(1.0, value))
+        self.audio.set_volume(self.sound_volume)
+        self._save_player_settings()
+
+    def adjust_sound_volume(self, direction):
+        """direction is +1 or -1 -- one Settings-screen Volume -/+ click's
+        worth of change, clamped by set_sound_volume itself so repeatedly
+        clicking past either extreme is a harmless no-op rather than
+        something this method also needs to guard against."""
+        self.set_sound_volume(self.sound_volume + direction * self.SOUND_VOLUME_STEP)
+
     def set_difficulty(self, key):
         if key in difficulty.DIFFICULTY_MODES:
             self.difficulty = key
@@ -1133,6 +1152,7 @@ class Game:
             {
                 "fullscreen": self.fullscreen,
                 "sound_enabled": self.sound_enabled,
+                "sound_volume": self.sound_volume,
                 "difficulty": self.difficulty,
                 "window_size": list(self.window_size),
             },
@@ -1913,6 +1933,16 @@ class Game:
     # --- Settings ---
 
     def _handle_settings_click(self, pos):
+        # Checked before the SETTINGS_OPTION_ORDER-keyed lookup below --
+        # the Volume -/+ buttons live in their own small rect dict, not
+        # settings_rects, since they're a different shape (inline on the
+        # Sound row, not part of the stacked column) than every other
+        # Settings option -- see ui.build_volume_button_rects' own comment.
+        volume_button = ui.get_clicked_volume_button(pos, self.volume_button_rects)
+        if volume_button is not None:
+            self.adjust_sound_volume(1 if volume_button == "up" else -1)
+            return
+
         option = ui.get_clicked_settings_option(pos, self.settings_rects)
         if option == "fullscreen":
             self.set_fullscreen(not self.fullscreen)
@@ -2664,6 +2694,7 @@ class Game:
             ui.draw_settings_screen(
                 self.screen, self.font, self.small_font, self.settings_rects,
                 self.fullscreen, self.sound_enabled, self.difficulty, self.window_size,
+                self.sound_volume, self.volume_button_rects,
             )
             pygame.display.flip()
             return

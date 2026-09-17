@@ -167,6 +167,47 @@ def test_play_calls_sound_play_once_enabled(monkeypatch):
     assert fake.play_count == 1
 
 
+# --- Volume ---
+
+
+def test_sound_manager_defaults_to_full_volume():
+    assert make_manager().volume == 1.0
+
+
+def test_sound_manager_accepts_a_custom_initial_volume():
+    assert make_manager(volume=0.4).volume == 0.4
+
+
+def test_sound_manager_clamps_an_out_of_range_initial_volume():
+    assert make_manager(volume=5).volume == 1.0
+    assert make_manager(volume=-5).volume == 0.0
+
+
+def test_set_volume_clamps_to_the_valid_range():
+    manager = make_manager()
+    manager.set_volume(5)
+    assert manager.volume == 1.0
+    manager.set_volume(-5)
+    assert manager.volume == 0.0
+
+
+def test_get_applies_the_current_volume_to_a_newly_synthesized_sound():
+    # abs=0.01, not the default relative tolerance -- SDL_mixer quantizes
+    # a Sound's volume to its own internal 0-128 fixed-point scale, so
+    # get_volume() echoes back the nearest representable step (0.3 ->
+    # 0.296875 here), not the exact float that was set.
+    manager = make_manager(volume=0.3)
+    sound = manager.get("tower_placed")
+    assert sound.get_volume() == pytest.approx(0.3, abs=0.01)
+
+
+def test_set_volume_reapplies_to_an_already_cached_sound():
+    manager = make_manager()
+    sound = manager.get("tower_placed")  # cached at the default volume, 1.0
+    manager.set_volume(0.25)
+    assert sound.get_volume() == pytest.approx(0.25, abs=0.01)
+
+
 @pytest.mark.parametrize("requested_format", [
     (44100, -16, 2),
     (22050, 16, 1),

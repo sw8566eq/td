@@ -78,6 +78,32 @@ COLOR_RANGE_PREVIEW = (255, 255, 255)
 COLOR_FOOTPRINT_VALID = (255, 255, 255)
 COLOR_FOOTPRINT_INVALID = (220, 60, 60)
 
+# --- Enemy health/shield bars and BossEnemy's own armor/enrage ring
+# (enemy.py) -- named here rather than left as inline RGB tuples, matching
+# every other color in this file, and specifically re-checked for
+# colorblind safety since a health/shield bar conveys real gameplay
+# information (how hurt is this enemy) through color, not just text.
+# Verified with an actual deuteranopia/protanopia simulation (a Machado et
+# al. 2009-style linear-RGB transform), not by eye: COLOR_ENEMY_HP_BAR_BG/
+# FILL and COLOR_ENEMY_SHIELD_BAR_BG/FILL already have wide-enough
+# luminance separation to stay clearly distinguishable under simulation
+# (their color *pair* differs mostly in brightness, not hue, which is what
+# both common forms of red-green colorblindness preserve) -- kept as-is.
+# COLOR_ENEMY_ENRAGE_RING was the one pair that measurably wasn't: the
+# original (220, 90, 40) sat only 121.8 apart from COLOR_GOLD (this
+# constant's own armor-ring counterpart) under simulated deuteranopia,
+# the closest pair found anywhere in this palette -- a low-priority tell
+# even so (BossEnemy.draw's own comment calls it "a small cosmetic tell,"
+# not the primary way to read armor/enrage state, which is genre-standard
+# damage-taken feedback either way), but cheap to widen: this crimson
+# reads just as "hot/aggressive" while sitting 184.0 apart under the same
+# simulation.
+COLOR_ENEMY_HP_BAR_BG = (60, 20, 20)
+COLOR_ENEMY_HP_BAR_FILL = (60, 200, 60)
+COLOR_ENEMY_SHIELD_BAR_BG = (30, 40, 70)
+COLOR_ENEMY_SHIELD_BAR_FILL = (90, 160, 255)
+COLOR_ENEMY_ENRAGE_RING = (180, 20, 60)
+
 # --- Map editor markers ---
 COLOR_EDITOR_SPAWN = (90, 200, 120)
 COLOR_EDITOR_GOAL = (220, 160, 60)

@@ -1319,6 +1319,57 @@ def build_settings_rects():
     return {key: _settings_button_rect(index) for index, key in enumerate(SETTINGS_OPTION_ORDER)}
 
 
+# Volume -/+ buttons sit inline on the Sound row itself, to its right,
+# rather than getting a stacked row of their own the way every other
+# Settings option does -- the column of SETTINGS_OPTION_ORDER buttons
+# already reaches close to the bottom of the screen (9 rows at
+# SETTINGS_TOP=160), so a literal 10th row would risk running off it.
+# Kept in their own small dict/lookup (mirroring build_wave_unit_rects'
+# own "separate from the stacked column" shape), not folded into
+# build_settings_rects' own SETTINGS_OPTION_ORDER-keyed dict, since these
+# two are a genuinely different shape (small, inline, not part of the
+# stacked column) that build_settings_rects' own tests assert is exactly
+# one entry per SETTINGS_OPTION_ORDER key.
+VOLUME_STEP_BUTTON_SIZE = 28
+VOLUME_LABEL_GAP = 130  # horizontal room reserved for the "Volume: 100%" label between the two buttons
+
+
+def build_volume_button_rects():
+    """{"down": Rect, "up": Rect} -- positioned to the right of the Sound
+    button, vertically centered on that same row."""
+    sound_rect = _settings_button_rect(SETTINGS_OPTION_ORDER.index("sound"))
+    down_x = sound_rect.right + 24
+    up_x = down_x + VOLUME_STEP_BUTTON_SIZE + VOLUME_LABEL_GAP
+    y = sound_rect.centery - VOLUME_STEP_BUTTON_SIZE // 2
+    return {
+        "down": pygame.Rect(down_x, y, VOLUME_STEP_BUTTON_SIZE, VOLUME_STEP_BUTTON_SIZE),
+        "up": pygame.Rect(up_x, y, VOLUME_STEP_BUTTON_SIZE, VOLUME_STEP_BUTTON_SIZE),
+    }
+
+
+def get_clicked_volume_button(pos, volume_button_rects):
+    """Return "down"/"up" for whichever Volume button contains pos, or
+    None."""
+    return _key_of_rect_containing(pos, volume_button_rects)
+
+
+def _draw_volume_control(surface, small_font, volume_button_rects, sound_volume):
+    """The Sound row's own -/+ pair plus a "Volume: N%" label between them
+    -- same small-square-button-with-a-centered-glyph look the wave
+    editor's own unit +/- buttons use (see _draw_wave_editor_sidebar),
+    just inline on one row instead of stacked."""
+    for suffix, symbol in (("down", "-"), ("up", "+")):
+        rect = volume_button_rects[suffix]
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, border_radius=4)
+        sym_text = small_font.render(symbol, True, settings.COLOR_TEXT)
+        surface.blit(sym_text, sym_text.get_rect(center=rect.center))
+
+    label = small_font.render(f"Volume: {round(sound_volume * 100)}%", True, settings.COLOR_TEXT)
+    down_rect, up_rect = volume_button_rects["down"], volume_button_rects["up"]
+    label_center_x = (down_rect.right + up_rect.left) // 2
+    surface.blit(label, label.get_rect(center=(label_center_x, down_rect.centery)))
+
+
 def get_clicked_settings_option(pos, settings_rects):
     """Return the settings option key whose button contains pos, or None."""
     return _key_of_rect_containing(pos, settings_rects)
@@ -1353,7 +1404,7 @@ def _draw_settings_button(surface, font, rect, label, selected):
 
 
 def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, sound_enabled,
-                          difficulty_key, window_size):
+                          difficulty_key, window_size, sound_volume, volume_button_rects):
     surface.fill(settings.COLOR_BG)
     title = font.render("Settings", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
@@ -1363,6 +1414,7 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
 
     sound_label = f"Sound: {'On' if sound_enabled else 'Off'}"
     _draw_settings_button(surface, small_font, settings_rects["sound"], sound_label, sound_enabled)
+    _draw_volume_control(surface, small_font, volume_button_rects, sound_volume)
 
     for key in DIFFICULTY_ORDER:
         label = f"Difficulty: {DIFFICULTY_MODES[key].display_name}"

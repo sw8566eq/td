@@ -167,9 +167,10 @@ class SoundManager:
     .gitkeep until a human drops a real file in, exactly like every other
     assets/ subfolder."""
 
-    def __init__(self, asset_root=DEFAULT_ASSET_ROOT, enabled=True):
+    def __init__(self, asset_root=DEFAULT_ASSET_ROOT, enabled=True, volume=1.0):
         self.asset_root = asset_root
         self.enabled = bool(enabled)
+        self.volume = max(0.0, min(1.0, float(volume)))
         self._cache = {}
         mixer_format = pygame.mixer.get_init()  # None if never initialized
         self.mixer_ready = mixer_format is not None
@@ -189,6 +190,19 @@ class SoundManager:
 
     def set_enabled(self, value):
         self.enabled = bool(value)
+
+    def set_volume(self, value):
+        """Clamped to [0, 1] -- pygame.mixer.Sound.set_volume() doesn't
+        clamp on its own, and a corrupt/hand-edited player_settings.json
+        could otherwise hand this something outside that range. Re-applied
+        to every already-cached Sound immediately (get() below applies it
+        to new ones as they're created/synthesized), so a volume change
+        mid-session doesn't wait for a cue to be re-fetched to take
+        effect."""
+        self.volume = max(0.0, min(1.0, float(value)))
+        for sound in self._cache.values():
+            if sound is not None:
+                sound.set_volume(self.volume)
 
     def preload_all(self):
         """Synthesize/load every SOUND_MANIFEST entry now rather than
@@ -248,6 +262,8 @@ class SoundManager:
         except KeyError:
             pass
         sound = self._load_or_synthesize(logical_name)
+        if sound is not None:
+            sound.set_volume(self.volume)
         self._cache[logical_name] = sound
         return sound
 
