@@ -12,6 +12,12 @@ for both are in conftest.py.
 import json
 
 import pygame
+from conftest import (
+    cell_center_px,
+    clear_key_mods,
+    make_custom_level,
+    mock_key_mods,
+)
 
 import persistence
 import settings
@@ -19,14 +25,6 @@ import ui
 from editor import EditorTool
 from game import GameState
 from levels import Level
-
-from conftest import (
-    cell_center_px,
-    make_custom_level,
-    mock_key_mods,
-    clear_key_mods,
-)
-
 
 # --- Entering the map editor ---
 

@@ -28,7 +28,7 @@ import shop
 import ui
 from assets import AssetManager
 from economy import Economy
-from editor import SHAPE_TOOLS, Editor, EditorTool
+from editor import SHAPE_TOOLS, Editor
 from grid import Grid
 from levels import LEVELS
 from run_state import RunState
@@ -52,6 +52,15 @@ _DRAFT_RNG_STREAM = "draft"
 _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's own id
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
+
+# Shared no-op defaults for _load_level_object's escalation/relic_modifiers
+# params -- both dataclasses are frozen, so one shared instance is safe to
+# reuse across every call that doesn't pass its own (a non-run level load).
+# Module-level singletons rather than calling the constructor directly in
+# the signature, which a bare function call as a default argument always
+# looks like a mutable-default footgun to a linter, frozen or not.
+_DEFAULT_ESCALATION = run_escalation.FloorEscalation()
+_DEFAULT_RELIC_MODIFIERS = relics.RelicModifiers()
 
 
 class GameState(Enum):
@@ -906,7 +915,7 @@ class Game:
         self.active_run.lives += relic.starting_lives_bonus
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
-                            escalation=run_escalation.FloorEscalation(), relic_modifiers=relics.RelicModifiers(),
+                            escalation=_DEFAULT_ESCALATION, relic_modifiers=_DEFAULT_RELIC_MODIFIERS,
                             active_run=None, resumed_from_save=False):
         # Sticky for this level, same as current_level_id -- reset()/
         # advance_or_replay_level() read this back so replaying/advancing
@@ -2120,7 +2129,7 @@ class Game:
                 subject.cycle_targeting_mode()
             return True
 
-        if self.upgrade_button_rect.collidepoint(pos):
+        if self.upgrade_button_rect.collidepoint(pos):  # noqa: SIM102 -- kept nested, see the fallthrough comment below
             if is_tower and not subject.is_max_level:
                 self.try_upgrade_tower(subject)
                 return True

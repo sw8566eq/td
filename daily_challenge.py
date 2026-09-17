@@ -6,7 +6,7 @@ anything specific to "daily" -- see Game.start_new_run's own docstring for
 why a Daily Run needs nothing beyond this one seed.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def todays_seed(today=None):
@@ -14,5 +14,5 @@ def todays_seed(today=None):
     yields the same seed for every player regardless of timezone. `today`
     is overridable (a `datetime.date`) so tests/an explicit "play a specific
     day's challenge" flow don't depend on the real wall-clock date."""
-    today = today or datetime.now(timezone.utc).date()
+    today = today or datetime.now(UTC).date()
     return int(today.strftime("%Y%m%d"))

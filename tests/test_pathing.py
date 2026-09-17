@@ -3,8 +3,13 @@ import random
 import pytest
 
 import pathing
-from pathing import PathTopology, RoutingError, junctions_of, sample_route, validate_topology
-
+from pathing import (
+    PathTopology,
+    RoutingError,
+    junctions_of,
+    sample_route,
+    validate_topology,
+)
 
 # --- path_cells_from_corners ---
 
@@ -17,7 +22,7 @@ def test_path_cells_from_corners_include_every_corner():
 
 def test_path_cells_from_corners_include_the_full_segment_between_corners():
     cells = pathing.path_cells_from_corners([(0, 4), (4, 4), (4, 1)])
-    for col in range(0, 5):
+    for col in range(5):
         assert (col, 4) in cells
     for row in range(1, 5):
         assert (4, row) in cells

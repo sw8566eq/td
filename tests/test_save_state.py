@@ -27,24 +27,24 @@ _MAP = RunMap(
 
 
 def make_run(**overrides):
-    kwargs = dict(
-        seed=1, map=_MAP, difficulty="normal", unlocked_towers=["basic"], current_node_id="0-0",
-    )
+    kwargs = {
+        "seed": 1, "map": _MAP, "difficulty": "normal", "unlocked_towers": ["basic"], "current_node_id": "0-0",
+    }
     kwargs.update(overrides)
     return RunState(**kwargs)
 
 
 def make_level(name="Test Level", **overrides):
-    kwargs = dict(
-        id=1,
-        name=name,
-        path_cells=frozenset({(0, 0), (1, 0)}),
-        spawn_cells=((0, 0),),
-        goal_cells=((1, 0),),
-        wave_specs=[{(0, 0): {"grunt": 3}}, {(0, 0): {"grunt": 4}}],
-        starting_gold=150,
-        starting_lives=20,
-    )
+    kwargs = {
+        "id": 1,
+        "name": name,
+        "path_cells": frozenset({(0, 0), (1, 0)}),
+        "spawn_cells": ((0, 0),),
+        "goal_cells": ((1, 0),),
+        "wave_specs": [{(0, 0): {"grunt": 3}}, {(0, 0): {"grunt": 4}}],
+        "starting_gold": 150,
+        "starting_lives": 20,
+    }
     kwargs.update(overrides)
     return Level(**kwargs)
 

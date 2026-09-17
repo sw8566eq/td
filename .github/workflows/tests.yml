@@ -28,4 +28,6 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: pytest -v
+      - run: ruff check .
+
+      - run: pytest -v --cov=. --cov-report=term-missing

@@ -1349,8 +1349,14 @@ ACHIEVEMENTS_BACK_BUTTON_WIDTH = 240
 ACHIEVEMENTS_BACK_BUTTON_HEIGHT = 40
 ACHIEVEMENTS_BACK_BUTTON_GAP = 24
 
+# A module-level singleton rather than a bare len() call in the signature
+# below -- ACHIEVEMENT_ORDER is fixed at import time either way, but a
+# function call as a default argument always reads as a mutable-default
+# footgun to a linter.
+_ACHIEVEMENT_COUNT = len(ACHIEVEMENT_ORDER)
 
-def build_achievements_back_rect(achievement_count=len(ACHIEVEMENT_ORDER)):
+
+def build_achievements_back_rect(achievement_count=_ACHIEVEMENT_COUNT):
     """Rect for the Achievements screen's single 'Back to Menu' button,
     stacked directly below the last achievement row -- the list is short
     and fixed (the registry doesn't change at runtime), so unlike the
@@ -1449,8 +1455,10 @@ HELP_LINES = [
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]
 
+_HELP_LINE_COUNT = len(HELP_LINES)  # see _ACHIEVEMENT_COUNT above for why a singleton, not a bare len() default
 
-def build_help_back_rect(line_count=len(HELP_LINES)):
+
+def build_help_back_rect(line_count=_HELP_LINE_COUNT):
     """Rect for the Help screen's single 'Back to Menu' button, stacked
     below the last line -- same layout idea as build_achievements_back_rect,
     since HELP_LINES is likewise a short, fixed list."""
@@ -1481,8 +1489,10 @@ CREDITS_LINES = [
     "(c) the author. License: TBD.",
 ]
 
+_CREDITS_LINE_COUNT = len(CREDITS_LINES)  # see _ACHIEVEMENT_COUNT above for why a singleton, not a bare len() default
 
-def build_credits_back_rect(line_count=len(CREDITS_LINES)):
+
+def build_credits_back_rect(line_count=_CREDITS_LINE_COUNT):
     """Rect for the Credits screen's single 'Back to Menu' button --
     same layout idea as build_help_back_rect, since CREDITS_LINES is
     likewise a short, fixed list."""

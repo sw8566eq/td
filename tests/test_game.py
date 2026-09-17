@@ -13,6 +13,16 @@ import sys
 
 import pygame
 import pytest
+from conftest import (
+    cell_center_px,
+    clear_mouse_mock,
+    find_buildable_anchor,
+    finish_all_waves,
+    make_custom_level,
+    make_game,
+    mock_mouse_pos,
+    spy_on_audio,
+)
 
 import achievements
 import difficulty
@@ -27,18 +37,6 @@ from game import GameState
 from levels import LEVELS
 from tower import TOWER_TYPES, BasicTower
 from waves import WaveState
-
-from conftest import (
-    finish_all_waves,
-    find_buildable_anchor,
-    cell_center_px,
-    make_custom_level,
-    make_game,
-    mock_mouse_pos,
-    clear_mouse_mock,
-    spy_on_audio,
-)
-
 
 # --- Initialization ---
 
@@ -904,7 +902,7 @@ def test_clicking_the_upgrade_buttons_rect_at_max_level_specializes_instead(play
     finally:
         clear_mouse_mock()
 
-    expected_key = list(tower.SPECIALIZATIONS.keys())[0]
+    expected_key = next(iter(tower.SPECIALIZATIONS.keys()))
     assert tower.specialization == expected_key
 
 

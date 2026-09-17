@@ -1,7 +1,14 @@
 import settings
 from tower import (
-    TOWER_TYPES, BasicTower, CannonTower, FrostTower, KnockbackTower,
-    LightningTower, PoisonTower, SniperTower, Tower,
+    TOWER_TYPES,
+    BasicTower,
+    CannonTower,
+    FrostTower,
+    KnockbackTower,
+    LightningTower,
+    PoisonTower,
+    SniperTower,
+    Tower,
 )
 
 

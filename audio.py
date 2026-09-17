@@ -36,7 +36,9 @@ from dataclasses import dataclass
 
 import pygame
 
-from assets import DEFAULT_ASSET_ROOT  # both modules' files live under the same assets/ tree
+from assets import (
+    DEFAULT_ASSET_ROOT,  # both modules' files live under the same assets/ tree
+)
 
 # Raised from SDL_mixer's default of 8 -- a busy board can have well over a
 # dozen towers firing, several projectiles resolving, and an enemy dying

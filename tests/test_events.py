@@ -14,10 +14,10 @@ _MAP = RunMap(
 
 
 def _run(**overrides):
-    kwargs = dict(
-        seed=1, map=_MAP, difficulty="normal",
-        unlocked_towers=list(STARTER_TOWERS), current_node_id="0-0",
-    )
+    kwargs = {
+        "seed": 1, "map": _MAP, "difficulty": "normal",
+        "unlocked_towers": list(STARTER_TOWERS), "current_node_id": "0-0",
+    }
     kwargs.update(overrides)
     return RunState(**kwargs)
 

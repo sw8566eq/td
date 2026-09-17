@@ -30,11 +30,16 @@ import wave
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-import pygame  # noqa: E402
-import pytest  # noqa: E402
+import pygame
+import pytest
 
-import audio  # noqa: E402
-from audio import DEFAULT_ASSET_ROOT, SOUND_MANIFEST, SynthSpec, SoundManager  # noqa: E402
+import audio
+from audio import (
+    DEFAULT_ASSET_ROOT,
+    SOUND_MANIFEST,
+    SoundManager,
+    SynthSpec,
+)
 
 MISSING_ASSET_ROOT = "/nonexistent/path/for/tests/xyz"
 

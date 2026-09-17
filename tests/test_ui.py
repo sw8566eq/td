@@ -8,8 +8,8 @@ from run_map import NODE_TYPES
 from shop import ShopItem
 from tower import TOWER_TYPES
 from ui import (
-    ACHIEVEMENTS_TOP,
     ACHIEVEMENT_ROW_HEIGHT,
+    ACHIEVEMENTS_TOP,
     CREDITS_LINE_HEIGHT,
     CREDITS_LINES,
     CREDITS_TOP,
@@ -31,20 +31,24 @@ from ui import (
     MAP_TOOLTIP_MAX_WIDTH,
     PANEL_PADDING,
     WAVE_EDITOR_ACTION_ORDER,
+    WAVE_UNIT_ROW_HEIGHT,
     WAVE_UNIT_ROWS_BOTTOM,
     WAVE_UNIT_ROWS_TOP,
-    WAVE_UNIT_ROW_HEIGHT,
     _dim_overlay_cache,
     _draw_centered_overlay,
     _draw_dim_overlay,
+    _format_currency,
+    _format_wave_label,
+    _format_wave_preview,
+    _relics_overlay_lines,
     _wrap_text,
     build_achievements_back_rect,
     build_button_rects,
     build_credits_back_rect,
     build_draft_choice_rects,
-    build_help_back_rect,
     build_editor_action_rects,
     build_editor_tool_rects,
+    build_help_back_rect,
     build_level_select_rects,
     build_level_thumbnail,
     build_relics_button_rect,
@@ -52,8 +56,8 @@ from ui import (
     build_settings_rects,
     build_shop_continue_button_rect,
     build_skip_button_rect,
-    build_speed_button_rect,
     build_specialize_button_rects,
+    build_speed_button_rect,
     build_targeting_button_rect,
     build_upgrade_button_rect,
     build_wave_editor_action_rects,
@@ -84,12 +88,7 @@ from ui import (
     menu_options,
     wave_unit_content_height,
     wave_unit_max_scroll,
-    _format_currency,
-    _format_wave_label,
-    _format_wave_preview,
-    _relics_overlay_lines,
 )
-
 
 # --- Main menu ---
 #

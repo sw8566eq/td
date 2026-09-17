@@ -30,8 +30,8 @@ its own queue empties, while any spawns with more left keep going.
 
 import random
 
-import settings
 import pathing
+import settings
 from enemy import ENEMY_TYPES
 
 
