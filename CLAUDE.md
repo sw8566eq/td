@@ -53,6 +53,23 @@ in one call -- it's the single choke point every way of starting a level funnels
 `_load_combat_node()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
 `advance_or_replay_level()` are just "call it again."
 
+`Game.render()` itself is a one-line delegator to `renderer.Renderer.render()` (`renderer.py`) --
+the first cut of decomposing `Game` out of a single ~2900-line file, picked as the first slice
+because it was the most self-contained: it only ever reads `Game`'s state and delegates to `ui.py`'s
+drawing functions, the one exception being `_last_panel_subject` (written here, read back by
+`Game._handle_panel_action_click`, see "Stats panel subject resolution" below). `Renderer` holds a
+`game` reference rather than a narrower set of parameters, since `render()` reads on the order of 40
+distinct `Game` attributes/methods across its own per-state dispatch -- a narrower interface would
+just be the same coupling spelled out longhand. The hit-testing/query helpers `render()` calls
+(`_hovered_tower()`, `_stats_panel_subject()`, ...) stay on `Game` itself, not `Renderer`, since
+`_handle_click`/`_handle_panel_action_click` read those same methods to resolve what a click acts on
+-- moving them would split one shared source of truth into two copies that could drift. `renderer.py`
+imports `GameState` lazily, inside `render()` itself, to avoid a circular import (`game.py` ->
+`renderer.py` -> `game.py`) that a top-level import would hit before `GameState` is even defined.
+Input handling (`handle_events`/`_handle_keydown`/`_handle_click` and the `_handle_*_click` family)
+is the next planned slice, into an `input_handler.py`, calling back into `Game`'s existing action
+methods exactly as today -- not done yet.
+
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
 played on its own still works exactly as it always did, but that's now Practice, a side path; the
 main path is a run. Read the next section before anything else here.

@@ -19,6 +19,7 @@ import persistence
 import player_settings
 import progress
 import relics
+import renderer
 import run_escalation
 import run_history
 import run_map
@@ -390,6 +391,10 @@ class Game:
 
         self.state = GameState.MENU
         self.running = True
+
+        # See renderer.py's own module docstring for why render() itself
+        # is just a one-line delegator to this.
+        self.renderer = renderer.Renderer(self)
 
         self.current_level_id = 1
         self.load_level(self.current_level_id)
@@ -2683,229 +2688,7 @@ class Game:
     # --- Render ---
 
     def render(self):
-        self.screen.fill(settings.COLOR_BG)
-
-        if self.state == GameState.MENU:
-            ui.draw_menu_screen(self.screen, self.font, self.small_font, self.has_saved_run)
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.SETTINGS:
-            ui.draw_settings_screen(
-                self.screen, self.font, self.small_font, self.settings_rects,
-                self.fullscreen, self.sound_enabled, self.difficulty, self.window_size,
-                self.sound_volume, self.volume_button_rects,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.ACHIEVEMENTS:
-            ui.draw_achievements_screen(
-                self.screen, self.font, self.small_font,
-                self.achievements_state["unlocked"], self.achievements_state["counters"],
-                self.achievements_back_rect,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.HELP:
-            ui.draw_help_screen(self.screen, self.font, self.small_font, self.help_back_rect)
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.CREDITS:
-            ui.draw_credits_screen(self.screen, self.font, self.small_font, self.credits_back_rect)
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.EDITOR:
-            ui.draw_editor_screen(
-                self.screen, self.assets, self.font, self.small_font,
-                self.editor, self.editor_tool_rects, self.editor_action_rects,
-                self.import_status_message, self.import_status_is_error,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.WAVE_EDITOR:
-            ui.draw_wave_editor_screen(
-                self.screen, self.assets, self.font, self.small_font,
-                self.editor, self._wave_tab_rects(), self.wave_unit_rects, self.wave_editor_action_rects,
-                self.last_saved_path, self.wave_unit_scroll_offset,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.LEVEL_SELECT:
-            ui.draw_level_select_screen(
-                self.screen, self.font, self.small_font,
-                self.level_select_entries, self.level_select_rects, self.level_select_thumbnails,
-                self.level_select_purpose, self.level_select_scroll_offset, self.level_select_endless_armed,
-            )
-            pygame.display.flip()
-            return
-
-        # MAP/DRAFT/EVENT/REST/TREASURE are all full-screen, board-less
-        # states now (see GameState's own comment on why) -- each guarded
-        # on active_run is not None the same way FLOOR_CLEARED's own
-        # overlay below still is: active_run is None only ever happens by
-        # force-setting state directly (e.g. the render() smoke test's
-        # blanket sweep across every GameState), in which case falling
-        # through to the normal board/HUD/panel drawing below (with no
-        # overlay on top) is fine; crashing on it wouldn't be.
-        if self.state == GameState.MAP and self.active_run is not None:
-            run = self.active_run
-            # lives/shop_currency are meaningless before the run's very
-            # first node has ever loaded (run.lives is still its 0
-            # placeholder -- see RunState's own docstring) -- None hides
-            # the readout entirely rather than showing a misleading
-            # "Lives: 0" before any floor has actually been played.
-            has_played_a_node = run.current_node_id is not None
-            ui.draw_map_screen(
-                self.screen, self.font, self.small_font, run.map, self.map_node_rects,
-                run.current_node_id, run.visited_node_ids, self._available_node_ids(),
-                self._hovered_map_node(),
-                run.lives if has_played_a_node else None,
-                run.shop_currency if has_played_a_node else None,
-                first_run=self._map_is_first_run,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.DRAFT and self.active_run is not None:
-            ui.draw_draft_screen(
-                self.screen, self.font, self.small_font,
-                self.draft_choices, self.draft_choice_rects, self._hovered_draft_choice(),
-                self.shop_purchased_indices, self.active_run.shop_currency,
-                self.shop_continue_button_rect, self.economy.unlimited_gold,
-                self.relic_modifiers.shop_price_multiplier,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.EVENT and self.active_run is not None:
-            ui.draw_event_screen(
-                self.screen, self.font, self.small_font, self.current_event, self.event_options,
-                self.event_option_rects,
-                self._hovered_event_option(), self.event_phase, self.event_chosen_option, self.event_resolution,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.REST and self.active_run is not None:
-            ui.draw_rest_screen(
-                self.screen, self.font, self.small_font, self.rest_heal_amount, self.active_run.lives,
-            )
-            pygame.display.flip()
-            return
-
-        if self.state == GameState.TREASURE and self.active_run is not None:
-            ui.draw_treasure_screen(
-                self.screen, self.font, self.small_font,
-                self.treasure_granted_relic, self.treasure_granted_currency,
-            )
-            pygame.display.flip()
-            return
-
-        self.grid.draw(self.screen, self.assets)
-        for tower in self.towers:
-            tower.draw(self.screen, self.assets, self.tiny_font)
-        for enemy in self.enemies:
-            enemy.draw(self.screen, self.assets)
-        for projectile in self.projectiles:
-            projectile.draw(self.screen, self.assets)
-        for ring in self.impact_effects:
-            ring.draw(self.screen)
-        for text in self.damage_numbers:
-            text.draw(self.screen, self.tiny_font)
-
-        self._render_placement_preview()
-        hovered_tower = self._hovered_tower()
-        panel_subject = self._stats_panel_subject(hovered_tower)
-        self._last_panel_subject = panel_subject  # see _handle_panel_action_click
-        if panel_subject in self.towers:  # a placed tower (hovered, or pinned via selected_tower)
-            ui.draw_tower_range_preview(self.screen, panel_subject)
-
-        # "Floor N/M" -- same 1-based node.row+1 / final_row_index+1 shape
-        # FLOOR_CLEARED's own screen already uses, just also shown live
-        # during PLAYING itself now, not only between floors.
-        floor_label = (
-            f"Floor {self.active_run.current_row + 1}/{self.active_run.map.final_row_index + 1}"
-            if self.active_run is not None else None
-        )
-        ui.draw_hud(
-            self.screen, self.assets, self.font, self.small_font,
-            self.economy, self.wave_manager, self.button_rects,
-            self.skip_button_rect, self.selected_tower_name,
-            self.time_scale, self.speed_button_rect,
-            self.wave_manager.next_wave_preview(),
-            shop_currency=self.active_run.shop_currency if self.active_run is not None else None,
-            relics_button_rect=self.relics_button_rect,
-            relic_count=len(self.active_run.relics) if self.active_run is not None else None,
-            floor_label=floor_label,
-            boss_defeated=self.active_run.boss_defeated if self.active_run is not None else False,
-        )
-        if self._show_first_placement_hint and not self.towers:
-            ui.draw_first_placement_hint(self.screen, self.small_font)
-        ui.draw_tower_stats_panel(
-            self.screen, self.font, self.small_font, panel_subject, self.economy,
-            self.targeting_button_rect,
-            self.upgrade_button_rect, self.specialize_button_rects, self.sell_button_rect,
-            self._hovered_specialize_key(panel_subject),
-        )
-        for toast in self.achievement_toasts:
-            toast.draw(self.screen, self.small_font)
-
-        if self.state == GameState.PAUSED:
-            ui.draw_pause_menu(self.screen, self.font, self.small_font,
-                                self.current_level_id is None, self.can_save_run(),
-                                self.pause_restart_confirm_pending)
-        elif self.state == GameState.RELICS and self.active_run is not None:
-            # active_run is None only ever happens by force-setting state
-            # directly (e.g. the render() smoke test's blanket sweep across
-            # every GameState) -- real gameplay only ever reaches RELICS
-            # via the HUD button/R, both gated on active_run already.
-            ui.draw_relics_overlay(self.screen, self.font, self.small_font, self.active_run.relics)
-        elif self.state == GameState.GAME_OVER:
-            ui.draw_game_over_screen(self.screen, self.font, self.small_font, self._cached_tower_results)
-        elif self.state == GameState.VICTORY:
-            ui.draw_victory_screen(self.screen, self.font, self.small_font, self.has_next_level(),
-                                    self._cached_tower_results)
-        elif self.state == GameState.FLOOR_CLEARED and self.active_run is not None:
-            # active_run is None only ever happens by force-setting state
-            # directly (e.g. the render() smoke test's blanket sweep across
-            # every GameState) -- real gameplay only ever reaches
-            # FLOOR_CLEARED via _advance_run_floor, which requires one.
-            # Drawing nothing for that otherwise-unreachable combination is
-            # fine; crashing on it wouldn't be. Kept as a frozen-board
-            # overlay (unlike MAP/DRAFT/EVENT/REST/TREASURE above) since
-            # it's always reached immediately from real combat on a board
-            # that still exists -- see GameState's own comment on this
-            # split.
-            node = self.active_run.map.node(self.active_run.current_node_id)
-            ui.draw_floor_cleared_screen(
-                self.screen, self.font, self.small_font,
-                node.row + 1, self.active_run.map.final_row_index + 1,
-                self._cached_tower_results,
-            )
-
-        pygame.display.flip()
-
-    def _render_placement_preview(self):
-        if self.selected_tower_name is None:
-            return
-        mouse_pos = pygame.mouse.get_pos()
-        if mouse_pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
-            return
-        if mouse_pos[0] >= settings.PLAY_WIDTH:
-            return  # hovering the stats panel, not the grid
-        tower_cls = TOWER_TYPES[self.selected_tower_name]
-        footprint_subtiles = self._current_footprint_subtiles()
-        anchor_col, anchor_row = self.grid.placement_anchor(*mouse_pos, footprint_subtiles=footprint_subtiles)
-        preview_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
-        buildable = self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
-        ui.draw_footprint_preview(self.screen, self.grid, anchor_col, anchor_row, buildable, footprint_subtiles=footprint_subtiles)
-        ui.draw_range_preview(self.screen, tower_cls, preview_pos)
+        self.renderer.render()
 
     def _hovered_tower(self):
         """The placed tower currently under the mouse (anywhere on its
