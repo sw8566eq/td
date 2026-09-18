@@ -828,6 +828,34 @@ panel and
 plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless
 `"Damage: 0.0"`/a clickable targeting mode a support tower never reads.
 
+### Tower targeting is broad-phase, not brute-force
+
+`Tower.acquire_target()` scans candidate enemies every time a tower's cooldown allows a shot, so
+naively this is an O(towers x enemies) pass every frame -- fine at the game's original scale, but
+endless mode's design is *unbounded* enemy growth by intent (`waves.py`'s `_default_endless_wave`
+compounds every generated wave off the last), so this is exactly the place that growth eventually
+gets felt. `spatial_index.EnemySpatialIndex` (`spatial_index.py`) narrows the scan without changing
+what any tower actually targets: a uniform grid of `(cell_x, cell_y) -> [enemy, ...]` buckets (a
+tree wasn't worth it -- the play area is small and fixed-size regardless of enemy count, so a flat
+dict is both simpler and, at this scale, at least as fast), rebuilt from scratch once per frame in
+`Game.update()` right before the tower loop (enemy positions change every frame regardless, so an
+incrementally-maintained structure would re-bucket most enemies every frame anyway, for no less work
+than a fresh O(enemies) rebuild) and threaded through every tower's `update()`/`acquire_target()`
+call as an optional `enemy_index` parameter. `near(pos, radius)` is deliberately **over-inclusive**
+-- a circular query against square cells can return an enemy slightly further than `radius` away --
+since every caller already re-filters with its own exact `in_range()`/`distance_to()` check
+afterward; the index only ever narrows the candidate *pool*, so passing one changes performance, not
+results (see `test_acquire_target_with_an_enemy_index_matches_the_raw_list_scan` in
+`tests/test_tower_targeting.py`). Bucket exclusion already drops dead/reached-goal enemies at build
+time, mirroring `acquire_target()`'s own candidate filter, but buckets hold the enemy objects
+themselves, not copies, so an enemy another tower kills earlier in the same frame (`Game.update()`
+builds the index once, before the *whole* tower loop runs) is still reflected immediately through
+that same re-check, with no rebuild needed mid-frame. `enemy_index` defaults to `None` everywhere,
+falling back to scanning the raw `enemies` list exactly as before -- every existing call site,
+chiefly the whole test suite, needed no changes; `SupportTower.update()` accepts the same parameter
+for call-signature parity with `Game.update()`'s uniform per-tower call but never reads it, since it
+never attacks and so never calls `acquire_target()` at all.
+
 ### Post-level results
 
 Every `Tower` tracks its own lifetime `shots_fired`/`shots_hit`/`damage_dealt`/`kills` purely for

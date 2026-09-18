@@ -1,5 +1,6 @@
 import pygame
 
+from spatial_index import EnemySpatialIndex
 from tower import BasicTower
 
 
@@ -146,3 +147,54 @@ def test_acquire_target_treats_a_missing_is_flying_attribute_as_not_flying():
     tower.can_target_flying = False
     grounded = FakeEnemy((10, 0), distance_traveled=1)
     assert tower.acquire_target([grounded]) is grounded
+
+
+def test_acquire_target_with_an_enemy_index_matches_the_raw_list_scan():
+    # The enemy_index is a pure performance path (see spatial_index.py) --
+    # passing one must never change what a tower actually targets.
+    tower = make_tower(range_=100)
+    nearby_but_early = FakeEnemy((10, 0), distance_traveled=1)
+    far_but_advanced = FakeEnemy((90, 0), distance_traveled=50)
+    out_of_range = FakeEnemy((5000, 0), distance_traveled=999)
+    enemies = [nearby_but_early, far_but_advanced, out_of_range]
+    index = EnemySpatialIndex(enemies)
+    assert tower.acquire_target(enemies, index) is tower.acquire_target(enemies) is far_but_advanced
+
+
+def test_acquire_target_with_an_enemy_index_still_excludes_dead_and_reached_goal():
+    tower = make_tower(range_=100)
+    dead = FakeEnemy((10, 0), is_dead=True, distance_traveled=999)
+    gone = FakeEnemy((10, 0), reached_goal=True, distance_traveled=500)
+    alive = FakeEnemy((10, 0), distance_traveled=1)
+    enemies = [dead, gone, alive]
+    index = EnemySpatialIndex(enemies)
+    assert tower.acquire_target(enemies, index) is alive
+
+
+def test_acquire_target_with_an_enemy_index_still_excludes_flying_when_disallowed():
+    tower = make_tower(range_=100)
+    tower.can_target_flying = False
+    flyer = FakeEnemy((10, 0), distance_traveled=999)
+    flyer.is_flying = True
+    grounded = FakeEnemy((10, 0), distance_traveled=1)
+    enemies = [flyer, grounded]
+    index = EnemySpatialIndex(enemies)
+    assert tower.acquire_target(enemies, index) is grounded
+
+
+def test_acquire_target_with_an_enemy_index_returns_none_when_nothing_in_range():
+    tower = make_tower(range_=50)
+    enemies = [FakeEnemy((1000, 0))]
+    index = EnemySpatialIndex(enemies)
+    assert tower.acquire_target(enemies, index) is None
+
+
+def test_acquire_target_with_an_enemy_index_finds_a_target_beyond_one_cell():
+    # cell_size defaults to 128px -- placing the enemy several cells away
+    # from the tower (but still within its own effective_range) exercises
+    # near()'s multi-cell span, not just the trivial same-cell case.
+    tower = make_tower(range_=400)
+    far_cell_but_in_range = FakeEnemy((380, 0), distance_traveled=1)
+    enemies = [far_cell_but_in_range]
+    index = EnemySpatialIndex(enemies)
+    assert tower.acquire_target(enemies, index) is far_cell_but_in_range

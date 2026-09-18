@@ -27,6 +27,7 @@ import run_map
 import save_state
 import settings
 import shop
+import spatial_index
 import ui
 from assets import AssetManager
 from economy import Economy
@@ -2004,8 +2005,15 @@ class Game:
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
+        # Built fresh every frame, same as the position updates it buckets
+        # -- see spatial_index.py for why a full per-frame rebuild, not an
+        # incrementally-maintained structure, is the right shape here. This
+        # is what keeps Tower.acquire_target()'s in-range scan from
+        # degrading to O(towers x enemies) as endless mode's enemy count
+        # grows without bound.
+        enemy_index = spatial_index.EnemySpatialIndex(self.enemies)
         for tower in self.towers:
-            tower.update(dt, self.enemies, self.projectiles, self.towers)
+            tower.update(dt, self.enemies, self.projectiles, self.towers, enemy_index)
             # In the spirit of the impact/damage drains just below --
             # Tower.fired_this_frame is set once per successful shot in
             # Tower.update() itself (see tower.py), read and reset here
