@@ -519,12 +519,12 @@ class Tower:
         self.aura_damage_multiplier = max(self.aura_damage_multiplier, damage_multiplier)
         self.aura_range_multiplier = max(self.aura_range_multiplier, range_multiplier)
 
-    def update(self, dt, enemies, projectiles, towers=None):
+    def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
         self.cooldown -= dt
         if self.cooldown > 0:
             return
 
-        target = self.acquire_target(enemies)
+        target = self.acquire_target(enemies, enemy_index)
         if target is None:
             return
 
@@ -565,7 +565,7 @@ class Tower:
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
-    def acquire_target(self, enemies):
+    def acquire_target(self, enemies, enemy_index=None):
         """In-range, still-on-the-path enemy selected by targeting_mode --
         "first" (furthest along the path) is the default and, before
         targeting_mode existed, this method's only-ever behavior; see
@@ -581,10 +581,20 @@ class Tower:
         every real threat still on the path. Also excludes a flying enemy
         (see enemy.py) from a tower whose can_target_flying is False --
         checked via getattr rather than a bare attribute access, since not
-        every enemy stand-in (tests, mainly) defines is_flying."""
+        every enemy stand-in (tests, mainly) defines is_flying.
+
+        `enemy_index` (an `EnemySpatialIndex`, see spatial_index.py) is an
+        optional broad-phase narrowing of `enemies` down to whatever's near
+        enough to plausibly be in range -- Game.update() builds one fresh
+        each frame and passes it through; every existing caller that omits
+        it (every test in this codebase, chiefly) falls back to scanning
+        the raw `enemies` list exactly as before, with identical results
+        either way, since the index is only ever a candidate pool the exact
+        in_range() check below still filters."""
         effective_range = self.effective_range()
+        pool = enemy_index.near(self.pos, effective_range) if enemy_index is not None else enemies
         candidates = [
-            e for e in enemies
+            e for e in pool
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
             and (self.can_target_flying or not getattr(e, "is_flying", False))
         ]
@@ -1394,7 +1404,11 @@ class SupportTower(Tower):
         },
     }
 
-    def update(self, dt, enemies, projectiles, towers=None):
+    def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
+        # enemy_index accepted, unused: Game.update() calls every tower's
+        # update() with the same signature regardless of type, but a
+        # SupportTower never attacks, so it never calls acquire_target()
+        # and has no use for the broad-phase index (see spatial_index.py).
         # relic_adjusted_range(), not effective_range() -- a Spyglass
         # Array-style relic still widens a Support tower's own reach too,
         # same as every other tower's range, since no relic in this
