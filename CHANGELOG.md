@@ -4,6 +4,35 @@ Notable player-facing and structural changes, tagged release by tagged release. 
 follows [Keep a Changelog](https://keepachangelog.com/); this project doesn't yet promise strict
 semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Added
+
+- First-run onboarding hints: map-screen guidance for a player's whole first run, a tower-placement
+  banner until the account's first-ever real-run placement, and a full stats preview on hover for an
+  unselected build-menu tower (previously required clicking it first).
+- A volume slider (10% steps, alongside the existing Sound on/off toggle) and a colorblind-safety
+  pass on the placeholder palette, verified with an actual deuteranopia/protanopia simulation.
+
+### Engineering
+
+- `game.py` decomposition, phase 1 and 2: `render()` extracted into `Renderer` (`renderer.py`), and
+  every input-handling method (`handle_events`, `_handle_keydown`, the `_handle_*_click` family, the
+  scroll handlers) extracted into `InputHandler` (`input_handler.py`). `Game` itself keeps a one-line
+  delegator per moved method, so no test call site needed to change.
+- A broad-phase spatial index (`spatial_index.py`) for tower targeting -- `Tower.acquire_target()`
+  no longer has to scan every live enemy on every shot, narrowing the scan to enemies near enough to
+  plausibly be in range instead. Benchmarked ~3-4x faster at 1k-20k synthetic enemies, addressing
+  what endless mode's unbounded enemy growth was always going to make felt eventually.
+- Incremental `mypy` adoption started: `relics.py`/`run_map.py`/`events.py`/`shop.py` are the first
+  four modules fully type-annotated and gated in CI, under a project-wide-permissive/per-module-strict
+  config (see CLAUDE.md's "Type checking is incremental, not repo-wide"). Caught one genuine
+  pre-existing bug in the process -- several `RelicModifiers` fields were typed as required but
+  defaulted to `None`.
+- README rewritten to match the branching-map run loop and shipped content (towers/levels/
+  achievements/events/relics counts, the two-currency Shop, boss mechanics) -- it had drifted behind
+  since the roguelike overhaul.
+
 ## [0.1.0] - 2026-09-17
 
 First tagged release -- everything below already existed on `main` before this tag; this entry

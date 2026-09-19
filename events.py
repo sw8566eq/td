@@ -17,10 +17,15 @@ and available_options()/resolve_event_option() below for the full shape,
 including why the given-up relic must be drawn before it's removed.
 """
 
+import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import card_pool
 import relics
+
+if TYPE_CHECKING:
+    from run_state import RunState
 
 _EVENT_ORDER = (
     "wandering_merchant", "ancient_shrine", "abandoned_camp", "friendly_duel",
@@ -64,7 +69,7 @@ class Event:
     key: str
     display_name: str
     prompt: str
-    options: tuple  # tuple[EventOption, ...], 2-3 per event
+    options: tuple[EventOption, ...]  # 2-3 per event
 
 
 EVENTS = {
@@ -329,7 +334,7 @@ assert all(
 ), "an EventOption with relic_cost=True must be the last option in its Event"
 
 
-def pick_event(rng):
+def pick_event(rng: random.Random) -> Event:
     """One Event, deterministically, from `rng` -- the whole registry is
     always eligible (no meta_progression-style unlock gate, same reasoning
     relics.py's own module docstring gives for relics: too few events, and
@@ -338,7 +343,7 @@ def pick_event(rng):
     return EVENTS[rng.choice(_EVENT_ORDER)]
 
 
-def available_options(event, run):
+def available_options(event: Event, run: "RunState") -> list[EventOption]:
     """`event.options`, minus any relic_cost option `run` can't actually
     pay (no relics held) -- mirrors relics.relic_offer's own "return
     fewer, don't crash" precedent for a pool that's run dry, applied here
@@ -352,7 +357,9 @@ def available_options(event, run):
     return [option for option in event.options if not option.relic_cost or run.relics]
 
 
-def resolve_event_option(run, option, item_rng, meta_progression_path=None):
+def resolve_event_option(
+    run: "RunState", option: EventOption, item_rng: random.Random, meta_progression_path: str | None = None,
+) -> dict:
     """Apply `option`'s effects directly onto `run`, returning a small
     {"relic": key} / {"tower": name} / {} dict describing what (if
     anything) was granted, for the resolved screen to describe -- plus

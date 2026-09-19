@@ -20,15 +20,49 @@ pytest -v --cov=. --cov-report=term-missing   # what CI runs (.github/workflows/
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
+mypy relics.py run_map.py events.py shop.py   # type check -- only the modules annotated so far; also what CI runs
+
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
 
 `ruff` (lint) and `pytest-cov` (coverage reporting only, no enforced floor yet) are configured in
-`pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]` sections -- no formatter, and no type checker
-(mypy/pyright) yet. `tower.py`'s per-file `RUF012` ignore is deliberate: every `Tower` subclass's
-class-level `EXTRA_STATS`/`SPECIALIZATIONS` dicts are read-only content tables (see "Content is
-registries, not conditionals" below), never mutated at runtime, which is exactly what that rule
-can't tell apart from a genuine mutable-default footgun.
+`pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]` sections -- no formatter yet. `tower.py`'s
+per-file `RUF012` ignore is deliberate: every `Tower` subclass's class-level `EXTRA_STATS`/
+`SPECIALIZATIONS` dicts are read-only content tables (see "Content is registries, not conditionals"
+below), never mutated at runtime, which is exactly what that rule can't tell apart from a genuine
+mutable-default footgun.
+
+**Type checking is incremental, not repo-wide.** `[tool.mypy]` in `pyproject.toml` is deliberately
+permissive project-wide (`disallow_untyped_defs`/`check_untyped_defs` both `false`) since most of
+this codebase -- pygame-facing code especially -- has no type hints yet; a `[[tool.mypy.overrides]]`
+block opts specific modules into strict checking (`disallow_untyped_defs`/`disallow_incomplete_defs`/
+`check_untyped_defs`/`warn_return_any` all `true`) as they get annotated, one at a time, rather than
+annotating the whole codebase in one pass. `relics.py`/`run_map.py`/`events.py`/`shop.py` are the
+first four: small, pygame-free, and already the most heavily-commented "content is data" modules in
+the codebase, so typing their registries/functions was mostly transcribing what the docstrings
+already said -- annotating them also caught one genuine pre-existing bug apiece in `relics.py`'s
+`RelicModifiers` dataclass (`poison_effect`/`chain_effect`/`slow_effect`/`mark_effect: tuple = None`
+and `knockback_effect: float = None` were all typed as required, non-`Optional` fields defaulting to
+`None` -- mypy's `assignment` check catches exactly this class of "the type hint lied" bug, which
+nothing else in this codebase's tooling would have). `follow_imports = "silent"` (also project-wide)
+is what keeps checking one of these four from also re-reporting pre-existing errors in whatever
+*they* import that isn't itself annotated (`relics.py` -> `meta_progression.py`, `shop.py`/
+`events.py` -> `card_pool.py` -> `tower.py`, ...) -- without it, annotating one small module could
+fail CI over an unrelated error several imports away, in a file nobody's touched yet. A parameter
+typed against another module's dataclass (`run: RunState` in all three of `relics.relic_offer`/
+`shop.build_offer`/`events.resolve_event_option`) imports that type under `if TYPE_CHECKING:` rather
+than at module scope -- avoids a real runtime import (`run_state.py` doesn't import any of these four
+back, so there's no actual cycle today, but the guard costs nothing and is the standard shape for a
+type-only import regardless). `rng_sampling.sample_up_to` -- the one shared helper all three of
+`relics.relic_offer`/`run_map.generate_run_map`/(the not-yet-annotated) `card_pool.draft_offer` call
+into -- is fully typed too, via a PEP 695 generic (`def sample_up_to[T](...)`, not `typing.TypeVar`,
+since `ruff`'s `UP047` prefers the newer syntax at this project's `target-version = "py313"`) even
+though it isn't itself one of the four strict-mode modules: left untyped, every annotated caller's
+own `return sample_up_to(...)` would still resolve to `Any` regardless of how carefully the caller
+itself was annotated, defeating the point. To extend this list, annotate the new module, add it to
+both the `pyproject.toml` override's `module` list and this file's Commands block/CI step above, and
+expect any function it calls into that isn't itself annotated to need the same "would this call
+silently launder into `Any`" check `sample_up_to` needed here.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
