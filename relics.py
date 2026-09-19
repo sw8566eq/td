@@ -87,10 +87,15 @@ site. Ungated, matching every batch since the one "category-gaps" batch
 above.
 """
 
+import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import meta_progression
 from rng_sampling import sample_up_to
+
+if TYPE_CHECKING:
+    from run_state import RunState
 
 
 @dataclass(frozen=True)
@@ -823,7 +828,7 @@ RELICS = {
 DEFAULT_RELIC_OFFER_COUNT = 3
 
 
-def _default_relic_pool(meta_progression_path):
+def _default_relic_pool(meta_progression_path: str | None) -> list[str]:
     """Every RELICS key not gated by meta_progression.RELIC_META_UNLOCKS,
     plus whatever that registry says this player has unlocked account-wide
     so far, in RELICS' own stable registry order -- same "stable order
@@ -834,7 +839,13 @@ def _default_relic_pool(meta_progression_path):
     return [key for key in RELICS if key not in gated or key in unlocked_gated]
 
 
-def relic_offer(rng, run, count=DEFAULT_RELIC_OFFER_COUNT, unlocked_pool=None, meta_progression_path=None):
+def relic_offer(
+    rng: random.Random,
+    run: "RunState",
+    count: int = DEFAULT_RELIC_OFFER_COUNT,
+    unlocked_pool: list[str] | None = None,
+    meta_progression_path: str | None = None,
+) -> list[str]:
     """`count` relic keys offered as a relic draft's choices, drawn from
     `unlocked_pool` (default: _default_relic_pool() above, reading
     `meta_progression_path` -- same injectable-path convention every
@@ -921,13 +932,13 @@ class RelicModifiers:
     tower_range_multiplier: float = 1.0
     tower_fire_rate_multiplier: float = 1.0
     poison_chance: float = 0.0
-    poison_effect: tuple = None
+    poison_effect: tuple | None = None
     crit_chance: float = 0.0
     crit_damage_multiplier: float = 1.0
     tower_footprint_shrink: int = 0
     tower_damage_multiplier: float = 1.0
     chain_chance: float = 0.0
-    chain_effect: tuple = None
+    chain_effect: tuple | None = None
     last_stand_damage_multiplier: float = 1.0
     tower_upgrade_cost_multiplier: float = 1.0
     sell_refund_bonus: float = 0.0
@@ -935,7 +946,7 @@ class RelicModifiers:
     support_aura_strength_multiplier: float = 1.0
     damage_vs_slowed_multiplier: float = 1.0
     slow_chance: float = 0.0
-    slow_effect: tuple = None
+    slow_effect: tuple | None = None
     poison_ignores_shield: bool = False
     tower_density_radius: float = 0.0
     tower_density_damage_bonus_per_neighbor: float = 0.0
@@ -945,9 +956,9 @@ class RelicModifiers:
     damage_vs_high_hp_multiplier: float = 1.0
     overkill_carry_fraction: float = 0.0
     knockback_chance: float = 0.0
-    knockback_effect: float = None
+    knockback_effect: float | None = None
     mark_chance: float = 0.0
-    mark_effect: tuple = None
+    mark_effect: tuple | None = None
     damage_vs_flying_multiplier: float = 1.0
     damage_vs_shielded_multiplier: float = 1.0
     splitter_child_damage: float = 0.0
@@ -977,7 +988,9 @@ class RelicModifiers:
     knockback_duration_multiplier: float = 1.0
 
 
-def compose_relic_modifiers(relic_keys, floor_index=0, has_spent_gold=False):
+def compose_relic_modifiers(
+    relic_keys: list[str], floor_index: int = 0, has_spent_gold: bool = False,
+) -> RelicModifiers:
     """Aggregate every relic in `relic_keys` into one RelicModifiers bundle
     -- flat bonuses add, multipliers multiply, so composing several relics
     is order-independent regardless of which was drafted first.

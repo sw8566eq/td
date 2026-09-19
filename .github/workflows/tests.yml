@@ -30,4 +30,10 @@ jobs:
 
       - run: ruff check .
 
+      # Scoped to the modules actually annotated so far (see pyproject.toml's
+      # [[tool.mypy.overrides]] and CLAUDE.md's "Ongoing: incremental mypy
+      # adoption") -- most of the codebase has no type hints yet, so `mypy .`
+      # would fail on files nobody's annotated, not on a real regression.
+      - run: mypy relics.py run_map.py events.py shop.py
+
       - run: pytest -v --cov=. --cov-report=term-missing
