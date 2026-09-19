@@ -14,3 +14,37 @@ target-version = "py313"
 
 [tool.coverage.run]
 omit = ["tests/*", ".venv/*"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+# Deliberately permissive project-wide -- most of this codebase (pygame-
+# facing code especially) has no type hints yet, and this isn't a
+# repo-wide requirement from day one (see CLAUDE.md's "Ongoing:
+# incremental mypy adoption"). Individual modules opt into strict
+# checking below as they're annotated, one at a time, rather than
+# annotating the whole codebase in one pass.
+check_untyped_defs = false
+disallow_untyped_defs = false
+# An annotated module can still import an unannotated one (relics.py ->
+# meta_progression.py, card_pool.py -> tower.py, ...) -- "silent" uses
+# that module's own inferred types for whatever it exports without also
+# re-reporting *its* pre-existing errors just because something we did
+# choose to check happens to import it. Without this, checking one small
+# annotated module could fail CI over an unrelated error in a completely
+# unannotated one several imports away.
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+# The first modules annotated -- small, pygame-free, and already the most
+# heavily-commented "content is data" modules in the codebase, so typing
+# their registries/functions is mostly transcribing what the docstrings
+# already say. CI runs `mypy` against exactly this file list (see
+# .github/workflows/tests.yml), not the whole repo, so this list and that
+# command must be extended together as more modules are annotated.
+module = ["relics", "run_map", "events", "shop"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true

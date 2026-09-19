@@ -20,9 +20,10 @@ used to be stored directly rather than re-derived on demand.
 """
 
 import math
+import random
 from dataclasses import dataclass
 
-from levels import LEVELS
+from levels import LEVELS, Level
 from rng_sampling import sample_up_to
 
 # Unchanged from the old run_floors.DEFAULT_FLOOR_COUNT -- this is what keeps
@@ -113,12 +114,12 @@ REST_HEAL_BASE, REST_HEAL_GROWTH_PER_ROW = 3, 1
 TREASURE_SHOP_CURRENCY_BASE, TREASURE_SHOP_CURRENCY_GROWTH_PER_ROW = 15, 3
 
 
-def heal_amount_for_row(row):
+def heal_amount_for_row(row: int) -> int:
     """Lives restored by a Rest node at this row."""
     return REST_HEAL_BASE + REST_HEAL_GROWTH_PER_ROW * row
 
 
-def treasure_shop_currency_for_row(row):
+def treasure_shop_currency_for_row(row: int) -> int:
     """Guaranteed shop currency granted by a Treasure node at this row --
     it also always grants one relic, degrading gracefully to currency-only
     once every relic is already held (see Game._enter_treasure_node)."""
@@ -138,10 +139,10 @@ class MapNode:
 
 @dataclass(frozen=True)
 class RunMap:
-    rows: tuple  # tuple[tuple[MapNode, ...], ...], outer index == row
-    edges: dict  # {node_id: (node_id, ...)}, row r -> row r+1 only
+    rows: tuple[tuple[MapNode, ...], ...]  # outer index == row
+    edges: dict[str, tuple[str, ...]]  # {node_id: (node_id, ...)}, row r -> row r+1 only
 
-    def node(self, node_id):
+    def node(self, node_id: str) -> "MapNode":
         """The MapNode with this id. A RunMap is small (at most ROW_COUNT *
         MAX_ROW_WIDTH nodes -- well under 30) so a linear scan here is
         simpler than maintaining a second, derived id->node index that
@@ -153,21 +154,21 @@ class RunMap:
         raise KeyError(node_id)
 
     @property
-    def start_node_ids(self):
+    def start_node_ids(self) -> tuple[str, ...]:
         return tuple(n.id for n in self.rows[0])
 
     @property
-    def final_row_index(self):
+    def final_row_index(self) -> int:
         return len(self.rows) - 1
 
     @property
-    def boss_node_id(self):
+    def boss_node_id(self) -> str:
         """The single node in the final row -- see generate_run_map's own
         comment for why that row's width is always fixed at 1."""
         return self.rows[-1][0].id
 
 
-def _level_pool_for_row(row_index, level_pool):
+def _level_pool_for_row(row_index: int, level_pool: dict[int, Level]) -> list[int]:
     """Which LEVELS ids a combat/elite/boss node at this row draws from --
     partitioned by structure (single-spawn "corridor" levels vs.
     multi-spawn "multi-lane" ones), not a hardcoded id list, so this stays
@@ -195,7 +196,7 @@ def _level_pool_for_row(row_index, level_pool):
     return simple_ids if row_index < ROW_COUNT // 2 else complex_ids
 
 
-def _assign_node_types(rng, row_index, width):
+def _assign_node_types(rng: random.Random, row_index: int, width: int) -> list[str]:
     """`width` node types for this row -- row 0 is always all-combat and
     the final row is always all-boss (see generate_run_map); every row
     between them is a weighted random draw from NODE_TYPES, capped at
@@ -232,7 +233,7 @@ def _assign_node_types(rng, row_index, width):
     return types
 
 
-def _generate_edges(rng, rows):
+def _generate_edges(rng: random.Random, rows: list[tuple[MapNode, ...]]) -> dict[str, tuple[str, ...]]:
     """Row-by-row edges: every node in row r gets a "primary" edge to its
     nearest node in row r+1 (by column distance), plus a second edge to a
     different nearby one with EXTRA_EDGE_CHANCE odds -- then a connectivity
@@ -270,7 +271,7 @@ def _generate_edges(rng, rows):
     return edges
 
 
-def generate_run_map(rng, level_pool=LEVELS):
+def generate_run_map(rng: random.Random, level_pool: dict[int, Level] = LEVELS) -> RunMap:
     """A full RunMap for one run, generated deterministically from `rng` --
     the same object Game.start_new_run() seeds once from run.seed, mirroring
     the "generated once up front" shape a full-map-upfront run needs (unlike

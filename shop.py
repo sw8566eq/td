@@ -15,10 +15,15 @@ draft_click); every purchase within one visit costs more than the last
 whole shop in one stop.
 """
 
+import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import card_pool
 import relics
+
+if TYPE_CHECKING:
+    from run_state import RunState
 
 # Fewer of each than the old single-type draft offered (3) -- a shop visit
 # already shows both types together, so keeping each type's own count down
@@ -69,7 +74,7 @@ class ShopItem:
     base_price: int
 
 
-def build_offer(rng, run, meta_progression_path=None):
+def build_offer(rng: random.Random, run: "RunState", meta_progression_path: str | None = None) -> list[ShopItem]:
     """This shop visit's items -- every tower slot first, then every relic
     slot, both sampled from the same `rng` in that fixed order, so a given
     (seed, floor) always offers the identical shop. Either half can come
@@ -89,7 +94,7 @@ def build_offer(rng, run, meta_progression_path=None):
     )
 
 
-def price_for(item, purchases_this_visit, discount_multiplier=1.0):
+def price_for(item: ShopItem, purchases_this_visit: int, discount_multiplier: float = 1.0) -> int:
     """`item`'s actual cost, escalated by how many other items this same
     shop visit has already bought (0 for the first purchase, so the first
     item bought each visit always costs exactly its own base_price), then
@@ -102,7 +107,7 @@ def price_for(item, purchases_this_visit, discount_multiplier=1.0):
     return round(item.base_price * PRICE_ESCALATION ** purchases_this_visit * discount_multiplier)
 
 
-def can_afford(shop_currency, price, unlimited=False):
+def can_afford(shop_currency: int, price: int, unlimited: bool = False) -> bool:
     """Same shape as Economy.can_afford, for shop currency -- shared by
     Game._try_buy_shop_item (the actual purchase gate) and
     ui.draw_draft_screen (what a card renders as affordable), so the two
@@ -113,7 +118,7 @@ def can_afford(shop_currency, price, unlimited=False):
     return unlimited or shop_currency >= price
 
 
-def income_for_floor(floor_index, leftover_gold, is_elite=False):
+def income_for_floor(floor_index: int, leftover_gold: int, is_elite: bool = False) -> int:
     """Shop currency earned when floor_index's floor clears, given
     `leftover_gold` battle gold still unspent at that moment -- the flat,
     escalating half plus a fraction of the leftover (see this module's own
