@@ -61,16 +61,34 @@ opportunity, and a materially larger life cushion heading into it,
 which a live playthrough confirmed for a 2-lane row-3 level (see
 [[td-floor1-wave2-difficulty-spike]] again).
 
-**Known open question, not yet resolved**: a live playthrough against a
-*3*-lane row-3 level (three spawns merging toward two goals, wave 1
-already 18 enemies vs. the 2-lane level's 13) still lost the run
-outright across several attempted strategies, even with this wider
-grace window and two Shop visits' worth of relics/tower unlocks banked
-first. Whether that's this specific level's own wave-1 tuning, 3-lane
-levels needing more than a 2-lane level does structurally, or genuinely
-needing a further grace extension, is unconfirmed -- worth a dedicated
-investigation before changing these constants again rather than
-guessing at another bump.
+**Known open question, still not resolved -- an automated investigation attempt was inconclusive**:
+a live playthrough against a *3*-lane row-3 level (three spawns merging toward two goals, wave 1
+already 18 enemies vs. the 2-lane level's 13) still lost the run outright across several attempted
+strategies, even with this wider grace window and two Shop visits' worth of relics/tower unlocks
+banked first. Whether that's this specific level's own wave-1 tuning, 3-lane levels needing more than
+a 2-lane level does structurally, or genuinely needing a further grace extension, was still
+unconfirmed as of that playthrough.
+
+A follow-up attempt tried resolving it with a scripted headless harness (mirroring commit `41413ad`'s
+own "coverage-greedy automated placement" methodology): a controlled row-3 fight, fixed starting
+lives/relics/drafted-tower pool, tested across all six row-3-eligible levels (three 2-lane controls,
+three 3-lane levels including a retest of the one above) at three starting-lives values and two
+placement strategies (defend-every-lane vs. flank-one-spawn) -- 36 scenarios total. Result: **every
+single scenario lost, 2-lane controls included** -- even the levels a real human playthrough had
+already cleared cleanly. This means the harness's own scripted strategy (cheapest-tower-first
+placement, no tower-type diversification, reactive-only reinforcement) was itself too weak to clear
+*any* row-3 fight, 2-lane or 3-lane alike -- the bot's own competence dominated the outcome
+completely, drowning out whatever signal lane count itself might have contributed. A comparison where
+the control case also fails can't isolate the variable being tested; the automated approach was
+abandoned rather than pushed further, since building a genuinely competent scripted tower-defense
+player (real tower-type mixing, proactive upgrade timing, dynamic reinforcement) is a materially
+bigger undertaking than the throwaway-script scope this kind of investigation is meant to stay within.
+
+**Still worth a dedicated investigation before changing these constants again rather than guessing at
+another bump** -- but the next attempt should be a genuine human-supervised playthrough (the same
+methodology that originally diagnosed and fixed both the wave 1/2 spike and the 2-lane row-3 case
+above), not another automated one, unless a substantially more capable scripted strategy is built
+first.
 """
 
 from dataclasses import dataclass
