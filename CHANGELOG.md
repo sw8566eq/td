@@ -21,6 +21,13 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   surfaced a fresh `no-any-return` error the moment its own return expression called into
   `json_io.py`'s still-unannotated `load_json_with_fallback`, the same "Any laundering" problem
   `rng_sampling.sample_up_to` already solved for the first four modules.
+- Incremental `mypy` adoption, round three: `threshold_unlocks.py`/`meta_progression.py`/
+  `run_state.py`/`card_pool.py` (13 modules total now). Caught a real "type lied" bug in
+  `run_state.RunState.current_node_id` (typed as required but silently defaulting to `None`, the
+  same class of bug v0.3.0's mypy work caught in `RelicModifiers`) and an over-widened
+  `str | None` parameter in the already-strict `relics._default_relic_pool` that should always have
+  been plain `str`. `relics.py`/`shop.py`/`events.py` also drop their `TYPE_CHECKING`-only `RunState`
+  import in favor of a real one, now that `run_state.py` itself is annotated and no cycle exists.
 
 ## [0.3.0] - 2026-09-19
 

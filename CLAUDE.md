@@ -20,7 +20,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
-mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py   # type check -- only the modules annotated so far; also what CI runs
+mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py   # type check -- only the modules annotated so far; also what CI runs
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
@@ -55,12 +55,13 @@ is what keeps checking one of these four from also re-reporting pre-existing err
 `events.py` -> `card_pool.py` -> `tower.py`, ...) -- without it, annotating one small module could
 fail CI over an unrelated error several imports away, in a file nobody's touched yet. A parameter
 typed against another module's dataclass (`run: RunState` in all three of `relics.relic_offer`/
-`shop.build_offer`/`events.resolve_event_option`) imports that type under `if TYPE_CHECKING:` rather
-than at module scope -- avoids a real runtime import (`run_state.py` doesn't import any of these four
-back, so there's no actual cycle today, but the guard costs nothing and is the standard shape for a
-type-only import regardless). `rng_sampling.sample_up_to` -- the one shared helper all three of
-`relics.relic_offer`/`run_map.generate_run_map`/(the not-yet-annotated) `card_pool.draft_offer` call
-into -- is fully typed too, via a PEP 695 generic (`def sample_up_to[T](...)`, not `typing.TypeVar`,
+`shop.build_offer`/`events.resolve_event_option`) is a real top-level import now (`run_state.py` was
+annotated in a later pass -- see below -- and doesn't import any of these three back, so there's no
+actual cycle); it started out imported under `if TYPE_CHECKING:` instead, back when `run_state.py`
+itself was still unannotated, the standard shape for a type-only import when the imported module
+isn't itself part of the strict-checked set yet. `rng_sampling.sample_up_to` -- the one shared helper
+all three of `relics.relic_offer`/`run_map.generate_run_map`/`card_pool.draft_offer` call into -- is
+fully typed too, via a PEP 695 generic (`def sample_up_to[T](...)`, not `typing.TypeVar`,
 since `ruff`'s `UP047` prefers the newer syntax at this project's `target-version = "py313"`): left
 untyped, every annotated caller's own `return sample_up_to(...)` would still resolve to `Any`
 regardless of how carefully the caller itself was annotated, defeating the point. To extend this
@@ -85,6 +86,30 @@ an untyped call. This is the identical problem `sample_up_to` above already solv
 Callable[[], T]) -> T`) for the same reason -- whenever a newly-annotated module's own return
 expression is directly the result of calling an unannotated shared helper, expect to have to type
 that helper too, not just the module on top.
+
+A third pass added `threshold_unlocks.py`/`meta_progression.py`/`run_state.py`/`card_pool.py` --
+this one edited already-strict files too, not just added new ones. `threshold_unlocks.py` is generic
+across `achievements.Achievement`/`meta_progression.py`'s `MetaUnlock`/`RelicMetaUnlock`/
+`LevelMetaUnlock`, none of which it can import without a cycle (`achievements.py` already imports
+*it*) -- typed structurally instead, via a `ThresholdUnlockEntry(Protocol)` (`counter: str`,
+`goal: int`) and a `CountersState(TypedDict)`, with its `registry` parameters typed `Mapping[str,
+ThresholdUnlockEntry]`, not `dict` -- `dict`'s invariance would otherwise reject
+`meta_progression.ALL_UNLOCKS`'s own `dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock]`.
+Annotating `meta_progression.unlocked_relic_pool()` surfaced an over-widened parameter in the
+already-strict `relics._default_relic_pool` (typed `str | None` even though `relic_offer()` always
+coalesces `None` away with `meta_progression_path or meta_progression.META_PROGRESSION_PATH` before
+ever calling it -- fixed to plain `str`; `card_pool._default_unlocked_pool` had the identical
+coalesce-then-call shape and got the same fix, rather than reflexively copying the wrong one).
+`run_state.py` had a genuine "type lied" bug, the same class v0.3.0's `RelicModifiers` catch was:
+`current_node_id: str = None` was a required field silently defaulting to `None` -- fixed to
+`str | None = None`, with `assert self.current_node_id is not None` added to `current_level_id`/
+`current_row` to narrow it back down before indexing into the map (`game.py`'s own
+`_available_node_ids` already treated it as Optional via `if run.current_node_id is None:`, so this
+was never hypothetical -- just previously an uncaught `KeyError(None)` waiting to happen instead of a
+clear assertion). Once `run_state.py` itself was annotated, `relics.py`/`shop.py`/`events.py`'s own
+`if TYPE_CHECKING: from run_state import RunState` guards became unnecessary busywork -- no import
+cycle actually exists (`run_state.py` only reaches `run_map.py`/`levels.py`/`rng_sampling.py`), so all
+three now import `RunState` for real, same as any other cross-module type.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
