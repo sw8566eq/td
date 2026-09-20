@@ -36,4 +36,9 @@ jobs:
       # would fail on files nobody's annotated, not on a real regression.
       - run: mypy relics.py run_map.py events.py shop.py
 
-      - run: pytest -v --cov=. --cov-report=term-missing
+      # 98%, not the measured 98.68% -- leaves ~38 statements of headroom so
+      # ordinary future work doesn't flake CI, while still catching a real
+      # regression given this codebase's own near-100%-everywhere testing
+      # culture. 99% was tried first and already fails today with zero
+      # slack, confirming it's not a viable floor.
+      - run: pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98

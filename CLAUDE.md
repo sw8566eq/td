@@ -16,7 +16,7 @@ python main.py --editor            # launch straight into the map editor (also r
 pytest                             # full suite
 pytest tests/test_run.py           # one file
 pytest tests/test_grid.py::test_non_path_cell_is_buildable   # one test
-pytest -v --cov=. --cov-report=term-missing   # what CI runs (.github/workflows/tests.yml)
+pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs (.github/workflows/tests.yml)
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
@@ -25,8 +25,13 @@ mypy relics.py run_map.py events.py shop.py   # type check -- only the modules a
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
 
-`ruff` (lint) and `pytest-cov` (coverage reporting only, no enforced floor yet) are configured in
-`pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]` sections -- no formatter yet. `tower.py`'s
+`ruff` (lint) and `pytest-cov` are configured in `pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]`
+sections -- no formatter yet (a real `ruff format` pass on this codebase's own established style
+reformats 73 of the ~82 tracked files, since its compact one-line registry entries rely on trailing
+commas ruff format's line-fitting logic doesn't preserve; not worth that scale of mechanical churn).
+`pytest-cov`'s own floor (`--cov-fail-under=98` above) was picked with real headroom below the
+measured 98.68% -- 99% already fails today with zero slack -- enough that ordinary future work
+shouldn't flake CI while still catching a genuine coverage regression. `tower.py`'s
 per-file `RUF012` ignore is deliberate: every `Tower` subclass's class-level `EXTRA_STATS`/
 `SPECIALIZATIONS` dicts are read-only content tables (see "Content is registries, not conditionals"
 below), never mutated at runtime, which is exactly what that rule can't tell apart from a genuine

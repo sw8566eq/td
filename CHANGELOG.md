@@ -6,6 +6,12 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+### Engineering
+
+- CI now enforces a coverage floor (`--cov-fail-under=98`) instead of reporting-only -- the measured
+  baseline was 98.68%, so this closes out a previously-open decision with real headroom rather than
+  flaking on ordinary future work.
+
 ## [0.3.0] - 2026-09-19
 
 ### Added
