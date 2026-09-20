@@ -6,6 +6,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
 ### Added
 
 - First-run onboarding hints: map-screen guidance for a player's whole first run, a tower-placement
