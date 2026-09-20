@@ -9,12 +9,15 @@ exactly random.Random.sample()'s own contract once `count` is clamped to
 the pool size first, but each of the three independently wrote
 `rng.sample(candidates, min(count, len(candidates)))` before this.
 
-Fully typed (via a TypeVar, not just annotated with bare `list`) even
-though this module isn't itself one of relics.py/run_map.py/events.py/
-shop.py's strict mypy overrides (see pyproject.toml) -- every one of
-those calls straight into this function, so leaving it untyped would
-otherwise make each of their own calls resolve to `Any` regardless of how
-carefully the caller itself is annotated.
+Fully typed via a PEP 695 generic (not a bare `list`) since it was needed
+to keep relics.py/run_map.py/events.py/shop.py's own strict mypy checking
+honest well before this module was itself added to the strict override
+list (see pyproject.toml) -- every one of those calls straight into this
+function, so leaving it untyped would otherwise make each of their own
+calls resolve to `Any` regardless of how carefully the caller itself is
+annotated. Added to the override list alongside difficulty.py/economy.py/
+run_history.py/json_io.py once there was nothing left to gain from
+leaving it out -- it needed zero new annotation work, just the listing.
 """
 
 import random

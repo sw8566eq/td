@@ -23,7 +23,7 @@ class DifficultyMode:
     starting_lives_multiplier: float = 1.0
 
 
-DIFFICULTY_MODES = {
+DIFFICULTY_MODES: dict[str, DifficultyMode] = {
     "easy": DifficultyMode(
         "easy", "Easy",
         enemy_hp_multiplier=0.75, enemy_gold_multiplier=1.15,
@@ -36,5 +36,5 @@ DIFFICULTY_MODES = {
         starting_gold_multiplier=0.85, starting_lives_multiplier=0.75,
     ),
 }
-DIFFICULTY_ORDER = list(DIFFICULTY_MODES.keys())  # stable UI order = registry insertion order
-DEFAULT_DIFFICULTY = "normal"
+DIFFICULTY_ORDER: list[str] = list(DIFFICULTY_MODES.keys())  # stable UI order = registry insertion order
+DEFAULT_DIFFICULTY: str = "normal"

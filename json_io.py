@@ -23,6 +23,8 @@ out, all six modules independently wrote the exact same
 
 import json
 import os
+from collections.abc import Callable
+from typing import Any
 
 # The union of every exception any of the four modules' own load_*()
 # functions used to catch individually -- broader than any one of them
@@ -32,7 +34,7 @@ import os
 _FALLBACK_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError)
 
 
-def module_relative_path(module_file, *parts):
+def module_relative_path(module_file: str, *parts: str) -> str:
     """Join `parts` onto the directory containing `module_file` (pass a
     module's own `__file__`), rather than the process's current working
     directory. Callers use this the same way every time:
@@ -40,7 +42,7 @@ def module_relative_path(module_file, *parts):
     return os.path.join(os.path.dirname(os.path.abspath(module_file)), *parts)
 
 
-def load_json_with_fallback(path, transform, default):
+def load_json_with_fallback[T](path: str, transform: Callable[[Any], T], default: Callable[[], T]) -> T:
     """Read and json.parse `path`, pass the raw parsed value through
     `transform` (returning whatever shape the caller actually wants --
     also the place to raise if the data is well-formed JSON but
@@ -48,7 +50,12 @@ def load_json_with_fallback(path, transform, default):
     wave_index/tower-type checks), or return `default()` if the file
     doesn't exist or anything above raises. `default` is a zero-arg
     callable, not a plain value, so a mutable fallback (like `dict` or
-    `list`) is never accidentally shared/aliased across calls."""
+    `list`) is never accidentally shared/aliased across calls. `transform`'s
+    own parameter is `Any`, not a narrower type, since `json.load()`'s
+    return is inherently untyped -- every caller's own `transform` narrows
+    it down to whatever shape `T` actually is (see callers like
+    run_history.load_run_history()'s own inline `transform` lambda for the
+    pattern)."""
     if not os.path.isfile(path):
         return default()
     try:

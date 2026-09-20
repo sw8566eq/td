@@ -34,7 +34,7 @@ jobs:
       # [[tool.mypy.overrides]] and CLAUDE.md's "Ongoing: incremental mypy
       # adoption") -- most of the codebase has no type hints yet, so `mypy .`
       # would fail on files nobody's annotated, not on a real regression.
-      - run: mypy relics.py run_map.py events.py shop.py
+      - run: mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py
 
       # 98%, not the measured 98.68% -- leaves ~38 statements of headroom so
       # ordinary future work doesn't flake CI, while still catching a real

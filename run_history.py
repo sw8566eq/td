@@ -16,7 +16,7 @@ SCHEMA_VERSION = 1
 RUN_HISTORY_PATH = module_relative_path(__file__, "run_history.json")
 
 
-def load_run_history(path=RUN_HISTORY_PATH):
+def load_run_history(path: str = RUN_HISTORY_PATH) -> dict[int, int]:
     """{seed: best_floors_cleared} for every seed played so far, or {} if
     the file doesn't exist yet or fails to parse -- same defensive
     fallback spirit as progress.load_progress()."""
@@ -27,7 +27,7 @@ def load_run_history(path=RUN_HISTORY_PATH):
     )
 
 
-def save_run_history(best_floors_cleared, path=RUN_HISTORY_PATH):
+def save_run_history(best_floors_cleared: dict[int, int], path: str = RUN_HISTORY_PATH) -> None:
     # JSON object keys must be strings -- seeds are ints everywhere else
     # (see load_run_history's own conversion back).
     data = {
@@ -38,7 +38,7 @@ def save_run_history(best_floors_cleared, path=RUN_HISTORY_PATH):
         json.dump(data, f, indent=2)
 
 
-def record_run_result(seed, floors_cleared, path=RUN_HISTORY_PATH):
+def record_run_result(seed: int, floors_cleared: int, path: str = RUN_HISTORY_PATH) -> dict[int, int]:
     """Record a run's outcome for `seed`, keeping the best (highest)
     floors_cleared seen across repeat attempts on that seed rather than
     overwriting with a worse result. Returns the updated {seed:

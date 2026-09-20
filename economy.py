@@ -3,7 +3,9 @@ trivially unit-testable."""
 
 
 class Economy:
-    def __init__(self, starting_gold, starting_lives, unlimited_gold=False, invulnerable=False):
+    def __init__(
+        self, starting_gold: int, starting_lives: int, unlimited_gold: bool = False, invulnerable: bool = False,
+    ) -> None:
         self.gold = starting_gold
         self.lives = starting_lives
         # Debug flag (see main.py --unlimited-gold): every purchase always
@@ -18,30 +20,30 @@ class Economy:
         # while this is set.
         self.invulnerable = invulnerable
 
-    def can_afford(self, cost):
+    def can_afford(self, cost: int) -> bool:
         return self.unlimited_gold or self.gold >= cost
 
-    def spend(self, amount):
+    def spend(self, amount: int) -> bool:
         if not self.can_afford(amount):
             return False
         if not self.unlimited_gold:
             self.gold -= amount
         return True
 
-    def add_gold(self, amount):
+    def add_gold(self, amount: int) -> None:
         self.gold += amount
 
-    def lose_life(self, amount=1):
+    def lose_life(self, amount: int = 1) -> None:
         if self.invulnerable:
             return
         self.lives = max(0, self.lives - amount)
 
     @property
-    def is_out_of_lives(self):
+    def is_out_of_lives(self) -> bool:
         return not self.invulnerable and self.lives <= 0
 
     @property
-    def is_on_last_life(self):
+    def is_on_last_life(self) -> bool:
         """True once lives is down to its last one -- the single answer
         to "is this run on its last life", shared by two independent
         relics that each ask it their own way (Game._lose_a_life's
