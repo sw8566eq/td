@@ -6,6 +6,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-20
+
 ### Added
 
 - Two more relics join the account-wide meta-progression chase: `frostbitten_mark` (gated behind
@@ -36,6 +38,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   `str | None` parameter in the already-strict `relics._default_relic_pool` that should always have
   been plain `str`. `relics.py`/`shop.py`/`events.py` also drop their `TYPE_CHECKING`-only `RunState`
   import in favor of a real one, now that `run_state.py` itself is annotated and no cycle exists.
+- Closed out the long-standing 3-lane row-3 difficulty open question with an honest inconclusive
+  result rather than a guessed constant change: a scripted headless-combat harness couldn't isolate
+  "3-lane structural difficulty" from the bot's own strategic weaknesses (every scenario lost,
+  2-lane controls included), so `run_escalation.py`'s docstring now records the attempt and
+  recommends a human-supervised playtest next.
 
 ## [0.3.0] - 2026-09-19
 
