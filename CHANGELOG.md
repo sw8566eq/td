@@ -6,6 +6,13 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+### Engineering
+
+- `requirements.txt` dependencies now have upper bounds (one major above whatever's currently
+  installed; `ruff` is pre-1.0, so its ceiling is `<1`) instead of open-ended `>=` floors -- a
+  maintenance guard-rail against a future major-version bump silently breaking CI, not a version
+  change (every bound is already satisfied by what's installed today).
+
 ## [0.3.0] - 2026-09-19
 
 ### Added
