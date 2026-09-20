@@ -6,6 +6,14 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+### Added
+
+- Two more relics join the account-wide meta-progression chase: `frostbitten_mark` (gated behind
+  50 total floors cleared) and `plague_mark` (20 runs played) -- the highest-power relics in the
+  registry (1.35x cross-status combo multipliers), joining `flak_rounds`/`breach_charges`/
+  `containment_charges` as long-tail unlocks. `chill_rot`, the third relic in that same batch,
+  stays ungated on purpose so the cross-status mechanic itself is still reachable early.
+
 ### Engineering
 
 - CI now enforces a coverage floor (`--cov-fail-under=98`) instead of reporting-only -- the measured
