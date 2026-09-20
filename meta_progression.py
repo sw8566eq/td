@@ -38,7 +38,8 @@ own note on why that's now only true of the pre-existing 29).
 
 import threshold_unlocks
 from json_io import module_relative_path
-from levels import LEVELS
+from levels import LEVELS, Level
+from threshold_unlocks import CountersState
 
 SCHEMA_VERSION = 1
 META_PROGRESSION_PATH = module_relative_path(__file__, "meta_progression.json")
@@ -49,7 +50,7 @@ class MetaUnlock:
     once `counter` (a key into the persisted counters dict) reaches
     `goal`."""
 
-    def __init__(self, key, tower_name, counter, goal):
+    def __init__(self, key: str, tower_name: str, counter: str, goal: int) -> None:
         self.key = key
         self.tower_name = tower_name
         self.counter = counter
@@ -72,7 +73,7 @@ class MetaUnlock:
 # assumption) has a real card to offer instead of finding STARTER_TOWERS
 # fully exhausted and silently skipping straight to the next floor. Every
 # later threshold only has to keep pace with that, not also solve it.
-META_UNLOCKS = {
+META_UNLOCKS: dict[str, MetaUnlock] = {
     "unlock_knockback": MetaUnlock("unlock_knockback", "knockback", "total_floors_cleared", 1),
     "unlock_poison": MetaUnlock("unlock_poison", "poison", "total_floors_cleared", 3),
     "unlock_lightning": MetaUnlock("unlock_lightning", "lightning", "total_floors_cleared", 5),
@@ -89,7 +90,7 @@ class RelicMetaUnlock:
     MetaUnlock, kept as its own class rather than a generalized one -- see
     this module's own docstring."""
 
-    def __init__(self, key, relic_key, counter, goal):
+    def __init__(self, key: str, relic_key: str, counter: str, goal: int) -> None:
         self.key = key
         self.relic_key = relic_key
         self.counter = counter
@@ -107,7 +108,7 @@ class RelicMetaUnlock:
 # cross-chunk payoff: Game._handle_boss_defeated bumps that counter every
 # time a run's final boss's authored waves clear for the first time, so
 # this is "beat the final boss once" rather than a grind threshold.
-RELIC_META_UNLOCKS = {
+RELIC_META_UNLOCKS: dict[str, RelicMetaUnlock] = {
     "unlock_flak_rounds": RelicMetaUnlock(
         "unlock_flak_rounds", "flak_rounds", "total_floors_cleared", 25,
     ),
@@ -125,7 +126,7 @@ class LevelMetaUnlock:
     drawable into a run's map once `counter` reaches `goal`. Same shape as
     MetaUnlock/RelicMetaUnlock."""
 
-    def __init__(self, key, level_id, counter, goal):
+    def __init__(self, key: str, level_id: int, counter: str, goal: int) -> None:
         self.key = key
         self.level_id = level_id
         self.counter = counter
@@ -136,7 +137,7 @@ class LevelMetaUnlock:
 # new content stays immediately available, matching the design note in
 # this module's own docstring; a run whose map can't draw a gated level id
 # just never offers that node's floor, same as any other seed variance.
-LEVEL_META_UNLOCKS = {
+LEVEL_META_UNLOCKS: dict[str, LevelMetaUnlock] = {
     "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
 }
 
@@ -147,21 +148,23 @@ LEVEL_META_UNLOCKS = {
 # know in advance which registry a given counter_name belongs to. Key
 # namespaces never collide (every key is its own "unlock_<name>" string),
 # so merging is safe.
-ALL_UNLOCKS = {**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}
+ALL_UNLOCKS: dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock] = {
+    **META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS,
+}
 
 
-def load_meta_progression(path=META_PROGRESSION_PATH):
+def load_meta_progression(path: str = META_PROGRESSION_PATH) -> CountersState:
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as achievements.load_achievements()."""
     return threshold_unlocks.load_counters_state(path)
 
 
-def save_meta_progression(state, path=META_PROGRESSION_PATH):
+def save_meta_progression(state: CountersState, path: str = META_PROGRESSION_PATH) -> None:
     threshold_unlocks.save_counters_state(state, path, SCHEMA_VERSION)
 
 
-def bump(counter_name, amount=1, path=META_PROGRESSION_PATH):
+def bump(counter_name: str, amount: int = 1, path: str = META_PROGRESSION_PATH) -> list[str]:
     """Bump `counter_name` by `amount` and return the list of unlock keys
     newly unlocked by this bump (in registry insertion order), across all
     three of META_UNLOCKS/RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS at once
@@ -176,7 +179,7 @@ def bump(counter_name, amount=1, path=META_PROGRESSION_PATH):
     return threshold_unlocks.bump_counter(ALL_UNLOCKS, counter_name, amount, path, SCHEMA_VERSION)
 
 
-def unlocked_tower_pool(path=META_PROGRESSION_PATH):
+def unlocked_tower_pool(path: str = META_PROGRESSION_PATH) -> set[str]:
     """Every TOWER_TYPES name unlocked account-wide via META_UNLOCKS so
     far -- card_pool.draft_offer()'s default pool is this plus
     card_pool.STARTER_TOWERS (composed there, not here, for the same
@@ -186,7 +189,7 @@ def unlocked_tower_pool(path=META_PROGRESSION_PATH):
     return {unlock.tower_name for key, unlock in META_UNLOCKS.items() if key in state["unlocked"]}
 
 
-def unlocked_relic_pool(path=META_PROGRESSION_PATH):
+def unlocked_relic_pool(path: str = META_PROGRESSION_PATH) -> set[str]:
     """Every relics.RELICS key unlocked account-wide via RELIC_META_UNLOCKS
     so far -- relics._default_relic_pool()'s own pool is every RELICS key
     *not* gated here, plus this (mirrors unlocked_tower_pool's shape)."""
@@ -194,7 +197,7 @@ def unlocked_relic_pool(path=META_PROGRESSION_PATH):
     return {unlock.relic_key for key, unlock in RELIC_META_UNLOCKS.items() if key in state["unlocked"]}
 
 
-def unlocked_level_pool(path=META_PROGRESSION_PATH):
+def unlocked_level_pool(path: str = META_PROGRESSION_PATH) -> dict[int, Level]:
     """levels.LEVELS, minus whatever LEVEL_META_UNLOCKS entries haven't
     been unlocked yet -- unlike unlocked_tower_pool/unlocked_relic_pool
     (a small "what's been added" set a caller still has to combine with

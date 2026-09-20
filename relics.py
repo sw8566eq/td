@@ -89,13 +89,10 @@ above.
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import meta_progression
 from rng_sampling import sample_up_to
-
-if TYPE_CHECKING:
-    from run_state import RunState
+from run_state import RunState
 
 
 @dataclass(frozen=True)
@@ -828,7 +825,7 @@ RELICS = {
 DEFAULT_RELIC_OFFER_COUNT = 3
 
 
-def _default_relic_pool(meta_progression_path: str | None) -> list[str]:
+def _default_relic_pool(meta_progression_path: str) -> list[str]:
     """Every RELICS key not gated by meta_progression.RELIC_META_UNLOCKS,
     plus whatever that registry says this player has unlocked account-wide
     so far, in RELICS' own stable registry order -- same "stable order
@@ -841,7 +838,7 @@ def _default_relic_pool(meta_progression_path: str | None) -> list[str]:
 
 def relic_offer(
     rng: random.Random,
-    run: "RunState",
+    run: RunState,
     count: int = DEFAULT_RELIC_OFFER_COUNT,
     unlocked_pool: list[str] | None = None,
     meta_progression_path: str | None = None,

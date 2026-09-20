@@ -19,13 +19,10 @@ including why the given-up relic must be drawn before it's removed.
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import card_pool
 import relics
-
-if TYPE_CHECKING:
-    from run_state import RunState
+from run_state import RunState
 
 _EVENT_ORDER = (
     "wandering_merchant", "ancient_shrine", "abandoned_camp", "friendly_duel",
@@ -343,7 +340,7 @@ def pick_event(rng: random.Random) -> Event:
     return EVENTS[rng.choice(_EVENT_ORDER)]
 
 
-def available_options(event: Event, run: "RunState") -> list[EventOption]:
+def available_options(event: Event, run: RunState) -> list[EventOption]:
     """`event.options`, minus any relic_cost option `run` can't actually
     pay (no relics held) -- mirrors relics.relic_offer's own "return
     fewer, don't crash" precedent for a pool that's run dry, applied here
@@ -358,7 +355,7 @@ def available_options(event: Event, run: "RunState") -> list[EventOption]:
 
 
 def resolve_event_option(
-    run: "RunState", option: EventOption, item_rng: random.Random, meta_progression_path: str | None = None,
+    run: RunState, option: EventOption, item_rng: random.Random, meta_progression_path: str | None = None,
 ) -> dict:
     """Apply `option`'s effects directly onto `run`, returning a small
     {"relic": key} / {"tower": name} / {} dict describing what (if

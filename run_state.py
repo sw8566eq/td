@@ -16,6 +16,8 @@ the starter tower pool a run begins with.
 
 from dataclasses import dataclass, field
 
+from run_map import RunMap
+
 
 @dataclass
 class RunState:
@@ -26,23 +28,23 @@ class RunState:
     # run_map.py's own module docstring for why a full map upfront is
     # generated once rather than re-derived per floor the way _run_rng's
     # streams are).
-    map: object
+    map: RunMap
     difficulty: str
-    unlocked_towers: list
+    unlocked_towers: list[str]
     # The node currently occupied -- None only before the player has picked
     # one of the map's row-0 nodes yet (right after start_new_run(), while
     # sitting on the map screen for the very first time). Replaces the old
     # floor_index int: a branching map has no single "how far along" number
     # that identifies a position the way a flat sequence's index did, only
     # a specific node.
-    current_node_id: str = None
+    current_node_id: str | None = None
     # Every node id resolved so far, in the order they were reached --
     # combat/elite nodes append their own id in Game._advance_run_floor;
     # every other node type appends via Game._finish_node once its own
     # resolution (Shop's Continue, an Event's chosen option, Rest/Treasure's
     # auto-resolve) completes. What RunState.floors_cleared below counts
     # from.
-    visited_node_ids: list = field(default_factory=list)
+    visited_node_ids: list[str] = field(default_factory=list)
     # Placeholder until _load_combat_node captures the very first combat
     # node's own freshly-loaded Economy -- see that method's own docstring
     # for why the run's first-ever node is the one exception to "the run's
@@ -72,7 +74,7 @@ class RunState:
     # mutable-default-arg precedent levels.py's own Level.blocked_cells/
     # branch_weights already establish, so this default is never shared/
     # aliased across RunState instances.
-    relics: list = field(default_factory=list)
+    relics: list[str] = field(default_factory=list)
     # Whether this is a Daily Run -- see Game.start_new_run's own docstring
     # for the one thing that actually branches on it (pinning difficulty
     # to "normal" for a fair, comparable score). Not currently threaded
@@ -105,24 +107,26 @@ class RunState:
     boss_defeated: bool = False
 
     @property
-    def current_level_id(self):
+    def current_level_id(self) -> object:
+        assert self.current_node_id is not None
         return self.map.node(self.current_node_id).level_id
 
     @property
-    def current_row(self):
+    def current_row(self) -> int:
         """Which row of the map the current node sits on -- the depth
         value run_escalation.escalation_for_floor()/relics.
         compose_relic_modifiers() read (see game.py's _floor_load_context),
         the same role floor_index used to play when the run was a flat
         sequence."""
+        assert self.current_node_id is not None
         return self.map.node(self.current_node_id).row
 
     @property
-    def is_final_floor(self):
+    def is_final_floor(self) -> bool:
         return self.current_row == self.map.final_row_index
 
     @property
-    def floors_cleared(self):
+    def floors_cleared(self) -> int:
         """How many Combat/Elite nodes have been fully cleared so far --
         deliberately excludes Shop/Event/Rest/Treasure stops, so browsing a
         handful of non-combat nodes on the way to the boss doesn't inflate

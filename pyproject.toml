@@ -59,7 +59,26 @@ follow_imports = "silent"
 # sample_up_to was already solving for relics.py/run_map.py/events.py/
 # shop.py -- json_io.load_json_with_fallback needed the identical PEP 695
 # generic treatment for the same reason.
-module = ["relics", "run_map", "events", "shop", "rng_sampling", "difficulty", "economy", "run_history", "json_io"]
+# A third pass added threshold_unlocks/meta_progression/run_state/
+# card_pool -- this one edited already-strict files too, not just added
+# new ones: annotating meta_progression.unlocked_relic_pool() surfaced an
+# over-widened parameter in the already-strict relics._default_relic_pool
+# (typed `str | None` even though relic_offer() always coalesces None away
+# before calling it -- fixed to plain `str`; card_pool._default_unlocked_
+# pool had the identical shape and got the same fix). run_state.py also
+# had a genuine "type lied" bug, same class as v0.3.0's RelicModifiers
+# catch: `current_node_id: str = None` was a required field silently
+# defaulting to None -- fixed to `str | None = None`, with `assert
+# self.current_node_id is not None` added to current_level_id/current_row
+# to narrow it back down before indexing into the map (game.py:744 already
+# treated it as Optional, so this was never hypothetical). Once run_state.py
+# itself was annotated, relics.py/shop.py/events.py's own `if TYPE_CHECKING:
+# from run_state import RunState` guards became unnecessary -- no import
+# cycle exists, so all three now import RunState for real.
+module = [
+    "relics", "run_map", "events", "shop", "rng_sampling", "difficulty", "economy", "run_history", "json_io",
+    "threshold_unlocks", "meta_progression", "run_state", "card_pool",
+]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true

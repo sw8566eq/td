@@ -28,18 +28,37 @@ its own JSON file's schema version and default path.
 """
 
 import json
+from collections.abc import Mapping
+from typing import Any, Protocol, TypedDict
 
 from json_io import load_json_with_fallback
 
 
-def empty_counters_state():
+class CountersState(TypedDict):
+    counters: dict[str, int]
+    unlocked: set[str]
+
+
+class ThresholdUnlockEntry(Protocol):
+    """The shape unlock_crossed_thresholds()/bump_counter()/set_counter()
+    actually need from a registry entry -- achievements.Achievement and
+    meta_progression.py's MetaUnlock/RelicMetaUnlock/LevelMetaUnlock all
+    satisfy this structurally without importing (or being imported by)
+    this module, which is exactly why this is a Protocol rather than a
+    shared base class: achievements.py already imports this module, so a
+    real import the other way would be a cycle."""
+    counter: str
+    goal: int
+
+
+def empty_counters_state() -> CountersState:
     """{"counters": {}, "unlocked": set()} -- the shared empty/fallback
     state shape, passed as the `default` callable to
     json_io.load_json_with_fallback."""
     return {"counters": {}, "unlocked": set()}
 
 
-def parse_counters_state(data):
+def parse_counters_state(data: Any) -> CountersState:
     """Parse a persisted counters-state JSON blob back into
     {"counters": {name: int}, "unlocked": {key, ...}} -- the shared load
     transform, passed to json_io.load_json_with_fallback."""
@@ -49,13 +68,20 @@ def parse_counters_state(data):
     }
 
 
-def unlock_crossed_thresholds(registry, state, counter_name):
+def unlock_crossed_thresholds(
+    registry: Mapping[str, ThresholdUnlockEntry], state: CountersState, counter_name: str,
+) -> list[str]:
     """Mutate state["unlocked"] with every not-yet-unlocked `registry`
     entry (each needing its own .counter/.goal attributes) keyed off
     `counter_name` whose goal state["counters"][counter_name] now meets or
     exceeds, and return the list of keys newly added (in registry
     insertion order) -- shared by bump_counter()/set_counter() below,
-    which differ only in how they arrive at the counter's new value."""
+    which differ only in how they arrive at the counter's new value.
+    `registry` is typed as `Mapping`, not `dict` -- dict's invariance
+    would reject a caller's own `dict[str, MetaUnlock | RelicMetaUnlock |
+    LevelMetaUnlock]` here, since none of those three is `dict[str,
+    ThresholdUnlockEntry]` itself even though each one structurally
+    satisfies the Protocol."""
     newly_unlocked = []
     for key, entry in registry.items():
         if key in state["unlocked"]:
@@ -66,14 +92,14 @@ def unlock_crossed_thresholds(registry, state, counter_name):
     return newly_unlocked
 
 
-def load_counters_state(path):
+def load_counters_state(path: str) -> CountersState:
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as progress.load_progress()."""
     return load_json_with_fallback(path, parse_counters_state, empty_counters_state)
 
 
-def save_counters_state(state, path, schema_version):
+def save_counters_state(state: CountersState, path: str, schema_version: int) -> None:
     data = {
         "schema_version": schema_version,
         "counters": state["counters"],
@@ -83,7 +109,9 @@ def save_counters_state(state, path, schema_version):
         json.dump(data, f, indent=2)
 
 
-def bump_counter(registry, counter_name, amount, path, schema_version):
+def bump_counter(
+    registry: Mapping[str, ThresholdUnlockEntry], counter_name: str, amount: int, path: str, schema_version: int,
+) -> list[str]:
     """Bump `counter_name` by `amount` and return the list of `registry`
     keys newly unlocked by this bump (in registry insertion order). For a
     counter that's a simple +1-(or more)-per-event tally -- load the
@@ -98,7 +126,9 @@ def bump_counter(registry, counter_name, amount, path, schema_version):
     return newly_unlocked
 
 
-def set_counter(registry, counter_name, value, path, schema_version):
+def set_counter(
+    registry: Mapping[str, ThresholdUnlockEntry], counter_name: str, value: int, path: str, schema_version: int,
+) -> list[str]:
     """Set `counter_name` to max(current value, `value`) and return the
     list of `registry` keys newly unlocked (same contract as
     bump_counter()). For a counter driven by an already-deduplicated

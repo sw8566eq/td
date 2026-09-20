@@ -17,13 +17,10 @@ whole shop in one stop.
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import card_pool
 import relics
-
-if TYPE_CHECKING:
-    from run_state import RunState
+from run_state import RunState
 
 # Fewer of each than the old single-type draft offered (3) -- a shop visit
 # already shows both types together, so keeping each type's own count down
@@ -74,7 +71,7 @@ class ShopItem:
     base_price: int
 
 
-def build_offer(rng: random.Random, run: "RunState", meta_progression_path: str | None = None) -> list[ShopItem]:
+def build_offer(rng: random.Random, run: RunState, meta_progression_path: str | None = None) -> list[ShopItem]:
     """This shop visit's items -- every tower slot first, then every relic
     slot, both sampled from the same `rng` in that fixed order, so a given
     (seed, floor) always offers the identical shop. Either half can come
