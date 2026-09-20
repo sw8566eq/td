@@ -1,6 +1,6 @@
-pygame>=2.5
-pytest>=8.0
-pyinstaller>=6.0
-ruff>=0.6
-pytest-cov>=5.0
-mypy>=1.11
+pygame>=2.5,<3
+pytest>=8.0,<10
+pyinstaller>=6.0,<7
+ruff>=0.6,<1
+pytest-cov>=5.0,<8
+mypy>=1.11,<3
