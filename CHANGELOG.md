@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Engineering
 
+- CI now enforces a coverage floor (`--cov-fail-under=98`) instead of reporting-only -- the measured
+  baseline was 98.68%, so this closes out a previously-open decision with real headroom rather than
+  flaking on ordinary future work.
 - `requirements.txt` dependencies now have upper bounds (one major above whatever's currently
   installed; `ruff` is pre-1.0, so its ceiling is `<1`) instead of open-ended `>=` floors -- a
   maintenance guard-rail against a future major-version bump silently breaking CI, not a version
