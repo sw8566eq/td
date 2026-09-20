@@ -167,6 +167,21 @@ sharp edge that fell out of this: three of `Game`'s own delegators (`_handle_edi
 own siblings -- each needed one small dedicated regression test calling the `Game`-level method by
 name to keep coverage honest (see `test_game.py`/`test_game_editor.py`'s own "called directly" tests).
 
+The achievement/meta-progression/toast-recording group (`_record_level_cleared`/
+`_record_progress_counter`/`_record_achievement`/`_queue_achievement_toasts`/`_record_meta_progress`/
+`_queue_meta_unlock_toasts`/`_queue_toast`) is the third slice, moved into
+`progress_tracker.ProgressTracker` (`progress_tracker.py`) the same way. This slice improves on
+`InputHandler`'s own precedent rather than repeating its sharp edge: this group's real callers
+(`try_place_tower`/`try_upgrade_tower`/`try_specialize_tower`, `update()`'s own kill/wave/level-clear
+hooks, `_advance_run_floor`, `_record_run_permadeath`, `_handle_boss_defeated`) all stay on `Game`,
+rather than every caller having moved too the way `InputHandler`'s 21 methods did -- so `Game` keeps a
+one-line delegator only for the 5 methods with a real external caller or a direct test reference
+(`_record_level_cleared`/`_record_achievement`/`_record_meta_progress`/`_queue_meta_unlock_toasts`/
+`_queue_toast`), while `_record_progress_counter`/`_queue_achievement_toasts` (called only by methods
+that moved here too) get no `Game`-level shim at all -- the same "private helper, no delegator" shape
+`renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
+move, so unlike `InputHandler`'s slice, no new "called directly" regression tests were needed.
+
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
 played on its own still works exactly as it always did, but that's now Practice, a side path; the
 main path is a run. Read the next section before anything else here.
