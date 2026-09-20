@@ -21,6 +21,7 @@ just supplies its own registry/path/schema version to it.
 import levels
 import threshold_unlocks
 from json_io import module_relative_path
+from threshold_unlocks import CountersState
 
 SCHEMA_VERSION = 1
 ACHIEVEMENTS_PATH = module_relative_path(__file__, "achievements.json")
@@ -30,7 +31,7 @@ class Achievement:
     """One registry entry -- unlocked once `counter` (a key into the
     persisted counters dict) reaches `goal`."""
 
-    def __init__(self, key, display_name, description, counter, goal):
+    def __init__(self, key: str, display_name: str, description: str, counter: str, goal: int) -> None:
         self.key = key
         self.display_name = display_name
         self.description = description
@@ -84,18 +85,18 @@ ACHIEVEMENTS = {
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 
 
-def load_achievements(path=ACHIEVEMENTS_PATH):
+def load_achievements(path: str = ACHIEVEMENTS_PATH) -> CountersState:
     """{"counters": {name: int}, "unlocked": {key, ...}} -- falls back to
     empty state if the file doesn't exist yet or fails to parse, same
     spirit as progress.load_progress()."""
     return threshold_unlocks.load_counters_state(path)
 
 
-def save_achievements(state, path=ACHIEVEMENTS_PATH):
+def save_achievements(state: CountersState, path: str = ACHIEVEMENTS_PATH) -> None:
     threshold_unlocks.save_counters_state(state, path, SCHEMA_VERSION)
 
 
-def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
+def bump(counter_name: str, amount: int = 1, path: str = ACHIEVEMENTS_PATH) -> list[str]:
     """Bump `counter_name` by `amount` and return the list of achievement
     keys newly unlocked by this bump (in ACHIEVEMENT_ORDER). For a
     counter that's a simple +1-(or more)-per-event tally -- kills, towers
@@ -103,7 +104,7 @@ def bump(counter_name, amount=1, path=ACHIEVEMENTS_PATH):
     return threshold_unlocks.bump_counter(ACHIEVEMENTS, counter_name, amount, path, SCHEMA_VERSION)
 
 
-def set_counter(counter_name, value, path=ACHIEVEMENTS_PATH):
+def set_counter(counter_name: str, value: int, path: str = ACHIEVEMENTS_PATH) -> list[str]:
     """Set `counter_name` to max(current value, `value`) and return the
     list of achievement keys newly unlocked (same contract as bump()).
     For a counter driven by an already-deduplicated external count --
