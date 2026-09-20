@@ -15,6 +15,12 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   installed; `ruff` is pre-1.0, so its ceiling is `<1`) instead of open-ended `>=` floors -- a
   maintenance guard-rail against a future major-version bump silently breaking CI, not a version
   change (every bound is already satisfied by what's installed today).
+- Incremental `mypy` adoption continues: `rng_sampling.py`/`difficulty.py`/`economy.py`/
+  `run_history.py`/`json_io.py` are now strictly type-checked too (9 modules total). `json_io.py`
+  turned out to be a prerequisite, not an independent addition -- annotating `run_history.py`
+  surfaced a fresh `no-any-return` error the moment its own return expression called into
+  `json_io.py`'s still-unannotated `load_json_with_fallback`, the same "Any laundering" problem
+  `rng_sampling.sample_up_to` already solved for the first four modules.
 
 ## [0.3.0] - 2026-09-19
 

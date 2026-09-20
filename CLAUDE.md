@@ -20,7 +20,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
-mypy relics.py run_map.py events.py shop.py   # type check -- only the modules annotated so far; also what CI runs
+mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py   # type check -- only the modules annotated so far; also what CI runs
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
@@ -61,13 +61,30 @@ back, so there's no actual cycle today, but the guard costs nothing and is the s
 type-only import regardless). `rng_sampling.sample_up_to` -- the one shared helper all three of
 `relics.relic_offer`/`run_map.generate_run_map`/(the not-yet-annotated) `card_pool.draft_offer` call
 into -- is fully typed too, via a PEP 695 generic (`def sample_up_to[T](...)`, not `typing.TypeVar`,
-since `ruff`'s `UP047` prefers the newer syntax at this project's `target-version = "py313"`) even
-though it isn't itself one of the four strict-mode modules: left untyped, every annotated caller's
-own `return sample_up_to(...)` would still resolve to `Any` regardless of how carefully the caller
-itself was annotated, defeating the point. To extend this list, annotate the new module, add it to
-both the `pyproject.toml` override's `module` list and this file's Commands block/CI step above, and
-expect any function it calls into that isn't itself annotated to need the same "would this call
-silently launder into `Any`" check `sample_up_to` needed here.
+since `ruff`'s `UP047` prefers the newer syntax at this project's `target-version = "py313"`): left
+untyped, every annotated caller's own `return sample_up_to(...)` would still resolve to `Any`
+regardless of how carefully the caller itself was annotated, defeating the point. To extend this
+list, annotate the new module, add it to both the `pyproject.toml` override's `module` list and this
+file's Commands block/CI step above, and expect any function it calls into that isn't itself
+annotated to need the same "would this call silently launder into `Any`" check `sample_up_to` needed
+here.
+
+A second pass added five more modules: `rng_sampling.py` (already fully typed per the paragraph
+above, just missing from the override list until now -- zero new annotation work), `difficulty.py`
+(a typed `@dataclass DifficultyMode` already; just needed `DIFFICULTY_MODES`/`DIFFICULTY_ORDER`/
+`DEFAULT_DIFFICULTY` themselves annotated), `economy.py` (plain `int`/`bool` signatures throughout,
+its own docstring already said "pure Python, no pygame dependency"), `run_history.py`, and
+`json_io.py` -- the last one a genuine prerequisite, not an independent addition: annotating
+`run_history.load_run_history() -> dict[int, int]` to `return load_json_with_fallback(...)` directly
+surfaced a *fresh* `no-any-return` error, because `json_io.py` itself was still unannotated --
+`follow_imports = "silent"` only suppresses re-reporting an unannotated callee's own errors, it
+doesn't stop `warn_return_any` from firing when a strict function's return is directly the result of
+an untyped call. This is the identical problem `sample_up_to` above already solves for
+`relics.py`/`run_map.py`/`events.py`/`shop.py`; `json_io.load_json_with_fallback` needed the same PEP
+695 generic treatment (`def load_json_with_fallback[T](path, transform: Callable[[Any], T], default:
+Callable[[], T]) -> T`) for the same reason -- whenever a newly-annotated module's own return
+expression is directly the result of calling an unannotated shared helper, expect to have to type
+that helper too, not just the module on top.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --

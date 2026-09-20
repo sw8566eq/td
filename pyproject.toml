@@ -42,7 +42,24 @@ follow_imports = "silent"
 # already say. CI runs `mypy` against exactly this file list (see
 # .github/workflows/tests.yml), not the whole repo, so this list and that
 # command must be extended together as more modules are annotated.
-module = ["relics", "run_map", "events", "shop"]
+#
+# rng_sampling/difficulty/economy/run_history/json_io were added in a
+# second pass -- each pygame-free and either trivially annotatable
+# (difficulty.py's registries, economy.py's plain int/bool methods) or
+# already fully typed and just missing from this list (rng_sampling.py).
+# json_io.py had to join this list as a prerequisite, not a standalone
+# addition: annotating run_history.py's load_run_history() to return
+# dict[int, int] surfaced a fresh no-any-return error the moment its body
+# (`return load_json_with_fallback(...)`) called into json_io.py while
+# json_io.py itself stayed unannotated -- follow_imports = "silent" only
+# suppresses re-reporting an unannotated callee's *own* errors, it doesn't
+# stop warn_return_any from firing when a strict function's return value
+# is directly the result of an untyped call. This is the exact same
+# "would this call silently launder into Any" problem rng_sampling.
+# sample_up_to was already solving for relics.py/run_map.py/events.py/
+# shop.py -- json_io.load_json_with_fallback needed the identical PEP 695
+# generic treatment for the same reason.
+module = ["relics", "run_map", "events", "shop", "rng_sampling", "difficulty", "economy", "run_history", "json_io"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
