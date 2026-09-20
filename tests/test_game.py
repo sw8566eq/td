@@ -15,17 +15,20 @@ import pygame
 import pytest
 from conftest import (
     cell_center_px,
+    clear_key_mods,
     clear_mouse_mock,
     find_buildable_anchor,
     finish_all_waves,
     make_custom_level,
     make_game,
+    mock_key_mods,
     mock_mouse_pos,
     spy_on_audio,
 )
 
 import achievements
 import difficulty
+import keybindings
 import player_settings
 import progress
 import save_state
@@ -2046,7 +2049,7 @@ def test_a_fresh_game_instance_picks_up_previously_persisted_settings(tmp_path):
     finally:
         pygame.quit()
 
-    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    second = make_game(tmp_path)  # same tmp_path -> same seven paths as `first`
     try:
         assert second.fullscreen is True
         assert second.difficulty == "hard"
@@ -2061,7 +2064,7 @@ def test_a_fresh_game_instance_restores_a_previously_persisted_window_size(tmp_p
     finally:
         pygame.quit()
 
-    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    second = make_game(tmp_path)  # same tmp_path -> same seven paths as `first`
     try:
         assert second.window_size == (1440, 840)
         assert second.screen.get_size() == (1440, 840)
@@ -2076,10 +2079,223 @@ def test_a_fresh_game_instance_restores_a_previously_persisted_sound_volume(tmp_
     finally:
         pygame.quit()
 
-    second = make_game(tmp_path)  # same tmp_path -> same six paths as `first`
+    second = make_game(tmp_path)  # same tmp_path -> same seven paths as `first`
     try:
         assert second.sound_volume == 0.4
         assert second.audio.volume == 0.4
+    finally:
+        pygame.quit()
+
+
+# --- Keybinds screen (GameState.KEYBINDS) ---
+
+
+def test_settings_click_on_keybinds_entry_enters_keybinds(game):
+    game.state = GameState.SETTINGS
+    game._handle_settings_click(game.keybinds_entry_button_rect.center)
+    assert game.state == GameState.KEYBINDS
+    assert game.keybind_listening_for is None
+    assert game.keybind_message is None
+
+
+def test_keybinds_escape_returns_to_settings(game):
+    game._enter_keybinds()
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.SETTINGS
+
+
+def test_keybinds_row_click_enters_listening_mode(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+    assert game.keybind_listening_for == "pause"
+
+
+def test_keybinds_capturing_a_plain_key_rebinds_the_action(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_k)
+
+    assert game.keybindings["pause"] == (pygame.K_k, 0)
+    assert game.keybind_listening_for is None
+    assert game.keybind_message == "Pause rebound."
+
+
+def test_keybinds_capturing_with_a_modifier_held_stores_it(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["editor_undo"].center)
+
+    mock_key_mods(pygame.KMOD_LSHIFT)
+    try:
+        game._handle_keydown(pygame.K_u)
+    finally:
+        clear_key_mods()
+
+    assert game.keybindings["editor_undo"] == (pygame.K_u, pygame.KMOD_SHIFT)
+
+
+def test_keybinds_capture_ignores_a_bare_modifier_keypress(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_LCTRL)  # still listening -- not a real key yet
+    assert game.keybind_listening_for == "pause"
+
+    game._handle_keydown(pygame.K_k)
+    assert game.keybindings["pause"] == (pygame.K_k, 0)
+
+
+def test_keybinds_escape_while_listening_cancels_without_rebinding(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    assert game.keybind_listening_for is None
+    assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+    assert game.keybind_message == "Rebind canceled."
+
+
+def test_keybinds_click_while_listening_cancels_without_rebinding(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keybinds_click((0, 0))  # anywhere, not just off every row
+
+    assert game.keybind_listening_for is None
+    assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+
+
+def test_keybinds_rebinding_to_escape_is_rejected(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    # Escape while listening is the cancel path, not a captured Escape
+    # binding either way -- keybindings.RESERVED_KEYS forbids it outright.
+    assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+
+
+def test_rebind_action_rejects_escape_directly():
+    assert keybindings.is_reserved(pygame.K_ESCAPE)
+
+
+def test_keybinds_rebinding_to_a_key_already_used_in_the_same_group_is_rejected(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_SPACE)  # already skip_wave's default
+
+    assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+    assert game.keybind_message == "Already used by Skip Wave / Start."
+
+
+def test_keybinds_reset_restores_every_default(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+    game._handle_keydown(pygame.K_k)
+    assert game.keybindings["pause"] == (pygame.K_k, 0)
+
+    game._handle_keybinds_click(game.keybinds_reset_rect.center)
+
+    assert game.keybindings == keybindings.DEFAULT_BINDINGS
+    assert game.keybind_message == "Reset to defaults."
+
+
+def test_keybinds_back_button_returns_to_settings(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybinds_back_rect.center)
+    assert game.state == GameState.SETTINGS
+
+
+def test_keybinds_click_off_any_button_is_a_no_op(game):
+    game._enter_keybinds()
+    game._handle_keybinds_click((0, 0))
+    assert game.state == GameState.KEYBINDS
+    assert game.keybind_listening_for is None
+
+
+def test_rebound_pause_key_is_what_actually_pauses(playing_game):
+    playing_game.rebind_action("pause", pygame.K_k, 0)
+
+    playing_game._handle_keydown(pygame.K_p)  # the old default -- no longer bound
+    assert playing_game.state == GameState.PLAYING
+
+    playing_game._handle_keydown(pygame.K_k)
+    assert playing_game.state == GameState.PAUSED
+
+
+def test_escape_still_pauses_even_after_pause_is_rebound(playing_game):
+    playing_game.rebind_action("pause", pygame.K_k, 0)
+    playing_game._handle_keydown(pygame.K_ESCAPE)
+    assert playing_game.state == GameState.PAUSED
+
+
+def test_rebound_pause_key_also_resumes_from_paused(playing_game):
+    playing_game.rebind_action("pause", pygame.K_k, 0)
+    playing_game._handle_keydown(pygame.K_k)
+    assert playing_game.state == GameState.PAUSED
+
+    playing_game._handle_keydown(pygame.K_k)
+
+    assert playing_game.state == GameState.PLAYING
+
+
+def test_old_default_pause_key_no_longer_resumes_once_rebound(playing_game):
+    playing_game.rebind_action("pause", pygame.K_k, 0)
+    playing_game._handle_keydown(pygame.K_k)
+    assert playing_game.state == GameState.PAUSED
+
+    playing_game._handle_keydown(pygame.K_p)  # the old default
+
+    assert playing_game.state == GameState.PAUSED  # still paused -- P no longer resumes either
+
+
+def test_rebound_skip_wave_key_is_what_actually_skips(playing_game):
+    playing_game.rebind_action("skip_wave", pygame.K_g, 0)
+    assert playing_game.wave_manager.between_wave_timer > 0
+
+    playing_game._handle_keydown(pygame.K_SPACE)  # the old default
+    assert playing_game.wave_manager.between_wave_timer > 0
+
+    playing_game._handle_keydown(pygame.K_g)
+    assert playing_game.wave_manager.between_wave_timer <= 0
+
+
+def test_rebound_editor_undo_key_is_what_actually_undoes(game):
+    game.rebind_action("editor_undo", pygame.K_u, pygame.KMOD_CTRL)
+    game.state = GameState.EDITOR
+    game.editor.paint_at(*cell_center_px((0, 0)))
+    assert len(game.editor.path_cells) == 1
+
+    mock_key_mods(pygame.KMOD_CTRL)
+    try:
+        game._handle_keydown(pygame.K_z)  # the old default -- no longer bound
+        assert len(game.editor.path_cells) == 1
+
+        game._handle_keydown(pygame.K_u)
+        assert len(game.editor.path_cells) == 0
+    finally:
+        clear_key_mods()
+
+
+def test_rebind_action_persists_to_the_keybindings_file(game):
+    game.rebind_action("pause", pygame.K_k, 0)
+    reloaded = keybindings.load_bindings(game.keybindings_path)
+    assert reloaded["pause"] == (pygame.K_k, 0)
+
+
+def test_a_fresh_game_instance_picks_up_previously_persisted_keybindings(tmp_path):
+    first = make_game(tmp_path)
+    try:
+        first.rebind_action("pause", pygame.K_k, 0)
+    finally:
+        pygame.quit()
+
+    second = make_game(tmp_path)  # same tmp_path -> same seven paths as `first`
+    try:
+        assert second.keybindings["pause"] == (pygame.K_k, 0)
     finally:
         pygame.quit()
 

@@ -890,6 +890,69 @@ chiefly the whole test suite, needed no changes; `SupportTower.update()` accepts
 for call-signature parity with `Game.update()`'s uniform per-tower call but never reads it, since it
 never attacks and so never calls `acquire_target()` at all.
 
+### Key remapping is curated, not repo-wide
+
+`keybindings.py` lets the player rebind a small, deliberately-chosen subset of actions --
+`PLAYING_ACTIONS` (`pause`/`skip_wave`/`time_scale_1`/`time_scale_2`/`time_scale_3`/`open_relics`)
+and `EDITOR_ACTIONS` (`editor_undo`/`editor_redo`) -- not every hardcoded `pygame.K_*` check
+`input_handler.py`'s `_handle_keydown` makes. The reason it's a subset: several keys there already
+carry *different logical meanings* depending on game state (`Escape` alone means quit, back,
+cancel-a-pending-confirm, or resume depending on which state reads it; `R`/`P`/`S` each carry 2-3
+meanings of their own), and a real remapping system would mean splitting each of those into
+separate logical actions per state rather than one action per physical key -- scoped out in favor of
+just the actions a player would plausibly want to rebind for ergonomics. `Escape` itself is never
+remappable at all (`keybindings.RESERVED_KEYS`) -- it drives fixed back/cancel/quit navigation in
+every single state, so assigning it to some other action would make that action unreachable (Escape's
+own hardcoded check always runs first and wins) without actually freeing Escape's own behavior.
+
+Every binding is a `(key, mods)` pair, `mods` a bitmask of only the three "family" bits
+(`KMOD_CTRL`/`KMOD_SHIFT`/`KMOD_ALT`) a binding requires, 0 meaning "no modifier" -- one shape for
+both a plain action and `editor_undo`/`editor_redo`'s Ctrl+Z/Ctrl+Y defaults, rather than a separate
+"combo" concept bolted on. `keybindings.normalize_mods()` collapses `pygame.key.get_mods()`'s
+left/right-specific bits down to those three canonical ones (so a binding captured with the right
+Ctrl still matches a later press of the left Ctrl); `keybindings.matches(binding, key, mods)` is what
+every dispatch site (`input_handler.py`'s `PLAYING`/`_handle_editor_undo_redo_keydown` branches) and
+the capture UI both call, and mirrors each action's own pre-remapping behavior exactly: an
+unmodified binding matches on the key alone regardless of whatever else is incidentally held (Space
+still skips the wave delay whether or not Shift happens to be down too, same as before this module
+existed), a modified one only needs its required bits present, not an exact match (same as the
+original `mods & pygame.KMOD_CTRL` check for Ctrl+Z/Ctrl+Y).
+
+`PLAYING_ACTIONS`/`EDITOR_ACTIONS` are two disjoint groups because they're read from two disjoint
+game states (`PLAYING`, and `EDITOR`/`WAVE_EDITOR`) -- `keybindings.find_conflict()` (what
+`Game.rebind_action()` calls before accepting a new binding) only ever checks for a clash within one
+group, never across both, since two actions in different groups can never actually collide at
+dispatch time regardless of whether they happen to share a key. `Game.rebind_action(action, key,
+mods)` rejects (leaving the existing binding untouched, `self.keybind_message` set to say why) a
+reserved key or an in-group conflict, same "click does nothing" precedent `try_place_tower`'s own
+unbuildable-spot case sets -- except this one does set a message either way, since `GameState.
+KEYBINDS` has nothing else on screen to explain *why* a click didn't do what was expected.
+
+`PLAYING`'s own "pause" action needed one extra piece of symmetry beyond a plain dispatch-site swap:
+`Escape`'s own fixed pause behavior stays completely separate from the "pause" *action* (Escape
+always pauses regardless of what's bound), but the action itself is one *toggle* -- so
+`input_handler.py`'s `PAUSED` branch checks the exact same `keybindings.matches(game.keybindings
+["pause"], ...)` the `PLAYING` branch does for its own P-to-resume equivalent, not a second hardcoded
+`pygame.K_p`. Get this wrong and rebinding "pause" away from P lets a player pause with their new key
+but never un-pause with it (only the stale default P, or Escape, would still resume) -- a half-migrated
+toggle. `ui.draw_pause_menu`'s own "Esc / P -- Resume" hint takes a `pause_key_label` param
+(`ui.binding_display_string(game.keybindings["pause"])`, rendered fresh every frame) for the same
+reason -- a hardcoded "P" in that hint would go stale the moment a player actually rebinds it.
+
+`GameState.KEYBINDS` (reached via a "Keybinds..." button on the Settings screen, drawn to the right
+of "Back to Menu" rather than as a 10th entry in `SETTINGS_OPTION_ORDER`'s own stacked column, which
+would run past the bottom of the fixed 1200x704 canvas -- same "own small rect, not part of that
+column" shape `build_volume_button_rects` already uses) is one row per `keybindings.ACTION_ORDER`
+action, each a button showing its current binding; clicking one starts "listening"
+(`Game.keybind_listening_for`), and the next keydown is captured as that action's new binding
+(`input_handler.py`'s `_handle_keybinds_keydown`) -- a bare modifier keydown (`keybindings.
+MODIFIER_KEY_CODES`) doesn't complete a capture on its own (waiting for the real key it's meant to
+combine with), and Escape cancels the capture instead of ever being captured itself. A Reset button
+restores `keybindings.DEFAULT_BINDINGS` wholesale. Persisted the same way as every other small
+on-disk JSON state file (see that section below) -- `keybindings.py`'s own `load_bindings`/
+`save_bindings`, injectable via `Game(keybindings_path=...)` exactly like `settings_path` etc., so
+tests and the `run-td` skill's driver never touch the real repo-root `keybindings.json`.
+
 ### Post-level results
 
 Every `Tower` tracks its own lifetime `shots_fired`/`shots_hit`/`damage_dealt`/`kills` purely for
@@ -1000,13 +1063,13 @@ modules below all make too.
 
 ### Small on-disk JSON state files: progress, achievements, meta-progression, run history, and a saved run
 
-Six modules now follow the exact same shape for local player data: one JSON file, a defensive
+Seven modules now follow the exact same shape for local player data: one JSON file, a defensive
 `load_*()` that falls back to an empty/default state on a missing or corrupt file rather than
 crashing (same spirit as `AssetManager` falling back to a placeholder sprite), and a path that's
 always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievements_path`/
-`save_path`/`meta_progression_path`/`run_history_path` params) so tests never touch the real
-repo-root files. All six are gitignored -- local player data, not shipped content, same as
-`custom_levels/`. That shared shape isn't just convention --
+`save_path`/`meta_progression_path`/`run_history_path`/`keybindings_path` params) so tests never
+touch the real repo-root files. All seven are gitignored -- local player data, not shipped content,
+same as `custom_levels/`. That shared shape isn't just convention --
 `json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
 `load_*()`s is ultimately built on (`achievements.load_achievements()`/`meta_progression.
 load_meta_progression()` go through `threshold_unlocks.load_counters_state()`'s own thin wrapper
@@ -1017,8 +1080,8 @@ check and `try`/`except` itself, and takes
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
 accidentally shared across calls) as the two places each module still supplies its own behavior.
-`json_io.module_relative_path(module_file, *parts)` factors out the other shape all eight
-on-disk-state modules share (the six above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
+`json_io.module_relative_path(module_file, *parts)` factors out the other shape all nine
+on-disk-state modules share (the seven above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
 `DEFAULT_ASSET_ROOT`): a path anchored to the calling module's own `__file__`, not the process's
 current working directory -- see "Release binary" below for why that distinction matters for a
 packaged build. Before this was factored out, each independently wrote the same
@@ -1152,6 +1215,10 @@ packaged build. Before this was factored out, each independently wrote the same
   `load_run()` falls all the way back to "nothing to resume," same as any other corrupt/incompatible
   save -- acceptable since `save_state.json` is local, gitignored player data, same reasoning this
   whole family of on-disk files already leans on.
+- `keybindings.py` persists the player's rebound keys; see "Key remapping is curated, not
+  repo-wide" above for the actual registry/matching/conflict logic -- it follows this same one-JSON-
+  file, defensive-load, injectable-path shape, just with `(key, mods)` pairs as its values instead of
+  a flat settings dict.
 
 ### Visual effects: the drain-a-per-frame-event-list idiom
 
