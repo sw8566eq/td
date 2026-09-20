@@ -57,7 +57,16 @@ class Renderer:
             ui.draw_settings_screen(
                 game.screen, game.font, game.small_font, game.settings_rects,
                 game.fullscreen, game.sound_enabled, game.difficulty, game.window_size,
-                game.sound_volume, game.volume_button_rects,
+                game.sound_volume, game.volume_button_rects, game.keybinds_entry_button_rect,
+            )
+            pygame.display.flip()
+            return
+
+        if game.state == GameState.KEYBINDS:
+            ui.draw_keybinds_screen(
+                game.screen, game.font, game.small_font, game.keybind_row_rects,
+                game.keybindings, game.keybind_listening_for, game.keybind_message,
+                game.keybinds_reset_rect, game.keybinds_back_rect,
             )
             pygame.display.flip()
             return
@@ -222,7 +231,8 @@ class Renderer:
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
                                 game.current_level_id is None, game.can_save_run(),
-                                game.pause_restart_confirm_pending)
+                                game.pause_restart_confirm_pending,
+                                ui.binding_display_string(game.keybindings["pause"]))
         elif game.state == GameState.RELICS and game.active_run is not None:
             # active_run is None only ever happens by force-setting state
             # directly (e.g. the render() smoke test's blanket sweep across

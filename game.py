@@ -15,6 +15,7 @@ import difficulty
 import effects
 import events
 import input_handler
+import keybindings
 import meta_progression
 import persistence
 import player_settings
@@ -88,6 +89,15 @@ class GameState(Enum):
     ACHIEVEMENTS = auto()
     HELP = auto()
     CREDITS = auto()
+    # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
+    # curated subset of actions (see that module's own docstring for why
+    # it's a subset, not every input_handler.py keydown check). Not folded
+    # into SETTINGS itself since that screen's own stacked button column
+    # already reaches close to the bottom of the fixed 1200x704 canvas
+    # (see ui.py's own comment on SETTINGS_OPTION_ORDER) -- a further 8
+    # rows for one row per action wouldn't fit without also shrinking
+    # every existing Settings row.
+    KEYBINDS = auto()
     # A roguelike run's own extra states -- VICTORY stays reserved for
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
@@ -141,7 +151,7 @@ class Game:
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
                  achievements_path=None, save_path=None,
-                 meta_progression_path=None, run_history_path=None):
+                 meta_progression_path=None, run_history_path=None, keybindings_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -293,6 +303,22 @@ class Game:
         if self.difficulty not in difficulty.DIFFICULTY_MODES:
             self.difficulty = difficulty.DEFAULT_DIFFICULTY
 
+        # Same injectable-path convention as settings_path above, kept as
+        # a genuinely separate file/module from player_settings.py rather
+        # than one more key in that file's own dict -- see keybindings.py's
+        # own docstring for why key remapping only covers this one small
+        # registry of actions, not every input_handler.py keydown check.
+        self.keybindings_path = keybindings_path or keybindings.BINDINGS_PATH
+        self.keybindings = keybindings.load_bindings(self.keybindings_path)
+        # GameState.KEYBINDS' own transient UI state: which action (if
+        # any) is currently waiting for its next keydown to become its new
+        # binding, and the last outcome to show on screen ("Rebound.",
+        # "Esc is reserved...", "Already used by ..."). Both reset fresh
+        # on _enter_keybinds(), same "computed fresh, not left stale from
+        # a previous visit" spirit as draft_choices/current_event.
+        self.keybind_listening_for = None
+        self.keybind_message = None
+
         pygame.init()
         self.apply_display_mode()
         pygame.display.set_caption(settings.WINDOW_TITLE)
@@ -322,6 +348,10 @@ class Game:
 
         self.settings_rects = ui.build_settings_rects()
         self.volume_button_rects = ui.build_volume_button_rects()
+        self.keybinds_entry_button_rect = ui.build_keybinds_entry_button_rect()
+        self.keybind_row_rects = ui.build_keybind_row_rects()
+        self.keybinds_reset_rect = ui.build_keybinds_reset_rect()
+        self.keybinds_back_rect = ui.build_keybinds_back_rect()
         self.button_rects = ui.build_button_rects()
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
@@ -1145,6 +1175,42 @@ class Game:
             self.settings_path,
         )
 
+    def _enter_keybinds(self):
+        self.state = GameState.KEYBINDS
+        self.keybind_listening_for = None
+        self.keybind_message = None
+
+    def rebind_action(self, action, key, mods):
+        """Apply a captured (key, mods) as `action`'s new binding, or
+        reject it -- leaving the existing binding untouched -- if the key
+        is globally reserved (keybindings.RESERVED_KEYS) or already used
+        by another action in the same dispatch group
+        (keybindings.find_conflict); same "reject silently, don't crash"
+        precedent try_place_tower's own unbuildable-spot case sets,
+        except this one does set a message (self.keybind_message) either
+        way, since GameState.KEYBINDS has nothing else on screen to show
+        the player *why* a click didn't do what they expected. Returns
+        whether the rebind actually applied, mainly for tests."""
+        if keybindings.is_reserved(key):
+            self.keybind_message = "Esc is reserved and can't be rebound."
+            return False
+        conflict = keybindings.find_conflict(self.keybindings, action, key, mods)
+        if conflict is not None:
+            self.keybind_message = f"Already used by {keybindings.ACTION_LABELS[conflict]}."
+            return False
+        self.keybindings[action] = (key, mods)
+        self._save_keybindings()
+        self.keybind_message = f"{keybindings.ACTION_LABELS[action]} rebound."
+        return True
+
+    def reset_keybindings(self):
+        self.keybindings = dict(keybindings.DEFAULT_BINDINGS)
+        self._save_keybindings()
+        self.keybind_message = "Reset to defaults."
+
+    def _save_keybindings(self):
+        keybindings.save_bindings(self.keybindings, self.keybindings_path)
+
     def set_time_scale(self, scale):
         if scale in self.TIME_SCALES:
             self.time_scale = scale
@@ -1578,6 +1644,9 @@ class Game:
 
     def _handle_settings_click(self, pos):
         return self.input_handler._handle_settings_click(pos)
+
+    def _handle_keybinds_click(self, pos):
+        return self.input_handler._handle_keybinds_click(pos)
 
     # --- Achievements ---
 

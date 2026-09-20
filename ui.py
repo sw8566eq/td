@@ -16,6 +16,7 @@ import settings
 from achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
+from keybindings import ACTION_LABELS, ACTION_ORDER
 from levels import LEVELS
 from relics import RELICS
 from shop import can_afford, price_for
@@ -1375,6 +1376,26 @@ def get_clicked_settings_option(pos, settings_rects):
     return _key_of_rect_containing(pos, settings_rects)
 
 
+# The Settings screen's entry point into GameState.KEYBINDS -- placed to
+# the right of "back" on that same row (mirroring VOLUME_STEP_BUTTON_SIZE's
+# own "inline extra, not a row of its own" shape above) rather than as a
+# 10th entry in SETTINGS_OPTION_ORDER's stacked column, which would run
+# past the bottom of the fixed 1200x704 canvas (see that constant's own
+# comment on the column already reaching close to the bottom at 9 rows).
+KEYBINDS_ENTRY_BUTTON_WIDTH = 180
+
+
+def build_keybinds_entry_button_rect():
+    back_rect = _settings_button_rect(SETTINGS_OPTION_ORDER.index("back"))
+    x = back_rect.right + 24
+    y = back_rect.centery - SETTINGS_BUTTON_HEIGHT // 2
+    return pygame.Rect(x, y, KEYBINDS_ENTRY_BUTTON_WIDTH, SETTINGS_BUTTON_HEIGHT)
+
+
+def get_clicked_keybinds_entry_button(pos, keybinds_entry_button_rect):
+    return keybinds_entry_button_rect.collidepoint(pos)
+
+
 def _draw_escape_hint(surface, small_font, text="Esc -- Back to Menu"):
     """The small 'Esc -- ...' corner hint every full-screen menu-adjacent
     screen draws in its bottom-left corner -- Settings/Achievements/Help/
@@ -1404,7 +1425,8 @@ def _draw_settings_button(surface, font, rect, label, selected):
 
 
 def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, sound_enabled,
-                          difficulty_key, window_size, sound_volume, volume_button_rects):
+                          difficulty_key, window_size, sound_volume, volume_button_rects,
+                          keybinds_entry_button_rect):
     surface.fill(settings.COLOR_BG)
     title = font.render("Settings", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
@@ -1429,8 +1451,101 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
         _draw_settings_button(surface, small_font, settings_rects[key], label, size == window_size)
 
     _draw_settings_button(surface, small_font, settings_rects["back"], "Back to Menu", False)
+    _draw_settings_button(surface, small_font, keybinds_entry_button_rect, "Keybinds...", False)
 
     _draw_escape_hint(surface, small_font)
+
+
+# --- Keybinds screen (GameState.KEYBINDS) ---
+#
+# One row per keybindings.ACTION_ORDER entry, each a clickable button
+# showing "<label>: <current binding>" -- clicking one puts Game into
+# "listening" mode (Game.keybind_listening_for), then the next keydown is
+# captured as that action's new binding (see input_handler.py's own
+# _handle_keybinds_keydown for the capture/cancel/reject logic -- this
+# module only ever draws whatever Game already resolved, same "renderer
+# reads state, never decides" boundary CLAUDE.md's architecture section
+# draws everywhere else). KEYBIND_ROW_WIDTH is wider than Settings' own
+# SETTINGS_BUTTON_WIDTH since a row's label ("Editor Undo: Ctrl+Z") runs
+# longer than any Settings option's own.
+KEYBIND_ROW_WIDTH = 360
+KEYBIND_ROW_HEIGHT = 44
+KEYBIND_ROW_GAP = 10
+KEYBINDS_TOP = 130
+
+
+def _keybind_row_rect(index):
+    x = (settings.SCREEN_WIDTH - KEYBIND_ROW_WIDTH) // 2
+    y = KEYBINDS_TOP + index * (KEYBIND_ROW_HEIGHT + KEYBIND_ROW_GAP)
+    return pygame.Rect(x, y, KEYBIND_ROW_WIDTH, KEYBIND_ROW_HEIGHT)
+
+
+def build_keybind_row_rects():
+    return {action: _keybind_row_rect(index) for index, action in enumerate(ACTION_ORDER)}
+
+
+def get_clicked_keybind_row(pos, keybind_row_rects):
+    """Return the action key whose row contains pos, or None."""
+    return _key_of_rect_containing(pos, keybind_row_rects)
+
+
+def build_keybinds_reset_rect():
+    x = (settings.SCREEN_WIDTH - KEYBIND_ROW_WIDTH) // 2
+    y = KEYBINDS_TOP + len(ACTION_ORDER) * (KEYBIND_ROW_HEIGHT + KEYBIND_ROW_GAP) + 16
+    return pygame.Rect(x, y, KEYBIND_ROW_WIDTH, KEYBIND_ROW_HEIGHT)
+
+
+def build_keybinds_back_rect():
+    reset_rect = build_keybinds_reset_rect()
+    return pygame.Rect(reset_rect.x, reset_rect.bottom + 16, KEYBIND_ROW_WIDTH, KEYBIND_ROW_HEIGHT)
+
+
+def get_clicked_keybinds_reset(pos, keybinds_reset_rect):
+    return keybinds_reset_rect.collidepoint(pos)
+
+
+def binding_display_string(binding):
+    """"Ctrl+Z"/"Space"/"R" -- pygame.key.name() already lowercases every
+    key name, so this just capitalizes it back for display; the mods
+    prefix only ever shows the three family bits keybindings.py itself
+    ever stores (see that module's normalize_mods). Public (not just an
+    internal draw_keybinds_screen helper) since draw_pause_menu's own
+    "Esc / <key> -- Resume" hint needs to show whatever "pause" is
+    currently bound to as well."""
+    key, mods = binding
+    parts = []
+    if mods & pygame.KMOD_CTRL:
+        parts.append("Ctrl")
+    if mods & pygame.KMOD_SHIFT:
+        parts.append("Shift")
+    if mods & pygame.KMOD_ALT:
+        parts.append("Alt")
+    parts.append(pygame.key.name(key).capitalize())
+    return "+".join(parts)
+
+
+def draw_keybinds_screen(surface, font, small_font, keybind_row_rects, bindings,
+                          listening_for, message, reset_rect, back_rect):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Keybinds", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
+
+    if message:
+        text = small_font.render(message, True, settings.COLOR_TEXT_DIM)
+        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 84)))
+
+    for action in ACTION_ORDER:
+        rect = keybind_row_rects[action]
+        if action == listening_for:
+            label = f"{ACTION_LABELS[action]}: press a key... (Esc cancels)"
+        else:
+            label = f"{ACTION_LABELS[action]}: {binding_display_string(bindings[action])}"
+        _draw_settings_button(surface, small_font, rect, label, action == listening_for)
+
+    _draw_settings_button(surface, small_font, reset_rect, "Reset to Defaults", False)
+    _draw_back_to_menu_button(surface, small_font, back_rect, "Back to Settings")
+
+    _draw_escape_hint(surface, small_font, "Esc -- Back to Settings")
 
 
 # --- Achievements screen ---
@@ -1599,7 +1714,7 @@ def draw_credits_screen(surface, font, small_font, back_rect):
 
 
 def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=False,
-                     confirm_restart=False):
+                     confirm_restart=False, pause_key_label="P"):
     # Only darkens/centers over the play area (grid + HUD) -- the stats
     # panel stays visible and undimmed to its right. "Return to Editor"
     # only makes sense while playing a level that actually came from the
@@ -1619,7 +1734,11 @@ def draw_pause_menu(surface, font, small_font, is_custom_level=False, can_save=F
                     "R -- Confirm Restart", "Esc -- Cancel"]
     else:
         title = "Paused"
-        options = ["Esc / P -- Resume", "R -- Restart Level"]
+        # pause_key_label reflects whatever keybindings.py's "pause"
+        # action is currently bound to (default "P") -- Esc always
+        # resumes too regardless (see keybindings.RESERVED_KEYS), so it's
+        # named explicitly rather than folded into one rebindable label.
+        options = [f"Esc / {pause_key_label} -- Resume", "R -- Restart Level"]
         if is_custom_level:
             options.append("E -- Return to Map Editor")
         if can_save:

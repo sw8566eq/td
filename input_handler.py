@@ -35,6 +35,7 @@ reasoning renderer.py's own docstring gives.
 import pygame
 
 import difficulty
+import keybindings
 import settings
 import ui
 from editor import SHAPE_TOOLS
@@ -62,6 +63,8 @@ class InputHandler:
                     self._handle_level_select_click(event.pos)
                 elif game.state == GameState.SETTINGS:
                     self._handle_settings_click(event.pos)
+                elif game.state == GameState.KEYBINDS:
+                    self._handle_keybinds_click(event.pos)
                 elif game.state == GameState.ACHIEVEMENTS:
                     self._handle_achievements_click(event.pos)
                 elif game.state == GameState.HELP:
@@ -147,8 +150,12 @@ class InputHandler:
             # fully static). EDITOR isn't folded in here despite starting
             # with the identical check, since it has real key handling of
             # its own below Esc (see its own elif right after this one).
+            # KEYBINDS isn't folded in here either, for the same reason,
+            # plus its own Esc goes back to SETTINGS, not MENU.
             if key == pygame.K_ESCAPE:
                 game.state = GameState.MENU
+        elif game.state == GameState.KEYBINDS:
+            self._handle_keybinds_keydown(key)
         elif game.state == GameState.EDITOR:
             if key == pygame.K_ESCAPE:
                 game.state = GameState.MENU
@@ -171,17 +178,24 @@ class InputHandler:
                 # map into the editor (purpose="edit"), so a no-op there.
                 game.level_select_endless_armed = not game.level_select_endless_armed
         elif game.state == GameState.PLAYING:
-            if key in (pygame.K_p, pygame.K_ESCAPE):
+            # Escape's own pause behavior is fixed, deliberately separate
+            # from the "pause" *action* below -- Escape drives fixed
+            # back/cancel/quit navigation in every game state (see
+            # keybindings.RESERVED_KEYS), so it's never itself remappable,
+            # but it still needs to keep working as a pause shortcut here
+            # regardless of whatever key "pause" is currently bound to.
+            mods = keybindings.normalize_mods(pygame.key.get_mods())
+            if key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
                 game.state = GameState.PAUSED
-            elif key == pygame.K_SPACE:
+            elif keybindings.matches(game.keybindings["skip_wave"], key, mods):
                 game.wave_manager.skip_delay()
-            elif key == pygame.K_1:
+            elif keybindings.matches(game.keybindings["time_scale_1"], key, mods):
                 game.set_time_scale(1.0)
-            elif key == pygame.K_2:
+            elif keybindings.matches(game.keybindings["time_scale_2"], key, mods):
                 game.set_time_scale(2.0)
-            elif key == pygame.K_3:
+            elif keybindings.matches(game.keybindings["time_scale_3"], key, mods):
                 game.set_time_scale(3.0)
-            elif key == pygame.K_r and game.active_run is not None:
+            elif keybindings.matches(game.keybindings["open_relics"], key, mods) and game.active_run is not None:
                 game.state = GameState.RELICS
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
@@ -206,7 +220,12 @@ class InputHandler:
                     game.pause_restart_confirm_pending = False
                 elif key == pygame.K_ESCAPE:
                     game.pause_restart_confirm_pending = False
-            elif key in (pygame.K_p, pygame.K_ESCAPE):
+            # Mirrors PLAYING's own Escape-or-"pause"-binding check above --
+            # the "pause" action is one toggle, so whichever key currently
+            # enters PAUSED must also be the one that leaves it, not just
+            # whatever P happened to default to.
+            elif (key == pygame.K_ESCAPE
+                  or keybindings.matches(game.keybindings["pause"], key, keybindings.normalize_mods(pygame.key.get_mods()))):
                 game.state = GameState.PLAYING
             elif key == pygame.K_r:
                 game.pause_restart_confirm_pending = True
@@ -293,17 +312,75 @@ class InputHandler:
         game.selected_tower = None
 
     def _handle_editor_undo_redo_keydown(self, key):
-        """Ctrl+Z/Ctrl+Y -- shared by both editor screens' keydown handling
+        """Ctrl+Z/Ctrl+Y by default (rebindable -- see keybindings.
+        EDITOR_ACTIONS) -- shared by both editor screens' keydown handling
         (GameState.EDITOR and WAVE_EDITOR), since both mutate the same
         game.editor. Routes through _handle_editor_undo_redo_action() so
         there's exactly one place that actually calls undo()/redo(),
         regardless of whether it was a keypress or an action-button click."""
         game = self.game
-        mods = pygame.key.get_mods()
-        if key == pygame.K_z and mods & pygame.KMOD_CTRL:
+        mods = keybindings.normalize_mods(pygame.key.get_mods())
+        if keybindings.matches(game.keybindings["editor_undo"], key, mods):
             game._handle_editor_undo_redo_action("undo")
-        elif key == pygame.K_y and mods & pygame.KMOD_CTRL:
+        elif keybindings.matches(game.keybindings["editor_redo"], key, mods):
             game._handle_editor_undo_redo_action("redo")
+
+    def _handle_keybinds_keydown(self, key):
+        """GameState.KEYBINDS' own keydown handling: outside "listening"
+        mode, only Esc does anything (back to Settings, same as clicking
+        the screen's own Back button). While listening for a rebind
+        (game.keybind_listening_for set by a row click -- see
+        _handle_keybinds_click), Esc instead cancels the capture without
+        changing anything, a pure modifier key going down on its own is
+        ignored (waiting for the actual key it's meant to combine with --
+        see keybindings.MODIFIER_KEY_CODES), and any other key is captured
+        as that action's new binding via Game.rebind_action, which itself
+        handles rejecting a reserved/conflicting key."""
+        from game import GameState  # see module docstring
+
+        game = self.game
+        if game.keybind_listening_for is None:
+            if key == pygame.K_ESCAPE:
+                game.state = GameState.SETTINGS
+            return
+
+        if key == pygame.K_ESCAPE:
+            game.keybind_message = "Rebind canceled."
+            game.keybind_listening_for = None
+            return
+        if key in keybindings.MODIFIER_KEY_CODES:
+            return
+
+        mods = keybindings.normalize_mods(pygame.key.get_mods())
+        game.rebind_action(game.keybind_listening_for, key, mods)
+        game.keybind_listening_for = None
+
+    def _handle_keybinds_click(self, pos):
+        """A click on the Keybinds screen -- a row starts listening for
+        that action's next keydown (see _handle_keybinds_keydown above),
+        Reset restores every action to keybindings.DEFAULT_BINDINGS, and
+        Back returns to Settings. Clicking anywhere while already
+        listening cancels that capture first, same "Esc cancels" escape
+        hatch the keydown path offers, rather than leaving the screen
+        stuck waiting for a keypress that a mouse click was never going
+        to provide."""
+        from game import GameState  # see module docstring
+
+        game = self.game
+        if game.keybind_listening_for is not None:
+            game.keybind_listening_for = None
+            game.keybind_message = "Rebind canceled."
+            return
+
+        action = ui.get_clicked_keybind_row(pos, game.keybind_row_rects)
+        if action is not None:
+            game.keybind_listening_for = action
+            game.keybind_message = None
+            return
+        if ui.get_clicked_keybinds_reset(pos, game.keybinds_reset_rect):
+            game.reset_keybindings()
+        elif game.keybinds_back_rect.collidepoint(pos):
+            game.state = GameState.SETTINGS
 
     def _handle_editor_click(self, pos):
         game = self.game
@@ -430,6 +507,14 @@ class InputHandler:
         volume_button = ui.get_clicked_volume_button(pos, game.volume_button_rects)
         if volume_button is not None:
             game.adjust_sound_volume(1 if volume_button == "up" else -1)
+            return
+
+        # Same "own small rect, not settings_rects" shape as the Volume
+        # buttons just above -- see ui.build_keybinds_entry_button_rect's
+        # own comment for why this isn't just another SETTINGS_OPTION_
+        # ORDER entry.
+        if ui.get_clicked_keybinds_entry_button(pos, game.keybinds_entry_button_rect):
+            game._enter_keybinds()
             return
 
         option = ui.get_clicked_settings_option(pos, game.settings_rects)

@@ -42,6 +42,7 @@ from ui import (
     _format_wave_preview,
     _relics_overlay_lines,
     _wrap_text,
+    binding_display_string,
     build_achievements_back_rect,
     build_button_rects,
     build_credits_back_rect,
@@ -49,6 +50,10 @@ from ui import (
     build_editor_action_rects,
     build_editor_tool_rects,
     build_help_back_rect,
+    build_keybind_row_rects,
+    build_keybinds_back_rect,
+    build_keybinds_entry_button_rect,
+    build_keybinds_reset_rect,
     build_level_select_rects,
     build_level_thumbnail,
     build_relics_button_rect,
@@ -71,6 +76,7 @@ from ui import (
     draw_floor_cleared_screen,
     draw_game_over_screen,
     draw_help_screen,
+    draw_keybinds_screen,
     draw_level_select_screen,
     draw_relics_overlay,
     draw_results_table,
@@ -78,6 +84,9 @@ from ui import (
     get_clicked_draft_choice,
     get_clicked_editor_action,
     get_clicked_editor_tool,
+    get_clicked_keybind_row,
+    get_clicked_keybinds_entry_button,
+    get_clicked_keybinds_reset,
     get_clicked_level_select_entry,
     get_clicked_settings_option,
     get_clicked_tower_button,
@@ -225,6 +234,103 @@ def test_volume_button_rects_do_not_overlap_the_settings_column():
     for settings_rect in settings_rects:
         for volume_rect in volume_rects:
             assert not settings_rect.colliderect(volume_rect)
+
+
+def test_keybinds_entry_button_sits_to_the_right_of_back():
+    back_rect = build_settings_rects()["back"]
+    entry_rect = build_keybinds_entry_button_rect()
+    assert entry_rect.left > back_rect.right
+
+
+def test_get_clicked_keybinds_entry_button():
+    rect = build_keybinds_entry_button_rect()
+    assert get_clicked_keybinds_entry_button(rect.center, rect) is True
+    assert get_clicked_keybinds_entry_button((0, 0), rect) is False
+
+
+# --- Keybinds screen ---
+
+
+def test_keybind_row_rects_has_one_entry_per_action():
+    from keybindings import ACTION_ORDER
+
+    rects = build_keybind_row_rects()
+    assert set(rects.keys()) == set(ACTION_ORDER)
+
+
+def test_keybind_row_rects_do_not_overlap():
+    rects = list(build_keybind_row_rects().values())
+    for i, a in enumerate(rects):
+        for b in rects[i + 1:]:
+            assert not a.colliderect(b)
+
+
+def test_get_clicked_keybind_row_returns_matching_action():
+    rects = build_keybind_row_rects()
+    assert get_clicked_keybind_row(rects["pause"].center, rects) == "pause"
+
+
+def test_get_clicked_keybind_row_returns_none_outside_all_rows():
+    rects = build_keybind_row_rects()
+    assert get_clicked_keybind_row((0, 0), rects) is None
+
+
+def test_keybinds_reset_and_back_rects_sit_below_every_row_without_overlapping():
+    row_rects = list(build_keybind_row_rects().values())
+    reset_rect = build_keybinds_reset_rect()
+    back_rect = build_keybinds_back_rect()
+    for row_rect in row_rects:
+        assert not row_rect.colliderect(reset_rect)
+        assert not row_rect.colliderect(back_rect)
+    assert not reset_rect.colliderect(back_rect)
+    assert back_rect.top > reset_rect.bottom
+
+
+def test_get_clicked_keybinds_reset():
+    rect = build_keybinds_reset_rect()
+    assert get_clicked_keybinds_reset(rect.center, rect) is True
+    assert get_clicked_keybinds_reset((0, 0), rect) is False
+
+
+def test_binding_display_string_formats_a_plain_key():
+    assert binding_display_string((pygame.K_p, 0)) == "P"
+
+
+def test_binding_display_string_formats_a_key_with_a_modifier():
+    assert binding_display_string((pygame.K_z, pygame.KMOD_CTRL)) == "Ctrl+Z"
+
+
+def test_binding_display_string_formats_a_key_with_multiple_modifiers():
+    mods = pygame.KMOD_CTRL | pygame.KMOD_SHIFT
+    assert binding_display_string((pygame.K_z, mods)) == "Ctrl+Shift+Z"
+
+
+def test_draw_keybinds_screen_does_not_crash():
+    from keybindings import DEFAULT_BINDINGS
+
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    draw_keybinds_screen(
+        surface, font, small_font, build_keybind_row_rects(), DEFAULT_BINDINGS,
+        None, None, build_keybinds_reset_rect(), build_keybinds_back_rect(),
+    )
+
+
+def test_draw_keybinds_screen_while_listening_does_not_crash():
+    from keybindings import DEFAULT_BINDINGS
+
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+
+    draw_keybinds_screen(
+        surface, font, small_font, build_keybind_row_rects(), DEFAULT_BINDINGS,
+        "pause", "Already used by Skip Wave / Start.", build_keybinds_reset_rect(), build_keybinds_back_rect(),
+    )
 
 
 def test_get_clicked_volume_button_returns_matching_key():

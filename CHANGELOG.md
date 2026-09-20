@@ -13,6 +13,10 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   unselected build-menu tower (previously required clicking it first).
 - A volume slider (10% steps, alongside the existing Sound on/off toggle) and a colorblind-safety
   pass on the placeholder palette, verified with an actual deuteranopia/protanopia simulation.
+- A Keybinds screen (Settings -> Keybinds...) for rebinding a curated set of actions -- Pause, Skip
+  Wave, the three time-scale keys, Open Relics, and the map editor's Undo/Redo -- click a row, press
+  a key. Escape always stays fixed as back/cancel/quit, by design; see CLAUDE.md's "Key remapping is
+  curated, not repo-wide" for why only these actions and not every key in the game.
 
 ### Engineering
 

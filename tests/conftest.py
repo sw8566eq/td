@@ -37,21 +37,23 @@ from run_map import MapNode, RunMap
 def make_game(tmp_path, prefix="", **kwargs):
     """Construct a real Game() with every injectable path pinned under
     `tmp_path` -- progress/settings/achievements/save/meta_progression/
-    run_history, all six, always together. Game writes real progress on any
-    non-sandbox level/floor clear (see progress.py), real settings on
-    set_fullscreen()/set_difficulty() (see player_settings.py), real
-    achievement counters on nearly every tower/kill/wave/level event (see
-    achievements.py), a real in-progress save on save_run() (see
+    run_history/keybindings, all seven, always together. Game writes real
+    progress on any non-sandbox level/floor clear (see progress.py), real
+    settings on set_fullscreen()/set_difficulty() (see player_settings.py),
+    real achievement counters on nearly every tower/kill/wave/level event
+    (see achievements.py), a real in-progress save on save_run() (see
     save_state.py), real meta-progression counters on nearly every
-    roguelike-run event (see meta_progression.py), and a real run outcome on
-    a run's game-over, Daily Run included (see run_history.py) -- missing
-    even one of the six here silently falls back to that module's real
-    repo-root file, which is exactly the bug this factory exists to make
-    impossible to write by hand. `prefix` distinguishes two instances
-    sharing one `tmp_path` (e.g. "hard_"/"easy_"); `kwargs` forwards to
-    Game() itself (e.g. unlimited_gold=True). Callers still own pygame.quit()
-    -- this returns a live Game, not a fixture, since a few tests construct
-    more than one or need a kwarg the `game` fixture below doesn't take."""
+    roguelike-run event (see meta_progression.py), a real run outcome on
+    a run's game-over, Daily Run included (see run_history.py), and a real
+    rebound keybinding on rebind_action()/reset_keybindings() (see
+    keybindings.py) -- missing even one of the seven here silently falls
+    back to that module's real repo-root file, which is exactly the bug
+    this factory exists to make impossible to write by hand. `prefix`
+    distinguishes two instances sharing one `tmp_path` (e.g.
+    "hard_"/"easy_"); `kwargs` forwards to Game() itself (e.g.
+    unlimited_gold=True). Callers still own pygame.quit() -- this returns
+    a live Game, not a fixture, since a few tests construct more than one
+    or need a kwarg the `game` fixture below doesn't take."""
     return Game(
         progress_path=tmp_path / f"{prefix}progress.json",
         settings_path=tmp_path / f"{prefix}player_settings.json",
@@ -59,6 +61,7 @@ def make_game(tmp_path, prefix="", **kwargs):
         save_path=tmp_path / f"{prefix}save_state.json",
         meta_progression_path=tmp_path / f"{prefix}meta_progression.json",
         run_history_path=tmp_path / f"{prefix}run_history.json",
+        keybindings_path=tmp_path / f"{prefix}keybindings.json",
         **kwargs,
     )
 
