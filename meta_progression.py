@@ -118,6 +118,24 @@ RELIC_META_UNLOCKS: dict[str, RelicMetaUnlock] = {
     "unlock_containment_charges": RelicMetaUnlock(
         "unlock_containment_charges", "containment_charges", "bosses_defeated", 1,
     ),
+    # A second wave of gating, on the cross-status combo-capstone batch's
+    # two Mark-keyed relics -- the highest per-relic power multiplier in
+    # the whole registry (1.35x, unconditional whenever both statuses are
+    # live, vs. every chance-gated crit relic's much smaller *effective*
+    # average). frostbitten_mark/plague_mark are gated; chill_rot
+    # (Frost+Poison, the more approachable pairing between two starter-
+    # tower-adjacent towers) stays ungated on purpose, so the cross-status
+    # mechanic itself is still reachable early -- only the chase for the
+    # other two, keyed on the rarer Mark status (Beacon has only 2
+    # dedicated relics total), is long-tail. Thresholds are set well past
+    # every existing RELIC_META_UNLOCKS entry above, so there's still
+    # something to chase once those are all cleared.
+    "unlock_frostbitten_mark": RelicMetaUnlock(
+        "unlock_frostbitten_mark", "frostbitten_mark", "total_floors_cleared", 50,
+    ),
+    "unlock_plague_mark": RelicMetaUnlock(
+        "unlock_plague_mark", "plague_mark", "runs_played", 20,
+    ),
 }
 
 

@@ -145,6 +145,20 @@ def test_unlocked_relic_pool_reflects_crossed_thresholds(tmp_path):
     assert meta_progression.unlocked_relic_pool(path=path) == {"containment_charges"}
 
 
+def test_unlocked_relic_pool_reflects_frostbitten_mark_threshold(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("total_floors_cleared", amount=50, path=path)
+
+    assert "frostbitten_mark" in meta_progression.unlocked_relic_pool(path=path)
+
+
+def test_unlocked_relic_pool_reflects_plague_mark_threshold(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("runs_played", amount=20, path=path)
+
+    assert "plague_mark" in meta_progression.unlocked_relic_pool(path=path)
+
+
 def test_unlocked_level_pool_excludes_a_gated_level_with_no_progress(tmp_path):
     path = tmp_path / "meta_progression.json"
     pool = meta_progression.unlocked_level_pool(path=path)
