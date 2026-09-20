@@ -200,10 +200,11 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  3 of the 49 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`) are
-  gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional
-  `unlocked_pool`/`meta_progression_path` params mirror `draft_offer`'s exactly (see the
-  `meta_progression.py` bullet below). Forty-nine relics across eight effect shapes -- the original
+  5 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, plus
+  the cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`) are gated at all, via
+  `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional `unlocked_pool`/
+  `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
+  below). 61 relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -243,7 +244,36 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   the right shape over routing through `_relic_family_damage_bonus()` -- plus a ninth batch of one,
   `virulent_bloom` (`poison_spread_radius`), the one relic in the whole registry that isn't a numeric
   extension of an existing hook: see the **flat, non-tower** bullet below for the actual new
-  mechanic, none gated:
+  mechanic, none gated -- plus a tenth batch of two giving Basic tower its own crit-boosting pair
+  (`adrenaline_rounds`/`twitch_reflex`, `basic_crit_damage_multiplier`/`basic_crit_chance_multiplier`,
+  read only in `BasicTower.create_projectile()` (`tower.py:929-930`) against that tower's own native
+  `crit_chance`/`crit_damage_multiplier` -- distinct from the generic, `max()`-composed
+  `RelicModifiers.crit_chance`/`crit_damage_multiplier` `lucky_strikes`/`focused_fire`/
+  `precision_engineering` already grant every tower, so the two families stack rather than collide)
+  -- plus an eleventh batch doing the same for Sniper's execute mechanic (`kill_shot`/`wounded_prey`,
+  `execute_damage_multiplier`/`execute_threshold_multiplier`, read in `SniperTower.
+  create_projectile()` at `tower.py:1173-1174`) -- plus a twelfth for Frost's slow (`glacial_core`/
+  `permafrost`, `frost_slow_multiplier`/`frost_duration_multiplier`, read in `FrostTower.
+  create_projectile()` at `tower.py:1019-1020`; `glacial_core` is 0.8, not 1.25, the same
+  inverted-direction quirk `slow_factor` itself already has) -- plus a thirteenth for Poison's own
+  tower-side DoT (`toxic_payload`/`festering_wound`, `poison_tower_tick_multiplier`/
+  `poison_tower_duration_multiplier`, read in `PoisonTower.create_projectile()` at
+  `tower.py:1216-1218`) -- plus a fourteenth, cross-status combo-capstone batch of three
+  (`frostbitten_mark`/`plague_mark`/`chill_rot`, `damage_vs_marked_and_slowed_multiplier`/
+  `damage_vs_marked_and_poisoned_multiplier`/`damage_vs_slowed_and_poisoned_multiplier`, all 1.35x --
+  the highest per-relic power multiplier in the registry, since assembling two towers' worth of build
+  investment to trigger at all is a harder condition than holding any single-status relic -- read
+  generically in `Projectile._apply_hit_effects()` (`projectile.py:398-417`) against pre-hoisted
+  `is_slowed`/`is_marked`/`is_poisoned` booleans, the same per-enemy-status group
+  `damage_vs_flying_multiplier`/`damage_vs_shielded_multiplier`/`damage_vs_healer_multiplier` already
+  established) plus `seismic_slam` in the same batch, Knockback's second exclusive relic
+  (`knockback_duration_multiplier`, read in `KnockbackTower.create_projectile()` at `tower.py:1073`,
+  same shape as `heavy_ordnance` before it) -- every field across all five of these batches is copied
+  onto the tower once at construction (`Game._construct_tower`, alongside every other per-tower relic
+  field), exactly the block at `game.py:1895-1906`, and multiplied in verbatim at each owning tower's
+  own `create_projectile()`, so none needed new `Tower`/`Projectile` plumbing beyond the field itself,
+  and none are gated (see the meta-progression bullet below for the two of these fourteen batches'
+  relics that now are):
   **per-floor**
   (composed into `RelicModifiers`, threaded into `WaveManager`/`Economy` construction every floor --
   `starting_gold_multiplier`/`gold_per_floor_bonus`/`enemy_gold_multiplier`/`enemy_speed_multiplier`);
@@ -1188,7 +1218,12 @@ packaged build. Before this was factored out, each independently wrote the same
   curve (`runs_played`/`total_floors_cleared` goals in the 10-25 range) so there's still something to
   chase long after every tower is unlocked; `unlock_containment_charges` is gated on `bosses_defeated`
   specifically as a deliberate cross-chunk payoff with the run's final boss (see that section above)
-  -- "beat the boss once" rather than a grind threshold.
+  -- "beat the boss once" rather than a grind threshold. A second wave of gating later extended
+  `RELIC_META_UNLOCKS` to two of the cross-status combo-capstone batch's three relics
+  (`frostbitten_mark`/`plague_mark`, thresholds `total_floors_cleared=50`/`runs_played=20`, both
+  further out than the first wave's own 10-25 range) once that first curve itself started feeling
+  exhausted -- `chill_rot`, the third relic in that same batch, stays deliberately ungated so the
+  mechanic itself is still reachable early (see the `relics.py` bullet above).
   `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}`) is what `bump()`
   actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON file's flat
   `{"counters": .., "unlocked": {key, ...}}` state already spans all three content kinds (key
