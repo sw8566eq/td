@@ -20,6 +20,7 @@ import meta_progression
 import persistence
 import player_settings
 import progress
+import progress_tracker
 import relics
 import renderer
 import run_escalation
@@ -431,6 +432,9 @@ class Game:
         # docstring for what moved here and, just as importantly, what
         # deliberately didn't.
         self.input_handler = input_handler.InputHandler(self)
+        # Third slice, same shape again -- see progress_tracker.py's own
+        # module docstring.
+        self.progress_tracker = progress_tracker.ProgressTracker(self)
 
         self.current_level_id = 1
         self.load_level(self.current_level_id)
@@ -1689,110 +1693,19 @@ class Game:
             self.has_saved_run = False
 
     def _record_level_cleared(self):
-        """One level genuinely beaten -- called once, from update()'s own
-        win-check, above the run-floor-clear/classic-VICTORY split (see
-        that call site's own comment for why: a run never reaches VICTORY
-        at all, so this used to live inline there alone and had quietly
-        made progress.py -- and with it the "Campaign Complete"
-        achievement -- unreachable in a normal playthrough).
-
-        A single sandbox gate up front, same shape _record_achievement's
-        own docstring argues for: a trivial sandbox run shouldn't earn
-        real progress, and that's one policy, not two calls each
-        remembering it independently. levels_cleared is still bumped for
-        any level, built-in or custom; progress.py and the
-        distinct_levels_cleared counter derived from it only make sense
-        for a LEVELS registry entry (isinstance -- a custom editor-authored
-        level has no registry id, and no fixed order among its peers to be
-        "distinct" within)."""
-        if self.sandbox:
-            return
-        if isinstance(self.current_level_id, int):
-            cleared = progress.mark_level_cleared(
-                self.current_level_id, self.economy.lives, self.progress_path,
-            )
-            self._queue_achievement_toasts(achievements.set_counter(
-                "distinct_levels_cleared", len(cleared), self.achievements_path,
-            ))
-        self._record_achievement("levels_cleared")
-
-    def _record_progress_counter(self, bump_fn, path, queue_toasts_fn, counter_name, amount):
-        """The shared "sandbox-gated bump-and-toast" shape behind
-        _record_achievement/_record_meta_progress below, which otherwise
-        differ only in which module's own bump() they call, which path,
-        and which toast-formatting method the newly-unlocked keys go
-        through. Sandbox-gated once, here, rather than at each of those
-        two call sites -- a trivial sandbox run shouldn't count toward
-        real progress or expand what a future real run can draft, and
-        that's one policy, not two independently-remembered ones."""
-        if self.sandbox:
-            return
-        queue_toasts_fn(bump_fn(counter_name, amount, path))
+        return self.progress_tracker._record_level_cleared()
 
     def _record_achievement(self, counter_name, amount=1):
-        """Bump `counter_name` by `amount` (see achievements.py) and queue
-        a toast for anything newly unlocked -- called from every Game-
-        level event an achievement can key off (try_place_tower/
-        try_upgrade_tower/try_specialize_tower and update()'s kill/wave/
-        level-clear hooks)."""
-        self._record_progress_counter(
-            achievements.bump, self.achievements_path, self._queue_achievement_toasts, counter_name, amount,
-        )
-
-    def _queue_achievement_toasts(self, newly_unlocked_keys):
-        """Queue one rising/fading toast per achievement key in
-        `newly_unlocked_keys` (the return value of achievements.bump()/
-        set_counter()) -- pulled out of _record_achievement so
-        set_counter()-driven achievements (see the victory branch of
-        update(), for "campaign_complete") can share the same toast
-        presentation without going through bump()'s +1-per-event shape."""
-        for key in newly_unlocked_keys:
-            achievement = achievements.ACHIEVEMENTS[key]
-            self._queue_toast(f"Achievement unlocked: {achievement.display_name}")
+        return self.progress_tracker._record_achievement(counter_name, amount)
 
     def _record_meta_progress(self, counter_name, amount=1):
-        """Same shape as _record_achievement, for meta_progression.py's own
-        counters instead of achievements.py's -- bump `counter_name` and
-        queue a toast for any tower newly unlocked into the account-wide
-        draft pool."""
-        self._record_progress_counter(
-            meta_progression.bump, self.meta_progression_path, self._queue_meta_unlock_toasts, counter_name, amount,
-        )
+        return self.progress_tracker._record_meta_progress(counter_name, amount)
 
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
-        """Same toast presentation _queue_achievement_toasts uses, for
-        meta_progression.py's own unlock registries instead of
-        achievements.ACHIEVEMENTS -- names whatever a card unlock actually
-        grants (read off TOWER_TYPES/relics.RELICS/LEVELS, since none of
-        MetaUnlock/RelicMetaUnlock/LevelMetaUnlock carry a display_name of
-        their own -- see meta_progression.py's own docstring) rather than
-        the registry entry's own key. meta_progression.bump() draws newly-
-        unlocked keys from all three registries at once (see its own
-        ALL_UNLOCKS), so this checks each in turn rather than assuming
-        every key is a tower unlock."""
-        for key in newly_unlocked_keys:
-            if key in meta_progression.META_UNLOCKS:
-                unlock = meta_progression.META_UNLOCKS[key]
-                self._queue_toast(f"New tower unlocked: {TOWER_TYPES[unlock.tower_name].display_name}!")
-            elif key in meta_progression.RELIC_META_UNLOCKS:
-                unlock = meta_progression.RELIC_META_UNLOCKS[key]
-                self._queue_toast(f"New relic unlocked: {relics.RELICS[unlock.relic_key].display_name}!")
-            else:
-                unlock = meta_progression.LEVEL_META_UNLOCKS[key]
-                self._queue_toast(f"New level unlocked: {LEVELS[unlock.level_id].name}!")
+        return self.progress_tracker._queue_meta_unlock_toasts(newly_unlocked_keys)
 
     def _queue_toast(self, text):
-        """Queue one rising/fading toast, stacked below however many are
-        already queued this frame so several landing at once (e.g. an
-        achievement and a meta-progression unlock on the same event) read
-        as distinct lines rather than overlapping illegibly. Shared by
-        _queue_achievement_toasts/_queue_meta_unlock_toasts above -- both
-        just name what got unlocked, the presentation is identical."""
-        y = 40 + 24 * len(self.achievement_toasts)
-        self.achievement_toasts.append(effects.FloatingText(
-            (settings.PLAY_WIDTH // 2, y), text, lifetime=3.0, rise_speed=8.0, color=settings.COLOR_GOLD,
-        ))
-        self.audio.play("achievement_toast")
+        return self.progress_tracker._queue_toast(text)
 
     def _handle_click(self, pos):
         return self.input_handler._handle_click(pos)
