@@ -415,6 +415,48 @@ def test_reinforced_chassis_is_functional_standalone():
     assert modifiers.tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
 
 
+def test_overclocked_circuits_is_functional_standalone():
+    # A third density relic -- own radius/rate/cap, no dependency on
+    # overcrowded_circuits/reinforced_chassis to do anything, same
+    # "functional standalone" shape reinforced_chassis sets above, just
+    # for the fire-rate channel instead of the damage one.
+    modifiers = compose_relic_modifiers(["overclocked_circuits"])
+    relic = RELICS["overclocked_circuits"]
+    assert modifiers.tower_density_radius == relic.tower_density_radius
+    assert modifiers.tower_density_fire_rate_bonus_per_neighbor == relic.tower_density_fire_rate_bonus_per_neighbor
+    assert modifiers.tower_density_fire_rate_bonus_cap == relic.tower_density_fire_rate_bonus_cap
+    # The damage channel stays untouched -- the two channels are
+    # independent even though they share tower_density_radius.
+    assert modifiers.tower_density_damage_bonus_per_neighbor == 0.0
+    assert modifiers.tower_density_damage_bonus_cap == 0.0
+
+
+def test_compose_relic_modifiers_sums_tower_density_fire_rate_bonus_rate_and_cap():
+    modifiers = compose_relic_modifiers(["overclocked_circuits", "overclocked_circuits"])
+    relic = RELICS["overclocked_circuits"]
+    assert modifiers.tower_density_fire_rate_bonus_per_neighbor == pytest.approx(
+        relic.tower_density_fire_rate_bonus_per_neighbor * 2
+    )
+    assert modifiers.tower_density_fire_rate_bonus_cap == pytest.approx(relic.tower_density_fire_rate_bonus_cap * 2)
+
+
+def test_compose_relic_modifiers_shares_tower_density_radius_across_both_density_channels():
+    # overcrowded_circuits (damage, radius 80) and overclocked_circuits
+    # (fire rate, radius 90) both contribute to the one shared
+    # tower_density_radius field -- max()'d, same as two damage-channel
+    # relics combining.
+    modifiers = compose_relic_modifiers(["overcrowded_circuits", "overclocked_circuits"])
+    assert modifiers.tower_density_radius == RELICS["overclocked_circuits"].tower_density_radius
+    assert modifiers.tower_density_damage_bonus_per_neighbor == RELICS["overcrowded_circuits"].tower_density_damage_bonus_per_neighbor
+    assert modifiers.tower_density_fire_rate_bonus_per_neighbor == RELICS["overclocked_circuits"].tower_density_fire_rate_bonus_per_neighbor
+
+
+def test_compose_relic_modifiers_no_density_relic_leaves_the_fire_rate_channel_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.tower_density_fire_rate_bonus_per_neighbor == 0.0
+    assert modifiers.tower_density_fire_rate_bonus_cap == 0.0
+
+
 def test_compose_relic_modifiers_takes_the_max_last_stand_fire_rate_multiplier(monkeypatch):
     weaker = Relic("test_weaker_last_stand_fire_rate", "", "", last_stand_fire_rate_multiplier=1.05)
     monkeypatch.setitem(RELICS, "test_weaker_last_stand_fire_rate", weaker)
@@ -425,6 +467,29 @@ def test_compose_relic_modifiers_takes_the_max_last_stand_fire_rate_multiplier(m
 def test_compose_relic_modifiers_no_adrenaline_rush_leaves_it_neutral():
     modifiers = compose_relic_modifiers(["prospectors_charm"])
     assert modifiers.last_stand_fire_rate_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_takes_the_max_last_stand_range_multiplier(monkeypatch):
+    weaker = Relic("test_weaker_last_stand_range", "", "", last_stand_range_multiplier=1.05)
+    monkeypatch.setitem(RELICS, "test_weaker_last_stand_range", weaker)
+    modifiers = compose_relic_modifiers(["desperate_reach", "test_weaker_last_stand_range"])
+    assert modifiers.last_stand_range_multiplier == RELICS["desperate_reach"].last_stand_range_multiplier
+
+
+def test_compose_relic_modifiers_desperate_reach_order_independence(monkeypatch):
+    # max()'d, not summed -- two last-stand-range relics compounding
+    # multiplicatively would spike too fast, the same reasoning last_stand_
+    # damage_multiplier/last_stand_fire_rate_multiplier's own comments give.
+    stronger = Relic("test_stronger_last_stand_range", "", "", last_stand_range_multiplier=1.30)
+    monkeypatch.setitem(RELICS, "test_stronger_last_stand_range", stronger)
+    forward = compose_relic_modifiers(["desperate_reach", "test_stronger_last_stand_range"])
+    backward = compose_relic_modifiers(["test_stronger_last_stand_range", "desperate_reach"])
+    assert forward.last_stand_range_multiplier == backward.last_stand_range_multiplier == pytest.approx(1.30)
+
+
+def test_compose_relic_modifiers_no_desperate_reach_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.last_stand_range_multiplier == 1.0
 
 
 def test_compose_relic_modifiers_multiplies_damage_vs_early_route_multiplier():
@@ -697,6 +762,28 @@ def test_compose_relic_modifiers_no_combo_or_knockback_relic_leaves_them_neutral
     assert modifiers.damage_vs_marked_and_poisoned_multiplier == 1.0
     assert modifiers.damage_vs_slowed_and_poisoned_multiplier == 1.0
     assert modifiers.knockback_duration_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_ors_cannon_targets_flying():
+    modifiers = compose_relic_modifiers(["aerial_targeting_array"])
+    assert modifiers.cannon_targets_flying is True
+    assert compose_relic_modifiers([]).cannon_targets_flying is False
+
+
+def test_compose_relic_modifiers_cannon_targets_flying_stays_granted_alongside_other_relics():
+    modifiers = compose_relic_modifiers(["prospectors_charm", "aerial_targeting_array"])
+    assert modifiers.cannon_targets_flying is True
+
+
+def test_compose_relic_modifiers_multiplies_cannon_projectile_speed_multiplier():
+    modifiers = compose_relic_modifiers(["high_velocity_shells", "high_velocity_shells"])
+    assert modifiers.cannon_projectile_speed_multiplier == RELICS["high_velocity_shells"].cannon_projectile_speed_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_cannon_relic_leaves_cannon_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.cannon_targets_flying is False
+    assert modifiers.cannon_projectile_speed_multiplier == 1.0
 
 
 def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
