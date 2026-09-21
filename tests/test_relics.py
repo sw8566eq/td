@@ -738,6 +738,22 @@ def test_compose_relic_modifiers_no_relic_gap_fillers_leave_them_all_neutral():
     assert modifiers.shop_price_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_overload_burst_multiplier():
+    modifiers = compose_relic_modifiers(["overcharged_capacitors", "overcharged_capacitors"])
+    assert modifiers.overload_burst_multiplier == RELICS["overcharged_capacitors"].overload_burst_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_overload_damage_multiplier():
+    modifiers = compose_relic_modifiers(["fusion_core", "fusion_core"])
+    assert modifiers.overload_damage_multiplier == RELICS["fusion_core"].overload_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_overload_relic_leaves_it_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.overload_burst_multiplier == 1.0
+    assert modifiers.overload_damage_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_relic_gap_fillers_are_order_independent():
     forward = compose_relic_modifiers([
         "concussive_rounds", "disorienting_flash", "flak_rounds",

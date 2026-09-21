@@ -25,7 +25,17 @@ from waves import WaveState
 
 ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
 
-BUTTON_SIZE = 72
+
+# BUTTON_SIZE shrank from its original 72 once Overload Cannon became the
+# 11th registered tower: build_button_rects() lays every tower_names entry
+# out left-to-right starting at BUTTON_MARGIN with no wrapping, and
+# Practice's build menu passes every TOWER_ORDER entry (the worst case, one
+# icon per registered tower) -- at 72px, an 11th icon's own row pushed past
+# build_skip_button_rect()'s left edge, which test_ui.py's own
+# test_skip_button_does_not_overlap_the_tower_build_buttons regression test
+# exists to catch. 60 leaves real headroom for future towers too, not just
+# a bare fit for 11.
+BUTTON_SIZE = 60
 BUTTON_MARGIN = 12
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many

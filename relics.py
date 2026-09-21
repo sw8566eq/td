@@ -415,6 +415,19 @@ class Relic:
     # Cannon and damage-only; concussive_rounds is a generic relic any
     # tower can hold) -- brings it off its 1-relic floor.
     knockback_duration_multiplier: float = 1.0
+    # overcharged_capacitors' own bonus -- Overload-Cannon-exclusive, same
+    # plain-multiply create_projectile()-read shape as beam_ramp_multiplier
+    # above: burst_multiplier is an input to OverloadCannonTower's own
+    # burst formula (damage = effective_damage() * burst_multiplier), not
+    # part of effective_damage()'s own additive stack, so it skips the
+    # family_damage_bonus() hook the same way every plain-multiply relic
+    # here does.
+    overload_burst_multiplier: float = 1.0
+    # fusion_core's own bonus -- Overload-Cannon-exclusive damage bonus,
+    # same family_damage_bonus() hook shape as lightning_damage_multiplier/
+    # cannon_knockback_damage_multiplier above, read via
+    # OverloadCannonTower's own _relic_family_damage_bonus() override.
+    overload_damage_multiplier: float = 1.0
 
 
 RELICS = {
@@ -820,6 +833,22 @@ RELICS = {
         "Knockback tower's own shove is bigger, every floor.",
         knockback_duration_multiplier=1.25,
     ),
+    # Overload-Cannon-exclusive -- see overload_burst_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower.create_projectile()).
+    "overcharged_capacitors": Relic(
+        "overcharged_capacitors", "Overcharged Capacitors",
+        "Overload Cannon's burst deals 20% more bonus damage, every floor.",
+        overload_burst_multiplier=1.20,
+    ),
+    # Overload-Cannon-exclusive -- see overload_damage_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower._relic_family_damage_bonus()).
+    "fusion_core": Relic(
+        "fusion_core", "Fusion Core",
+        "Overload Cannon deals 20% more damage, every floor.",
+        overload_damage_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -983,6 +1012,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    overload_burst_multiplier: float = 1.0
+    overload_damage_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(
@@ -1080,6 +1111,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    overload_burst_multiplier = 1.0
+    overload_damage_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1190,6 +1223,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        overload_burst_multiplier *= relic.overload_burst_multiplier
+        overload_damage_multiplier *= relic.overload_damage_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1252,4 +1287,6 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        overload_burst_multiplier=overload_burst_multiplier,
+        overload_damage_multiplier=overload_damage_multiplier,
     )

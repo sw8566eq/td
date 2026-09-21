@@ -403,6 +403,21 @@ class Tower:
         # shared with Cannon, damage-only) -- this is Knockback's own
         # second exclusive relic, off its 1-relic floor.
         self.relic_knockback_duration_bonus_multiplier = 1.0
+        # Overcharged Capacitors-style relic -- Overload-Cannon-exclusive,
+        # same plain-multiply create_projectile()-read shape as relic_beam_
+        # ramp_bonus_multiplier/relic_frost_slow_bonus_multiplier above:
+        # burst_multiplier is an input to OverloadCannonTower's own burst
+        # formula (damage = effective_damage() * burst_multiplier), not one
+        # of effective_damage()'s own additive sources, so it skips the
+        # family_damage_bonus() hook the same way every plain-multiply
+        # relic here does.
+        self.relic_overload_burst_bonus_multiplier = 1.0
+        # Fusion Core-style relic -- Overload-Cannon-exclusive damage bonus,
+        # same family_damage_bonus() hook shape as relic_lightning_damage_
+        # bonus_multiplier/relic_cannon_knockback_damage_bonus_multiplier
+        # above, read via OverloadCannonTower's own _relic_family_damage_
+        # bonus() override.
+        self.relic_overload_damage_bonus_multiplier = 1.0
         # Containment Charges-style relic is deliberately NOT one of these
         # relic_* fields -- it's a flat per-floor value with no per-tower
         # variation, so Game.update()'s own dead-enemy drain loop reads
@@ -538,6 +553,16 @@ class Tower:
         # itself. See Projectile._apply_hit_effects for where the actual
         # roll happens (once per enemy the projectile hits, not once here
         # per shot).
+        #
+        # KNOWN DUPLICATE -- read before editing: OverloadCannonTower.
+        # update() (below) keeps its own copy of this exact block, verbatim
+        # -- its cadence (acquire once, charge, burst, repeat) doesn't fit
+        # this method's own cooldown-then-immediately-fire template at all,
+        # so it overrides update() entirely instead of just
+        # create_projectile() (see that class's own docstring). If you add
+        # a new relic_* line to this block, you MUST add the identical line
+        # to OverloadCannonTower.update()'s own copy too, or Overload
+        # Cannon will silently not support that relic.
         projectile.relic_poison_chance = self.relic_poison_chance
         projectile.relic_poison_effect = self.relic_poison_effect
         projectile.relic_crit_chance = self.relic_crit_chance
@@ -1439,6 +1464,187 @@ class SupportTower(Tower):
         raise NotImplementedError("SupportTower never fires -- see update()")
 
 
+class OverloadCannonTower(Tower):
+    """Charges for several seconds locked onto one target, then fires one
+    massive burst hit, then goes idle and repeats -- a genuinely different
+    cadence from every other tower's steady rhythm ("acquire a target,
+    fire, cool down, repeat"). Tower.update()'s own template doesn't fit
+    this shape at all (a fresh target is (re-)acquired every time the
+    cooldown allows a shot, and the "cooldown" there is the gap AFTER a
+    shot, not a charge-up BEFORE one), so this class overrides update()
+    entirely rather than just create_projectile() -- the only other tower
+    that does this is SupportTower, for the same reason (its own cadence
+    doesn't fit the base template either).
+
+    The charge is genuinely at risk while building, which is the whole
+    point: acquire_target() is called only ONCE, the instant a fresh
+    charge begins (self._charge_target locks onto that one enemy object by
+    identity) -- never re-acquired on later frames while charging, unlike
+    every other tower's per-shot acquire_target() call. If the locked
+    target dies, reaches the goal, or leaves range at ANY point before the
+    charge completes, the whole charge is lost immediately: reset to zero,
+    no partial burst, no refund, no carrying the partial charge over onto
+    a newly acquired target. The tower goes idle and only tries to acquire
+    a brand-new target (restarting the charge from empty) on a LATER
+    frame. This is deliberate, not a missing feature -- it's what actually
+    creates the tower's own risk/reward identity; a tower that silently
+    resumed an interrupted charge against a different target would have
+    none of the risk its burst damage is priced around.
+
+    Charge duration is 1.0 / effective_fire_rate(), resolved fresh the
+    instant a new charge begins -- exactly how every other tower resolves
+    its own cooldown at the moment it fires (see Tower.update()'s own
+    `self.cooldown = 1.0 / self.effective_fire_rate()`). That means every
+    existing fire-rate-affecting relic (quickfire_rounds, overdrive_coils,
+    snipers_discipline, a Support tower's own aura, adrenaline_rush, ...)
+    already makes this tower charge faster or slower for free -- no new
+    plumbing needed for that interaction. burst_multiplier is flat across
+    levels (not in LEVEL_SCALED_STATS) and only ever moved by
+    specialization/relics, the same shape as BasicTower's own crit_chance.
+
+    Deliberately no EXTRA_STATS row for "charge time": ui.py's stats panel
+    (_draw_panel_stats) reads EXTRA_STATS off the bare tower CLASS, not an
+    instance, for the unplaced build-menu preview -- a computed @property
+    here would break that read. The existing generic "Fire rate" row
+    already communicates cadence just fine: 1/fire_rate literally IS the
+    charge time here too, just under a different display name."""
+    cost = 140
+    range = 140
+    damage = 70
+    fire_rate = 0.2  # 1/fire_rate = 5.0s charge time at level 1, before relics/specialization
+    projectile_speed = 260.0
+    # Flat across levels (not in LEVEL_SCALED_STATS) -- only ever moved by
+    # specialization ("overcharged_payload" below) or a relic
+    # (relic_overload_burst_bonus_multiplier), same shape as BasicTower's
+    # own crit_chance/crit_damage_multiplier.
+    burst_multiplier = 1.8
+    sprite_name = "tower_overload_cannon"
+    display_name = "Overload Cannon"
+    FIRE_SOUND = "tower_fire_heavy"  # reuses Cannon's own heavy thump cue -- no new SOUND_MANIFEST entry needed
+    EXTRA_STATS = (("Burst multiplier", "burst_multiplier", _format_buff_percent),)
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off this tower's own charge/burst mechanic instead.
+    SPECIALIZATIONS = {
+        "capacitor_bank": {
+            "display_name": "Capacitor Bank",
+            "description": "Charges much faster.",
+            "stat_multipliers": {"fire_rate": 1.5},
+        },
+        "overcharged_payload": {
+            "display_name": "Overcharged Payload",
+            "description": "Burst hits much harder.",
+            "stat_multipliers": {"burst_multiplier": 1.35},
+        },
+    }
+
+    def __init__(self, anchor_col, anchor_row, pixel_pos):
+        super().__init__(anchor_col, anchor_row, pixel_pos)
+        # None while idle (no charge underway); the locked target Enemy
+        # object once a charge begins -- checked by identity, never
+        # re-derived by "closest"/"first"/etc. while charging. See the
+        # class docstring's own "target lock, not re-acquisition" note.
+        self._charge_target = None
+        # Seconds of charge accumulated so far against self._charge_target,
+        # compared against self._charge_duration (resolved once, the
+        # instant the current charge began) to decide when the burst fires.
+        self._charge_elapsed = 0.0
+        self._charge_duration = 0.0
+
+    def _relic_family_damage_bonus(self):
+        # Fusion Core-style relic -- see Tower._relic_family_damage_bonus's
+        # own docstring for why this has to be a per-class override rather
+        # than a plain field effective_damage() reads directly.
+        return self.relic_overload_damage_bonus_multiplier - 1.0
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage() * self.burst_multiplier * self.relic_overload_burst_bonus_multiplier,
+            sprite_name="projectile_overload_cannon", source=self,
+        )
+
+    def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
+        """Overrides Tower.update() entirely -- see the class docstring for
+        why this tower's charge/burst cadence can't reuse that method's own
+        cooldown-then-fire template. Mirrors its overall shape (advance a
+        timer, fire once ready, tag the resulting projectile with every
+        relic_* field) but replaces "cooldown counts down to a shot" with
+        "charge counts up to a burst," and adds the interrupted-charge
+        check the base template has no equivalent of at all."""
+        if self._charge_target is None:
+            # Idle: try to acquire a fresh target and begin a new charge.
+            # acquire_target() is called here EXACTLY ONCE per charge --
+            # never again below while that same charge is building.
+            target = self.acquire_target(enemies, enemy_index)
+            if target is None:
+                return
+            self._charge_target = target
+            self._charge_elapsed = 0.0
+            # Resolved fresh, right now -- mirrors Tower.update()'s own
+            # `self.cooldown = 1.0 / self.effective_fire_rate()`, resolved
+            # at the moment a shot actually fires. See the class docstring.
+            self._charge_duration = 1.0 / self.effective_fire_rate()
+            return
+
+        target = self._charge_target
+        # Interrupted charge = fully lost -- no partial burst, no refund,
+        # no carrying the partial charge onto a different target. Goes
+        # idle this frame; a brand-new charge (even against this same
+        # enemy, if it's still around and in range) only begins on a LATER
+        # frame, via the branch above -- never later in this same call.
+        if target.is_dead or target.reached_goal or not self.in_range(target):
+            self._charge_target = None
+            self._charge_elapsed = 0.0
+            self._charge_duration = 0.0
+            return
+
+        self._charge_elapsed += dt
+        if self._charge_elapsed < self._charge_duration:
+            return  # still charging
+
+        # Charge complete -- fire the burst, then go idle (a fresh charge,
+        # even against this same target, only begins on a later frame).
+        self.shots_fired += 1
+        self.fired_this_frame = True
+        projectile = self.create_projectile(target)
+        # KNOWN DUPLICATE -- read before editing: this is a deliberate,
+        # verbatim copy of the identical relic-tagging block in the base
+        # Tower.update() (see that method's own matching comment). This
+        # tower can't share it via a common helper without also reworking
+        # every other update() override (SupportTower's included) to fit a
+        # shared shape, out of scope for this change. If you add a new
+        # relic_* line to that block, you MUST add the identical line here
+        # too, or Overload Cannon will silently not support that relic.
+        projectile.relic_poison_chance = self.relic_poison_chance
+        projectile.relic_poison_effect = self.relic_poison_effect
+        projectile.relic_crit_chance = self.relic_crit_chance
+        projectile.relic_crit_damage_multiplier = self.relic_crit_damage_multiplier
+        projectile.relic_chain_chance = self.relic_chain_chance
+        projectile.relic_chain_effect = self.relic_chain_effect
+        projectile.relic_damage_vs_slowed_multiplier = self.relic_damage_vs_slowed_multiplier
+        projectile.relic_slow_chance = self.relic_slow_chance
+        projectile.relic_slow_effect = self.relic_slow_effect
+        projectile.relic_poison_ignores_shield = self.relic_poison_ignores_shield
+        projectile.relic_damage_vs_early_route_multiplier = self.relic_damage_vs_early_route_multiplier
+        projectile.relic_damage_vs_high_hp_multiplier = self.relic_damage_vs_high_hp_multiplier
+        projectile.relic_overkill_carry_fraction = self.relic_overkill_carry_fraction
+        projectile.relic_knockback_chance = self.relic_knockback_chance
+        projectile.relic_knockback_effect = self.relic_knockback_effect
+        projectile.relic_mark_chance = self.relic_mark_chance
+        projectile.relic_mark_effect = self.relic_mark_effect
+        projectile.relic_damage_vs_flying_multiplier = self.relic_damage_vs_flying_multiplier
+        projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
+        projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
+        projectile.relic_damage_vs_fast_multiplier = self.relic_damage_vs_fast_multiplier
+        projectile.relic_damage_vs_marked_and_slowed_multiplier = self.relic_damage_vs_marked_and_slowed_multiplier
+        projectile.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_damage_vs_marked_and_poisoned_multiplier
+        projectile.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_damage_vs_slowed_and_poisoned_multiplier
+        projectiles.append(projectile)
+        self._charge_target = None
+        self._charge_elapsed = 0.0
+        self._charge_duration = 0.0
+
+
 TOWER_TYPES = {
     "basic": BasicTower,
     "cannon": CannonTower,
@@ -1450,4 +1656,5 @@ TOWER_TYPES = {
     "support": SupportTower,
     "beam": BeamTower,
     "beacon": BeaconTower,
+    "overload_cannon": OverloadCannonTower,
 }
