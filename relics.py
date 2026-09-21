@@ -415,6 +415,27 @@ class Relic:
     # Cannon and damage-only; concussive_rounds is a generic relic any
     # tower can hold) -- brings it off its 1-relic floor.
     knockback_duration_multiplier: float = 1.0
+    # fracture_rounds' own bonus -- a "flat, non-tower" field, same read
+    # site as splitter_child_damage above (Game.update()'s own dead-enemy
+    # drain loop): applied once to each of a killed SplitterEnemy's own
+    # freshly-spawned children before they ever join self.enemies, gated
+    # the identical enemy.is_dead way so FinalBossEnemy's own live
+    # reinforcement summons (which populate pending_spawns while very much
+    # still alive) are never touched by this. Plain multiply, not min() --
+    # smaller is the buff direction here (a shrunk max_hp), the same
+    # "multiply and let values naturally shrink" shape frost_slow_
+    # multiplier already establishes, so no combine-two-relics tiebreak is
+    # needed.
+    splitter_child_hp_multiplier: float = 1.0
+    # numbing_toxins' own bonus -- threaded into WaveManager's own
+    # constructor kwargs in Game._load_level_object, exactly like enemy_
+    # speed_multiplier/enemy_gold_multiplier above, and applied post-
+    # construction in WaveManager._spawn_enemy via the same hasattr-gated
+    # patch-up pattern already used for ShieldedEnemy's own max_shield
+    # scaling (see that method). Smaller is the buff direction (slower
+    # healing), same plain-multiply shape as splitter_child_hp_multiplier
+    # immediately above.
+    healer_heal_rate_multiplier: float = 1.0
 
 
 RELICS = {
@@ -820,6 +841,30 @@ RELICS = {
         "Knockback tower's own shove is bigger, every floor.",
         knockback_duration_multiplier=1.25,
     ),
+    # A round-out batch of three, closing an economy-safety-net gap and two
+    # enemy-counterplay gaps rather than deepening an existing archetype.
+    # No RelicModifiers field at all -- same shape as guardians_reprieve
+    # above (checked directly against run.relics, see Game._spend_gold).
+    "emergency_reserves": Relic(
+        "emergency_reserves", "Emergency Reserves",
+        "The first time a purchase would leave you with 0 battle gold this run, get 40 gold back instead.",
+    ),
+    # Splitter counterplay -- see splitter_child_hp_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (Game.update()'s dead-enemy drain loop).
+    "fracture_rounds": Relic(
+        "fracture_rounds", "Fracture Rounds",
+        "A splitter enemy's spawned children start with 30% less HP.",
+        splitter_child_hp_multiplier=0.70,
+    ),
+    # Healer counterplay -- see healer_heal_rate_multiplier's own comment
+    # on the Relic dataclass above for the read site (WaveManager.
+    # _spawn_enemy).
+    "numbing_toxins": Relic(
+        "numbing_toxins", "Numbing Toxins",
+        "Healer enemies heal 30% slower.",
+        healer_heal_rate_multiplier=0.70,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -983,6 +1028,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    splitter_child_hp_multiplier: float = 1.0
+    healer_heal_rate_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(
@@ -1080,6 +1127,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    splitter_child_hp_multiplier = 1.0
+    healer_heal_rate_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1190,6 +1239,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        splitter_child_hp_multiplier *= relic.splitter_child_hp_multiplier
+        healer_heal_rate_multiplier *= relic.healer_heal_rate_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1252,4 +1303,6 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        splitter_child_hp_multiplier=splitter_child_hp_multiplier,
+        healer_heal_rate_multiplier=healer_heal_rate_multiplier,
     )

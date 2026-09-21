@@ -750,3 +750,26 @@ def test_compose_relic_modifiers_relic_gap_fillers_are_order_independent():
         "flak_rounds", "disorienting_flash", "concussive_rounds",
     ])
     assert forward == backward
+
+
+def test_emergency_reserves_contributes_nothing_to_composed_modifiers():
+    # No numeric fields at all -- checked directly against run.relics in
+    # Game._spend_gold instead, same shape as guardians_reprieve/
+    # war_chest/sturdy_gate.
+    assert compose_relic_modifiers(["emergency_reserves"]) == RelicModifiers()
+
+
+def test_compose_relic_modifiers_multiplies_splitter_child_hp_multiplier():
+    modifiers = compose_relic_modifiers(["fracture_rounds", "fracture_rounds"])
+    assert modifiers.splitter_child_hp_multiplier == RELICS["fracture_rounds"].splitter_child_hp_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_healer_heal_rate_multiplier():
+    modifiers = compose_relic_modifiers(["numbing_toxins", "numbing_toxins"])
+    assert modifiers.healer_heal_rate_multiplier == RELICS["numbing_toxins"].healer_heal_rate_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_roundout_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.splitter_child_hp_multiplier == 1.0
+    assert modifiers.healer_heal_rate_multiplier == 1.0
