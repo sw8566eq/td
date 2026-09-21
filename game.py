@@ -67,6 +67,9 @@ _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- 
 _DEFAULT_ESCALATION = run_escalation.FloorEscalation()
 _DEFAULT_RELIC_MODIFIERS = relics.RelicModifiers()
 
+# Emergency Reserves' own one-time refund (relics.py) -- see Game._spend_gold.
+EMERGENCY_RESERVES_REFUND_AMOUNT = 40
+
 
 class GameState(Enum):
     MENU = auto()
@@ -1049,6 +1052,7 @@ class Game:
             enemy_gold_multiplier=(
                 mode.enemy_gold_multiplier * escalation.enemy_gold_multiplier * relic_modifiers.enemy_gold_multiplier
             ),
+            healer_heal_rate_multiplier=relic_modifiers.healer_heal_rate_multiplier,
             endless=endless,
             rng=rng,
         )
@@ -1968,6 +1972,21 @@ class Game:
         self.economy.spend(amount)
         if self.active_run is not None:
             self.active_run.has_spent_gold = True
+            run = self.active_run
+            # Emergency Reserves' own one-time safety net -- same shape as
+            # Guardian's Reprieve's interception in _lose_a_life (checked
+            # directly against run.relics, gated on a one-time RunState
+            # flag, and a no-op under unlimited_gold/sandbox, where there's
+            # nothing to save since gold was never really at risk).
+            # can_afford() is always checked before every _spend_gold() call
+            # site reaches here, so self.economy.gold is never negative by
+            # this point -- <= 0 only ever means "spent down to exactly 0."
+            if (
+                "emergency_reserves" in run.relics and not run.used_emergency_reserves
+                and self.economy.gold <= 0 and not self.economy.unlimited_gold
+            ):
+                run.used_emergency_reserves = True
+                self.economy.add_gold(EMERGENCY_RESERVES_REFUND_AMOUNT)
 
     def update(self, dt):
         if self.state != GameState.PLAYING:
@@ -2090,6 +2109,15 @@ class Game:
                 # is specifically about a *death*-triggered split
                 # (SplitterEnemy); FinalBossEnemy's own live reinforcement
                 # summons must never be caught by this same check.
+                # Fracture Rounds' own HP reduction -- same gating as
+                # splitter_child_damage immediately below (enemy.is_dead,
+                # never FinalBossEnemy's own live reinforcement summons),
+                # applied first so the flat damage right after lands
+                # against each child's already-shrunk max_hp/hp.
+                if enemy.is_dead and self.relic_modifiers.splitter_child_hp_multiplier != 1.0:
+                    for child in enemy.pending_spawns:
+                        child.max_hp *= self.relic_modifiers.splitter_child_hp_multiplier
+                        child.hp = child.max_hp
                 if enemy.is_dead and self.relic_modifiers.splitter_child_damage:
                     for child in enemy.pending_spawns:
                         child.take_damage(self.relic_modifiers.splitter_child_damage)

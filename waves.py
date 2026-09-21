@@ -46,6 +46,7 @@ class WaveManager:
     def __init__(self, level, cell_to_pixel, spawn_interval=settings.SPAWN_INTERVAL,
                  between_wave_delay=settings.BETWEEN_WAVE_DELAY, rng=None,
                  enemy_hp_multiplier=1.0, enemy_speed_multiplier=1.0, enemy_gold_multiplier=1.0,
+                 healer_heal_rate_multiplier=1.0,
                  endless=False, endless_wave_generator=None):
         self.level = level
         # Endless/Survival mode: once the last authored wave clears,
@@ -72,6 +73,11 @@ class WaveManager:
         self.enemy_hp_multiplier = enemy_hp_multiplier
         self.enemy_speed_multiplier = enemy_speed_multiplier
         self.enemy_gold_multiplier = enemy_gold_multiplier
+        # Numbing Toxins' own bonus (relics.py) -- applied post-construction
+        # in _spawn_enemy, same hasattr-gated patch-up shape as
+        # ShieldedEnemy's own max_shield scaling right below it. 1.0 (the
+        # default) is a no-op, same as every other multiplier here.
+        self.healer_heal_rate_multiplier = healer_heal_rate_multiplier
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -237,6 +243,8 @@ class WaveManager:
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
             enemy.max_shield *= self.enemy_hp_multiplier
             enemy.shield = enemy.max_shield
+        if hasattr(enemy, "heal_rate"):  # HealerEnemy only
+            enemy.heal_rate *= self.healer_heal_rate_multiplier
         return enemy
 
     def _begin_wave(self):

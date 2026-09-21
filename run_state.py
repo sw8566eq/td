@@ -96,6 +96,12 @@ class RunState:
     # first time it actually saves the run from losing its last life
     # (Game._lose_a_life), and never resets for the rest of the run.
     used_guardians_reprieve: bool = False
+    # Emergency Reserves' own one-time charge (relics.py) -- flips true the
+    # first time it actually refunds gold after a purchase would have left
+    # this run at exactly 0 (Game._spend_gold), same one-time-per-run shape
+    # as used_guardians_reprieve immediately above, and never resets for
+    # the rest of the run.
+    used_emergency_reserves: bool = False
     # Whether this run's boss node has already had its authored waves
     # cleared once -- flips true exactly once, in Game._handle_boss_
     # defeated, and never resets for the rest of the run. Guards against a

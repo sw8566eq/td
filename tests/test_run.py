@@ -37,9 +37,14 @@ import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
-from enemy import GruntEnemy, SplitterEnemy
+from enemy import FinalBossEnemy, GruntEnemy, ScoutEnemy, SplitterEnemy
 from events import EVENTS
-from game import _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM, GameState
+from game import (
+    _DRAFT_RNG_STREAM,
+    _FLOOR_RNG_STREAM,
+    EMERGENCY_RESERVES_REFUND_AMOUNT,
+    GameState,
+)
 from levels import LEVELS
 from relics import RELICS, Relic
 from run_map import MapNode, RunMap
@@ -1294,6 +1299,47 @@ def test_guardians_reprieve_does_nothing_in_sandbox_mode(game):
     assert game.active_run.used_guardians_reprieve is False
 
 
+def test_emergency_reserves_refunds_gold_the_first_time_it_would_hit_zero(game):
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.gold = 50
+
+    game._spend_gold(50)  # spends down to exactly 0 -- the relic's own trigger condition
+
+    assert game.economy.gold == EMERGENCY_RESERVES_REFUND_AMOUNT
+    assert game.active_run.used_emergency_reserves is True
+
+
+def test_emergency_reserves_only_refunds_once_per_run(game):
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.gold = 50
+    game._spend_gold(50)  # first trigger -- the charge is spent
+    assert game.economy.gold == EMERGENCY_RESERVES_REFUND_AMOUNT
+
+    # Spending the refund itself back down to 0 must not trigger a second
+    # refund -- the charge is already used_emergency_reserves-gated.
+    game._spend_gold(EMERGENCY_RESERVES_REFUND_AMOUNT)
+
+    assert game.economy.gold == 0
+
+
+def test_emergency_reserves_does_nothing_under_unlimited_gold(game):
+    # Covers both the CLI --unlimited-gold debug flag and Sandbox/Practice
+    # mode, which reuses this exact flag (see Economy's own docstring) --
+    # there's nothing to save when a purchase was never really going to
+    # cost anything.
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.unlimited_gold = True
+    game.economy.gold = 0
+
+    game._spend_gold(50)
+
+    assert game.economy.gold == 0
+    assert game.active_run.used_emergency_reserves is False
+
+
 def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["lucky_strikes"]
@@ -1493,6 +1539,58 @@ def test_containment_charges_damages_a_splitters_children_through_game_update(ga
     for child in children:
         assert child.hp == pytest.approx(child.max_hp - 5)
         assert child in game.enemies
+
+
+def test_fracture_rounds_reduces_a_splitters_spawned_childrens_hp(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "fracture_rounds", Relic(
+        "fracture_rounds", "", "", splitter_child_hp_multiplier=0.5,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["fracture_rounds"]
+    _enter_first_node(game)
+    assert game.relic_modifiers.splitter_child_hp_multiplier == 0.5
+
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+    splitter = SplitterEnemy(waypoints, wave_number=1)
+    splitter.take_damage(splitter.max_hp)  # a killing blow, queues pending_spawns
+    assert splitter.is_dead
+    children = list(splitter.pending_spawns)
+    unreduced_max_hp = [child.max_hp for child in children]
+    game.enemies = [splitter]
+
+    game.update(dt=0.01)
+
+    assert len(children) == SplitterEnemy.SPLIT_COUNT
+    for child, original_max_hp in zip(children, unreduced_max_hp):
+        assert child.max_hp == pytest.approx(original_max_hp * 0.5)
+        assert child.hp == pytest.approx(child.max_hp)  # spawned at full (reduced) health
+        assert child in game.enemies
+
+
+def test_fracture_rounds_does_not_reduce_a_final_bosss_live_reinforcements(game, monkeypatch):
+    # FinalBossEnemy's own reinforcement-summon mechanic reuses the exact
+    # same pending_spawns channel SplitterEnemy uses, but populates it
+    # repeatedly while very much still alive -- Fracture Rounds must only
+    # ever apply to an actual splitter's children on death, never these.
+    monkeypatch.setitem(RELICS, "fracture_rounds", Relic(
+        "fracture_rounds", "", "", splitter_child_hp_multiplier=0.5,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["fracture_rounds"]
+    _enter_first_node(game)
+    assert game.relic_modifiers.splitter_child_hp_multiplier == 0.5
+
+    boss = FinalBossEnemy([pygame.Vector2(0, 0), pygame.Vector2(10**7, 0)], wave_number=1)
+    game.enemies = [boss]
+
+    game.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)  # crosses the summon interval
+
+    reinforcements = [enemy for enemy in game.enemies if enemy is not boss]
+    assert len(reinforcements) == FinalBossEnemy.SUMMON_COUNT
+    reference_scout = ScoutEnemy(boss.waypoints, boss.wave_number)  # same construction, unaffected
+    for scout in reinforcements:
+        assert scout.max_hp == reference_scout.max_hp
+        assert scout.hp == reference_scout.max_hp
 
 
 def _enter_run_with_relic(game, monkeypatch, relic_key, **relic_kwargs):
