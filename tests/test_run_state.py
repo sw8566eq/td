@@ -34,6 +34,7 @@ def test_defaults():
     assert run.is_daily is False
     assert run.has_spent_gold is False
     assert run.used_guardians_reprieve is False
+    assert run.used_emergency_reserves is False
 
 
 def test_relics_default_is_not_shared_across_instances():

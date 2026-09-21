@@ -26,17 +26,27 @@ from waves import WaveState
 ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
 
 
-# BUTTON_SIZE shrank from its original 72 once Overload Cannon became the
-# 11th registered tower: build_button_rects() lays every tower_names entry
-# out left-to-right starting at BUTTON_MARGIN with no wrapping, and
-# Practice's build menu passes every TOWER_ORDER entry (the worst case, one
-# icon per registered tower) -- at 72px, an 11th icon's own row pushed past
-# build_skip_button_rect()'s left edge, which test_ui.py's own
-# test_skip_button_does_not_overlap_the_tower_build_buttons regression test
-# exists to catch. 60 leaves real headroom for future towers too, not just
-# a bare fit for 11.
-BUTTON_SIZE = 60
-BUTTON_MARGIN = 12
+# BUTTON_SIZE shrank from its original 72 as the roster grew past 10 towers:
+# build_button_rects() lays every tower_names entry out left-to-right
+# starting at BUTTON_MARGIN with no wrapping, and Practice's build menu
+# passes every TOWER_ORDER entry (the worst case, one icon per registered
+# tower). That growth also exposed a real pre-existing bug, not something
+# either individual tower addition introduced on its own: the Gold/Lives/
+# Wave HUD text (drawn starting right after the button row, see draw_hud's
+# own info_x) was colliding with the wave-countdown caption and Start/Skip
+# button, which used to live in this same bottom row at a screen-relative,
+# not button-count-relative, position -- confirmed still present even in
+# the original 10-tower/72px layout via a baseline screenshot, just not
+# previously caught. Fixed by moving the countdown caption and Skip button
+# into the HUD's top strip instead (see build_skip_button_rect below),
+# alongside the speed/relics buttons that already live there for the exact
+# same "independent of the tower row" reason -- the bottom row is now free
+# for the button row and the Gold/Lives/Wave text to share with no other
+# claimant, so the only remaining constraint sizing BUTTON_SIZE/MARGIN is
+# fitting TOWER_ORDER's full button row plus that text's own worst-case
+# width (e.g. "Gold: unlimited   Shop: 999") inside settings.PLAY_WIDTH.
+BUTTON_SIZE = 44
+BUTTON_MARGIN = 8
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many
 # tower buttons are registered -- the speed toggle (build_speed_button_rect)
@@ -54,8 +64,7 @@ PANEL_ROW_HEIGHT = 22
 TOWER_ORDER = list(TOWER_TYPES.keys())  # stable UI order = registry insertion order
 
 SKIP_BUTTON_WIDTH = 100
-SKIP_BUTTON_HEIGHT = 36
-SKIP_BUTTON_MARGIN = 16
+SKIP_BUTTON_HEIGHT = 28
 
 # Upgrade/Specialize and Sell sit stacked in a fixed spot in the stats
 # panel, comfortably below the tallest stats block any tower type
@@ -112,18 +121,6 @@ def get_clicked_tower_button(pos, button_rects):
     return _key_of_rect_containing(pos, button_rects)
 
 
-def build_skip_button_rect():
-    """Rect for the 'Skip' button that forces the next wave to start,
-    anchored to the HUD's bottom-right corner (independent of how many
-    tower buttons are registered on the left). Anchored to PLAY_WIDTH, not
-    the full (wider, panel-including) SCREEN_WIDTH, so it stays within the
-    HUD bar under the grid rather than drifting under the stats panel."""
-    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
-    x = settings.PLAY_WIDTH - SKIP_BUTTON_WIDTH - SKIP_BUTTON_MARGIN
-    y = hud_top + settings.HUD_HEIGHT - SKIP_BUTTON_HEIGHT - 10
-    return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
-
-
 SPEED_BUTTON_WIDTH = 84
 SPEED_BUTTON_HEIGHT = 28
 
@@ -131,8 +128,8 @@ SPEED_BUTTON_HEIGHT = 28
 def build_speed_button_rect():
     """Rect for the HUD's speed-toggle button ('Speed: 1x', cycling to 2x/
     3x on click -- see Game.cycle_time_scale) -- right-aligned in the HUD's
-    top strip (see HUD_TOP_STRIP_HEIGHT), independent of both the tower
-    button row below it and the skip button, which lives in that row."""
+    top strip (see HUD_TOP_STRIP_HEIGHT), independent of the tower button
+    row below it."""
     hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
     x = settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN
     y = hud_top + (HUD_TOP_STRIP_HEIGHT - SPEED_BUTTON_HEIGHT) // 2
@@ -153,6 +150,28 @@ def build_relics_button_rect():
     x = settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN - RELICS_BUTTON_WIDTH - BUTTON_MARGIN
     y = hud_top + (HUD_TOP_STRIP_HEIGHT - RELICS_BUTTON_HEIGHT) // 2
     return pygame.Rect(x, y, RELICS_BUTTON_WIDTH, RELICS_BUTTON_HEIGHT)
+
+
+def build_skip_button_rect():
+    """Rect for the 'Skip' button that forces the next wave to start --
+    lives in the HUD's top strip, left of the relics button, same
+    independent-of-the-tower-row reasoning as that button's own docstring.
+    Used to anchor to the HUD's bottom-right corner instead, in the same
+    row as the tower buttons -- moved here because that position was
+    screen-relative, not tower-count-relative, so it silently collided
+    with the Gold/Lives/Wave HUD text (see draw_hud's own info_x) once the
+    roster grew large enough to push that text underneath it; confirmed via
+    a baseline screenshot that this collision already existed at the
+    original 10-tower roster, not something any one tower addition
+    introduced on its own. Always reserves the relics button's own slot
+    whether or not that button is actually drawn this frame (relic_count is
+    None outside an active run) -- a fixed layout regardless of run state
+    beats the skip button sliding around every time a run starts/ends."""
+    hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
+    x = (settings.PLAY_WIDTH - SPEED_BUTTON_WIDTH - BUTTON_MARGIN
+         - RELICS_BUTTON_WIDTH - BUTTON_MARGIN - SKIP_BUTTON_WIDTH - BUTTON_MARGIN)
+    y = hud_top + (HUD_TOP_STRIP_HEIGHT - SKIP_BUTTON_HEIGHT) // 2
+    return pygame.Rect(x, y, SKIP_BUTTON_WIDTH, SKIP_BUTTON_HEIGHT)
 
 
 def _action_button_rect(top):
@@ -287,9 +306,16 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         wave_label += f"   {floor_label}"
     wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
 
-    surface.blit(gold_text, (info_x, hud_rect.y + 8))
-    surface.blit(lives_text, (info_x, hud_rect.y + 36))
-    surface.blit(wave_text, (info_x, hud_rect.y + 64))
+    # Starts at +36, not the button row's own +0 -- the HUD's top 32px
+    # (HUD_TOP_STRIP_HEIGHT) is reserved for the speed/relics/skip buttons
+    # now that skip_button_rect lives there too (see build_skip_button_rect),
+    # and this text's own first line used to start at +8, squarely inside
+    # that same top-strip band, which is what let it collide with those
+    # buttons in the first place once the tower row grew long enough to
+    # push info_x that far right.
+    surface.blit(gold_text, (info_x, hud_rect.y + 36))
+    surface.blit(lives_text, (info_x, hud_rect.y + 64))
+    surface.blit(wave_text, (info_x, hud_rect.y + 92))
 
     _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
 
@@ -406,7 +432,12 @@ def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect)
     else:
         countdown_text = font.render("Wave in progress", True, settings.COLOR_TEXT_DIM)
         button_label, clickable = "Skip", False
-    countdown_rect = countdown_text.get_rect(midbottom=(skip_button_rect.centerx, skip_button_rect.top - 6))
+    # Sits to the left of the button, both vertically centered on the same
+    # top-strip row, now that skip_button_rect itself lives in the top
+    # strip (see build_skip_button_rect) rather than above it in the
+    # bottom row -- there's no room above a top-strip button for a caption
+    # to float over without spilling onto the grid itself.
+    countdown_rect = countdown_text.get_rect(midright=(skip_button_rect.left - 10, skip_button_rect.centery))
     surface.blit(countdown_text, countdown_rect)
 
     button_color = settings.COLOR_BUTTON if clickable else settings.COLOR_BUTTON_DISABLED

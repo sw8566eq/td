@@ -10,6 +10,8 @@ from tower import TOWER_TYPES
 from ui import (
     ACHIEVEMENT_ROW_HEIGHT,
     ACHIEVEMENTS_TOP,
+    BUTTON_MARGIN,
+    BUTTON_SIZE,
     CREDITS_LINE_HEIGHT,
     CREDITS_LINES,
     CREDITS_TOP,
@@ -30,6 +32,7 @@ from ui import (
     MAP_NODE_TYPE_NAMES,
     MAP_TOOLTIP_MAX_WIDTH,
     PANEL_PADDING,
+    TOWER_ORDER,
     WAVE_EDITOR_ACTION_ORDER,
     WAVE_UNIT_ROW_HEIGHT,
     WAVE_UNIT_ROWS_BOTTOM,
@@ -159,11 +162,11 @@ def test_get_clicked_tower_button_returns_none_outside_all_buttons():
     assert get_clicked_tower_button((1000, 1000), rects) is None
 
 
-def test_skip_button_sits_within_the_hud_and_the_play_area():
+def test_skip_button_sits_within_the_hud_top_strip():
     rect = build_skip_button_rect()
     hud_top = settings.SCREEN_HEIGHT - settings.HUD_HEIGHT
     assert rect.top >= hud_top
-    assert rect.bottom <= settings.SCREEN_HEIGHT
+    assert rect.bottom <= hud_top + HUD_TOP_STRIP_HEIGHT
     assert rect.left >= 0
     # Anchored to PLAY_WIDTH, not the wider (panel-including) SCREEN_WIDTH,
     # so it stays under the grid rather than drifting under the stats panel.
@@ -174,6 +177,12 @@ def test_skip_button_does_not_overlap_the_tower_build_buttons():
     skip_rect = build_skip_button_rect()
     for name, tower_rect in build_button_rects().items():
         assert not skip_rect.colliderect(tower_rect), name
+
+
+def test_skip_button_does_not_overlap_the_speed_or_relics_button():
+    skip_rect = build_skip_button_rect()
+    assert not skip_rect.colliderect(build_speed_button_rect())
+    assert not skip_rect.colliderect(build_relics_button_rect())
 
 
 def test_speed_button_sits_within_the_hud_top_strip():
@@ -189,6 +198,35 @@ def test_speed_button_does_not_overlap_the_skip_button_or_tower_buttons():
     assert not speed_rect.colliderect(build_skip_button_rect())
     for name, tower_rect in build_button_rects().items():
         assert not speed_rect.colliderect(tower_rect), name
+
+
+def test_hud_gold_lives_wave_text_fits_before_the_play_area_edge():
+    # Regression test for a real bug confirmed present even in the
+    # original 10-tower/BUTTON_SIZE=72 baseline (a baseline screenshot at
+    # that commit showed it): draw_hud's own info_x (where the Gold/Lives/
+    # Wave text starts, right after however many tower buttons are drawn)
+    # used to grow into the wave-countdown caption and Skip/Start button,
+    # which lived in this same bottom row at a screen-relative position.
+    # Moving those into the HUD's top strip (build_skip_button_rect) means
+    # the only remaining constraint is fitting inside settings.PLAY_WIDTH
+    # at all -- checked here against TOWER_ORDER (every registered tower,
+    # Practice's own worst case) and the widest realistic Gold/Lives/Wave
+    # line (unlimited battle gold shown alongside a real shop-currency
+    # figure, and a boss-defeated Wave line -- see draw_hud's own
+    # gold_label/wave_label construction).
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)  # matches Game.font
+    info_x = BUTTON_MARGIN + len(TOWER_ORDER) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
+    worst_case_lines = [
+        "Gold: unlimited   Shop: 999",
+        "Wave 6/6 -- Boss defeated!",
+    ]
+    for line in worst_case_lines:
+        width = font.size(line)[0]
+        assert info_x + width <= settings.PLAY_WIDTH, (
+            f"{line!r} at info_x={info_x} is {width}px wide, "
+            f"right edge {info_x + width}px overflows PLAY_WIDTH={settings.PLAY_WIDTH}"
+        )
 
 
 def test_settings_rects_has_one_entry_per_option():
