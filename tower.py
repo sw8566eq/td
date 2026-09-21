@@ -361,12 +361,31 @@ class Tower:
         self.relic_tower_density_damage_bonus_per_neighbor = 0.0
         self.relic_tower_density_damage_bonus_cap = 0.0
         self.relic_tower_density_bonus_multiplier = 1.0
+        # Overclocked Circuits-style relic -- a third density channel,
+        # fire rate instead of damage, reusing the exact same live
+        # neighbor count set_nearby_tower_bonus() already computes above
+        # rather than a second scan. _per_neighbor/_cap are its own
+        # configured strength (set once at construction, like the damage
+        # channel's pair above); relic_tower_density_fire_rate_bonus_
+        # multiplier is the live value recomputed alongside relic_tower_
+        # density_bonus_multiplier whenever set_nearby_tower_bonus() runs.
+        self.relic_tower_density_fire_rate_bonus_per_neighbor = 0.0
+        self.relic_tower_density_fire_rate_bonus_cap = 0.0
+        self.relic_tower_density_fire_rate_bonus_multiplier = 1.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
         # together by set_last_stand_multiplier() below.
         self.relic_last_stand_fire_rate_bonus_multiplier = 1.0
         self.relic_last_stand_fire_rate_multiplier = 1.0
+        # Desperate Reach-style relic -- a third live-reactive last-stand
+        # channel, range instead of damage/fire rate, same configured-
+        # strength/live-value pair shape as the two immediately above and
+        # above that; toggled together with them by set_last_stand_
+        # multiplier() below since all three key off the exact same
+        # "down to your last life" condition.
+        self.relic_last_stand_range_bonus_multiplier = 1.0
+        self.relic_last_stand_range_multiplier = 1.0
         # Choke Point-style relic -- ungated multiply, read by Projectile
         # against enemy.distance_traveled.
         self.relic_damage_vs_early_route_multiplier = 1.0
@@ -660,18 +679,25 @@ class Tower:
         return self.pos.distance_to(enemy.pos) <= effective_range
 
     def effective_range(self):
-        """self.range scaled by both the transient per-frame aura buff
-        (aura_range_multiplier, reset every frame -- see reset_aura()/
-        receive_aura()) and this tower's own persistent, relic-driven
-        bonus (relic_range_bonus_multiplier, set once at construction
-        from whatever Spyglass Array-style relic the run holds -- see
-        Game._construct_tower). The two ADD (1.0 + aura_bonus +
-        relic_bonus), they don't multiply and don't take max() -- a
-        tower buffed by both a nearby Support tower and a held Range
-        relic gets more range than either alone, unlike receive_aura()'s
-        own max()-not-stacking rule for multiple SupportTowers."""
+        """self.range scaled by three independent bonus sources, stacked
+        ADDITIVELY (1.0 + aura_bonus + relic_bonus + last_stand_bonus): the
+        transient per-frame aura buff (aura_range_multiplier, reset every
+        frame -- see reset_aura()/receive_aura()), this tower's own
+        persistent, relic-driven bonus (relic_range_bonus_multiplier, set
+        once at construction from whatever Spyglass Array-style relic the
+        run holds -- see Game._construct_tower), and a Desperate Reach-
+        style relic's own live, per-frame-recomputed bonus (relic_last_
+        stand_range_multiplier -- see set_last_stand_multiplier()). None of
+        the three multiply or take max() against each other -- a tower
+        buffed by a nearby Support tower, a held Range relic, and a last-
+        stand relic all at once gets more range than any one alone, unlike
+        receive_aura()'s own max()-not-stacking rule for multiple
+        SupportTowers."""
         return self.range * (
-            1.0 + (self.aura_range_multiplier - 1.0) + (self.relic_range_bonus_multiplier - 1.0)
+            1.0
+            + (self.aura_range_multiplier - 1.0)
+            + (self.relic_range_bonus_multiplier - 1.0)
+            + (self.relic_last_stand_range_multiplier - 1.0)
         )
 
     def relic_adjusted_range(self):
@@ -751,16 +777,20 @@ class Tower:
         to the last one -- the one relic-driven value on this class that
         reacts to live, changing game state rather than resolving once at
         floor-load/construction time. relic_last_stand_bonus_multiplier/
-        relic_last_stand_fire_rate_bonus_multiplier are the relics' own
-        configured strengths (constant, from Game._construct_tower); this
-        just switches whether effective_damage()/effective_fire_rate()
-        currently apply them, both in the same call since both relics key
-        off the exact same "down to your last life" condition."""
+        relic_last_stand_fire_rate_bonus_multiplier/relic_last_stand_range_
+        bonus_multiplier are the relics' own configured strengths (constant,
+        from Game._construct_tower); this just switches whether effective_
+        damage()/effective_fire_rate()/effective_range() currently apply
+        them, all three in the same call since all three relics key off the
+        exact same "down to your last life" condition."""
         self.relic_last_stand_multiplier = (
             self.relic_last_stand_bonus_multiplier if active else 1.0
         )
         self.relic_last_stand_fire_rate_multiplier = (
             self.relic_last_stand_fire_rate_bonus_multiplier if active else 1.0
+        )
+        self.relic_last_stand_range_multiplier = (
+            self.relic_last_stand_range_bonus_multiplier if active else 1.0
         )
 
     def set_nearby_tower_bonus(self, towers):
@@ -772,17 +802,22 @@ class Tower:
         rather than a caller reducing it to a bare count first. Computes
         and stores the live Overcrowded Circuits-style density bonus read
         by effective_damage(), capped at relic_tower_density_damage_bonus_
-        cap. No such relic held (relic_tower_density_radius left at 0) or
-        no other tower actually within it leaves this at 1.0, a no-op in
-        effective_damage()'s additive stack -- and skips the scan itself
-        entirely in the no-relic case, the common one. 'Every other
-        tower' counts SupportTower instances too -- the relic's own text
-        says 'tower,' not 'attacking tower.' This is deliberately NOT
-        re-resolved every frame the way aura_damage_multiplier is: unlike
-        an aura buff (broadcast fresh each frame by whichever SupportTower
-        is currently in range), a tower's own .pos never moves once
-        placed, so nothing about this count can change between one of the
-        events above and the next."""
+        cap, AND the live Overclocked Circuits-style density bonus read by
+        effective_fire_rate(), capped at relic_tower_density_fire_rate_
+        bonus_cap -- both derived from the exact same nearby_count this
+        method already computes once, not a second scan. No such relic
+        held (relic_tower_density_radius left at 0) or no other tower
+        actually within it leaves both multipliers at 1.0, a no-op in
+        effective_damage()'s additive stack and effective_fire_rate()'s
+        multiplicative one -- and skips the scan itself entirely in the
+        no-relic case, the common one. 'Every other tower' counts
+        SupportTower instances too -- the relics' own text says 'tower,'
+        not 'attacking tower.' This is deliberately NOT re-resolved every
+        frame the way aura_damage_multiplier is: unlike an aura buff
+        (broadcast fresh each frame by whichever SupportTower is currently
+        in range), a tower's own .pos never moves once placed, so nothing
+        about this count can change between one of the events above and
+        the next."""
         nearby_count = 0
         if self.relic_tower_density_radius > 0:
             radius_sq = self.relic_tower_density_radius ** 2
@@ -790,23 +825,36 @@ class Tower:
                 1 for other in towers
                 if other is not self and self.pos.distance_squared_to(other.pos) <= radius_sq
             )
-        bonus = min(
+        damage_bonus = min(
             nearby_count * self.relic_tower_density_damage_bonus_per_neighbor,
             self.relic_tower_density_damage_bonus_cap,
         )
-        self.relic_tower_density_bonus_multiplier = 1.0 + bonus
+        self.relic_tower_density_bonus_multiplier = 1.0 + damage_bonus
+        fire_rate_bonus = min(
+            nearby_count * self.relic_tower_density_fire_rate_bonus_per_neighbor,
+            self.relic_tower_density_fire_rate_bonus_cap,
+        )
+        self.relic_tower_density_fire_rate_bonus_multiplier = 1.0 + fire_rate_bonus
 
     def effective_fire_rate(self):
-        """self.fire_rate scaled by two independent multiplicative
+        """self.fire_rate scaled by three independent multiplicative
         sources: this tower's own persistent, relic-driven bonus
-        (relic_fire_rate_bonus_multiplier -- see Game._construct_tower)
-        and an Adrenaline Rush-style relic's live, per-frame-recomputed
-        bonus (relic_last_stand_fire_rate_multiplier -- see
-        set_last_stand_multiplier()). Unlike effective_range()/
-        effective_damage(), there's no aura equivalent for fire rate to
-        also fold in, so both sources just multiply straight in rather
-        than stacking additively."""
-        return self.fire_rate * self.relic_fire_rate_bonus_multiplier * self.relic_last_stand_fire_rate_multiplier
+        (relic_fire_rate_bonus_multiplier -- see Game._construct_tower),
+        an Adrenaline Rush-style relic's live, per-frame-recomputed bonus
+        (relic_last_stand_fire_rate_multiplier -- see set_last_stand_
+        multiplier()), and an Overclocked Circuits-style relic's own live
+        density bonus, recomputed whenever the board's tower set changes
+        rather than every frame (relic_tower_density_fire_rate_bonus_
+        multiplier -- see set_nearby_tower_bonus()). Unlike effective_
+        range()/effective_damage(), there's no aura equivalent for fire
+        rate to also fold in, so all three sources just multiply straight
+        in rather than stacking additively."""
+        return (
+            self.fire_rate
+            * self.relic_fire_rate_bonus_multiplier
+            * self.relic_last_stand_fire_rate_multiplier
+            * self.relic_tower_density_fire_rate_bonus_multiplier
+        )
 
     def create_projectile(self, target):
         raise NotImplementedError
