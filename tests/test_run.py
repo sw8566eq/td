@@ -2019,6 +2019,15 @@ def test_queue_meta_unlock_toasts_handles_a_level_unlock_key(game):
     assert any("New level unlocked: Quad Muster" in toast.text for toast in game.achievement_toasts)
 
 
+def test_queue_meta_unlock_toasts_handles_a_shop_unlock_key(game):
+    # ShopMetaUnlock (the trailing else branch) has no content id to name
+    # a display name off of -- confirms it gets a fixed toast instead of
+    # raising or silently doing nothing.
+    game._queue_meta_unlock_toasts(["unlock_third_relic_slot"])
+
+    assert any("New Shop upgrade unlocked" in toast.text for toast in game.achievement_toasts)
+
+
 # --- Saving and resuming a run mid-flight ---
 
 

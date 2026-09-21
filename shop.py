@@ -19,6 +19,7 @@ import random
 from dataclasses import dataclass
 
 import card_pool
+import meta_progression
 import relics
 from run_state import RunState
 
@@ -78,12 +79,22 @@ def build_offer(rng: random.Random, run: RunState, meta_progression_path: str | 
     back shorter than its own *_OFFER_COUNT once that pool is exhausted
     (see card_pool.draft_offer/relics.relic_offer), so the returned list's
     length isn't guaranteed either -- callers already handle an empty
-    result the same way the old draft did (see Game._enter_draft)."""
+    result the same way the old draft did (see Game._enter_draft).
+
+    The relic half offers one extra slot once meta_progression.
+    has_unlocked_third_relic_slot() is crossed -- read here, directly,
+    rather than pushed up to a caller, the same way relic_offer()/
+    draft_offer() already resolve their own default pools internally from
+    meta_progression_path."""
+    resolved_path = meta_progression_path or meta_progression.META_PROGRESSION_PATH
     tower_choices = card_pool.draft_offer(
         rng, run, count=TOWER_OFFER_COUNT, meta_progression_path=meta_progression_path,
     )
+    relic_count = RELIC_OFFER_COUNT
+    if meta_progression.has_unlocked_third_relic_slot(resolved_path):
+        relic_count += 1
     relic_choices = relics.relic_offer(
-        rng, run, count=RELIC_OFFER_COUNT, meta_progression_path=meta_progression_path,
+        rng, run, count=relic_count, meta_progression_path=meta_progression_path,
     )
     return (
         [ShopItem("tower", name, TOWER_PRICE) for name in tower_choices]

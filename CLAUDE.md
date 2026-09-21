@@ -577,7 +577,17 @@ registry-and-bare-function shape:
   types together in one offer (`TOWER_OFFER_COUNT` towers via `card_pool.draft_offer`, then
   `RELIC_OFFER_COUNT` relics via `relics.relic_offer`, same exclude-what's-already-held rules as
   before). Either half can come back shorter once its own pool is exhausted; `Game._enter_shop_node()`
-  still skips the screen entirely only if the *combined* offer is empty.
+  still skips the screen entirely only if the *combined* offer is empty. The relic half offers one
+  extra slot (`RELIC_OFFER_COUNT + 1`) once `meta_progression.has_unlocked_third_relic_slot()` is
+  crossed (`SHOP_META_UNLOCKS`' own single entry, `total_floors_cleared=100` -- deliberately the
+  longest chase in the whole meta-progression system, since a permanent account-wide Shop upgrade
+  outranks any single relic/level) -- read here, directly, the same way `relic_offer()`/
+  `draft_offer()` already resolve their own default pools internally from `meta_progression_path`
+  rather than pushing the decision up to a caller. `ui.build_draft_choice_rects()` switches to a
+  narrower `DRAFT_CARD_WIDTH_COMPACT` once `count >= 5` (5 cards at the normal `DRAFT_CARD_WIDTH`
+  would overflow `SCREEN_WIDTH`), and `_draw_relic_card()`'s own text-wrap width is derived from the
+  actual rendered rect rather than a fixed constant, so relic description text can't overflow the
+  narrower card.
 - `price_for(item, purchases_this_visit, discount_multiplier=1.0)` -- an item's actual cost,
   escalated by `PRICE_ESCALATION` for every other item this same shop visit has already bought (0
   for the first purchase), then discounted by a Haggling Permit-style relic's own
@@ -1224,12 +1234,17 @@ packaged build. Before this was factored out, each independently wrote the same
   further out than the first wave's own 10-25 range) once that first curve itself started feeling
   exhausted -- `chill_rot`, the third relic in that same batch, stays deliberately ungated so the
   mechanic itself is still reachable early (see the `relics.py` bullet above).
-  `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}`) is what `bump()`
-  actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON file's flat
-  `{"counters": .., "unlocked": {key, ...}}` state already spans all three content kinds (key
-  namespaces never collide), so one bump of a shared counter name (`bosses_defeated`,
+  `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS}`)
+  is what `bump()` actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON
+  file's flat `{"counters": .., "unlocked": {key, ...}}` state already spans all four content kinds
+  (key namespaces never collide), so one bump of a shared counter name (`bosses_defeated`,
   `total_floors_cleared`, `runs_played`) can cross thresholds in more than one registry at once
-  without the caller needing to know which kind a given counter happens to gate.
+  without the caller needing to know which kind a given counter happens to gate. `ShopMetaUnlock`
+  (`SHOP_META_UNLOCKS`, one entry, `unlock_third_relic_slot`) is a fourth, genuinely separate class
+  from `MetaUnlock`/`RelicMetaUnlock`/`LevelMetaUnlock` -- it gates an account-wide Shop *behavior*
+  (`shop.build_offer()` offering a 3rd relic slot), not a specific tower/relic/level id, so it has no
+  content id field to point at; `Game._queue_meta_unlock_toasts()`'s dispatch handles it as the
+  trailing `else` (no display name to look up, so it queues a fixed toast string instead).
   `unlocked_relic_pool()`/`unlocked_level_pool()` mirror `unlocked_tower_pool()`'s shape, with one
   difference: `unlocked_level_pool()` returns the whole ready-to-use `LEVELS`-minus-locked-ids pool
   directly (passed straight into `run_map.generate_run_map`'s own `level_pool` param from

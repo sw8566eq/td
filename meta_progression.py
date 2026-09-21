@@ -159,15 +159,39 @@ LEVEL_META_UNLOCKS: dict[str, LevelMetaUnlock] = {
     "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
 }
 
+
+class ShopMetaUnlock:
+    """One registry entry -- an account-wide Shop *capability* (not a
+    specific tower/relic/level id) unlocks once `counter` reaches `goal`.
+    A 4th, genuinely separate class rather than reusing MetaUnlock/
+    RelicMetaUnlock/LevelMetaUnlock or teaching one of them a "kind"
+    discriminator -- none of the three has a content id to point at here,
+    this just gates a permanent change to how shop.build_offer() itself
+    behaves."""
+
+    def __init__(self, key: str, counter: str, goal: int) -> None:
+        self.key = key
+        self.counter = counter
+        self.goal = goal
+
+
+# A permanent, account-wide upgrade to every future Shop visit outranks
+# any single relic/level, so this is deliberately the single longest
+# chase in the whole system -- past even RELIC_META_UNLOCKS' own current
+# highest (unlock_frostbitten_mark's total_floors_cleared=50).
+SHOP_META_UNLOCKS: dict[str, ShopMetaUnlock] = {
+    "unlock_third_relic_slot": ShopMetaUnlock("unlock_third_relic_slot", "total_floors_cleared", 100),
+}
+
 # Every registry above shares one JSON file's flat {"counters": ..,
 # "unlocked": {key, ...}} state -- a single combined dict lets bump() below
-# unlock across all three content kinds from one shared counter (e.g.
+# unlock across all four content kinds from one shared counter (e.g.
 # bosses_defeated feeding unlock_containment_charges) without needing to
 # know in advance which registry a given counter_name belongs to. Key
 # namespaces never collide (every key is its own "unlock_<name>" string),
 # so merging is safe.
-ALL_UNLOCKS: dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock] = {
-    **META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS,
+ALL_UNLOCKS: dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock | ShopMetaUnlock] = {
+    **META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS,
 }
 
 
@@ -229,3 +253,13 @@ def unlocked_level_pool(path: str = META_PROGRESSION_PATH) -> dict[int, Level]:
         unlock.level_id for key, unlock in LEVEL_META_UNLOCKS.items() if key not in state["unlocked"]
     }
     return {level_id: level for level_id, level in LEVELS.items() if level_id not in locked_ids}
+
+
+def has_unlocked_third_relic_slot(path: str = META_PROGRESSION_PATH) -> bool:
+    """Whether SHOP_META_UNLOCKS' own single entry has been crossed yet --
+    unlike unlocked_tower_pool/unlocked_relic_pool/unlocked_level_pool,
+    this gates a Shop *behavior* (shop.build_offer() offering a 3rd relic
+    slot instead of RELIC_OFFER_COUNT's usual 2), not a specific content
+    id, so a plain bool is the natural shape rather than a pool/set."""
+    state = load_meta_progression(path)
+    return "unlock_third_relic_slot" in state["unlocked"]

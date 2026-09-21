@@ -186,3 +186,15 @@ def test_bump_across_registries_returns_keys_from_every_kind_in_one_call(tmp_pat
     newly_unlocked = meta_progression.bump("bosses_defeated", amount=1, path=path)
 
     assert newly_unlocked == ["unlock_containment_charges"]
+
+
+def test_has_unlocked_third_relic_slot_is_false_with_no_progress(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    assert meta_progression.has_unlocked_third_relic_slot(path=path) is False
+
+
+def test_has_unlocked_third_relic_slot_reflects_crossed_threshold(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("total_floors_cleared", amount=100, path=path)
+
+    assert meta_progression.has_unlocked_third_relic_slot(path=path) is True
