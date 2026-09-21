@@ -1824,6 +1824,24 @@ def test_beacon_tower_placement_populates_relic_fields_like_any_other_tower(game
     assert tower.relic_crit_damage_multiplier == relic.crit_damage_multiplier
 
 
+def test_overload_cannon_placement_populates_its_two_exclusive_relic_fields(game):
+    # Game._construct_tower's copy-line coverage for the two Overload
+    # Cannon-exclusive relic fields -- same shape as the Beacon test just
+    # above, holding both of this tower's own exclusive relics at once.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overcharged_capacitors", "fusion_core"]
+    game.active_run.unlocked_towers.append("overload_cannon")  # a drafted card, not a starter tower
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "overload_cannon"
+
+    assert game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_overload_burst_bonus_multiplier == RELICS["overcharged_capacitors"].overload_burst_multiplier
+    assert tower.relic_overload_damage_bonus_multiplier == RELICS["fusion_core"].overload_damage_multiplier
+
+
 # --- Elite Combat nodes: harder, and a bigger payout ---
 
 

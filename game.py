@@ -1824,6 +1824,8 @@ class Game:
         tower.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_modifiers.damage_vs_marked_and_poisoned_multiplier
         tower.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_modifiers.damage_vs_slowed_and_poisoned_multiplier
         tower.relic_knockback_duration_bonus_multiplier = self.relic_modifiers.knockback_duration_multiplier
+        tower.relic_overload_burst_bonus_multiplier = self.relic_modifiers.overload_burst_multiplier
+        tower.relic_overload_damage_bonus_multiplier = self.relic_modifiers.overload_damage_multiplier
         tower.relic_cannon_targets_flying = self.relic_modifiers.cannon_targets_flying
         tower.relic_cannon_projectile_speed_bonus_multiplier = self.relic_modifiers.cannon_projectile_speed_multiplier
         return tower

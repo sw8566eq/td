@@ -443,6 +443,19 @@ class Relic:
     # Cannon and damage-only; concussive_rounds is a generic relic any
     # tower can hold) -- brings it off its 1-relic floor.
     knockback_duration_multiplier: float = 1.0
+    # overcharged_capacitors' own bonus -- Overload-Cannon-exclusive, same
+    # plain-multiply create_projectile()-read shape as beam_ramp_multiplier
+    # above: burst_multiplier is an input to OverloadCannonTower's own
+    # burst formula (damage = effective_damage() * burst_multiplier), not
+    # part of effective_damage()'s own additive stack, so it skips the
+    # family_damage_bonus() hook the same way every plain-multiply relic
+    # here does.
+    overload_burst_multiplier: float = 1.0
+    # fusion_core's own bonus -- Overload-Cannon-exclusive damage bonus,
+    # same family_damage_bonus() hook shape as lightning_damage_multiplier/
+    # cannon_knockback_damage_multiplier above, read via
+    # OverloadCannonTower's own _relic_family_damage_bonus() override.
+    overload_damage_multiplier: float = 1.0
     # fracture_rounds' own bonus -- a "flat, non-tower" field, same read
     # site as splitter_child_damage above (Game.update()'s own dead-enemy
     # drain loop): applied once to each of a killed SplitterEnemy's own
@@ -869,6 +882,22 @@ RELICS = {
         "Knockback tower's own shove is bigger, every floor.",
         knockback_duration_multiplier=1.25,
     ),
+    # Overload-Cannon-exclusive -- see overload_burst_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower.create_projectile()).
+    "overcharged_capacitors": Relic(
+        "overcharged_capacitors", "Overcharged Capacitors",
+        "Overload Cannon's burst deals 20% more bonus damage, every floor.",
+        overload_burst_multiplier=1.20,
+    ),
+    # Overload-Cannon-exclusive -- see overload_damage_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower._relic_family_damage_bonus()).
+    "fusion_core": Relic(
+        "fusion_core", "Fusion Core",
+        "Overload Cannon deals 20% more damage, every floor.",
+        overload_damage_multiplier=1.20,
+    ),
     # A third density-archetype relic -- overcrowded_circuits/reinforced_
     # chassis already cover damage; this one reuses the exact same
     # neighbor-counting mechanism (Tower.set_nearby_tower_bonus) for a
@@ -1098,6 +1127,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    overload_burst_multiplier: float = 1.0
+    overload_damage_multiplier: float = 1.0
     cannon_targets_flying: bool = False
     cannon_projectile_speed_multiplier: float = 1.0
     splitter_child_hp_multiplier: float = 1.0
@@ -1202,6 +1233,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    overload_burst_multiplier = 1.0
+    overload_damage_multiplier = 1.0
     cannon_targets_flying = False
     cannon_projectile_speed_multiplier = 1.0
     splitter_child_hp_multiplier = 1.0
@@ -1319,6 +1352,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        overload_burst_multiplier *= relic.overload_burst_multiplier
+        overload_damage_multiplier *= relic.overload_damage_multiplier
         cannon_targets_flying = cannon_targets_flying or relic.cannon_targets_flying
         cannon_projectile_speed_multiplier *= relic.cannon_projectile_speed_multiplier
         splitter_child_hp_multiplier *= relic.splitter_child_hp_multiplier
@@ -1388,6 +1423,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        overload_burst_multiplier=overload_burst_multiplier,
+        overload_damage_multiplier=overload_damage_multiplier,
         cannon_targets_flying=cannon_targets_flying,
         cannon_projectile_speed_multiplier=cannon_projectile_speed_multiplier,
         splitter_child_hp_multiplier=splitter_child_hp_multiplier,

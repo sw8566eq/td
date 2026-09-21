@@ -11,6 +11,7 @@ from tower import (
     FrostTower,
     KnockbackTower,
     LightningTower,
+    OverloadCannonTower,
     PoisonTower,
     SniperTower,
     SupportTower,
@@ -62,7 +63,16 @@ def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():
         projectile = tower.create_projectile(target)
         assert isinstance(projectile, Projectile), name
         assert projectile.target is target, name
-        assert projectile.damage == tower_cls.damage, name
+        if name == "overload_cannon":
+            # Unlike every other tower here, OverloadCannonTower's own
+            # create_projectile() always multiplies effective_damage() by
+            # burst_multiplier (a flat, unconditional multiplier -- see its
+            # own class docstring), so a fresh instance's projectile.damage
+            # is never literally equal to tower_cls.damage the way it is
+            # for every other tower below.
+            assert projectile.damage == pytest.approx(tower_cls.damage * tower_cls.burst_multiplier), name
+        else:
+            assert projectile.damage == tower_cls.damage, name
 
 
 # --- Footprint geometry (see Game._current_footprint_subtiles for how a
@@ -407,6 +417,14 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             lambda tower: 0.0,  # Projectile's own default -- non-Knockback towers never pass this kwarg at all
         ),
         (
+            ("relic_overload_burst_bonus_multiplier",), "damage", ("overload_cannon",),
+            lambda tower: tower.effective_damage(),
+        ),
+        (
+            ("relic_overload_damage_bonus_multiplier",), "damage", ("overload_cannon",),
+            lambda tower: tower.effective_damage(),
+        ),
+        (
             ("relic_cannon_projectile_speed_bonus_multiplier",), "speed", ("cannon",),
             # Unlike the Projectile-default expectations above, every tower
             # passes its own projectile_speed as speed regardless -- the
@@ -419,6 +437,18 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
     for name, tower_cls in TOWER_TYPES.items():
         if name in affected_names or name == "support":
+            continue
+        if name == "overload_cannon" and projectile_attr == "damage":
+            # OverloadCannonTower's own create_projectile() always
+            # multiplies effective_damage() by burst_multiplier (a flat,
+            # unconditional multiplier -- see its own class docstring), so
+            # its projectile.damage is never literally equal to a bare
+            # effective_damage() the way every other non-exclusive tower's
+            # is -- excluded here the same way "support" is above, for a
+            # different structural reason. Its own two exclusive rows above
+            # (affected_names=("overload_cannon",)) already cover its own
+            # actual behavior; this only skips it as an "other tower" for
+            # every other row's damage-attr check.
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         expected = expected_fn(tower)
@@ -1256,3 +1286,228 @@ def test_beacon_exclusive_relics_do_not_affect_other_towers_mark_effect():
         tower.relic_beacon_mark_bonus_multiplier = 1.25
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.mark_effect is None, name
+
+
+# --- Overload Cannon tower (charges, then fires one massive burst) ---
+
+def test_overload_cannon_tower_is_registered():
+    assert TOWER_TYPES["overload_cannon"] is OverloadCannonTower
+
+
+def test_overload_cannon_starts_idle_with_no_charge():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    assert tower._charge_target is None
+    assert tower._charge_elapsed == 0.0
+    assert tower._charge_duration == 0.0
+
+
+def test_overload_cannon_stays_idle_with_no_target_in_range():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    far_away = FakeEnemy((100_000, 100_000))
+
+    tower.update(dt=1.0, enemies=[far_away], projectiles=[])
+
+    assert tower._charge_target is None
+    assert tower._charge_duration == 0.0
+    assert tower.shots_fired == 0
+
+
+def test_overload_cannon_locks_onto_a_target_and_does_not_reacquire_while_charging():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    tower.update(dt=0.1, enemies=[target], projectiles=[])
+    assert tower._charge_target is target
+
+    # A second, different candidate enemy appearing while charging must NOT
+    # change the lock -- acquire_target() is only ever called once per
+    # charge, at the moment it begins, never again while charging.
+    other = FakeEnemy((45, 50))
+    tower.update(dt=0.1, enemies=[target, other], projectiles=[])
+    assert tower._charge_target is target
+
+
+def test_overload_cannon_charge_duration_is_one_over_effective_fire_rate():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    tower.update(dt=0.1, enemies=[target], projectiles=[])
+    assert tower._charge_duration == pytest.approx(1.0 / tower.fire_rate)
+    assert tower._charge_duration == pytest.approx(5.0)
+
+
+def test_overload_cannon_fire_rate_relic_shortens_the_charge():
+    # relic_fire_rate_bonus_multiplier is set at construction time (Game.
+    # _construct_tower), same as every other tower -- confirms the charge
+    # duration is resolved from effective_fire_rate(), not the bare
+    # fire_rate, so every existing fire-rate relic already applies here for
+    # free (see the class docstring).
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    tower.relic_fire_rate_bonus_multiplier = 2.0
+    target = FakeEnemy((55, 50))
+    tower.update(dt=0.1, enemies=[target], projectiles=[])
+    assert tower._charge_duration == pytest.approx(1.0 / tower.effective_fire_rate())
+    assert tower._charge_duration == pytest.approx(2.5)
+
+
+def test_overload_cannon_does_not_fire_before_the_charge_completes():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)  # acquire, t=0
+    for _ in range(3):  # t=1, 2, 3 -- well under the 5.0s charge
+        tower.update(dt=1.0, enemies=[target], projectiles=projectiles)
+
+    assert tower.shots_fired == 0
+    assert tower.fired_this_frame is False
+    assert projectiles == []
+
+
+def test_overload_cannon_fires_a_burst_once_the_charge_completes_then_goes_idle_again():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)  # acquire, t=0
+    for _ in range(4):
+        tower.update(dt=1.0, enemies=[target], projectiles=projectiles)  # t=1..4
+    assert tower.shots_fired == 0  # not yet -- only 4s of a 5s charge
+
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)  # t=5 -- fires
+
+    assert tower.shots_fired == 1
+    assert tower.fired_this_frame is True
+    assert len(projectiles) == 1
+    assert projectiles[0].target is target
+    assert projectiles[0].damage == pytest.approx(tower.effective_damage() * tower.burst_multiplier)
+    # Goes idle immediately after firing -- a fresh charge (even against
+    # this same target) only begins on a LATER frame, never this same call.
+    assert tower._charge_target is None
+    assert tower._charge_elapsed == 0.0
+    assert tower._charge_duration == 0.0
+
+    # "Then goes idle and repeats": the very next update() re-acquires and
+    # starts a brand-new charge from zero.
+    tower.update(dt=0.1, enemies=[target], projectiles=projectiles)
+    assert tower._charge_target is target
+    assert tower._charge_elapsed == 0.0
+    assert tower.shots_fired == 1  # unchanged -- charging the new one, not fired yet
+    assert len(projectiles) == 1
+
+
+def test_overload_cannon_charge_is_fully_lost_when_the_target_dies():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)
+    tower.update(dt=3.0, enemies=[target], projectiles=projectiles)  # well into the charge
+
+    target.is_dead = True
+    tower.update(dt=0.1, enemies=[target], projectiles=projectiles)
+
+    assert tower._charge_target is None
+    assert tower._charge_elapsed == 0.0
+    assert tower._charge_duration == 0.0
+    assert tower.shots_fired == 0
+    assert projectiles == []
+
+
+def test_overload_cannon_charge_is_fully_lost_when_the_target_reaches_the_goal():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)
+    tower.update(dt=3.0, enemies=[target], projectiles=projectiles)
+
+    target.reached_goal = True
+    tower.update(dt=0.1, enemies=[target], projectiles=projectiles)
+
+    assert tower._charge_target is None
+    assert tower.shots_fired == 0
+    assert projectiles == []
+
+
+def test_overload_cannon_charge_is_fully_lost_when_the_target_leaves_range():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)
+    tower.update(dt=3.0, enemies=[target], projectiles=projectiles)
+
+    target.pos = pygame.Vector2(100_000, 100_000)  # well outside range now
+    tower.update(dt=0.1, enemies=[target], projectiles=projectiles)
+
+    assert tower._charge_target is None
+    assert tower.shots_fired == 0
+    assert projectiles == []
+
+
+def test_overload_cannon_interrupted_charge_does_not_carry_over_to_a_new_target():
+    # No partial credit: once a charge is lost, a fresh charge against a
+    # NEW target starts from zero elapsed time, not wherever the lost one
+    # left off.
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    target = FakeEnemy((55, 50))
+    projectiles = []
+    tower.update(dt=1.0, enemies=[target], projectiles=projectiles)
+    tower.update(dt=3.9, enemies=[target], projectiles=projectiles)  # almost fully charged
+    target.is_dead = True
+    tower.update(dt=0.1, enemies=[target], projectiles=projectiles)  # lost
+
+    new_target = FakeEnemy((55, 50))
+    tower.update(dt=0.1, enemies=[new_target], projectiles=projectiles)
+
+    assert tower._charge_target is new_target
+    assert tower._charge_elapsed == 0.0
+    assert projectiles == []
+
+
+def test_overload_cannon_capacitor_bank_specialization_speeds_up_the_charge():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(OverloadCannonTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    base_fire_rate = tower.fire_rate
+    multiplier = OverloadCannonTower.SPECIALIZATIONS["capacitor_bank"]["stat_multipliers"]["fire_rate"]
+
+    assert tower.specialize("capacitor_bank") is True
+
+    assert tower.fire_rate == pytest.approx(base_fire_rate * multiplier)
+    assert tower.burst_multiplier == OverloadCannonTower.burst_multiplier  # unaffected
+
+
+def test_overload_cannon_overcharged_payload_specialization_boosts_burst_multiplier():
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(OverloadCannonTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    base_burst_multiplier = tower.burst_multiplier
+    multiplier = OverloadCannonTower.SPECIALIZATIONS["overcharged_payload"]["stat_multipliers"]["burst_multiplier"]
+
+    assert tower.specialize("overcharged_payload") is True
+
+    assert tower.burst_multiplier == pytest.approx(base_burst_multiplier * multiplier)
+    assert tower.fire_rate == OverloadCannonTower.fire_rate  # unaffected
+
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == pytest.approx(tower.effective_damage() * tower.burst_multiplier)
+
+
+def test_overcharged_capacitors_relic_boosts_overload_cannon_burst_multiplier():
+    # relic_overload_burst_bonus_multiplier is set at construction time
+    # (Game._construct_tower), not baked into burst_multiplier itself --
+    # confirms create_projectile() actually reads it, mirroring beam_ramp_
+    # multiplier's own read site in BeamTower.create_projectile().
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_damage = tower.effective_damage()
+    tower.relic_overload_burst_bonus_multiplier = 1.20
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == pytest.approx(base_damage * tower.burst_multiplier * 1.20)
+
+
+def test_fusion_core_relic_boosts_overload_cannon_damage():
+    # relic_overload_damage_bonus_multiplier is set at construction time
+    # (Game._construct_tower), not baked into damage itself -- confirms
+    # OverloadCannonTower's own _relic_family_damage_bonus() override
+    # actually feeds Tower.effective_damage()'s additive stack, mirroring
+    # storm_core's own test shape for LightningTower.
+    tower = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_overload_damage_bonus_multiplier = 1.20
+    projectile = tower.create_projectile(FakeEnemy())
+    expected = tower.damage * (1.0 + 0.20) * tower.burst_multiplier
+    assert projectile.damage == pytest.approx(expected)
