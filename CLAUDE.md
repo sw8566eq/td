@@ -20,7 +20,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
-mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py   # type check -- only the modules annotated so far; also what CI runs
+mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py run_escalation.py progress.py achievements.py   # type check -- only the modules annotated so far; also what CI runs
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
@@ -110,6 +110,19 @@ clear assertion). Once `run_state.py` itself was annotated, `relics.py`/`shop.py
 `if TYPE_CHECKING: from run_state import RunState` guards became unnecessary busywork -- no import
 cycle actually exists (`run_state.py` only reaches `run_map.py`/`levels.py`/`rng_sampling.py`), so all
 three now import `RunState` for real, same as any other cross-module type.
+
+A fourth pass added `run_escalation.py`/`progress.py`/`achievements.py` -- all three pygame-free and
+each needing only bare-function annotations, no dataclass fixes this time: `run_escalation.py`
+already had a typed `@dataclass FloorEscalation`, so its four bare functions
+(`_early_grace_factor`/`escalation_for_floor`/`apply_elite_multiplier`/`apply_boss_multiplier`) just
+needed `int`/`FloorEscalation` signatures; `progress.py` mirrors `run_history.py`'s already-solved
+`dict[int, int]`-via-`load_json_with_fallback` shape exactly, so it needed no fresh `json_io`-style
+prerequisite of its own; `achievements.py` mirrors `meta_progression.py`'s own `Achievement`/
+`load_*`/`bump()`/`set_counter()` shapes verbatim (both already share `threshold_unlocks.py`'s
+mechanics). `achievements.py`'s one unannotated import, `levels.LEVELS` (used only via
+`len(levels.LEVELS)` for the `campaign_complete` achievement's own goal), needed no attention: `len()`
+always resolves to a concrete `int` regardless of its argument's own inferred type, unlike
+`run_history.py`'s old problem where an untyped call's return value was forwarded directly.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
@@ -1409,8 +1422,12 @@ existing silent-no-op precedent.
 
 `GameState.SETTINGS`'s "Sound: On/Off" row is `self.sound_enabled`, persisted via
 `player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
-`set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). Sound has no
-volume slider in v1, just the one toggle.
+`set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). A "Volume: N%"
+control sits inline on that same row (-/+ buttons, `SOUND_VOLUME_STEP`-sized 10% steps) --
+`Game.adjust_sound_volume(direction)` calls `set_sound_volume()`, which clamps to `[0.0, 1.0]`,
+applies it via `self.audio.set_volume()` (pushed onto every already-cached `Sound` immediately, and
+to new ones as `get()` loads/synthesizes them), and persists it the same `_save_player_settings()`
+way `set_fullscreen()`/`set_sound_enabled()` already do.
 
 ### Assets
 
