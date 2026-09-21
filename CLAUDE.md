@@ -20,7 +20,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
-mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py   # type check -- only the modules annotated so far; also what CI runs
+mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py run_escalation.py progress.py achievements.py   # type check -- only the modules annotated so far; also what CI runs
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
@@ -111,6 +111,19 @@ clear assertion). Once `run_state.py` itself was annotated, `relics.py`/`shop.py
 cycle actually exists (`run_state.py` only reaches `run_map.py`/`levels.py`/`rng_sampling.py`), so all
 three now import `RunState` for real, same as any other cross-module type.
 
+A fourth pass added `run_escalation.py`/`progress.py`/`achievements.py` -- all three pygame-free and
+each needing only bare-function annotations, no dataclass fixes this time: `run_escalation.py`
+already had a typed `@dataclass FloorEscalation`, so its four bare functions
+(`_early_grace_factor`/`escalation_for_floor`/`apply_elite_multiplier`/`apply_boss_multiplier`) just
+needed `int`/`FloorEscalation` signatures; `progress.py` mirrors `run_history.py`'s already-solved
+`dict[int, int]`-via-`load_json_with_fallback` shape exactly, so it needed no fresh `json_io`-style
+prerequisite of its own; `achievements.py` mirrors `meta_progression.py`'s own `Achievement`/
+`load_*`/`bump()`/`set_counter()` shapes verbatim (both already share `threshold_unlocks.py`'s
+mechanics). `achievements.py`'s one unannotated import, `levels.LEVELS` (used only via
+`len(levels.LEVELS)` for the `campaign_complete` achievement's own goal), needed no attention: `len()`
+always resolves to a concrete `int` regardless of its argument's own inferred type, unlike
+`run_history.py`'s old problem where an untyped call's return value was forwarded directly.
+
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
 once in `tests/conftest.py` for every `Game`-level module, and again in `tests/test_assets.py`,
@@ -167,6 +180,21 @@ sharp edge that fell out of this: three of `Game`'s own delegators (`_handle_edi
 own siblings -- each needed one small dedicated regression test calling the `Game`-level method by
 name to keep coverage honest (see `test_game.py`/`test_game_editor.py`'s own "called directly" tests).
 
+The achievement/meta-progression/toast-recording group (`_record_level_cleared`/
+`_record_progress_counter`/`_record_achievement`/`_queue_achievement_toasts`/`_record_meta_progress`/
+`_queue_meta_unlock_toasts`/`_queue_toast`) is the third slice, moved into
+`progress_tracker.ProgressTracker` (`progress_tracker.py`) the same way. This slice improves on
+`InputHandler`'s own precedent rather than repeating its sharp edge: this group's real callers
+(`try_place_tower`/`try_upgrade_tower`/`try_specialize_tower`, `update()`'s own kill/wave/level-clear
+hooks, `_advance_run_floor`, `_record_run_permadeath`, `_handle_boss_defeated`) all stay on `Game`,
+rather than every caller having moved too the way `InputHandler`'s 21 methods did -- so `Game` keeps a
+one-line delegator only for the 5 methods with a real external caller or a direct test reference
+(`_record_level_cleared`/`_record_achievement`/`_record_meta_progress`/`_queue_meta_unlock_toasts`/
+`_queue_toast`), while `_record_progress_counter`/`_queue_achievement_toasts` (called only by methods
+that moved here too) get no `Game`-level shim at all -- the same "private helper, no delegator" shape
+`renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
+move, so unlike `InputHandler`'s slice, no new "called directly" regression tests were needed.
+
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
 played on its own still works exactly as it always did, but that's now Practice, a side path; the
 main path is a run. Read the next section before anything else here.
@@ -200,9 +228,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  5 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, plus
-  the cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`) are gated at all, via
-  `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional `unlocked_pool`/
+  6 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, the
+  cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`, and that same batch's
+  `seismic_slam`) are gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own
+  optional `unlocked_pool`/
   `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
   below). 61 relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
@@ -1233,7 +1262,13 @@ packaged build. Before this was factored out, each independently wrote the same
   (`frostbitten_mark`/`plague_mark`, thresholds `total_floors_cleared=50`/`runs_played=20`, both
   further out than the first wave's own 10-25 range) once that first curve itself started feeling
   exhausted -- `chill_rot`, the third relic in that same batch, stays deliberately ungated so the
-  mechanic itself is still reachable early (see the `relics.py` bullet above).
+  mechanic itself is still reachable early (see the `relics.py` bullet above). A third wave
+  completed that same batch's gating with `seismic_slam` (Knockback's 2nd exclusive relic, the only
+  relic from that batch still ungated after the second wave) at `total_floors_cleared=75` -- past
+  even `frostbitten_mark`'s 50 -- and added a second `LEVEL_META_UNLOCKS` gate, `Double Confluence`
+  (id `15`, the only other ordinary multi-lane level still ungated, a genuine step up from `Quad
+  Muster`'s 4-spawns-into-1-goal via 2 independent goals instead) at `runs_played=25`, past
+  `unlock_quad_muster`'s 15.
   `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS}`)
   is what `bump()` actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON
   file's flat `{"counters": .., "unlocked": {key, ...}}` state already spans all four content kinds
@@ -1249,7 +1284,7 @@ packaged build. Before this was factored out, each independently wrote the same
   difference: `unlocked_level_pool()` returns the whole ready-to-use `LEVELS`-minus-locked-ids pool
   directly (passed straight into `run_map.generate_run_map`'s own `level_pool` param from
   `Game.start_new_run`) rather than just the small "what's been added" set the other two return,
-  since only 1 of 15 levels is ever gated -- making every caller re-derive "everything else" would be
+  since only 2 of 15 levels are ever gated -- making every caller re-derive "everything else" would be
   the more awkward shape for the common case. `relics._default_relic_pool()` mirrors
   `card_pool._default_unlocked_pool()` exactly (every `RELICS` key not gated, plus whatever
   `unlocked_relic_pool()` says is unlocked, in `RELICS`' own stable registry order) and is threaded
@@ -1424,8 +1459,12 @@ existing silent-no-op precedent.
 
 `GameState.SETTINGS`'s "Sound: On/Off" row is `self.sound_enabled`, persisted via
 `player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
-`set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). Sound has no
-volume slider in v1, just the one toggle.
+`set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). A "Volume: N%"
+control sits inline on that same row (-/+ buttons, `SOUND_VOLUME_STEP`-sized 10% steps) --
+`Game.adjust_sound_volume(direction)` calls `set_sound_volume()`, which clamps to `[0.0, 1.0]`,
+applies it via `self.audio.set_volume()` (pushed onto every already-cached `Sound` immediately, and
+to new ones as `get()` loads/synthesizes them), and persists it the same `_save_player_settings()`
+way `set_fullscreen()`/`set_sound_enabled()` already do.
 
 ### Assets
 

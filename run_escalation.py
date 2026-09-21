@@ -194,7 +194,7 @@ class FloorEscalation:
     starting_gold_multiplier: float = 1.0
 
 
-def _early_grace_factor(floor_index):
+def _early_grace_factor(floor_index: int) -> float:
     """1.0 at floor_index==0, tapering straight down to 0.0 at
     floor_index==EARLY_GRACE_ROWS and staying 0.0 (no effect at all) for
     every row after -- the one shared taper escalation_for_floor below
@@ -202,7 +202,7 @@ def _early_grace_factor(floor_index):
     return max(0.0, 1.0 - floor_index / EARLY_GRACE_ROWS)
 
 
-def escalation_for_floor(floor_index):
+def escalation_for_floor(floor_index: int) -> FloorEscalation:
     """FloorEscalation for the floor_index-th floor of a run (0-based) --
     for a branching run this is the current node's *row*, not a linear
     floor count (see RunState.current_row), but the formula itself doesn't
@@ -230,7 +230,7 @@ def escalation_for_floor(floor_index):
     )
 
 
-def apply_elite_multiplier(escalation):
+def apply_elite_multiplier(escalation: FloorEscalation) -> FloorEscalation:
     """Layers an Elite map node's own extra bump on top of an already-
     computed FloorEscalation -- multiplicative, the same "extra factor,
     never replacing" rule this module's own docstring states for
@@ -249,7 +249,7 @@ def apply_elite_multiplier(escalation):
     )
 
 
-def apply_boss_multiplier(escalation):
+def apply_boss_multiplier(escalation: FloorEscalation) -> FloorEscalation:
     """Layers the map's own boss node's extra bump on top of an already-
     computed FloorEscalation -- same shape as apply_elite_multiplier
     (multiplicative, an extra factor never replacing the row's own

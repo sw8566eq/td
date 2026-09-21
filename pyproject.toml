@@ -75,9 +75,24 @@ follow_imports = "silent"
 # itself was annotated, relics.py/shop.py/events.py's own `if TYPE_CHECKING:
 # from run_state import RunState` guards became unnecessary -- no import
 # cycle exists, so all three now import RunState for real.
+# A fourth pass added run_escalation/progress/achievements -- all three
+# pygame-free and needing only bare-function annotations, no dataclass
+# fixes: run_escalation.py already had a typed FloorEscalation dataclass,
+# its four bare functions just needed int/FloorEscalation signatures;
+# progress.py mirrors run_history.py's already-solved dict[int, int]-via-
+# load_json_with_fallback shape exactly, so it needed no fresh json_io-
+# style prerequisite; achievements.py mirrors meta_progression.py's own
+# Achievement/load_*/bump()/set_counter() shapes verbatim (both already
+# share threshold_unlocks.py's mechanics). achievements.py's one
+# unannotated import, levels.LEVELS (used only via len(levels.LEVELS) for
+# campaign_complete's own goal), needed no attention: len() always
+# resolves to a concrete int regardless of its argument's own inferred
+# type, unlike run_history.py's old problem where an untyped call's
+# return value was forwarded directly.
 module = [
     "relics", "run_map", "events", "shop", "rng_sampling", "difficulty", "economy", "run_history", "json_io",
-    "threshold_unlocks", "meta_progression", "run_state", "card_pool",
+    "threshold_unlocks", "meta_progression", "run_state", "card_pool", "run_escalation", "progress",
+    "achievements",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

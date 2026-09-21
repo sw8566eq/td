@@ -159,15 +159,23 @@ def test_unlocked_relic_pool_reflects_plague_mark_threshold(tmp_path):
     assert "plague_mark" in meta_progression.unlocked_relic_pool(path=path)
 
 
-def test_unlocked_level_pool_excludes_a_gated_level_with_no_progress(tmp_path):
+def test_unlocked_relic_pool_reflects_seismic_slam_threshold(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("total_floors_cleared", amount=75, path=path)
+
+    assert "seismic_slam" in meta_progression.unlocked_relic_pool(path=path)
+
+
+def test_unlocked_level_pool_excludes_gated_levels_with_no_progress(tmp_path):
     path = tmp_path / "meta_progression.json"
     pool = meta_progression.unlocked_level_pool(path=path)
 
     assert 14 not in pool
-    # every ungated level (everything except the one LEVEL_META_UNLOCKS
-    # entry above) is still present, same "only the newest content is
+    assert 15 not in pool
+    # every ungated level (everything except the two LEVEL_META_UNLOCKS
+    # entries above) is still present, same "only the newest content is
     # ever gated" precedent RELIC_META_UNLOCKS follows.
-    assert set(pool.keys()) == set(LEVELS.keys()) - {14}
+    assert set(pool.keys()) == set(LEVELS.keys()) - {14, 15}
 
 
 def test_unlocked_level_pool_includes_the_gated_level_once_unlocked(tmp_path):
@@ -175,6 +183,13 @@ def test_unlocked_level_pool_includes_the_gated_level_once_unlocked(tmp_path):
     meta_progression.bump("runs_played", amount=15, path=path)
 
     assert 14 in meta_progression.unlocked_level_pool(path=path)
+
+
+def test_unlocked_level_pool_includes_double_confluence_once_unlocked(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("runs_played", amount=25, path=path)
+
+    assert 15 in meta_progression.unlocked_level_pool(path=path)
 
 
 def test_bump_across_registries_returns_keys_from_every_kind_in_one_call(tmp_path):

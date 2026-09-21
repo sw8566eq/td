@@ -136,6 +136,15 @@ RELIC_META_UNLOCKS: dict[str, RelicMetaUnlock] = {
     "unlock_plague_mark": RelicMetaUnlock(
         "unlock_plague_mark", "plague_mark", "runs_played", 20,
     ),
+    # A third wave of gating, completing the cross-status combo-capstone
+    # batch's gating: seismic_slam (Knockback's 2nd exclusive relic) is the
+    # only relic from that same batch still ungated -- chill_rot stays
+    # deliberately ungated on purpose (see the comment above), so it is NOT
+    # re-gated here. Threshold set past frostbitten_mark/plague_mark, the
+    # previous highest in this registry.
+    "unlock_seismic_slam": RelicMetaUnlock(
+        "unlock_seismic_slam", "seismic_slam", "total_floors_cleared", 75,
+    ),
 }
 
 
@@ -155,8 +164,13 @@ class LevelMetaUnlock:
 # new content stays immediately available, matching the design note in
 # this module's own docstring; a run whose map can't draw a gated level id
 # just never offers that node's floor, same as any other seed variance.
+# Level 15 ("Double Confluence") joins it as a second gate -- the only
+# other ordinary (non-boss) multi-lane level still ungated, a genuine step
+# up from Quad Muster (4 spawns into 1 goal) via 2 independent goals
+# instead of 1. Threshold set past unlock_quad_muster's own 15.
 LEVEL_META_UNLOCKS: dict[str, LevelMetaUnlock] = {
     "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
+    "unlock_double_confluence": LevelMetaUnlock("unlock_double_confluence", 15, "runs_played", 25),
 }
 
 
@@ -244,7 +258,7 @@ def unlocked_level_pool(path: str = META_PROGRESSION_PATH) -> dict[int, Level]:
     been unlocked yet -- unlike unlocked_tower_pool/unlocked_relic_pool
     (a small "what's been added" set a caller still has to combine with
     the rest of its own pool), this returns the whole ready-to-use pool
-    directly: LEVEL_META_UNLOCKS gates only 1 of 15 levels today, so
+    directly: LEVEL_META_UNLOCKS gates only 2 of 15 levels today, so
     exposing "what's locked" and making every caller re-derive "everything
     else" would be the more awkward shape for the common case. Passed
     straight into run_map.generate_run_map's own level_pool param."""

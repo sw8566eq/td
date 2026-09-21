@@ -26,7 +26,7 @@ SCHEMA_VERSION = 1
 PROGRESS_PATH = module_relative_path(__file__, "progress.json")
 
 
-def load_progress(path=PROGRESS_PATH):
+def load_progress(path: str = PROGRESS_PATH) -> dict[int, int]:
     """{level_id: best_lives_remaining} for every built-in level cleared so
     far, or {} if the file doesn't exist yet or fails to parse -- a
     corrupt/hand-edited file shouldn't take the whole game down, same
@@ -38,7 +38,7 @@ def load_progress(path=PROGRESS_PATH):
     )
 
 
-def save_progress(cleared, path=PROGRESS_PATH):
+def save_progress(cleared: dict[int, int], path: str = PROGRESS_PATH) -> None:
     # JSON object keys must be strings -- level ids are ints everywhere
     # else (see load_progress's own conversion back).
     data = {"schema_version": SCHEMA_VERSION, "cleared": {str(k): v for k, v in cleared.items()}}
@@ -46,7 +46,7 @@ def save_progress(cleared, path=PROGRESS_PATH):
         json.dump(data, f, indent=2)
 
 
-def mark_level_cleared(level_id, lives_remaining, path=PROGRESS_PATH):
+def mark_level_cleared(level_id: int, lives_remaining: int, path: str = PROGRESS_PATH) -> dict[int, int]:
     """Record `level_id` as cleared, keeping the best (highest)
     lives_remaining seen across repeat clears rather than overwriting with
     a worse result. Returns the updated {level_id: best_lives_remaining}
