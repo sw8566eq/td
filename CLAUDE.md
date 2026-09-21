@@ -228,9 +228,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  5 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, plus
-  the cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`) are gated at all, via
-  `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own optional `unlocked_pool`/
+  6 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, the
+  cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`, and that same batch's
+  `seismic_slam`) are gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own
+  optional `unlocked_pool`/
   `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
   below). 61 relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
@@ -1251,7 +1252,13 @@ packaged build. Before this was factored out, each independently wrote the same
   (`frostbitten_mark`/`plague_mark`, thresholds `total_floors_cleared=50`/`runs_played=20`, both
   further out than the first wave's own 10-25 range) once that first curve itself started feeling
   exhausted -- `chill_rot`, the third relic in that same batch, stays deliberately ungated so the
-  mechanic itself is still reachable early (see the `relics.py` bullet above).
+  mechanic itself is still reachable early (see the `relics.py` bullet above). A third wave
+  completed that same batch's gating with `seismic_slam` (Knockback's 2nd exclusive relic, the only
+  relic from that batch still ungated after the second wave) at `total_floors_cleared=75` -- past
+  even `frostbitten_mark`'s 50 -- and added a second `LEVEL_META_UNLOCKS` gate, `Double Confluence`
+  (id `15`, the only other ordinary multi-lane level still ungated, a genuine step up from `Quad
+  Muster`'s 4-spawns-into-1-goal via 2 independent goals instead) at `runs_played=25`, past
+  `unlock_quad_muster`'s 15.
   `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS}`) is what `bump()`
   actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON file's flat
   `{"counters": .., "unlocked": {key, ...}}` state already spans all three content kinds (key
@@ -1262,7 +1269,7 @@ packaged build. Before this was factored out, each independently wrote the same
   difference: `unlocked_level_pool()` returns the whole ready-to-use `LEVELS`-minus-locked-ids pool
   directly (passed straight into `run_map.generate_run_map`'s own `level_pool` param from
   `Game.start_new_run`) rather than just the small "what's been added" set the other two return,
-  since only 1 of 15 levels is ever gated -- making every caller re-derive "everything else" would be
+  since only 2 of 15 levels are ever gated -- making every caller re-derive "everything else" would be
   the more awkward shape for the common case. `relics._default_relic_pool()` mirrors
   `card_pool._default_unlocked_pool()` exactly (every `RELICS` key not gated, plus whatever
   `unlocked_relic_pool()` says is unlocked, in `RELICS`' own stable registry order) and is threaded
