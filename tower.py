@@ -235,6 +235,21 @@ class Tower:
         # multiply), just for the Cannon/Knockback pair instead of
         # Lightning alone.
         self.relic_cannon_knockback_damage_bonus_multiplier = 1.0
+        # Aerial Targeting Array-style relic -- Cannon's first fully
+        # exclusive relic (heavy_ordnance immediately above is shared
+        # 50/50 with Knockback), boolean OR-composed the same shape as
+        # relic_poison_ignores_shield below. Set on every tower harmlessly
+        # at construction time, but only ever read via CannonTower's own
+        # can_target_flying property override (see that class) -- every
+        # other tower still reads the plain can_target_flying class
+        # attribute untouched, so this can never leak onto Knockback or
+        # anything else.
+        self.relic_cannon_targets_flying = False
+        # High-Velocity Shells-style relic -- Cannon's second exclusive
+        # relic, same plain construction-time multiply shape as relic_
+        # splash_radius_bonus_multiplier above, read only inside
+        # CannonTower's own create_projectile() against projectile_speed.
+        self.relic_cannon_projectile_speed_bonus_multiplier = 1.0
         # Luminous Field-style relic -- Beacon-tower-exclusive, plain
         # construction-time multiply shape (like relic_splash_radius_
         # bonus_multiplier), read only inside BeaconTower's own
@@ -943,8 +958,18 @@ class CannonTower(Tower):
     FIRE_SOUND = "tower_fire_heavy"
     EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
     # A lobbed, ground-impact blast has nothing to detonate against in
-    # midair -- see enemy.py's FlyingEnemy.
-    can_target_flying = False
+    # midair -- see enemy.py's FlyingEnemy -- UNLESS an Aerial Targeting
+    # Array-style relic is held (relic_cannon_targets_flying, set at
+    # construction time -- see Game._construct_tower). A property, not a
+    # plain class attribute like every other tower's can_target_flying
+    # (including KnockbackTower's own, untouched, immediately below):
+    # Tower.acquire_target() always reads self.can_target_flying off a
+    # real instance, so this resolves per-tower from that instance's own
+    # relic field with no other call site needing to change.
+    @property
+    def can_target_flying(self):
+        return self.relic_cannon_targets_flying
+
     # Overrides the generic Power/Precision placeholders with options that
     # play off Cannon's own splash mechanic instead.
     SPECIALIZATIONS = {
@@ -971,7 +996,11 @@ class CannonTower(Tower):
 
     def create_projectile(self, target):
         return Projectile(
-            pos=self.pos, target=target, speed=self.projectile_speed,
+            pos=self.pos, target=target,
+            # High-Velocity Shells-style relic -- see relic_cannon_
+            # projectile_speed_bonus_multiplier's own comment on Tower.
+            # __init__.
+            speed=self.projectile_speed * self.relic_cannon_projectile_speed_bonus_multiplier,
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             sprite_name="projectile_cannon", source=self,
