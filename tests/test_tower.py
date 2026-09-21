@@ -1016,6 +1016,79 @@ def test_effective_damage_stacks_density_bonus_additively_with_everything_else()
     assert tower.effective_damage() != pytest.approx(BasicTower.damage * 1.5 * 1.25 * 1.3 * 1.10)  # not multiplicative
 
 
+# --- Overclocked Circuits' own live density bonus (fire-rate channel) ---
+# Same set_nearby_tower_bonus() scan as Overcrowded Circuits above, just a
+# second, independent output (fire rate instead of damage) computed from
+# the exact same nearby_count, not a second scan -- these tests confirm it
+# scales/caps on its own and stays fully independent of the damage channel.
+
+def test_set_nearby_tower_bonus_scales_the_fire_rate_channel_with_neighbor_count():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 90
+    tower.relic_tower_density_fire_rate_bonus_per_neighbor = 0.015
+    tower.relic_tower_density_fire_rate_bonus_cap = 0.15
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
+    assert tower.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.045)  # 1 + 3 * 0.015
+
+
+def test_set_nearby_tower_bonus_caps_the_fire_rate_channel():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 90
+    tower.relic_tower_density_fire_rate_bonus_per_neighbor = 0.015
+    tower.relic_tower_density_fire_rate_bonus_cap = 0.15
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(50, distance=10))  # far beyond the cap
+    assert tower.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.15)
+
+
+def test_set_nearby_tower_bonus_damage_channel_alone_grants_no_fire_rate_bonus():
+    # A run holding only overcrowded_circuits (damage) must get zero
+    # fire-rate bonus -- the two channels are independent, not bundled,
+    # even though both read the exact same nearby_count.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 80
+    tower.relic_tower_density_damage_bonus_per_neighbor = 0.02
+    tower.relic_tower_density_damage_bonus_cap = 0.20
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
+    assert tower.relic_tower_density_bonus_multiplier == pytest.approx(1.06)
+    assert tower.relic_tower_density_fire_rate_bonus_multiplier == 1.0
+
+
+def test_set_nearby_tower_bonus_fire_rate_channel_alone_grants_no_damage_bonus():
+    # The inverse of the above -- a run holding only overclocked_circuits
+    # (fire rate) must get zero damage bonus.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 90
+    tower.relic_tower_density_fire_rate_bonus_per_neighbor = 0.015
+    tower.relic_tower_density_fire_rate_bonus_cap = 0.15
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
+    assert tower.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.045)
+    assert tower.relic_tower_density_bonus_multiplier == 1.0
+
+
+def test_effective_fire_rate_reflects_the_density_bonus():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_tower_density_radius = 90
+    tower.relic_tower_density_fire_rate_bonus_per_neighbor = 0.015
+    tower.relic_tower_density_fire_rate_bonus_cap = 0.15
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.045)
+
+
+def test_effective_fire_rate_stacks_the_density_bonus_multiplicatively_with_everything_else():
+    # Extends the existing two-source multiplicative-stack regression below
+    # to the third (Overclocked Circuits-style) source.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_fire_rate_bonus_multiplier = 1.08
+    tower.relic_last_stand_fire_rate_bonus_multiplier = 1.15
+    tower.set_last_stand_multiplier(True)
+    tower.relic_tower_density_radius = 90
+    tower.relic_tower_density_fire_rate_bonus_per_neighbor = 0.015
+    tower.relic_tower_density_fire_rate_bonus_cap = 0.15
+    tower.set_nearby_tower_bonus([tower] + _other_towers_at(3, distance=10))  # +0.045, under the cap
+
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.08 * 1.15 * 1.045)
+
+
 # --- Adrenaline Rush's own live fire-rate bonus ---
 
 def test_set_last_stand_multiplier_toggles_the_fire_rate_bonus_too():
@@ -1039,6 +1112,55 @@ def test_effective_fire_rate_stacks_relic_and_last_stand_bonuses_multiplicativel
     tower.set_last_stand_multiplier(True)
 
     assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.08 * 1.15)
+
+
+# --- Desperate Reach's own live range bonus ---
+
+def test_set_last_stand_multiplier_toggles_the_range_bonus_too():
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_range_bonus_multiplier = 1.15
+    assert tower.effective_range() == tower.range  # inactive by default
+
+    tower.set_last_stand_multiplier(True)
+    assert tower.effective_range() == pytest.approx(tower.range * 1.15)
+
+    tower.set_last_stand_multiplier(False)
+    assert tower.effective_range() == tower.range
+
+
+def test_set_last_stand_multiplier_toggles_all_three_channels_together():
+    # last_stand_charm/adrenaline_rush/desperate_reach all key off the
+    # exact same "down to your last life" condition, resolved in the same
+    # call -- regression guard that a future change to one channel can't
+    # silently leave another channel out of the same toggle.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.relic_last_stand_bonus_multiplier = 1.3
+    tower.relic_last_stand_fire_rate_bonus_multiplier = 1.15
+    tower.relic_last_stand_range_bonus_multiplier = 1.15
+
+    tower.set_last_stand_multiplier(True)
+    assert tower.effective_damage() == pytest.approx(BasicTower.damage * 1.3)
+    assert tower.effective_fire_rate() == pytest.approx(tower.fire_rate * 1.15)
+    assert tower.effective_range() == pytest.approx(tower.range * 1.15)
+
+    tower.set_last_stand_multiplier(False)
+    assert tower.effective_damage() == BasicTower.damage
+    assert tower.effective_fire_rate() == tower.fire_rate
+    assert tower.effective_range() == tower.range
+
+
+def test_effective_range_stacks_the_last_stand_bonus_additively_with_everything_else():
+    # Extends the existing aura/relic-range additive-stack regression above
+    # to the third (Desperate Reach-style) source -- still ADDs, never
+    # multiplies or max()'s against the other two.
+    tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.aura_range_multiplier = 1.15
+    tower.relic_range_bonus_multiplier = 1.10
+    tower.relic_last_stand_range_bonus_multiplier = 1.15
+    tower.set_last_stand_multiplier(True)
+
+    assert tower.effective_range() == pytest.approx(tower.range * 1.40)  # 1 + .15 + .10 + .15
+    assert tower.effective_range() != pytest.approx(tower.range * 1.15 * 1.10 * 1.15)  # not multiplicative
 
 
 # --- Beacon tower (near-zero damage, marks whatever its splash touches) ---

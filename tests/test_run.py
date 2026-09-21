@@ -1195,6 +1195,47 @@ def test_adrenaline_rush_only_boosts_fire_rate_while_down_to_the_last_life(game)
     assert tower.effective_fire_rate() == base_fire_rate
 
 
+def test_desperate_reachs_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["desperate_reach"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_last_stand_range_bonus_multiplier == RELICS["desperate_reach"].last_stand_range_multiplier
+
+
+def test_desperate_reach_only_widens_range_while_down_to_the_last_life(game):
+    # Mirrors last_stand_charm's/adrenaline_rush's own tests above exactly
+    # -- all three relics key off the same Economy.is_on_last_life
+    # condition, resolved in the same set_last_stand_multiplier() call.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["desperate_reach"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    base_range = tower.effective_range()
+
+    game.economy.lives = 2
+    game.update(dt=0.01)
+    assert tower.effective_range() == base_range  # not yet down to the last life
+
+    game.economy.lives = 1
+    game.update(dt=0.01)
+    assert tower.effective_range() == pytest.approx(
+        base_range * RELICS["desperate_reach"].last_stand_range_multiplier
+    )
+
+    game.economy.lives = 3  # a life regained turns the bonus back off
+    game.update(dt=0.01)
+    assert tower.effective_range() == base_range
+
+
 def test_lose_a_life_plays_the_life_lost_sound(game):
     start_first_floor(game, seed=1)
     game.economy.lives = 3
@@ -1356,6 +1397,22 @@ def test_overcrowded_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
     assert tower.relic_tower_density_radius == relic.tower_density_radius
     assert tower.relic_tower_density_damage_bonus_per_neighbor == relic.tower_density_damage_bonus_per_neighbor
     assert tower.relic_tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
+
+
+def test_overclocked_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["overclocked_circuits"]
+    assert tower.relic_tower_density_radius == relic.tower_density_radius
+    assert tower.relic_tower_density_fire_rate_bonus_per_neighbor == relic.tower_density_fire_rate_bonus_per_neighbor
+    assert tower.relic_tower_density_fire_rate_bonus_cap == relic.tower_density_fire_rate_bonus_cap
 
 
 def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
@@ -1584,6 +1641,51 @@ def test_overcrowded_circuits_density_bonus_is_capped_through_game_update(game, 
 
     center = game.grid.get_tower(*anchors[1])
     assert center.relic_tower_density_bonus_multiplier == pytest.approx(1.15)  # capped, not 1.20
+
+
+def test_overclocked_circuits_density_bonus_counts_neighboring_towers_through_game_update(game, monkeypatch):
+    # Mirrors test_overcrowded_circuits_density_bonus_counts_neighboring_
+    # towers_through_game_update above exactly, just the fire-rate channel
+    # instead of the damage one -- same small-scale stand-in relic shape,
+    # same three-in-a-row cluster producing two different neighbor counts.
+    monkeypatch.setitem(RELICS, "overclocked_circuits", Relic(
+        "overclocked_circuits", "", "", tower_density_radius=100,
+        tower_density_fire_rate_bonus_per_neighbor=0.10, tower_density_fire_rate_bonus_cap=0.50,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])  # flanked by both other towers
+    assert center.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.20)  # 2 neighbors * 0.10
+    assert center.effective_fire_rate() == pytest.approx(center.fire_rate * 1.20)
+    edge = game.grid.get_tower(*anchors[0])  # only one neighbor within range
+    assert edge.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.10)
+
+
+def test_overclocked_circuits_density_bonus_is_capped_through_game_update(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "overclocked_circuits", Relic(
+        "overclocked_circuits", "", "", tower_density_radius=200,
+        tower_density_fire_rate_bonus_per_neighbor=0.10, tower_density_fire_rate_bonus_cap=0.15,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])
+    assert center.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.15)  # capped, not 1.20
 
 
 def test_beacon_tower_placement_populates_relic_fields_like_any_other_tower(game):
