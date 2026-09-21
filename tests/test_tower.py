@@ -12,6 +12,7 @@ from tower import (
     KnockbackTower,
     LightningTower,
     PoisonTower,
+    SiphonTower,
     SniperTower,
     SupportTower,
     Tower,
@@ -394,6 +395,10 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
             ("relic_knockback_duration_bonus_multiplier",), "knockback_duration", ("knockback",),
             lambda tower: 0.0,  # Projectile's own default -- non-Knockback towers never pass this kwarg at all
         ),
+        (
+            ("relic_siphon_damage_bonus_multiplier",), "damage", ("siphon",),
+            lambda tower: tower.effective_damage(),
+        ),
     ],
 )
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
@@ -567,6 +572,82 @@ def test_other_towers_have_no_poison_effect():
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
         assert projectile.poison_effect is None, name
+
+
+# --- Siphon tower (low direct damage, converts a fraction of damage DEALT
+# into battle gold -- see Projectile._apply_direct_damage/Game.update() for
+# the actual mechanic, which lives entirely on the Tower side and needs no
+# create_projectile() kwargs at all) ---
+
+def test_siphon_tower_is_registered():
+    assert TOWER_TYPES["siphon"] is SiphonTower
+
+
+def test_siphon_tower_projectile_has_no_extra_mechanics():
+    # Low direct hit, no splash/slow/knockback/chain/poison/execute -- the
+    # whole mechanic lives off self.source at damage-attribution time, not
+    # anything create_projectile() needs to pass in.
+    tower = SiphonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == tower.effective_damage()
+    assert projectile.splash_radius == 0
+    assert projectile.slow_effect is None
+    assert projectile.knockback_duration == 0.0
+    assert projectile.chain_range == 0.0
+    assert projectile.poison_effect is None
+
+
+def test_siphon_gold_fraction_is_zero_on_every_other_tower():
+    # siphon_gold_fraction is a plain CLASS attribute (see Tower's own
+    # comment on why it can't be set via self.siphon_gold_fraction = 0.0 in
+    # __init__ without shadowing SiphonTower's own override) -- confirms
+    # every other registered tower still reads the harmless 0.0 default.
+    for name, tower_cls in TOWER_TYPES.items():
+        if name == "siphon":
+            continue
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        assert tower.siphon_gold_fraction == 0.0, name
+
+
+def test_refined_conduit_specialization_boosts_siphon_gold_fraction():
+    tower = SiphonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(SiphonTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    base_fraction = tower.siphon_gold_fraction
+    base_damage = tower.damage
+
+    tower.specialize("refined_conduit")
+
+    assert tower.siphon_gold_fraction == pytest.approx(base_fraction * 1.35)
+    assert tower.damage == base_damage  # untouched
+
+
+def test_overcharged_coils_specialization_boosts_damage_and_range():
+    tower = SiphonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    for _ in range(SiphonTower.MAX_LEVEL - 1):
+        tower.upgrade()
+    base_damage = tower.damage
+    base_range = tower.range
+    base_fraction = tower.siphon_gold_fraction
+
+    tower.specialize("overcharged_coils")
+
+    assert tower.damage == pytest.approx(base_damage * 1.5)
+    assert tower.range == pytest.approx(base_range * 1.15)
+    assert tower.siphon_gold_fraction == base_fraction  # untouched
+
+
+def test_amplified_coils_relic_boosts_siphon_damage():
+    # relic_siphon_damage_bonus_multiplier is set at construction time
+    # (Game._construct_tower), not baked into damage itself -- confirms
+    # SiphonTower's own _relic_family_damage_bonus() override actually
+    # feeds Tower.effective_damage()'s additive stack, the same as
+    # storm_core/heavy_ordnance before it.
+    tower = SiphonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_damage = tower.effective_damage()
+    tower.relic_siphon_damage_bonus_multiplier = 1.20
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.damage == pytest.approx(base_damage * 1.20)
 
 
 # --- Beam tower (ramps damage against a locked, uninterrupted target) ---

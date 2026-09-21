@@ -415,6 +415,22 @@ class Relic:
     # Cannon and damage-only; concussive_rounds is a generic relic any
     # tower can hold) -- brings it off its 1-relic floor.
     knockback_duration_multiplier: float = 1.0
+    # refined_extraction's own bonus -- SiphonTower-exclusive, scaling that
+    # tower's own siphon_gold_fraction. Unlike every other tower-exclusive
+    # relic above, this one is read directly inside
+    # Projectile._apply_direct_damage() rather than inside a
+    # create_projectile() override or _apply_hit_effects() -- see that
+    # method's own comment in projectile.py for why: it's the one true
+    # per-hit damage-attribution choke point, so reading it there also
+    # covers an Arcing Rounds-style chain bounce or an Overkill-style
+    # carry-over hit for free, the same way _apply_direct_damage's own
+    # damage_dealt/kills bookkeeping already does.
+    siphon_gold_fraction_multiplier: float = 1.0
+    # amplified_coils' own bonus -- SiphonTower-exclusive, same
+    # family_damage_bonus() hook shape as lightning_damage_multiplier/
+    # cannon_knockback_damage_multiplier above, read via SiphonTower's own
+    # _relic_family_damage_bonus() override.
+    siphon_damage_multiplier: float = 1.0
 
 
 RELICS = {
@@ -820,6 +836,22 @@ RELICS = {
         "Knockback tower's own shove is bigger, every floor.",
         knockback_duration_multiplier=1.25,
     ),
+    # Siphon-tower-exclusive -- see siphon_gold_fraction_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (Projectile._apply_direct_damage()).
+    "refined_extraction": Relic(
+        "refined_extraction", "Refined Extraction",
+        "Siphon tower converts 25% more damage into gold, every floor.",
+        siphon_gold_fraction_multiplier=1.25,
+    ),
+    # Siphon-tower-exclusive -- see siphon_damage_multiplier's own comment
+    # on the Relic dataclass above for the read site (SiphonTower.
+    # _relic_family_damage_bonus()).
+    "amplified_coils": Relic(
+        "amplified_coils", "Amplified Coils",
+        "Siphon tower deals 20% more damage, every floor.",
+        siphon_damage_multiplier=1.20,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -983,6 +1015,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    siphon_gold_fraction_multiplier: float = 1.0
+    siphon_damage_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(
@@ -1080,6 +1114,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    siphon_gold_fraction_multiplier = 1.0
+    siphon_damage_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1190,6 +1226,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        siphon_gold_fraction_multiplier *= relic.siphon_gold_fraction_multiplier
+        siphon_damage_multiplier *= relic.siphon_damage_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1252,4 +1290,6 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        siphon_gold_fraction_multiplier=siphon_gold_fraction_multiplier,
+        siphon_damage_multiplier=siphon_damage_multiplier,
     )

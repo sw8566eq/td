@@ -25,8 +25,18 @@ from waves import WaveState
 
 ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
 
-BUTTON_SIZE = 72
-BUTTON_MARGIN = 12
+BUTTON_SIZE = 68
+# BUTTON_SIZE+BUTTON_MARGIN is the actual per-button width build_button_rects
+# below lays out with -- 10 towers (72+12=84 each) used to fit against the
+# HUD's fixed PLAY_WIDTH with exactly 4px to spare before build_skip_button_
+# rect's own fixed right-anchored position (see that function's own
+# docstring); adding an 11th tower (SiphonTower) at the old 84px/button
+# would overflow into the skip button's rect entirely. Trimmed both
+# constants down (72->68, 12->8) so 11 buttons' combined 11*76=836px still
+# clears the skip button's own left edge with a few px to spare, the same
+# style of tight-but-intentional fit as before -- see test_ui.py's own
+# test_skip_button_does_not_overlap_the_tower_build_buttons.
+BUTTON_MARGIN = 8
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many
 # tower buttons are registered -- the speed toggle (build_speed_button_rect)

@@ -1817,6 +1817,8 @@ class Game:
         tower.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_modifiers.damage_vs_marked_and_poisoned_multiplier
         tower.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_modifiers.damage_vs_slowed_and_poisoned_multiplier
         tower.relic_knockback_duration_bonus_multiplier = self.relic_modifiers.knockback_duration_multiplier
+        tower.relic_siphon_gold_fraction_bonus_multiplier = self.relic_modifiers.siphon_gold_fraction_multiplier
+        tower.relic_siphon_damage_bonus_multiplier = self.relic_modifiers.siphon_damage_multiplier
         return tower
 
     def _current_footprint_subtiles(self):
@@ -2003,6 +2005,21 @@ class Game:
             if tower.fired_this_frame:
                 self.audio.play(tower.FIRE_SOUND)
                 tower.fired_this_frame = False
+            # SiphonTower's own mechanic -- same drain-a-per-frame-
+            # accumulated-value idiom as fired_this_frame just above (and
+            # impact_events/damage_events below): Projectile._apply_direct_
+            # damage() credits a fraction of every hit's damage onto
+            # tower.pending_siphon_gold as it's dealt (see that method's
+            # own comment), and only the whole-gold portion is granted here
+            # -- the fractional remainder is deliberately carried forward
+            # rather than reset to 0 every frame, so it's never silently
+            # lost, just not yet worth a whole gold. A no-op for every
+            # non-Siphon tower, whose pending_siphon_gold never accumulates
+            # anything.
+            if tower.pending_siphon_gold >= 1.0:
+                granted = int(tower.pending_siphon_gold)
+                self.economy.add_gold(granted)
+                tower.pending_siphon_gold -= granted
 
         for projectile in self.projectiles:
             projectile.update(dt, self.enemies)

@@ -77,6 +77,22 @@ class Tower:
     # False, since neither makes sense against something airborne.
     can_target_flying = True
 
+    # Fraction of damage dealt that converts into battle gold -- 0.0 (no
+    # conversion) on every tower except SiphonTower, which overrides this
+    # with its own nonzero class attribute (siphon_gold_fraction = 0.6),
+    # the same "a tower's own native stat, defaulted to a no-op on the base
+    # class" shape poison_damage_per_tick/execute_hp_threshold/etc. already
+    # use elsewhere in this file. Deliberately a plain CLASS attribute, not
+    # an instance attribute set in __init__ below -- Projectile._apply_
+    # direct_damage() reads self.source.siphon_gold_fraction on every hit
+    # regardless of tower type (see that method's own comment), so this
+    # needs a real, always-present value on every Tower subclass the way
+    # can_target_flying/IS_SUPPORT above already are; assigning it via
+    # `self.siphon_gold_fraction = 0.0` in __init__ instead would shadow
+    # SiphonTower's own class-level override with an instance attribute of
+    # 0.0 on every SiphonTower object, silently disabling the mechanic.
+    siphon_gold_fraction = 0.0
+
     # Which in-range enemy acquire_target() actually fires at -- a one-time
     # choice at placement (see __init__), cycled per-tower via
     # cycle_targeting_mode() (the stats panel's "Targeting: ..." row). "first"
@@ -403,6 +419,34 @@ class Tower:
         # shared with Cannon, damage-only) -- this is Knockback's own
         # second exclusive relic, off its 1-relic floor.
         self.relic_knockback_duration_bonus_multiplier = 1.0
+        # Refined Extraction-style relic -- SiphonTower-exclusive, scaling
+        # siphon_gold_fraction above. Harmless on every other tower, which
+        # never has a nonzero siphon_gold_fraction to multiply in the first
+        # place. Deliberately NOT read via create_projectile() or
+        # _apply_hit_effects() like every other relic_* field here -- see
+        # Projectile._apply_direct_damage()'s own comment for why this one
+        # is read at a genuinely new site instead.
+        self.relic_siphon_gold_fraction_bonus_multiplier = 1.0
+        # Amplified Coils-style relic -- SiphonTower-exclusive damage bonus,
+        # same _relic_family_damage_bonus() hook shape as relic_lightning_
+        # damage_bonus_multiplier/relic_cannon_knockback_damage_bonus_
+        # multiplier above, read via SiphonTower's own override.
+        self.relic_siphon_damage_bonus_multiplier = 1.0
+        # SiphonTower's own accumulator -- battle gold earned from a
+        # fraction of damage dealt, credited per hit in Projectile._apply_
+        # direct_damage() and drained into real Economy.gold whole-gold-at-
+        # a-time by Game.update() (the same drain-a-per-frame-accumulated-
+        # value idiom fired_this_frame/impact_events/damage_events already
+        # establish -- see CLAUDE.md's "Visual effects" section). Harmless
+        # on every non-Siphon tower, which never accumulates anything here
+        # since siphon_gold_fraction is 0.0 for them. Deliberately never
+        # reset to 0 by the drain -- only the whole-gold portion is removed
+        # each time, so a sub-1-gold remainder always carries forward
+        # rather than being silently lost. Not serialized by save_state.py:
+        # a save only ever happens between waves, with no live combat state
+        # captured at all, and this remainder is worth less than 1 gold
+        # regardless.
+        self.pending_siphon_gold = 0.0
         # Containment Charges-style relic is deliberately NOT one of these
         # relic_* fields -- it's a flat per-floor value with no per-tower
         # variation, so Game.update()'s own dead-enemy drain loop reads
@@ -1221,6 +1265,66 @@ class PoisonTower(Tower):
         )
 
 
+class SiphonTower(Tower):
+    """Low direct hit, but converts a fraction of damage DEALT into battle
+    gold -- the first tower in this roster whose own mechanic generates
+    economy from damage rather than from kills (contrast with the
+    bounty_hunters_ledger relic, which is a kill-gold-only relic, not a
+    tower mechanic). siphon_gold_fraction is flat across levels (not in
+    LEVEL_SCALED_STATS), only ever moved by specialization/relics, the same
+    shape as PoisonTower's own poison_damage_per_tick above.
+
+    Deliberately introduces NO new Tower<->Economy/Game coupling: neither
+    Tower nor Projectile has ever held a live Economy/Game reference, and
+    this tower doesn't start now. Instead it reuses the exact drain-a-per-
+    frame-accumulated-value idiom fired_this_frame/impact_events/
+    damage_events already establish (see CLAUDE.md's "Visual effects"
+    section) -- see pending_siphon_gold's own comment in __init__ above,
+    Projectile._apply_direct_damage() for where it's credited, and
+    Game.update() for where it's actually drained into real gold.
+    create_projectile() below needs zero siphon-specific kwargs at all --
+    the whole mechanic lives on the Tower side and is read directly off
+    self.source (this tower) at credit time."""
+    cost = 70
+    range = 105
+    damage = 3
+    fire_rate = 1.0
+    projectile_speed = 300.0
+    siphon_gold_fraction = 0.6
+    sprite_name = "tower_siphon"
+    display_name = "Siphon"
+    EXTRA_STATS = (
+        ("Gold conversion", "siphon_gold_fraction", _format_chance_percent),
+    )
+    # Overrides the generic Power/Precision placeholders with options that
+    # play off Siphon's own gold-conversion mechanic instead.
+    SPECIALIZATIONS = {
+        "refined_conduit": {
+            "display_name": "Refined Conduit",
+            "description": "Siphons more gold per hit.",
+            "stat_multipliers": {"siphon_gold_fraction": 1.35},
+        },
+        "overcharged_coils": {
+            "display_name": "Overcharged Coils",
+            "description": "Harder hits, longer reach.",
+            "stat_multipliers": {"damage": 1.5, "range": 1.15},
+        },
+    }
+
+    def _relic_family_damage_bonus(self):
+        # Amplified Coils-style relic -- see Tower._relic_family_damage_
+        # bonus's own docstring for why this has to be a per-class override
+        # rather than a plain field effective_damage() reads directly.
+        return self.relic_siphon_damage_bonus_multiplier - 1.0
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(),
+            sprite_name="projectile_siphon", source=self,
+        )
+
+
 class BeamTower(Tower):
     """Fires rapidly at a single target and rewards staying locked onto it:
     each consecutive hit landed on the same, uninterrupted target ramps its
@@ -1447,6 +1551,7 @@ TOWER_TYPES = {
     "lightning": LightningTower,
     "sniper": SniperTower,
     "poison": PoisonTower,
+    "siphon": SiphonTower,
     "support": SupportTower,
     "beam": BeamTower,
     "beacon": BeaconTower,

@@ -81,6 +81,7 @@ META_UNLOCKS: dict[str, MetaUnlock] = {
     "unlock_support": MetaUnlock("unlock_support", "support", "runs_played", 2),
     "unlock_beam": MetaUnlock("unlock_beam", "beam", "runs_reached_endless", 1),
     "unlock_beacon": MetaUnlock("unlock_beacon", "beacon", "runs_played", 3),
+    "unlock_siphon": MetaUnlock("unlock_siphon", "siphon", "runs_played", 4),
 }
 
 

@@ -35,7 +35,7 @@ import save_state
 import settings
 import ui
 from editor import EditorTool
-from enemy import FinalBossEnemy, SplitterEnemy
+from enemy import Enemy, FinalBossEnemy, SplitterEnemy
 from game import GameState
 from levels import LEVELS
 from tower import TOWER_TYPES, BasicTower
@@ -519,6 +519,43 @@ def test_clicking_to_place_an_unaffordable_tower_does_nothing(playing_game):
     playing_game._handle_click((int(center.x), int(center.y)))
 
     assert playing_game.towers == []
+
+
+def test_siphon_tower_converts_damage_dealt_into_battle_gold_over_several_frames(playing_game):
+    # Integration test for the whole pending_siphon_gold pipeline:
+    # Projectile._apply_direct_damage() accumulates it on the tower per
+    # hit, Game.update()'s own drain loop grants only the whole-gold
+    # portion each frame, carrying the fractional remainder forward rather
+    # than losing it -- confirms Economy.gold visibly increases from a
+    # Siphon tower's own hits, not just from kills (the target's 10,000 hp
+    # is never actually threatened here).
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "siphon"
+    assert playing_game.try_place_tower(anchor_col, anchor_row)
+    tower = playing_game.towers[0]
+
+    # A stationary, high-HP target sitting right on top of the tower so
+    # every shot lands and it's never at risk of dying or leaving range.
+    target = Enemy([tower.pos, tower.pos + pygame.Vector2(100, 0)], wave_number=1)
+    target.hp = target.max_hp = 10_000
+    target.speed = 0.0
+    playing_game.enemies = [target]
+
+    gold_before = playing_game.economy.gold
+    for _ in range(250):  # 25 simulated seconds at dt=0.1 -- ~25 shots at fire_rate=1.0
+        playing_game.update(dt=0.1)
+
+    assert tower.damage_dealt > 0
+    assert tower.shots_fired > 1
+    assert tower.kills == 0  # this is siphon-from-damage, not kill gold -- the target never died
+    granted = playing_game.economy.gold - gold_before
+    assert granted > 0  # Economy.gold visibly increased purely from damage dealt
+    # Conservation: whatever whole gold was already granted plus whatever
+    # fractional remainder still sits on the tower must equal its total
+    # accumulated siphon value -- confirms the per-frame floor() never
+    # loses anything, only ever defers the sub-1-gold remainder.
+    assert granted + tower.pending_siphon_gold == pytest.approx(tower.damage_dealt * tower.siphon_gold_fraction)
+    assert 0.0 <= tower.pending_siphon_gold < 1.0
 
 
 # --- Click handling: upgrading towers ---
