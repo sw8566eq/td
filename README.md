@@ -162,11 +162,29 @@ or anywhere else. (`tests/test_assets.py` stands alone and does its own.)
 
 ## Art
 
-No art pack is bundled yet -- every sprite renders as a simple colored placeholder shape (see
-`assets.py`). Drop a CC0 pixel-art pack's PNGs into `assets/towers/`, `assets/enemies/`,
-`assets/tiles/`, `assets/projectiles/` using the filenames listed in `SPRITE_MANIFEST` (in
-`assets.py`) and the real art will appear automatically -- no code changes needed. If the pack uses
-different filenames, just edit the path strings in that manifest.
+Tiles and towers now have real art; some enemies still render as placeholder shapes (see
+`assets.py`, `SPRITE_MANIFEST`). Source: Kenney's
+["Tower Defense (Top-Down)"](https://kenney.nl/assets/tower-defense-top-down) pack, CC0 (public
+domain -- credit appreciated but not required). Coverage:
+- `assets/tiles/` (3/3) and `assets/towers/` (10/10) -- fully covered. The pack's own designs
+  (missile launchers, single/twin-barrel cannons, glowing turret domes) don't literally match this
+  game's tower names, so they're reassigned by shape/vibe rather than by name.
+- `assets/enemies/` (4/11) -- `grunt`/`tank` (the pack's two top-down vehicle bodies) and
+  `scout`/`flying` (its two planes) are covered; `boss`, `shielded`, `splitter`, `splitter_child`,
+  `healer`, `final_boss`, and `final_boss_shielded` have no good match in this pack and still render
+  as placeholder circles -- `AssetManager` degrades gracefully per-sprite, so a partial pack is not a
+  blocker to shipping the rest.
+- `assets/projectiles/` (0/9, deliberately) -- these render at a fixed 12x12px, where a colored-dot
+  PNG would be visually indistinguishable from the existing flat-color-circle placeholder, so it
+  wasn't worth curating.
+
+To fill in more of the manifest yourself: drop a CC0 pack's PNGs into the relevant `assets/`
+subdirectory using the filenames listed in `SPRITE_MANIFEST` and the real art appears automatically,
+no code changes needed (if a pack uses different filenames, just edit the path strings in that
+manifest). The most promising candidates for the remaining 7 enemies are itch.io's CC0-tagged
+tower-defense packs (e.g. Foozle's "Spire" enemy sets, Tisroc's slimes) -- genuinely top-down and
+purpose-built for this genre, unlike the sources already tried here, but itch.io gates downloads
+behind a JS/session flow rather than a plain fetchable URL, so grabbing them needs a real browser.
 
 ## Sound
 

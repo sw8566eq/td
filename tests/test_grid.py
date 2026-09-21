@@ -89,9 +89,12 @@ def test_subtile_gap_alpha_must_be_a_valid_byte():
         make_grid(subtile_gap_alpha=256)
 
 
-def test_draw_builds_the_background_once_and_reuses_it_on_later_calls():
+def test_draw_builds_the_background_once_and_reuses_it_on_later_calls(tmp_path):
     grid = make_grid()
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((grid.cols * grid.tile_size, grid.rows * grid.tile_size))
 
     grid.draw(surface, assets)
@@ -103,9 +106,11 @@ def test_draw_builds_the_background_once_and_reuses_it_on_later_calls():
     assert grid._background is first_background
 
 
-def test_blocked_cells_render_with_the_blocked_tile_sprite():
+def test_blocked_cells_render_with_the_blocked_tile_sprite(tmp_path):
     grid = make_grid(blocked_cells=frozenset({(2, 2)}))
-    assets = AssetManager()
+    # Same empty-asset_root precedent as above -- this only checks that
+    # whatever assets.get() returns is what gets drawn, real art or not.
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((grid.cols * grid.tile_size, grid.rows * grid.tile_size))
 
     grid.draw(surface, assets)

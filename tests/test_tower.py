@@ -35,11 +35,14 @@ def test_base_tower_create_projectile_is_not_implemented():
         tower.create_projectile(FakeEnemy())
 
 
-def test_draw_without_a_font_skips_the_upgrade_badge():
+def test_draw_without_a_font_skips_the_upgrade_badge(tmp_path):
     from assets import AssetManager
     tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
     surface = pygame.Surface((100, 100))
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
 
     tower.draw(surface, assets)  # font defaults to None -- must not raise
 
@@ -101,13 +104,13 @@ def test_upgrade_badge_center_sits_on_the_shrunk_footprints_own_corner():
     assert shrunk_center[0] < full_size_center[0]
 
 
-def test_draw_requests_a_smaller_sprite_size_when_footprint_subtiles_is_reduced():
+def test_draw_requests_a_smaller_sprite_size_when_footprint_subtiles_is_reduced(tmp_path):
     import settings
     from assets import AssetManager
 
     class _SpyAssetManager(AssetManager):
-        def __init__(self):
-            super().__init__()
+        def __init__(self, asset_root):
+            super().__init__(asset_root=asset_root)
             self.requested_sizes = []
 
         def get(self, name, size):
@@ -117,7 +120,10 @@ def test_draw_requests_a_smaller_sprite_size_when_footprint_subtiles_is_reduced(
     tower = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
     tower.footprint_subtiles = 6
     surface = pygame.Surface((100, 100))
-    assets = _SpyAssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = _SpyAssetManager(str(tmp_path))
 
     tower.draw(surface, assets)
 
