@@ -123,9 +123,12 @@ class ProgressTracker:
         MetaUnlock/RelicMetaUnlock/LevelMetaUnlock carry a display_name of
         their own -- see meta_progression.py's own docstring) rather than
         the registry entry's own key. meta_progression.bump() draws newly-
-        unlocked keys from all three registries at once (see its own
+        unlocked keys from all four registries at once (see its own
         ALL_UNLOCKS), so this checks each in turn rather than assuming
-        every key is a tower unlock."""
+        every key is a tower unlock. ShopMetaUnlock (the trailing else) has
+        no content id to name -- it's a Shop behavior change, not a
+        specific tower/relic/level -- so it gets a fixed toast string
+        instead."""
         for key in newly_unlocked_keys:
             if key in meta_progression.META_UNLOCKS:
                 unlock = meta_progression.META_UNLOCKS[key]
@@ -133,9 +136,11 @@ class ProgressTracker:
             elif key in meta_progression.RELIC_META_UNLOCKS:
                 unlock = meta_progression.RELIC_META_UNLOCKS[key]
                 self._queue_toast(f"New relic unlocked: {relics.RELICS[unlock.relic_key].display_name}!")
-            else:
+            elif key in meta_progression.LEVEL_META_UNLOCKS:
                 unlock = meta_progression.LEVEL_META_UNLOCKS[key]
                 self._queue_toast(f"New level unlocked: {LEVELS[unlock.level_id].name}!")
+            else:
+                self._queue_toast("New Shop upgrade unlocked: a 3rd relic offer every visit!")
 
     def _queue_toast(self, text):
         """Queue one rising/fading toast, stacked below however many are

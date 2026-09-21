@@ -976,6 +976,14 @@ def draw_treasure_screen(surface, font, small_font, granted_relic_key, granted_c
 # game.py's GameState.DRAFT for why the code still says "draft") ---
 
 DRAFT_CARD_WIDTH = settings.PANEL_WIDTH  # matches the sidebar's own visual width
+# 4 cards is the historical ceiling (TOWER_OFFER_COUNT + RELIC_OFFER_COUNT)
+# and fits at DRAFT_CARD_WIDTH with room to spare (4*240 + 3*24 = 1032 <
+# SCREEN_WIDTH's 1200). Once meta_progression.has_unlocked_third_relic_slot
+# makes 5 cards possible, DRAFT_CARD_WIDTH would overflow the screen
+# (5*240 + 4*24 = 1296 > 1200) -- build_draft_choice_rects below switches
+# to this narrower width only at that point, so every ≤4-card shop visit
+# renders pixel-identical to before.
+DRAFT_CARD_WIDTH_COMPACT = 216  # 5*216 + 4*24 = 1176, fits
 DRAFT_CARD_HEIGHT = 260
 DRAFT_CARD_GAP = 24
 DRAFT_CARDS_TOP = 200
@@ -1000,14 +1008,19 @@ def build_draft_choice_rects(count):
     centered horizontal row -- generalizes build_specialize_button_rects's
     fixed-2-rect pattern to however many items shop.build_offer actually
     returned (usually its own default count, but fewer once a run's tower/
-    relic pools are nearly exhausted). Empty for count == 0 (nothing left
-    to offer -- see Game._enter_draft, which skips this screen entirely in
-    that case) since range(0) below already yields nothing."""
-    total_width = count * DRAFT_CARD_WIDTH + (count - 1) * DRAFT_CARD_GAP
+    relic pools are nearly exhausted, or one more once the 3rd relic slot
+    is unlocked). Empty for count == 0 (nothing left to offer -- see
+    Game._enter_draft, which skips this screen entirely in that case)
+    since range(0) below already yields nothing. Switches to the narrower
+    DRAFT_CARD_WIDTH_COMPACT once count exceeds the historical 4-card
+    ceiling -- see that constant's own comment for why 5 cards would
+    otherwise overflow the screen."""
+    card_width = DRAFT_CARD_WIDTH_COMPACT if count >= 5 else DRAFT_CARD_WIDTH
+    total_width = count * card_width + (count - 1) * DRAFT_CARD_GAP
     start_x = (settings.SCREEN_WIDTH - total_width) // 2
     return [
-        pygame.Rect(start_x + i * (DRAFT_CARD_WIDTH + DRAFT_CARD_GAP), DRAFT_CARDS_TOP,
-                    DRAFT_CARD_WIDTH, DRAFT_CARD_HEIGHT)
+        pygame.Rect(start_x + i * (card_width + DRAFT_CARD_GAP), DRAFT_CARDS_TOP,
+                    card_width, DRAFT_CARD_HEIGHT)
         for i in range(count)
     ]
 
@@ -1063,14 +1076,25 @@ def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, 
 
 
 def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price):
+    """Unlike _draw_draft_card's tower side (which reuses the sidebar's
+    fixed-width panel header, never wrapped), a relic's own display_name
+    is wrapped the same way its description already is -- some names
+    (e.g. "Bounty Hunter's Ledger", "Containment Charges") are long enough
+    to overflow even DRAFT_CARD_WIDTH's normal width, and at
+    DRAFT_CARD_WIDTH_COMPACT (the 5-card layout) that overflow would run
+    the rightmost card's own title past the screen edge -- confirmed via
+    an actual driven screenshot, not just a card-overlap check."""
     relic = RELICS[key]
     x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price)
     y = rect.y + PANEL_PADDING
-    title = font.render(relic.display_name, True, settings.COLOR_TEXT)
-    surface.blit(title, (x, y))
-    y += 34
+    max_width = rect.width - 2 * PANEL_PADDING
 
-    max_width = DRAFT_CARD_WIDTH - 2 * PANEL_PADDING
+    for line in _wrap_text(relic.display_name, font, max_width):
+        title_line = font.render(line, True, settings.COLOR_TEXT)
+        surface.blit(title_line, (x, y))
+        y += title_line.get_height() + 2
+    y += 6
+
     for line in _wrap_text(relic.description, small_font, max_width):
         line_text = small_font.render(line, True, settings.COLOR_TEXT_DIM)
         surface.blit(line_text, (x, y))

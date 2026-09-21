@@ -1,5 +1,6 @@
 import random
 
+import meta_progression
 from relics import RELICS
 from run_map import generate_run_map
 from run_state import RunState
@@ -81,6 +82,16 @@ def test_build_offer_respects_its_own_offer_counts(tmp_path):
     run = _run()
     offer = build_offer(random.Random(1), run, meta_progression_path=tmp_path / "meta_progression.json")
     assert len(offer) == TOWER_OFFER_COUNT + RELIC_OFFER_COUNT
+
+
+def test_build_offer_offers_a_third_relic_once_the_slot_is_unlocked(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("total_floors_cleared", amount=100, path=path)
+
+    run = _run()
+    offer = build_offer(random.Random(1), run, meta_progression_path=path)
+    relic_items = [item for item in offer if item.kind == "relic"]
+    assert len(relic_items) == RELIC_OFFER_COUNT + 1
 
 
 # --- price_for ---

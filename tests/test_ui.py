@@ -628,6 +628,17 @@ def test_build_draft_choice_rects_does_not_overlap():
             assert not a.colliderect(b)
 
 
+def test_build_draft_choice_rects_does_not_overflow_the_screen_for_five_choices():
+    # 5 cards (the 3rd-relic-slot unlock's own new ceiling) at the default
+    # DRAFT_CARD_WIDTH would overflow SCREEN_WIDTH -- confirms the
+    # DRAFT_CARD_WIDTH_COMPACT switch actually keeps every rect on-screen.
+    rects = build_draft_choice_rects(5)
+    assert len(rects) == 5
+    for rect in rects:
+        assert rect.left >= 0
+        assert rect.right <= settings.SCREEN_WIDTH
+
+
 def test_get_clicked_draft_choice_returns_matching_index():
     rects = build_draft_choice_rects(3)
     assert get_clicked_draft_choice(rects[1].center, rects) == 1
@@ -660,6 +671,24 @@ def test_draw_draft_screen_with_relics_does_not_raise():
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     from relics import RELICS
     choices = [ShopItem("relic", key, 10) for key in list(RELICS.keys())[:2]]
+    rects = build_draft_choice_rects(len(choices))
+    continue_rect = build_shop_continue_button_rect()
+    draw_draft_screen(surface, font, small_font, choices, rects, 0, set(), 3, continue_rect, unlimited_gold=True)
+
+
+def test_draw_draft_screen_with_five_choices_does_not_raise():
+    # The 3rd-relic-slot unlock's own new ceiling: 2 towers + 3 relics,
+    # exercising the DRAFT_CARD_WIDTH_COMPACT layout end-to-end.
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    from relics import RELICS
+    from tower import TOWER_TYPES
+    choices = (
+        [ShopItem("tower", name, 8) for name in list(TOWER_TYPES.keys())[:2]]
+        + [ShopItem("relic", key, 10) for key in list(RELICS.keys())[:3]]
+    )
     rects = build_draft_choice_rects(len(choices))
     continue_rect = build_shop_continue_button_rect()
     draw_draft_screen(surface, font, small_font, choices, rects, 0, set(), 3, continue_rect, unlimited_gold=True)
