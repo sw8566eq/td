@@ -374,6 +374,29 @@ class Projectile:
             self.source.damage_dealt += applied
             if was_alive and enemy.is_dead:
                 self.source.kills += 1
+            # SiphonTower's own mechanic -- converts a fraction of damage
+            # DEALT into battle gold, credited here rather than in
+            # _apply_hit_effects since this is the one true per-hit
+            # attribution choke point every hit routes through, including
+            # an Arcing Rounds-style chain bounce and an Overkill-style
+            # carry-over hit (both call this method directly, never a
+            # second _apply_hit_effects). Accumulated on the tower itself
+            # (pending_siphon_gold) rather than granted as real gold right
+            # here -- Projectile has never held a live Economy/Game
+            # reference and this feature doesn't start now; Game.update()
+            # is what actually drains this into Economy.gold, the same
+            # drain-a-per-frame-accumulated-value idiom fired_this_frame/
+            # impact_events/damage_events already establish. Harmless (a
+            # silent no-op) on every non-Siphon tower, whose
+            # siphon_gold_fraction is 0.0. relic_siphon_gold_fraction_
+            # bonus_multiplier is Refined Extraction's own bonus -- the one
+            # relic in the whole registry read at this exact site rather
+            # than inside create_projectile()/_apply_hit_effects.
+            siphon_fraction = (
+                self.source.siphon_gold_fraction * self.source.relic_siphon_gold_fraction_bonus_multiplier
+            )
+            if siphon_fraction:
+                self.source.pending_siphon_gold += applied * siphon_fraction
         return applied
 
     def _apply_hit_effects(self, enemy, enemies):

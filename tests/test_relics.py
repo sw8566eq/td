@@ -764,6 +764,22 @@ def test_compose_relic_modifiers_no_combo_or_knockback_relic_leaves_them_neutral
     assert modifiers.knockback_duration_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_multiplies_siphon_gold_fraction_multiplier():
+    modifiers = compose_relic_modifiers(["refined_extraction", "refined_extraction"])
+    assert modifiers.siphon_gold_fraction_multiplier == RELICS["refined_extraction"].siphon_gold_fraction_multiplier ** 2
+
+
+def test_compose_relic_modifiers_multiplies_siphon_damage_multiplier():
+    modifiers = compose_relic_modifiers(["amplified_coils", "amplified_coils"])
+    assert modifiers.siphon_damage_multiplier == RELICS["amplified_coils"].siphon_damage_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_siphon_relic_leaves_them_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.siphon_gold_fraction_multiplier == 1.0
+    assert modifiers.siphon_damage_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_ors_cannon_targets_flying():
     modifiers = compose_relic_modifiers(["aerial_targeting_array"])
     assert modifiers.cannon_targets_flying is True

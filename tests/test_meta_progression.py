@@ -84,9 +84,10 @@ def test_bump_ignores_other_counters_thresholds(tmp_path):
     # whose goal is <= 10 at once (bump() unlocks across META_UNLOCKS/
     # RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS together, see meta_progression.
     # ALL_UNLOCKS) -- unlock_quad_muster's own runs_played goal of 15 isn't
-    # reached yet at 10.
+    # reached yet at 10. unlock_siphon (runs_played, 4) is one of these too.
     assert set(newly_unlocked) == {
-        "unlock_sniper", "unlock_support", "unlock_beacon", "unlock_breach_charges",
+        "unlock_sniper", "unlock_support", "unlock_beacon", "unlock_siphon",
+        "unlock_breach_charges",
     }
 
 

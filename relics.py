@@ -443,6 +443,22 @@ class Relic:
     # Cannon and damage-only; concussive_rounds is a generic relic any
     # tower can hold) -- brings it off its 1-relic floor.
     knockback_duration_multiplier: float = 1.0
+    # refined_extraction's own bonus -- SiphonTower-exclusive, scaling that
+    # tower's own siphon_gold_fraction. Unlike every other tower-exclusive
+    # relic above, this one is read directly inside
+    # Projectile._apply_direct_damage() rather than inside a
+    # create_projectile() override or _apply_hit_effects() -- see that
+    # method's own comment in projectile.py for why: it's the one true
+    # per-hit damage-attribution choke point, so reading it there also
+    # covers an Arcing Rounds-style chain bounce or an Overkill-style
+    # carry-over hit for free, the same way _apply_direct_damage's own
+    # damage_dealt/kills bookkeeping already does.
+    siphon_gold_fraction_multiplier: float = 1.0
+    # amplified_coils' own bonus -- SiphonTower-exclusive, same
+    # family_damage_bonus() hook shape as lightning_damage_multiplier/
+    # cannon_knockback_damage_multiplier above, read via SiphonTower's own
+    # _relic_family_damage_bonus() override.
+    siphon_damage_multiplier: float = 1.0
     # overcharged_capacitors' own bonus -- Overload-Cannon-exclusive, same
     # plain-multiply create_projectile()-read shape as beam_ramp_multiplier
     # above: burst_multiplier is an input to OverloadCannonTower's own
@@ -882,6 +898,22 @@ RELICS = {
         "Knockback tower's own shove is bigger, every floor.",
         knockback_duration_multiplier=1.25,
     ),
+    # Siphon-tower-exclusive -- see siphon_gold_fraction_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (Projectile._apply_direct_damage()).
+    "refined_extraction": Relic(
+        "refined_extraction", "Refined Extraction",
+        "Siphon tower converts 25% more damage into gold, every floor.",
+        siphon_gold_fraction_multiplier=1.25,
+    ),
+    # Siphon-tower-exclusive -- see siphon_damage_multiplier's own comment
+    # on the Relic dataclass above for the read site (SiphonTower.
+    # _relic_family_damage_bonus()).
+    "amplified_coils": Relic(
+        "amplified_coils", "Amplified Coils",
+        "Siphon tower deals 20% more damage, every floor.",
+        siphon_damage_multiplier=1.20,
+    ),
     # Overload-Cannon-exclusive -- see overload_burst_multiplier's own
     # comment on the Relic dataclass above for the read site
     # (OverloadCannonTower.create_projectile()).
@@ -1127,6 +1159,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    siphon_gold_fraction_multiplier: float = 1.0
+    siphon_damage_multiplier: float = 1.0
     overload_burst_multiplier: float = 1.0
     overload_damage_multiplier: float = 1.0
     cannon_targets_flying: bool = False
@@ -1233,6 +1267,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    siphon_gold_fraction_multiplier = 1.0
+    siphon_damage_multiplier = 1.0
     overload_burst_multiplier = 1.0
     overload_damage_multiplier = 1.0
     cannon_targets_flying = False
@@ -1352,6 +1388,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        siphon_gold_fraction_multiplier *= relic.siphon_gold_fraction_multiplier
+        siphon_damage_multiplier *= relic.siphon_damage_multiplier
         overload_burst_multiplier *= relic.overload_burst_multiplier
         overload_damage_multiplier *= relic.overload_damage_multiplier
         cannon_targets_flying = cannon_targets_flying or relic.cannon_targets_flying
@@ -1423,6 +1461,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        siphon_gold_fraction_multiplier=siphon_gold_fraction_multiplier,
+        siphon_damage_multiplier=siphon_damage_multiplier,
         overload_burst_multiplier=overload_burst_multiplier,
         overload_damage_multiplier=overload_damage_multiplier,
         cannon_targets_flying=cannon_targets_flying,

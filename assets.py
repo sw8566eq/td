@@ -52,6 +52,7 @@ SPRITE_MANIFEST = {
     "tower_support": ("towers/support.png", (200, 180, 80), "rect"),
     "tower_beam": ("towers/beam.png", (200, 60, 220), "rect"),
     "tower_beacon": ("towers/beacon.png", (240, 200, 40), "rect"),
+    "tower_siphon": ("towers/siphon.png", (30, 180, 165), "rect"),
     "tower_overload_cannon": ("towers/overload_cannon.png", (200, 30, 10), "rect"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),
     "enemy_scout": ("enemies/scout.png", (255, 205, 60), "circle"),
@@ -73,6 +74,7 @@ SPRITE_MANIFEST = {
     "projectile_poison": ("projectiles/poison_dart.png", (140, 200, 80), "circle"),
     "projectile_beam": ("projectiles/beam.png", (255, 140, 255), "circle"),
     "projectile_beacon": ("projectiles/beacon_flare.png", (255, 225, 120), "circle"),
+    "projectile_siphon": ("projectiles/siphon_bolt.png", (120, 235, 220), "circle"),
     "projectile_overload_cannon": ("projectiles/overload_cannon_shell.png", (255, 110, 30), "circle"),
 }
 

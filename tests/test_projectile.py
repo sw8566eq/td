@@ -1387,13 +1387,23 @@ def test_no_chain_when_chain_range_is_zero():
 # --- Source attribution (post-level results screen -- see ui.compute_tower_results) ---
 
 class FakeTower:
-    """Just the 4 counters Projectile writes into, plus nothing else --
-    real attribution logic lives entirely in Projectile, not Tower."""
+    """Just the 4 counters Projectile writes into, plus the SiphonTower-
+    style fields _apply_direct_damage() now also reads/writes on every
+    hit's source regardless of tower type (siphon_gold_fraction/relic_
+    siphon_gold_fraction_bonus_multiplier/pending_siphon_gold) -- real
+    attribution logic lives entirely in Projectile, not Tower. Defaulted to
+    a neutral, no-op siphon (0.0 fraction) so every existing test using
+    this fake keeps exercising only the damage_dealt/kills bookkeeping it
+    was written for; test_siphon_gold_accumulates_on_direct_damage below
+    overrides siphon_gold_fraction directly to exercise the new behavior."""
     def __init__(self):
         self.shots_fired = 0
         self.shots_hit = 0
         self.damage_dealt = 0.0
         self.kills = 0
+        self.siphon_gold_fraction = 0.0
+        self.relic_siphon_gold_fraction_bonus_multiplier = 1.0
+        self.pending_siphon_gold = 0.0
 
 
 class KillableFakeEnemy(FakeEnemy):
@@ -1492,6 +1502,121 @@ def test_a_dud_that_never_connects_does_not_count_as_a_hit():
 
     assert source.shots_hit == 0
     assert source.damage_dealt == 0
+
+
+# --- SiphonTower's own mechanic (a fraction of damage DEALT becomes battle
+# gold, accumulated on the source tower itself -- see _apply_direct_damage's
+# own comment for why this is the one true attribution choke point) ---
+
+def test_siphon_gold_accumulates_on_direct_damage():
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.6  # SiphonTower's own class default
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.damage_dealt == 10
+    assert source.pending_siphon_gold == 6.0  # 10 applied * 0.6
+
+
+def test_siphon_gold_does_not_accumulate_for_a_non_siphon_tower():
+    # FakeTower's own default siphon_gold_fraction (0.0) mirrors every real
+    # non-SiphonTower's class default -- confirms the mechanic is a genuine
+    # no-op rather than only working by coincidence of the test never
+    # checking it.
+    source = FakeTower()
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.pending_siphon_gold == 0.0
+
+
+def test_siphon_gold_accumulation_is_proportional_to_damage_actually_applied():
+    # Same "credit what actually landed, not the nominal shot damage" rule
+    # damage_dealt/kills already follow -- an armored/shielded target that
+    # absorbs part of a hit must also siphon less gold from it.
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.5
+    target = ArmoredFakeEnemy((0, 0), absorption=15)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=50, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.damage_dealt == 35  # 50 - 15 absorbed
+    assert source.pending_siphon_gold == 17.5  # 35 applied * 0.5
+
+
+def test_refined_extraction_relic_scales_siphon_gold_accumulation():
+    # refined_extraction's own bonus (relic_siphon_gold_fraction_bonus_
+    # multiplier) doesn't map onto a Projectile constructor kwarg the way
+    # most exclusive relics do -- it's read directly off self.source inside
+    # _apply_direct_damage(), so it's exercised here directly rather than
+    # forced into tower.py's generic cross-tower-isolation parametrize list.
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.6
+    source.relic_siphon_gold_fraction_bonus_multiplier = 1.25
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert source.pending_siphon_gold == 7.5  # 10 applied * (0.6 * 1.25)
+
+
+def test_a_source_with_no_siphon_fields_does_not_crash_on_direct_damage():
+    # Regression/robustness guard: some lightweight test doubles construct
+    # a Projectile with a bare, minimal source -- FakeTower always carries
+    # the 3 new siphon fields now (see its own docstring), but the
+    # source-is-None path below is the one every real call site must also
+    # survive untouched.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10, source=None)
+
+    projectile.update(dt=1.0, enemies=[target])  # must not raise
+
+    assert target.damage_taken == 10
+
+
+def test_chain_bounce_also_accumulates_siphon_gold_on_the_source():
+    # Arcing Rounds' chain bounce routes through _apply_direct_damage the
+    # same as the primary hit -- see that method's own comment on why this
+    # is the one true attribution choke point every hit passes through,
+    # including this one.
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.5
+    target = FakeEnemy((0, 0))
+    nearby = FakeEnemy((10, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10, source=source,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 50),
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert target.damage_taken == 10
+    assert nearby.damage_taken == 5  # 50% of the direct hit's damage
+    assert source.pending_siphon_gold == 7.5  # (10 + 5) applied * 0.5
+
+
+def test_overkill_carry_over_hit_also_accumulates_siphon_gold_on_the_source():
+    # Same reasoning as the chain-bounce test above -- Overkill's own
+    # carry-over bounce is also just another _apply_direct_damage() call.
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.5
+    target = KillableFakeEnemy((0, 0), hp=5)
+    nearby = KillableFakeEnemy((10, 0), hp=100)
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=20, relic_overkill_carry_fraction=0.5,
+        source=source,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, nearby])
+
+    assert nearby.damage_taken == 7.5  # (20 - 5) * 0.5, same as the existing overkill test
+    assert source.pending_siphon_gold == 13.75  # (20 + 7.5) applied * 0.5
 
 
 def test_splash_counts_one_shot_hit_but_cumulative_damage_across_every_enemy_touched():

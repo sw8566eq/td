@@ -43,8 +43,10 @@ ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion o
 # same "independent of the tower row" reason -- the bottom row is now free
 # for the button row and the Gold/Lives/Wave text to share with no other
 # claimant, so the only remaining constraint sizing BUTTON_SIZE/MARGIN is
-# fitting TOWER_ORDER's full button row plus that text's own worst-case
-# width (e.g. "Gold: unlimited   Shop: 999") inside settings.PLAY_WIDTH.
+# fitting TOWER_ORDER's full button row (12 towers as of Siphon Tower) plus
+# that text's own worst-case width (e.g. "Gold: unlimited   Shop: 999")
+# inside settings.PLAY_WIDTH -- confirmed still comfortable (24px to spare)
+# at 12 towers with no further shrink needed.
 BUTTON_SIZE = 44
 BUTTON_MARGIN = 8
 
