@@ -236,6 +236,19 @@ class Relic:
     # raw factor/duration fold into slow_effect.
     knockback_chance: float = 0.0
     knockback_duration: float = 0.0
+    # aerial_targeting_array's own bonus -- Cannon-tower-exclusive
+    # (Cannon's first fully exclusive relic; heavy_ordnance above is
+    # shared 50/50 with Knockback), boolean OR-composed the same shape as
+    # poison_ignores_shield below: once granted, it stays granted. Read
+    # via CannonTower's own can_target_flying property override (see
+    # tower.py), not a plain create_projectile() multiply.
+    cannon_targets_flying: bool = False
+    # high_velocity_shells' own bonus -- Cannon's second exclusive relic,
+    # same plain-multiply shape as beacon_splash_radius_multiplier/
+    # frost_slow_multiplier above, read only inside CannonTower's own
+    # create_projectile() against projectile_speed. Genuinely new stat --
+    # no other relic in this registry touches projectile_speed.
+    cannon_projectile_speed_multiplier: float = 1.0
     # disorienting_flash's own chance-gated roll -- mark_multiplier/
     # mark_duration are the *raw* per-relic values, folded into
     # RelicModifiers.mark_effect the same way slow's own raw fields fold
@@ -858,6 +871,22 @@ RELICS = {
         "+15% tower range while you're down to your last life.",
         last_stand_range_multiplier=1.15,
     ),
+    # Cannon's first-ever fully exclusive pair -- see cannon_targets_flying/
+    # cannon_projectile_speed_multiplier's own comments on the Relic
+    # dataclass above for the read sites (both CannonTower-only:
+    # tower.py's own can_target_flying property override and
+    # create_projectile()). heavy_ordnance/shockwave_rounds above already
+    # touch Cannon, but only ever shared 50/50 with Knockback.
+    "aerial_targeting_array": Relic(
+        "aerial_targeting_array", "Aerial Targeting Array",
+        "Cannon tower can now target flying enemies.",
+        cannon_targets_flying=True,
+    ),
+    "high_velocity_shells": Relic(
+        "high_velocity_shells", "High-Velocity Shells",
+        "Cannon tower's shells travel 40% faster, every floor.",
+        cannon_projectile_speed_multiplier=1.40,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -1024,6 +1053,8 @@ class RelicModifiers:
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
+    cannon_targets_flying: bool = False
+    cannon_projectile_speed_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(
@@ -1124,6 +1155,8 @@ def compose_relic_modifiers(
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
+    cannon_targets_flying = False
+    cannon_projectile_speed_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1237,6 +1270,8 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
+        cannon_targets_flying = cannon_targets_flying or relic.cannon_targets_flying
+        cannon_projectile_speed_multiplier *= relic.cannon_projectile_speed_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1302,4 +1337,6 @@ def compose_relic_modifiers(
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
+        cannon_targets_flying=cannon_targets_flying,
+        cannon_projectile_speed_multiplier=cannon_projectile_speed_multiplier,
     )

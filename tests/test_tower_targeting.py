@@ -1,7 +1,7 @@
 import pygame
 
 from spatial_index import EnemySpatialIndex
-from tower import BasicTower
+from tower import BasicTower, CannonTower, KnockbackTower
 
 
 class FakeEnemy:
@@ -198,3 +198,45 @@ def test_acquire_target_with_an_enemy_index_finds_a_target_beyond_one_cell():
     enemies = [far_cell_but_in_range]
     index = EnemySpatialIndex(enemies)
     assert tower.acquire_target(enemies, index) is far_cell_but_in_range
+
+
+def test_cannon_tower_without_the_relic_still_excludes_flying_enemies():
+    # Regression: CannonTower.can_target_flying used to be a plain class
+    # attribute (always False); it's now a property reading relic_cannon_
+    # targets_flying (see tower.py), which Tower.__init__ defaults to
+    # False -- confirms that default alone still reproduces Cannon's
+    # original, relic-less behavior with no other change needed.
+    tower = CannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.range = 100
+    assert tower.relic_cannon_targets_flying is False
+    flyer = FakeEnemy((10, 0), distance_traveled=999)
+    flyer.is_flying = True
+    grounded = FakeEnemy((10, 0), distance_traveled=1)
+    assert tower.acquire_target([flyer, grounded]) is grounded
+
+
+def test_aerial_targeting_array_relic_lets_cannon_tower_target_flying_enemies():
+    tower = CannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.range = 100
+    tower.relic_cannon_targets_flying = True  # aerial_targeting_array, granted
+    flyer = FakeEnemy((10, 0), distance_traveled=1)
+    flyer.is_flying = True
+    assert tower.acquire_target([flyer]) is flyer
+
+
+def test_aerial_targeting_array_relic_field_does_not_affect_other_towers():
+    # Proves true exclusivity, not just presence of the mechanic: setting
+    # the same relic field on a tower whose own can_target_flying is still
+    # the plain, untouched class attribute (KnockbackTower's own, never
+    # converted to a property -- see tower.py) must never let it target
+    # flying enemies. Any other non-Cannon tower would behave identically,
+    # since only CannonTower's own can_target_flying property ever reads
+    # this field at all.
+    tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    tower.range = 100
+    tower.relic_cannon_targets_flying = True
+    assert tower.can_target_flying is False
+    flyer = FakeEnemy((10, 0), distance_traveled=999)
+    flyer.is_flying = True
+    grounded = FakeEnemy((10, 0), distance_traveled=1)
+    assert tower.acquire_target([flyer, grounded]) is grounded

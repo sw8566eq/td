@@ -1449,6 +1449,28 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     assert not hasattr(tower, "relic_splitter_child_damage")
 
 
+def test_cannon_exclusive_relics_reach_a_freshly_placed_cannon_tower(game):
+    # Cannon's first-ever fully exclusive pair (see relics.py's own module
+    # docstring) -- explicitly places a "cannon" tower, unlike the generic
+    # gap-filler test above, since both fields are meaningless on any other
+    # tower type (see test_tower.py's own cross-tower-isolation coverage).
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["aerial_targeting_array", "high_velocity_shells"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "cannon"
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_cannon_targets_flying == RELICS["aerial_targeting_array"].cannon_targets_flying
+    assert tower.can_target_flying is True
+    assert (
+        tower.relic_cannon_projectile_speed_bonus_multiplier
+        == RELICS["high_velocity_shells"].cannon_projectile_speed_multiplier
+    )
+
+
 def test_containment_charges_damages_a_splitters_children_through_game_update(game, monkeypatch):
     monkeypatch.setitem(RELICS, "containment_charges", Relic(
         "containment_charges", "", "", splitter_child_damage=5,
