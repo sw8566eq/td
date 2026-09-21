@@ -699,6 +699,28 @@ def test_compose_relic_modifiers_no_combo_or_knockback_relic_leaves_them_neutral
     assert modifiers.knockback_duration_multiplier == 1.0
 
 
+def test_compose_relic_modifiers_ors_cannon_targets_flying():
+    modifiers = compose_relic_modifiers(["aerial_targeting_array"])
+    assert modifiers.cannon_targets_flying is True
+    assert compose_relic_modifiers([]).cannon_targets_flying is False
+
+
+def test_compose_relic_modifiers_cannon_targets_flying_stays_granted_alongside_other_relics():
+    modifiers = compose_relic_modifiers(["prospectors_charm", "aerial_targeting_array"])
+    assert modifiers.cannon_targets_flying is True
+
+
+def test_compose_relic_modifiers_multiplies_cannon_projectile_speed_multiplier():
+    modifiers = compose_relic_modifiers(["high_velocity_shells", "high_velocity_shells"])
+    assert modifiers.cannon_projectile_speed_multiplier == RELICS["high_velocity_shells"].cannon_projectile_speed_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_cannon_relic_leaves_cannon_fields_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.cannon_targets_flying is False
+    assert modifiers.cannon_projectile_speed_multiplier == 1.0
+
+
 def test_compose_relic_modifiers_takes_the_max_poison_spread_radius(monkeypatch):
     smaller_radius = Relic("test_smaller_spread", "", "", poison_spread_radius=10)
     monkeypatch.setitem(RELICS, "test_smaller_spread", smaller_radius)

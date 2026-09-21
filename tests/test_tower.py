@@ -286,6 +286,18 @@ def test_shockwave_rounds_relic_widens_cannon_and_knockback_splash_radius():
         assert projectile.splash_radius == base_splash_radius * 1.20, tower_cls.__name__
 
 
+def test_high_velocity_shells_relic_boosts_cannon_projectile_speed():
+    # Cannon's second exclusive relic (aerial_targeting_array, its first,
+    # is a targeting-mode change tested in test_tower_targeting.py, not a
+    # create_projectile() one) -- genuinely new stat, no other relic in
+    # the registry touches projectile_speed.
+    tower = CannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    base_speed = tower.projectile_speed
+    tower.relic_cannon_projectile_speed_bonus_multiplier = 1.40
+    projectile = tower.create_projectile(FakeEnemy())
+    assert projectile.speed == pytest.approx(base_speed * 1.40)
+
+
 def test_storm_core_relic_boosts_lightning_damage():
     # relic_lightning_damage_bonus_multiplier is set at construction time
     # (Game._construct_tower), not baked into damage itself -- confirms
@@ -393,6 +405,14 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
         (
             ("relic_knockback_duration_bonus_multiplier",), "knockback_duration", ("knockback",),
             lambda tower: 0.0,  # Projectile's own default -- non-Knockback towers never pass this kwarg at all
+        ),
+        (
+            ("relic_cannon_projectile_speed_bonus_multiplier",), "speed", ("cannon",),
+            # Unlike the Projectile-default expectations above, every tower
+            # passes its own projectile_speed as speed regardless -- the
+            # baseline for a non-Cannon tower is just that tower's own
+            # unmultiplied projectile_speed.
+            lambda tower: tower.projectile_speed,
         ),
     ],
 )
