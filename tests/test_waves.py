@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from enemy import GruntEnemy, ShieldedEnemy, TankEnemy
+from enemy import GruntEnemy, HealerEnemy, ShieldedEnemy, TankEnemy
 from levels import Level
 from waves import WaveManager, WaveState
 
@@ -626,3 +626,14 @@ def test_enemy_hp_multiplier_also_scales_a_shielded_enemys_shield():
 
     assert spawned[0].max_shield == unscaled.max_shield * 2.0
     assert spawned[0].shield == unscaled.max_shield * 2.0
+
+
+def test_healer_heal_rate_multiplier_scales_a_healer_enemys_heal_rate():
+    level = make_level([{"healer": 1}])
+    manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,
+                           healer_heal_rate_multiplier=0.7)
+    unscaled = HealerEnemy([(0, 0), (64, 0)], wave_number=1)
+
+    spawned = _drive_to_completion(manager)
+
+    assert spawned[0].heal_rate == pytest.approx(unscaled.heal_rate * 0.7)

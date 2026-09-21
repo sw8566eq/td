@@ -37,9 +37,14 @@ import shop
 import ui
 from card_pool import STARTER_TOWERS
 from difficulty import DIFFICULTY_MODES
-from enemy import GruntEnemy, SplitterEnemy
+from enemy import FinalBossEnemy, GruntEnemy, ScoutEnemy, SplitterEnemy
 from events import EVENTS
-from game import _DRAFT_RNG_STREAM, _FLOOR_RNG_STREAM, GameState
+from game import (
+    _DRAFT_RNG_STREAM,
+    _FLOOR_RNG_STREAM,
+    EMERGENCY_RESERVES_REFUND_AMOUNT,
+    GameState,
+)
 from levels import LEVELS
 from relics import RELICS, Relic
 from run_map import MapNode, RunMap
@@ -1195,6 +1200,47 @@ def test_adrenaline_rush_only_boosts_fire_rate_while_down_to_the_last_life(game)
     assert tower.effective_fire_rate() == base_fire_rate
 
 
+def test_desperate_reachs_bonus_reaches_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["desperate_reach"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_last_stand_range_bonus_multiplier == RELICS["desperate_reach"].last_stand_range_multiplier
+
+
+def test_desperate_reach_only_widens_range_while_down_to_the_last_life(game):
+    # Mirrors last_stand_charm's/adrenaline_rush's own tests above exactly
+    # -- all three relics key off the same Economy.is_on_last_life
+    # condition, resolved in the same set_last_stand_multiplier() call.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["desperate_reach"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    game.try_place_tower(anchor_col, anchor_row)
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    base_range = tower.effective_range()
+
+    game.economy.lives = 2
+    game.update(dt=0.01)
+    assert tower.effective_range() == base_range  # not yet down to the last life
+
+    game.economy.lives = 1
+    game.update(dt=0.01)
+    assert tower.effective_range() == pytest.approx(
+        base_range * RELICS["desperate_reach"].last_stand_range_multiplier
+    )
+
+    game.economy.lives = 3  # a life regained turns the bonus back off
+    game.update(dt=0.01)
+    assert tower.effective_range() == base_range
+
+
 def test_lose_a_life_plays_the_life_lost_sound(game):
     start_first_floor(game, seed=1)
     game.economy.lives = 3
@@ -1251,6 +1297,47 @@ def test_guardians_reprieve_does_nothing_in_sandbox_mode(game):
 
     assert game.economy.lives == 1
     assert game.active_run.used_guardians_reprieve is False
+
+
+def test_emergency_reserves_refunds_gold_the_first_time_it_would_hit_zero(game):
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.gold = 50
+
+    game._spend_gold(50)  # spends down to exactly 0 -- the relic's own trigger condition
+
+    assert game.economy.gold == EMERGENCY_RESERVES_REFUND_AMOUNT
+    assert game.active_run.used_emergency_reserves is True
+
+
+def test_emergency_reserves_only_refunds_once_per_run(game):
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.gold = 50
+    game._spend_gold(50)  # first trigger -- the charge is spent
+    assert game.economy.gold == EMERGENCY_RESERVES_REFUND_AMOUNT
+
+    # Spending the refund itself back down to 0 must not trigger a second
+    # refund -- the charge is already used_emergency_reserves-gated.
+    game._spend_gold(EMERGENCY_RESERVES_REFUND_AMOUNT)
+
+    assert game.economy.gold == 0
+
+
+def test_emergency_reserves_does_nothing_under_unlimited_gold(game):
+    # Covers both the CLI --unlimited-gold debug flag and Sandbox/Practice
+    # mode, which reuses this exact flag (see Economy's own docstring) --
+    # there's nothing to save when a purchase was never really going to
+    # cost anything.
+    start_first_floor(game, seed=1)
+    game.active_run.relics = ["emergency_reserves"]
+    game.economy.unlimited_gold = True
+    game.economy.gold = 0
+
+    game._spend_gold(50)
+
+    assert game.economy.gold == 0
+    assert game.active_run.used_emergency_reserves is False
 
 
 def test_lucky_strikes_crit_chance_reaches_a_freshly_placed_towers_shots(game):
@@ -1358,6 +1445,22 @@ def test_overcrowded_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
     assert tower.relic_tower_density_damage_bonus_cap == relic.tower_density_damage_bonus_cap
 
 
+def test_overclocked_circuits_bonus_fields_reach_a_freshly_placed_tower(game):
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    relic = RELICS["overclocked_circuits"]
+    assert tower.relic_tower_density_radius == relic.tower_density_radius
+    assert tower.relic_tower_density_fire_rate_bonus_per_neighbor == relic.tower_density_fire_rate_bonus_per_neighbor
+    assert tower.relic_tower_density_fire_rate_bonus_cap == relic.tower_density_fire_rate_bonus_cap
+
+
 def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     # containment_charges is deliberately absent here -- unlike every other
     # relic in this batch, its splitter_child_damage has no per-tower
@@ -1392,6 +1495,28 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     assert not hasattr(tower, "relic_splitter_child_damage")
 
 
+def test_cannon_exclusive_relics_reach_a_freshly_placed_cannon_tower(game):
+    # Cannon's first-ever fully exclusive pair (see relics.py's own module
+    # docstring) -- explicitly places a "cannon" tower, unlike the generic
+    # gap-filler test above, since both fields are meaningless on any other
+    # tower type (see test_tower.py's own cross-tower-isolation coverage).
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["aerial_targeting_array", "high_velocity_shells"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "cannon"
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_cannon_targets_flying == RELICS["aerial_targeting_array"].cannon_targets_flying
+    assert tower.can_target_flying is True
+    assert (
+        tower.relic_cannon_projectile_speed_bonus_multiplier
+        == RELICS["high_velocity_shells"].cannon_projectile_speed_multiplier
+    )
+
+
 def test_containment_charges_damages_a_splitters_children_through_game_update(game, monkeypatch):
     monkeypatch.setitem(RELICS, "containment_charges", Relic(
         "containment_charges", "", "", splitter_child_damage=5,
@@ -1414,6 +1539,58 @@ def test_containment_charges_damages_a_splitters_children_through_game_update(ga
     for child in children:
         assert child.hp == pytest.approx(child.max_hp - 5)
         assert child in game.enemies
+
+
+def test_fracture_rounds_reduces_a_splitters_spawned_childrens_hp(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "fracture_rounds", Relic(
+        "fracture_rounds", "", "", splitter_child_hp_multiplier=0.5,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["fracture_rounds"]
+    _enter_first_node(game)
+    assert game.relic_modifiers.splitter_child_hp_multiplier == 0.5
+
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+    splitter = SplitterEnemy(waypoints, wave_number=1)
+    splitter.take_damage(splitter.max_hp)  # a killing blow, queues pending_spawns
+    assert splitter.is_dead
+    children = list(splitter.pending_spawns)
+    unreduced_max_hp = [child.max_hp for child in children]
+    game.enemies = [splitter]
+
+    game.update(dt=0.01)
+
+    assert len(children) == SplitterEnemy.SPLIT_COUNT
+    for child, original_max_hp in zip(children, unreduced_max_hp):
+        assert child.max_hp == pytest.approx(original_max_hp * 0.5)
+        assert child.hp == pytest.approx(child.max_hp)  # spawned at full (reduced) health
+        assert child in game.enemies
+
+
+def test_fracture_rounds_does_not_reduce_a_final_bosss_live_reinforcements(game, monkeypatch):
+    # FinalBossEnemy's own reinforcement-summon mechanic reuses the exact
+    # same pending_spawns channel SplitterEnemy uses, but populates it
+    # repeatedly while very much still alive -- Fracture Rounds must only
+    # ever apply to an actual splitter's children on death, never these.
+    monkeypatch.setitem(RELICS, "fracture_rounds", Relic(
+        "fracture_rounds", "", "", splitter_child_hp_multiplier=0.5,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["fracture_rounds"]
+    _enter_first_node(game)
+    assert game.relic_modifiers.splitter_child_hp_multiplier == 0.5
+
+    boss = FinalBossEnemy([pygame.Vector2(0, 0), pygame.Vector2(10**7, 0)], wave_number=1)
+    game.enemies = [boss]
+
+    game.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)  # crosses the summon interval
+
+    reinforcements = [enemy for enemy in game.enemies if enemy is not boss]
+    assert len(reinforcements) == FinalBossEnemy.SUMMON_COUNT
+    reference_scout = ScoutEnemy(boss.waypoints, boss.wave_number)  # same construction, unaffected
+    for scout in reinforcements:
+        assert scout.max_hp == reference_scout.max_hp
+        assert scout.hp == reference_scout.max_hp
 
 
 def _enter_run_with_relic(game, monkeypatch, relic_key, **relic_kwargs):
@@ -1586,6 +1763,51 @@ def test_overcrowded_circuits_density_bonus_is_capped_through_game_update(game, 
     assert center.relic_tower_density_bonus_multiplier == pytest.approx(1.15)  # capped, not 1.20
 
 
+def test_overclocked_circuits_density_bonus_counts_neighboring_towers_through_game_update(game, monkeypatch):
+    # Mirrors test_overcrowded_circuits_density_bonus_counts_neighboring_
+    # towers_through_game_update above exactly, just the fire-rate channel
+    # instead of the damage one -- same small-scale stand-in relic shape,
+    # same three-in-a-row cluster producing two different neighbor counts.
+    monkeypatch.setitem(RELICS, "overclocked_circuits", Relic(
+        "overclocked_circuits", "", "", tower_density_radius=100,
+        tower_density_fire_rate_bonus_per_neighbor=0.10, tower_density_fire_rate_bonus_cap=0.50,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])  # flanked by both other towers
+    assert center.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.20)  # 2 neighbors * 0.10
+    assert center.effective_fire_rate() == pytest.approx(center.fire_rate * 1.20)
+    edge = game.grid.get_tower(*anchors[0])  # only one neighbor within range
+    assert edge.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.10)
+
+
+def test_overclocked_circuits_density_bonus_is_capped_through_game_update(game, monkeypatch):
+    monkeypatch.setitem(RELICS, "overclocked_circuits", Relic(
+        "overclocked_circuits", "", "", tower_density_radius=200,
+        tower_density_fire_rate_bonus_per_neighbor=0.10, tower_density_fire_rate_bonus_cap=0.15,
+    ))
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overclocked_circuits"]
+    _enter_first_node(game)
+    anchors = _find_buildable_row(game, count=3)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+    for anchor_col, anchor_row in anchors:
+        assert game.try_place_tower(anchor_col, anchor_row)
+
+    game.update(dt=0.01)
+
+    center = game.grid.get_tower(*anchors[1])
+    assert center.relic_tower_density_fire_rate_bonus_multiplier == pytest.approx(1.15)  # capped, not 1.20
+
+
 def test_beacon_tower_placement_populates_relic_fields_like_any_other_tower(game):
     game.start_new_run(seed=1)
     game.active_run.relics = ["lucky_strikes"]
@@ -1600,6 +1822,24 @@ def test_beacon_tower_placement_populates_relic_fields_like_any_other_tower(game
     relic = RELICS["lucky_strikes"]
     assert tower.relic_crit_chance == relic.crit_chance
     assert tower.relic_crit_damage_multiplier == relic.crit_damage_multiplier
+
+
+def test_overload_cannon_placement_populates_its_two_exclusive_relic_fields(game):
+    # Game._construct_tower's copy-line coverage for the two Overload
+    # Cannon-exclusive relic fields -- same shape as the Beacon test just
+    # above, holding both of this tower's own exclusive relics at once.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["overcharged_capacitors", "fusion_core"]
+    game.active_run.unlocked_towers.append("overload_cannon")  # a drafted card, not a starter tower
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = "overload_cannon"
+
+    assert game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_overload_burst_bonus_multiplier == RELICS["overcharged_capacitors"].overload_burst_multiplier
+    assert tower.relic_overload_damage_bonus_multiplier == RELICS["fusion_core"].overload_damage_multiplier
 
 
 # --- Elite Combat nodes: harder, and a bigger payout ---

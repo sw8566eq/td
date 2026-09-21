@@ -131,7 +131,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
         seed=42, difficulty="hard", unlocked_towers=["basic", "cannon", "frost"],
         visited_node_ids=["0-0", "1-0"], current_node_id="2-0",
         lives=15, shop_currency=80, relics=["prospectors_charm"], is_daily=True,
-        has_spent_gold=True, used_guardians_reprieve=True, boss_defeated=True,
+        has_spent_gold=True, used_guardians_reprieve=True, used_emergency_reserves=True, boss_defeated=True,
     )
     game = _FakeGame(level, [], active_run=run)
 
@@ -151,6 +151,7 @@ def test_save_and_load_run_round_trips_an_active_run(tmp_path):
     assert loaded_run.is_daily is True
     assert loaded_run.has_spent_gold is True
     assert loaded_run.used_guardians_reprieve is True
+    assert loaded_run.used_emergency_reserves is True
     assert loaded_run.boss_defeated is True
 
 
@@ -167,6 +168,26 @@ def test_load_run_with_a_save_predating_boss_defeated_defaults_it_false(tmp_path
 
     loaded_run = save_state.load_run(path=path)["run"]
     assert loaded_run.boss_defeated is False
+
+
+def test_load_run_with_a_save_predating_used_emergency_reserves_returns_none(tmp_path):
+    # Unlike boss_defeated/shop_currency above, _run_from_dict reads this
+    # field via direct dict-key access (data["used_emergency_reserves"]),
+    # not .get() with a default -- deliberately, per relics.py's own
+    # emergency_reserves comment and this module's "clean break, not a
+    # migration" precedent (see test_load_run_with_an_old_pre_map_run_
+    # format_returns_none below): an older save missing this key raises
+    # KeyError inside _parse_and_validate_save, which load_json_with_
+    # fallback catches the same way it catches any other corrupt/
+    # incompatible save, falling all the way back to "nothing to resume."
+    path = tmp_path / "save_state.json"
+    game = _FakeGame(make_level(), [], active_run=make_run())
+    save_state.save_run(game, path=path)
+    data = json.loads(path.read_text())
+    del data["run"]["used_emergency_reserves"]
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
 
 
 def test_load_run_with_a_current_node_that_is_a_boss_node_resumes_fine(tmp_path):

@@ -115,6 +115,7 @@ def _run_to_dict(run):
         "is_daily": run.is_daily,
         "has_spent_gold": run.has_spent_gold,
         "used_guardians_reprieve": run.used_guardians_reprieve,
+        "used_emergency_reserves": run.used_emergency_reserves,
         "boss_defeated": run.boss_defeated,
     }
 
@@ -133,6 +134,7 @@ def _run_from_dict(data):
         is_daily=data["is_daily"],
         has_spent_gold=data["has_spent_gold"],
         used_guardians_reprieve=data["used_guardians_reprieve"],
+        used_emergency_reserves=data["used_emergency_reserves"],
         # .get(), not a hard index -- a save from before this field existed
         # (boss_defeated didn't exist yet) should still resume cleanly, same
         # "old save, new optional field" precedent shop_currency's own

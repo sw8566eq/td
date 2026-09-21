@@ -194,11 +194,26 @@ class Relic:
     tower_density_radius: float = 0.0
     tower_density_damage_bonus_per_neighbor: float = 0.0
     tower_density_damage_bonus_cap: float = 0.0
+    # overclocked_circuits' own third density channel -- fire rate instead
+    # of damage, reusing set_nearby_tower_bonus()'s own live neighbor count
+    # (see Tower.set_nearby_tower_bonus/effective_fire_rate) rather than a
+    # second scan. Own per-neighbor rate/cap (summed, same shape as the
+    # damage-channel pair above); tower_density_radius itself is shared
+    # across every density relic regardless of channel, so this relic also
+    # sets its own value there to stay functional standalone, the same
+    # "own numbers, no dependency on another relic" precedent reinforced_
+    # chassis already set for the damage channel.
+    tower_density_fire_rate_bonus_per_neighbor: float = 0.0
+    tower_density_fire_rate_bonus_cap: float = 0.0
     # adrenaline_rush's own bonus -- see RelicModifiers' matching field and
     # Tower.set_last_stand_multiplier()/effective_fire_rate() for where it
     # actually applies; aggregated via max(), the same conservative choice
     # last_stand_damage_multiplier already makes.
     last_stand_fire_rate_multiplier: float = 1.0
+    # desperate_reach's own third live-reactive last-stand channel --
+    # range instead of damage/fire rate, same max()'d aggregation and the
+    # same Tower.set_last_stand_multiplier()/effective_range() live toggle.
+    last_stand_range_multiplier: float = 1.0
     # choke_point's own bonus -- multiplies straight in (ungated), same
     # shape as damage_vs_slowed_multiplier above. See
     # projectile.CHOKE_POINT_DISTANCE_THRESHOLD for the fixed pixel cutoff
@@ -221,6 +236,19 @@ class Relic:
     # raw factor/duration fold into slow_effect.
     knockback_chance: float = 0.0
     knockback_duration: float = 0.0
+    # aerial_targeting_array's own bonus -- Cannon-tower-exclusive
+    # (Cannon's first fully exclusive relic; heavy_ordnance above is
+    # shared 50/50 with Knockback), boolean OR-composed the same shape as
+    # poison_ignores_shield below: once granted, it stays granted. Read
+    # via CannonTower's own can_target_flying property override (see
+    # tower.py), not a plain create_projectile() multiply.
+    cannon_targets_flying: bool = False
+    # high_velocity_shells' own bonus -- Cannon's second exclusive relic,
+    # same plain-multiply shape as beacon_splash_radius_multiplier/
+    # frost_slow_multiplier above, read only inside CannonTower's own
+    # create_projectile() against projectile_speed. Genuinely new stat --
+    # no other relic in this registry touches projectile_speed.
+    cannon_projectile_speed_multiplier: float = 1.0
     # disorienting_flash's own chance-gated roll -- mark_multiplier/
     # mark_duration are the *raw* per-relic values, folded into
     # RelicModifiers.mark_effect the same way slow's own raw fields fold
@@ -431,6 +459,40 @@ class Relic:
     # cannon_knockback_damage_multiplier above, read via SiphonTower's own
     # _relic_family_damage_bonus() override.
     siphon_damage_multiplier: float = 1.0
+    # overcharged_capacitors' own bonus -- Overload-Cannon-exclusive, same
+    # plain-multiply create_projectile()-read shape as beam_ramp_multiplier
+    # above: burst_multiplier is an input to OverloadCannonTower's own
+    # burst formula (damage = effective_damage() * burst_multiplier), not
+    # part of effective_damage()'s own additive stack, so it skips the
+    # family_damage_bonus() hook the same way every plain-multiply relic
+    # here does.
+    overload_burst_multiplier: float = 1.0
+    # fusion_core's own bonus -- Overload-Cannon-exclusive damage bonus,
+    # same family_damage_bonus() hook shape as lightning_damage_multiplier/
+    # cannon_knockback_damage_multiplier above, read via
+    # OverloadCannonTower's own _relic_family_damage_bonus() override.
+    overload_damage_multiplier: float = 1.0
+    # fracture_rounds' own bonus -- a "flat, non-tower" field, same read
+    # site as splitter_child_damage above (Game.update()'s own dead-enemy
+    # drain loop): applied once to each of a killed SplitterEnemy's own
+    # freshly-spawned children before they ever join self.enemies, gated
+    # the identical enemy.is_dead way so FinalBossEnemy's own live
+    # reinforcement summons (which populate pending_spawns while very much
+    # still alive) are never touched by this. Plain multiply, not min() --
+    # smaller is the buff direction here (a shrunk max_hp), the same
+    # "multiply and let values naturally shrink" shape frost_slow_
+    # multiplier already establishes, so no combine-two-relics tiebreak is
+    # needed.
+    splitter_child_hp_multiplier: float = 1.0
+    # numbing_toxins' own bonus -- threaded into WaveManager's own
+    # constructor kwargs in Game._load_level_object, exactly like enemy_
+    # speed_multiplier/enemy_gold_multiplier above, and applied post-
+    # construction in WaveManager._spawn_enemy via the same hasattr-gated
+    # patch-up pattern already used for ShieldedEnemy's own max_shield
+    # scaling (see that method). Smaller is the buff direction (slower
+    # healing), same plain-multiply shape as splitter_child_hp_multiplier
+    # immediately above.
+    healer_heal_rate_multiplier: float = 1.0
 
 
 RELICS = {
@@ -852,6 +914,85 @@ RELICS = {
         "Siphon tower deals 20% more damage, every floor.",
         siphon_damage_multiplier=1.20,
     ),
+    # Overload-Cannon-exclusive -- see overload_burst_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower.create_projectile()).
+    "overcharged_capacitors": Relic(
+        "overcharged_capacitors", "Overcharged Capacitors",
+        "Overload Cannon's burst deals 20% more bonus damage, every floor.",
+        overload_burst_multiplier=1.20,
+    ),
+    # Overload-Cannon-exclusive -- see overload_damage_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (OverloadCannonTower._relic_family_damage_bonus()).
+    "fusion_core": Relic(
+        "fusion_core", "Fusion Core",
+        "Overload Cannon deals 20% more damage, every floor.",
+        overload_damage_multiplier=1.20,
+    ),
+    # A third density-archetype relic -- overcrowded_circuits/reinforced_
+    # chassis already cover damage; this one reuses the exact same
+    # neighbor-counting mechanism (Tower.set_nearby_tower_bonus) for a
+    # second, independent output instead of a second scan. Sets its own
+    # tower_density_radius too (see that field's own comment on
+    # RelicModifiers above), so it's fully functional standalone, same
+    # "own numbers, no dependency on another relic" shape reinforced_
+    # chassis already sets.
+    "overclocked_circuits": Relic(
+        "overclocked_circuits", "Overclocked Circuits",
+        "+1.5% tower fire rate for every other tower within 90 pixels of it, capped at +15%, every floor.",
+        tower_density_radius=90, tower_density_fire_rate_bonus_per_neighbor=0.015,
+        tower_density_fire_rate_bonus_cap=0.15,
+    ),
+    # A third live-reactive last-stand relic -- last_stand_charm/
+    # adrenaline_rush already cover damage/fire rate; this one is range,
+    # same max()'d aggregation and the same Tower.set_last_stand_
+    # multiplier() live toggle keyed off Economy.is_on_last_life.
+    "desperate_reach": Relic(
+        "desperate_reach", "Desperate Reach",
+        "+15% tower range while you're down to your last life.",
+        last_stand_range_multiplier=1.15,
+    ),
+    # Cannon's first-ever fully exclusive pair -- see cannon_targets_flying/
+    # cannon_projectile_speed_multiplier's own comments on the Relic
+    # dataclass above for the read sites (both CannonTower-only:
+    # tower.py's own can_target_flying property override and
+    # create_projectile()). heavy_ordnance/shockwave_rounds above already
+    # touch Cannon, but only ever shared 50/50 with Knockback.
+    "aerial_targeting_array": Relic(
+        "aerial_targeting_array", "Aerial Targeting Array",
+        "Cannon tower can now target flying enemies.",
+        cannon_targets_flying=True,
+    ),
+    "high_velocity_shells": Relic(
+        "high_velocity_shells", "High-Velocity Shells",
+        "Cannon tower's shells travel 40% faster, every floor.",
+        cannon_projectile_speed_multiplier=1.40,
+    ),
+    # A round-out batch of three, closing an economy-safety-net gap and two
+    # enemy-counterplay gaps rather than deepening an existing archetype.
+    # No RelicModifiers field at all -- same shape as guardians_reprieve
+    # above (checked directly against run.relics, see Game._spend_gold).
+    "emergency_reserves": Relic(
+        "emergency_reserves", "Emergency Reserves",
+        "The first time a purchase would leave you with 0 battle gold this run, get 40 gold back instead.",
+    ),
+    # Splitter counterplay -- see splitter_child_hp_multiplier's own
+    # comment on the Relic dataclass above for the read site
+    # (Game.update()'s dead-enemy drain loop).
+    "fracture_rounds": Relic(
+        "fracture_rounds", "Fracture Rounds",
+        "A splitter enemy's spawned children start with 30% less HP.",
+        splitter_child_hp_multiplier=0.70,
+    ),
+    # Healer counterplay -- see healer_heal_rate_multiplier's own comment
+    # on the Relic dataclass above for the read site (WaveManager.
+    # _spawn_enemy).
+    "numbing_toxins": Relic(
+        "numbing_toxins", "Numbing Toxins",
+        "Healer enemies heal 30% slower.",
+        healer_heal_rate_multiplier=0.70,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -980,7 +1121,10 @@ class RelicModifiers:
     tower_density_radius: float = 0.0
     tower_density_damage_bonus_per_neighbor: float = 0.0
     tower_density_damage_bonus_cap: float = 0.0
+    tower_density_fire_rate_bonus_per_neighbor: float = 0.0
+    tower_density_fire_rate_bonus_cap: float = 0.0
     last_stand_fire_rate_multiplier: float = 1.0
+    last_stand_range_multiplier: float = 1.0
     damage_vs_early_route_multiplier: float = 1.0
     damage_vs_high_hp_multiplier: float = 1.0
     overkill_carry_fraction: float = 0.0
@@ -1017,6 +1161,12 @@ class RelicModifiers:
     knockback_duration_multiplier: float = 1.0
     siphon_gold_fraction_multiplier: float = 1.0
     siphon_damage_multiplier: float = 1.0
+    overload_burst_multiplier: float = 1.0
+    overload_damage_multiplier: float = 1.0
+    cannon_targets_flying: bool = False
+    cannon_projectile_speed_multiplier: float = 1.0
+    splitter_child_hp_multiplier: float = 1.0
+    healer_heal_rate_multiplier: float = 1.0
 
 
 def compose_relic_modifiers(
@@ -1079,7 +1229,10 @@ def compose_relic_modifiers(
     tower_density_radius = 0.0
     tower_density_damage_bonus_per_neighbor = 0.0
     tower_density_damage_bonus_cap = 0.0
+    tower_density_fire_rate_bonus_per_neighbor = 0.0
+    tower_density_fire_rate_bonus_cap = 0.0
     last_stand_fire_rate_multiplier = 1.0
+    last_stand_range_multiplier = 1.0
     damage_vs_early_route_multiplier = 1.0
     damage_vs_high_hp_multiplier = 1.0
     overkill_carry_fraction = 0.0
@@ -1116,6 +1269,12 @@ def compose_relic_modifiers(
     knockback_duration_multiplier = 1.0
     siphon_gold_fraction_multiplier = 1.0
     siphon_damage_multiplier = 1.0
+    overload_burst_multiplier = 1.0
+    overload_damage_multiplier = 1.0
+    cannon_targets_flying = False
+    cannon_projectile_speed_multiplier = 1.0
+    splitter_child_hp_multiplier = 1.0
+    healer_heal_rate_multiplier = 1.0
     for key in relic_keys:
         relic = RELICS[key]
         starting_gold_multiplier *= relic.starting_gold_multiplier
@@ -1168,7 +1327,10 @@ def compose_relic_modifiers(
         tower_density_radius = max(tower_density_radius, relic.tower_density_radius)
         tower_density_damage_bonus_per_neighbor += relic.tower_density_damage_bonus_per_neighbor
         tower_density_damage_bonus_cap += relic.tower_density_damage_bonus_cap
+        tower_density_fire_rate_bonus_per_neighbor += relic.tower_density_fire_rate_bonus_per_neighbor
+        tower_density_fire_rate_bonus_cap += relic.tower_density_fire_rate_bonus_cap
         last_stand_fire_rate_multiplier = max(last_stand_fire_rate_multiplier, relic.last_stand_fire_rate_multiplier)
+        last_stand_range_multiplier = max(last_stand_range_multiplier, relic.last_stand_range_multiplier)
         overkill_carry_fraction += relic.overkill_carry_fraction
         if relic.slow_chance > 0:
             slow_chance += relic.slow_chance
@@ -1228,6 +1390,12 @@ def compose_relic_modifiers(
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
         siphon_gold_fraction_multiplier *= relic.siphon_gold_fraction_multiplier
         siphon_damage_multiplier *= relic.siphon_damage_multiplier
+        overload_burst_multiplier *= relic.overload_burst_multiplier
+        overload_damage_multiplier *= relic.overload_damage_multiplier
+        cannon_targets_flying = cannon_targets_flying or relic.cannon_targets_flying
+        cannon_projectile_speed_multiplier *= relic.cannon_projectile_speed_multiplier
+        splitter_child_hp_multiplier *= relic.splitter_child_hp_multiplier
+        healer_heal_rate_multiplier *= relic.healer_heal_rate_multiplier
     return RelicModifiers(
         starting_gold_multiplier=starting_gold_multiplier,
         gold_per_floor_bonus=gold_per_floor_bonus,
@@ -1255,7 +1423,10 @@ def compose_relic_modifiers(
         tower_density_radius=tower_density_radius,
         tower_density_damage_bonus_per_neighbor=tower_density_damage_bonus_per_neighbor,
         tower_density_damage_bonus_cap=tower_density_damage_bonus_cap,
+        tower_density_fire_rate_bonus_per_neighbor=tower_density_fire_rate_bonus_per_neighbor,
+        tower_density_fire_rate_bonus_cap=tower_density_fire_rate_bonus_cap,
         last_stand_fire_rate_multiplier=last_stand_fire_rate_multiplier,
+        last_stand_range_multiplier=last_stand_range_multiplier,
         damage_vs_early_route_multiplier=damage_vs_early_route_multiplier,
         damage_vs_high_hp_multiplier=damage_vs_high_hp_multiplier,
         overkill_carry_fraction=overkill_carry_fraction,
@@ -1292,4 +1463,10 @@ def compose_relic_modifiers(
         knockback_duration_multiplier=knockback_duration_multiplier,
         siphon_gold_fraction_multiplier=siphon_gold_fraction_multiplier,
         siphon_damage_multiplier=siphon_damage_multiplier,
+        overload_burst_multiplier=overload_burst_multiplier,
+        overload_damage_multiplier=overload_damage_multiplier,
+        cannon_targets_flying=cannon_targets_flying,
+        cannon_projectile_speed_multiplier=cannon_projectile_speed_multiplier,
+        splitter_child_hp_multiplier=splitter_child_hp_multiplier,
+        healer_heal_rate_multiplier=healer_heal_rate_multiplier,
     )
