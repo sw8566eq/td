@@ -47,6 +47,13 @@ class Enemy:
     # for FlyingEnemy below.
     is_flying = False
 
+    # Whether this species counts as "Boss-tier" for a titan_slayer-style
+    # relic's own damage bonus -- False for every regular species, True only
+    # for BossEnemy below (inherited automatically by FinalBossEnemy/
+    # FinalBossShieldedEnemy, neither of which overrides it). Same
+    # class-level-flag shape as Tower.IS_SUPPORT.
+    IS_BOSS = False
+
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
         self.wp_index = 1  # index of the next waypoint to reach
@@ -433,6 +440,8 @@ class BossEnemy(Enemy):
     reward_per_wave = 20
     sprite_name = "enemy_boss"
     radius = 30
+
+    IS_BOSS = True
 
     ENRAGE_HP_FRACTION = 0.5
     ENRAGE_SPEED_MULTIPLIER = 1.5

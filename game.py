@@ -1804,6 +1804,7 @@ class Game:
         tower.relic_damage_vs_shielded_multiplier = self.relic_modifiers.damage_vs_shielded_multiplier
         tower.relic_damage_vs_healer_multiplier = self.relic_modifiers.damage_vs_healer_multiplier
         tower.relic_damage_vs_fast_multiplier = self.relic_modifiers.damage_vs_fast_multiplier
+        tower.relic_damage_vs_boss_multiplier = self.relic_modifiers.damage_vs_boss_multiplier
         tower.relic_splash_radius_bonus_multiplier = self.relic_modifiers.tower_splash_radius_multiplier
         tower.relic_lightning_chain_range_bonus_multiplier = self.relic_modifiers.lightning_chain_range_multiplier
         tower.relic_lightning_damage_bonus_multiplier = self.relic_modifiers.lightning_damage_multiplier
@@ -1823,6 +1824,9 @@ class Game:
         tower.relic_damage_vs_marked_and_slowed_multiplier = self.relic_modifiers.damage_vs_marked_and_slowed_multiplier
         tower.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_modifiers.damage_vs_marked_and_poisoned_multiplier
         tower.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_modifiers.damage_vs_slowed_and_poisoned_multiplier
+        tower.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = (
+            self.relic_modifiers.damage_vs_marked_and_slowed_and_poisoned_multiplier
+        )
         tower.relic_knockback_duration_bonus_multiplier = self.relic_modifiers.knockback_duration_multiplier
         tower.relic_siphon_gold_fraction_bonus_multiplier = self.relic_modifiers.siphon_gold_fraction_multiplier
         tower.relic_siphon_damage_bonus_multiplier = self.relic_modifiers.siphon_damage_multiplier

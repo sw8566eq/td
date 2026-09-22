@@ -58,6 +58,27 @@ def test_boss_dwarfs_every_regular_species_in_hp_and_reward():
         assert boss.gold_reward > regular.gold_reward * 2, enemy_cls
 
 
+def test_boss_is_flagged_is_boss():
+    boss = BossEnemy(WAYPOINTS, wave_number=1)
+    assert boss.IS_BOSS is True
+
+
+def test_regular_enemies_are_not_flagged_is_boss():
+    for enemy_cls in (Enemy, GruntEnemy, ScoutEnemy, TankEnemy):
+        regular = enemy_cls(WAYPOINTS, wave_number=1)
+        assert regular.IS_BOSS is False, enemy_cls
+
+
+def test_final_boss_and_final_boss_shielded_inherit_is_boss():
+    # Neither FinalBossEnemy nor FinalBossShieldedEnemy overrides IS_BOSS
+    # itself -- both must still read True purely via inheriting it from
+    # BossEnemy.
+    final_boss = FinalBossEnemy(WAYPOINTS, wave_number=1)
+    final_boss_shielded = FinalBossShieldedEnemy(WAYPOINTS, wave_number=1)
+    assert final_boss.IS_BOSS is True
+    assert final_boss_shielded.IS_BOSS is True
+
+
 def test_boss_is_slower_than_every_regular_species():
     boss = BossEnemy(WAYPOINTS, wave_number=1)
     for enemy_cls in (GruntEnemy, ScoutEnemy, TankEnemy):

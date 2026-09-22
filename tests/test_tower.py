@@ -1592,3 +1592,42 @@ def test_fusion_core_relic_boosts_overload_cannon_damage():
     projectile = tower.create_projectile(FakeEnemy())
     expected = tower.damage * (1.0 + 0.20) * tower.burst_multiplier
     assert projectile.damage == pytest.approx(expected)
+
+
+def test_overload_cannon_update_stays_in_sync_with_the_base_towers_relic_tagging_block():
+    # Regression for the deliberately duplicated relic-tagging block in
+    # OverloadCannonTower.update() (see both methods' own "KNOWN DUPLICATE"
+    # comments) -- confirms it copies the exact same SET of relic_* fields,
+    # with the exact same values, as the base Tower.update() does for an
+    # ordinary tower's fire cycle. The field set is discovered from the
+    # actual fired projectiles rather than hardcoded here, so this catches
+    # ANY future field a session adds to one copy but forgets in the
+    # other -- not just this batch's own two new fields
+    # (relic_damage_vs_boss_multiplier/relic_damage_vs_marked_and_slowed_
+    # and_slowed_and_poisoned_multiplier, still explicitly asserted below).
+    basic = BasicTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    basic.relic_damage_vs_boss_multiplier = 1.25
+    basic.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = 1.60
+    basic_target = FakeEnemy((55, 50))
+    basic_projectiles = []
+    basic.update(dt=1.0, enemies=[basic_target], projectiles=basic_projectiles)
+    assert len(basic_projectiles) == 1
+    basic_relic_state = {
+        name: value for name, value in vars(basic_projectiles[0]).items() if name.startswith("relic_")
+    }
+
+    cannon = OverloadCannonTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
+    cannon.relic_damage_vs_boss_multiplier = 1.25
+    cannon.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = 1.60
+    cannon_target = FakeEnemy((55, 50))
+    cannon_projectiles = []
+    cannon.update(dt=0.01, enemies=[cannon_target], projectiles=cannon_projectiles)  # acquire, begin charging
+    cannon.update(dt=cannon._charge_duration, enemies=[cannon_target], projectiles=cannon_projectiles)  # complete + fire
+    assert len(cannon_projectiles) == 1
+    cannon_relic_state = {
+        name: value for name, value in vars(cannon_projectiles[0]).items() if name.startswith("relic_")
+    }
+
+    assert cannon_relic_state == basic_relic_state
+    assert cannon_relic_state["relic_damage_vs_boss_multiplier"] == 1.25
+    assert cannon_relic_state["relic_damage_vs_marked_and_slowed_and_poisoned_multiplier"] == 1.60

@@ -147,6 +147,8 @@ class Projectile:
                  relic_damage_vs_marked_and_slowed_multiplier=1.0,
                  relic_damage_vs_marked_and_poisoned_multiplier=1.0,
                  relic_damage_vs_slowed_and_poisoned_multiplier=1.0,
+                 relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.0,
+                 relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
         self.pos = pygame.Vector2(pos)
@@ -228,6 +230,20 @@ class Projectile:
         self.relic_damage_vs_marked_and_slowed_multiplier = relic_damage_vs_marked_and_slowed_multiplier
         self.relic_damage_vs_marked_and_poisoned_multiplier = relic_damage_vs_marked_and_poisoned_multiplier
         self.relic_damage_vs_slowed_and_poisoned_multiplier = relic_damage_vs_slowed_and_poisoned_multiplier
+        # overwhelming_affliction's own bonus -- the triple-status capstone
+        # on top of the three pairwise combo relics immediately above, same
+        # ungated shape, gated on all THREE simultaneous enemy statuses
+        # (see _apply_hit_effects, right after its own pairwise checks).
+        self.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = (
+            relic_damage_vs_marked_and_slowed_and_poisoned_multiplier
+        )
+        # titan_slayer's own bonus -- ungated multiply, checked against the
+        # target's own class-level IS_BOSS flag (see enemy.py), joining the
+        # Flak Rounds/Breach Charges/Suppression Directive/Interceptor
+        # Rounds family below rather than the shield/heal_rate-style guarded
+        # block, since IS_BOSS -- like is_flying -- is a base Enemy
+        # attribute always present on every enemy, not species-specific.
+        self.relic_damage_vs_boss_multiplier = relic_damage_vs_boss_multiplier
         # BasicTower's own native crit mechanic -- tower-driven, not relic-
         # driven, so kept as its own pair rather than folded into relic_
         # crit_chance/relic_crit_damage_multiplier above (the exact same
@@ -438,6 +454,12 @@ class Projectile:
             damage *= self.relic_damage_vs_marked_and_poisoned_multiplier
         if is_slowed and is_poisoned:
             damage *= self.relic_damage_vs_slowed_and_poisoned_multiplier
+        # overwhelming_affliction's own capstone -- the triple-status combo
+        # on top of the three pairwise checks just above, reusing the exact
+        # same hoisted is_marked/is_slowed/is_poisoned booleans (no new
+        # getattr needed).
+        if is_marked and is_slowed and is_poisoned:
+            damage *= self.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier
         # Flak Rounds/Breach Charges/Suppression Directive -- three more
         # ungated per-enemy multipliers, same shape as the three just
         # above, checked against the target's own *current* is_flying/
@@ -457,6 +479,13 @@ class Projectile:
             damage *= self.relic_damage_vs_shielded_multiplier
         if self.relic_damage_vs_healer_multiplier != 1.0 and getattr(enemy, "heal_rate", 0) > 0:
             damage *= self.relic_damage_vs_healer_multiplier
+        # titan_slayer's own bonus -- ungated multiply, same shape as
+        # is_flying just above (IS_BOSS is a base Enemy class-level
+        # attribute, always present, defaulting False -- see enemy.py --
+        # so this is a plain getattr with a neutral default, not the
+        # guarded shield/heal_rate shape those two need).
+        if getattr(enemy, "IS_BOSS", False):
+            damage *= self.relic_damage_vs_boss_multiplier
         # hp_before, hoisted up from beside Overkill's own check further
         # below (see its comment there for the full rationale) since
         # Execute needs the same pre-hit hp reading -- both reads happen
