@@ -1495,6 +1495,26 @@ def test_relic_gap_filler_fields_reach_a_freshly_placed_tower(game):
     assert not hasattr(tower, "relic_splitter_child_damage")
 
 
+def test_titan_slayer_and_overwhelming_affliction_reach_a_freshly_placed_tower(game):
+    # Both the Boss-tier and triple-status-combo capstone relics are
+    # ungated, generic per-enemy multipliers -- same Game._construct_tower
+    # copy-line coverage shape as test_relic_gap_filler_fields_reach_a_
+    # freshly_placed_tower above.
+    game.start_new_run(seed=1)
+    game.active_run.relics = ["titan_slayer", "overwhelming_affliction"]
+    _enter_first_node(game)
+    anchor_col, anchor_row = find_buildable_anchor(game)
+    game.selected_tower_name = game.active_run.unlocked_towers[0]
+
+    game.try_place_tower(anchor_col, anchor_row)
+
+    tower = game.grid.get_tower(anchor_col, anchor_row)
+    assert tower.relic_damage_vs_boss_multiplier == RELICS["titan_slayer"].damage_vs_boss_multiplier
+    assert tower.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier == (
+        RELICS["overwhelming_affliction"].damage_vs_marked_and_slowed_and_poisoned_multiplier
+    )
+
+
 def test_cannon_exclusive_relics_reach_a_freshly_placed_cannon_tower(game):
     # Cannon's first-ever fully exclusive pair (see relics.py's own module
     # docstring) -- explicitly places a "cannon" tower, unlike the generic

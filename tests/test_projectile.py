@@ -963,6 +963,145 @@ def test_no_combo_bonus_when_no_relic_is_held():
     assert target.damage_taken == 10
 
 
+# --- Overwhelming Affliction (the triple-status capstone on top of
+# Frostbitten Mark/Plague Mark/Chill Rot above -- requires ALL THREE of
+# Marked/Slowed/Poisoned at once, reusing the exact same hoisted
+# is_marked/is_slowed/is_poisoned booleans) ---
+
+def test_overwhelming_affliction_boosts_damage_when_all_three_statuses_are_present():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 16.0
+
+
+def test_overwhelming_affliction_does_not_apply_when_missing_marked():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 0.0
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_overwhelming_affliction_does_not_apply_when_missing_slowed():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 0.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_overwhelming_affliction_does_not_apply_when_missing_poisoned():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 0.0
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_overwhelming_affliction_does_not_retroactively_count_this_hits_own_statuses():
+    # Regression, same shape as the pairwise combo relics' own retroactivity
+    # test above: mark_timer/slow_timer/poison_time_remaining must all read
+    # BEFORE this same hit's own apply_mark()/apply_slow()/apply_poison()
+    # calls, or a Beacon+Frost+Poison tower's first-ever hit on a fresh
+    # target would count itself as the qualifying triple combo just because
+    # it also applies all three statuses in the same shot.
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        slow_effect=(0.5, 2.0), mark_effect=(1.5, 1.0),
+        poison_effect=(3.0, 1.0, 4.0),
+        relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10  # not boosted
+    assert target.slow_applied == (0.5, 2.0)  # but all three statuses still land
+    assert target.mark_applied == (1.5, 1.0)
+    assert target.poison_applied == (3.0, 1.0, 4.0)
+
+
+def test_no_overwhelming_affliction_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.mark_timer = 1.0
+    target.slow_timer = 2.0
+    target.poison_time_remaining = 2.0
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+# --- Titan Slayer (damage vs. a Boss-tier enemy, keyed off the base Enemy
+# class-level IS_BOSS flag -- same ungated per-enemy shape as Interceptor
+# Rounds above) ---
+
+def test_titan_slayer_boosts_damage_against_a_boss_tier_enemy():
+    target = FakeEnemy((0, 0))
+    target.IS_BOSS = True
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_boss_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 12.5
+
+
+def test_titan_slayer_does_not_apply_to_a_non_boss_enemy():
+    target = FakeEnemy((0, 0))
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=10,
+        relic_damage_vs_boss_multiplier=1.25,
+    )
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
+def test_no_titan_slayer_bonus_when_no_relic_is_held():
+    target = FakeEnemy((0, 0))
+    target.IS_BOSS = True
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=10)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.damage_taken == 10
+
+
 # --- SniperTower's own native Execute mechanic (execute_hp_threshold/
 # execute_damage_multiplier) -- an ungated per-enemy check, like Giant
 # Slayer above, but keyed on the target's own *current* remaining-HP

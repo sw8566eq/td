@@ -287,6 +287,15 @@ class Relic:
     # ceiling, not its live speed) against projectile.
     # FAST_ENEMY_SPEED_THRESHOLD.
     damage_vs_fast_multiplier: float = 1.0
+    # titan_slayer's own bonus -- ungated straight multiply, same shape as
+    # flak_rounds/breach_charges/suppression_directive/interceptor_rounds
+    # above. Checked against the target's own class-level IS_BOSS flag
+    # (see enemy.py -- False on the base Enemy class, True only on
+    # BossEnemy and its FinalBossEnemy/FinalBossShieldedEnemy subclasses),
+    # duck-typed the same getattr-with-neutral-default way every other
+    # per-enemy check in Projectile._apply_hit_effects() already reads a
+    # species-specific/class-level attribute.
+    damage_vs_boss_multiplier: float = 1.0
     # shockwave_rounds' own bonus -- ungated straight multiply, read once
     # per tower at construction time (Game._construct_tower), same
     # pipeline as tower_range_multiplier, applied to any tower with a
@@ -436,6 +445,16 @@ class Relic:
     damage_vs_marked_and_slowed_multiplier: float = 1.0
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
+    # overwhelming_affliction's own bonus -- the triple-status capstone on
+    # top of the three pairwise combo relics immediately above: ungated
+    # straight multiply, read only when all three of Marked/Slowed/Poisoned
+    # are simultaneously present (see Projectile._apply_hit_effects, right
+    # after its own already-hoisted is_marked/is_slowed/is_poisoned pairwise
+    # checks -- reuses those same three booleans, no new getattr needed).
+    # Tuned higher (1.60) than any single pairwise combo's 1.35x, since
+    # assembling three towers' worth of build investment (Beacon + Frost +
+    # Poison) in the same run is a strictly harder condition to meet.
+    damage_vs_marked_and_slowed_and_poisoned_multiplier: float = 1.0
     # seismic_slam's own bonus -- Knockback-tower-exclusive, same
     # plain-multiply shape as basic_crit_damage_multiplier/execute_damage_
     # multiplier above, scaling KnockbackTower's own knockback_duration.
@@ -993,6 +1012,25 @@ RELICS = {
         "Healer enemies heal 30% slower.",
         healer_heal_rate_multiplier=0.70,
     ),
+    # Boss-tier damage relic -- see damage_vs_boss_multiplier's own comment
+    # on the Relic dataclass above for the read site (Projectile.
+    # _apply_hit_effects, against enemy.IS_BOSS). Ungated, like every other
+    # relic in this per-enemy-multiplier family.
+    "titan_slayer": Relic(
+        "titan_slayer", "Titan Slayer",
+        "+25% damage to Boss-tier enemies.",
+        damage_vs_boss_multiplier=1.25,
+    ),
+    # The triple-status capstone on top of frostbitten_mark/plague_mark/
+    # chill_rot above -- see damage_vs_marked_and_slowed_and_poisoned_
+    # multiplier's own comment on the Relic dataclass above for the read
+    # site (Projectile._apply_hit_effects, right after those same three
+    # relics' own pairwise checks). Ungated.
+    "overwhelming_affliction": Relic(
+        "overwhelming_affliction", "Overwhelming Affliction",
+        "+60% damage to enemies that are Marked, Slowed, and Poisoned all at once.",
+        damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    ),
 }
 
 DEFAULT_RELIC_OFFER_COUNT = 3
@@ -1137,6 +1175,7 @@ class RelicModifiers:
     splitter_child_damage: float = 0.0
     damage_vs_healer_multiplier: float = 1.0
     damage_vs_fast_multiplier: float = 1.0
+    damage_vs_boss_multiplier: float = 1.0
     tower_splash_radius_multiplier: float = 1.0
     lightning_chain_range_multiplier: float = 1.0
     shop_price_multiplier: float = 1.0
@@ -1158,6 +1197,7 @@ class RelicModifiers:
     damage_vs_marked_and_slowed_multiplier: float = 1.0
     damage_vs_marked_and_poisoned_multiplier: float = 1.0
     damage_vs_slowed_and_poisoned_multiplier: float = 1.0
+    damage_vs_marked_and_slowed_and_poisoned_multiplier: float = 1.0
     knockback_duration_multiplier: float = 1.0
     siphon_gold_fraction_multiplier: float = 1.0
     siphon_damage_multiplier: float = 1.0
@@ -1245,6 +1285,7 @@ def compose_relic_modifiers(
     splitter_child_damage = 0.0
     damage_vs_healer_multiplier = 1.0
     damage_vs_fast_multiplier = 1.0
+    damage_vs_boss_multiplier = 1.0
     tower_splash_radius_multiplier = 1.0
     lightning_chain_range_multiplier = 1.0
     shop_price_multiplier = 1.0
@@ -1266,6 +1307,7 @@ def compose_relic_modifiers(
     damage_vs_marked_and_slowed_multiplier = 1.0
     damage_vs_marked_and_poisoned_multiplier = 1.0
     damage_vs_slowed_and_poisoned_multiplier = 1.0
+    damage_vs_marked_and_slowed_and_poisoned_multiplier = 1.0
     knockback_duration_multiplier = 1.0
     siphon_gold_fraction_multiplier = 1.0
     siphon_damage_multiplier = 1.0
@@ -1366,6 +1408,7 @@ def compose_relic_modifiers(
         damage_vs_healer_multiplier *= relic.damage_vs_healer_multiplier
         splitter_child_damage += relic.splitter_child_damage
         damage_vs_fast_multiplier *= relic.damage_vs_fast_multiplier
+        damage_vs_boss_multiplier *= relic.damage_vs_boss_multiplier
         tower_splash_radius_multiplier *= relic.tower_splash_radius_multiplier
         lightning_chain_range_multiplier *= relic.lightning_chain_range_multiplier
         shop_price_multiplier *= relic.shop_price_multiplier
@@ -1387,6 +1430,7 @@ def compose_relic_modifiers(
         damage_vs_marked_and_slowed_multiplier *= relic.damage_vs_marked_and_slowed_multiplier
         damage_vs_marked_and_poisoned_multiplier *= relic.damage_vs_marked_and_poisoned_multiplier
         damage_vs_slowed_and_poisoned_multiplier *= relic.damage_vs_slowed_and_poisoned_multiplier
+        damage_vs_marked_and_slowed_and_poisoned_multiplier *= relic.damage_vs_marked_and_slowed_and_poisoned_multiplier
         knockback_duration_multiplier *= relic.knockback_duration_multiplier
         siphon_gold_fraction_multiplier *= relic.siphon_gold_fraction_multiplier
         siphon_damage_multiplier *= relic.siphon_damage_multiplier
@@ -1439,6 +1483,7 @@ def compose_relic_modifiers(
         splitter_child_damage=splitter_child_damage,
         damage_vs_healer_multiplier=damage_vs_healer_multiplier,
         damage_vs_fast_multiplier=damage_vs_fast_multiplier,
+        damage_vs_boss_multiplier=damage_vs_boss_multiplier,
         tower_splash_radius_multiplier=tower_splash_radius_multiplier,
         lightning_chain_range_multiplier=lightning_chain_range_multiplier,
         shop_price_multiplier=shop_price_multiplier,
@@ -1460,6 +1505,7 @@ def compose_relic_modifiers(
         damage_vs_marked_and_slowed_multiplier=damage_vs_marked_and_slowed_multiplier,
         damage_vs_marked_and_poisoned_multiplier=damage_vs_marked_and_poisoned_multiplier,
         damage_vs_slowed_and_poisoned_multiplier=damage_vs_slowed_and_poisoned_multiplier,
+        damage_vs_marked_and_slowed_and_poisoned_multiplier=damage_vs_marked_and_slowed_and_poisoned_multiplier,
         knockback_duration_multiplier=knockback_duration_multiplier,
         siphon_gold_fraction_multiplier=siphon_gold_fraction_multiplier,
         siphon_damage_multiplier=siphon_damage_multiplier,

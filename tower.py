@@ -434,6 +434,12 @@ class Tower:
         # fast enemy shouldn't lose the bonus just because its live speed
         # dropped).
         self.relic_damage_vs_fast_multiplier = 1.0
+        # Titan Slayer-style relic -- ungated multiply, same shape as
+        # relic_damage_vs_flying_multiplier above, read by Projectile
+        # against enemy.IS_BOSS (a base Enemy class-level flag, always
+        # present, True only for BossEnemy and its subclasses -- see
+        # enemy.py).
+        self.relic_damage_vs_boss_multiplier = 1.0
         # The game's first cross-status combo relics -- ungated multiplies,
         # same shape as relic_damage_vs_slowed_multiplier/relic_damage_vs_
         # flying_multiplier above, but each gated on TWO simultaneous enemy
@@ -443,6 +449,11 @@ class Tower:
         self.relic_damage_vs_marked_and_slowed_multiplier = 1.0
         self.relic_damage_vs_marked_and_poisoned_multiplier = 1.0
         self.relic_damage_vs_slowed_and_poisoned_multiplier = 1.0
+        # Overwhelming Affliction -- the triple-status capstone on top of
+        # the three combo relics just above, gated on ALL THREE statuses at
+        # once instead of two. Same "ungated multiply, read by Projectile"
+        # shape.
+        self.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = 1.0
         # Seismic Slam-style relic -- Knockback-tower-exclusive, same
         # plain-multiply shape as relic_beam_ramp_bonus_multiplier/relic_
         # frost_slow_bonus_multiplier above, read only in KnockbackTower.
@@ -662,9 +673,13 @@ class Tower:
         projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
         projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
         projectile.relic_damage_vs_fast_multiplier = self.relic_damage_vs_fast_multiplier
+        projectile.relic_damage_vs_boss_multiplier = self.relic_damage_vs_boss_multiplier
         projectile.relic_damage_vs_marked_and_slowed_multiplier = self.relic_damage_vs_marked_and_slowed_multiplier
         projectile.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_damage_vs_marked_and_poisoned_multiplier
         projectile.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_damage_vs_slowed_and_poisoned_multiplier
+        projectile.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = (
+            self.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier
+        )
         projectiles.append(projectile)
         self.cooldown = 1.0 / self.effective_fire_rate()
 
@@ -1817,9 +1832,13 @@ class OverloadCannonTower(Tower):
         projectile.relic_damage_vs_shielded_multiplier = self.relic_damage_vs_shielded_multiplier
         projectile.relic_damage_vs_healer_multiplier = self.relic_damage_vs_healer_multiplier
         projectile.relic_damage_vs_fast_multiplier = self.relic_damage_vs_fast_multiplier
+        projectile.relic_damage_vs_boss_multiplier = self.relic_damage_vs_boss_multiplier
         projectile.relic_damage_vs_marked_and_slowed_multiplier = self.relic_damage_vs_marked_and_slowed_multiplier
         projectile.relic_damage_vs_marked_and_poisoned_multiplier = self.relic_damage_vs_marked_and_poisoned_multiplier
         projectile.relic_damage_vs_slowed_and_poisoned_multiplier = self.relic_damage_vs_slowed_and_poisoned_multiplier
+        projectile.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier = (
+            self.relic_damage_vs_marked_and_slowed_and_poisoned_multiplier
+        )
         projectiles.append(projectile)
         self._charge_target = None
         self._charge_elapsed = 0.0

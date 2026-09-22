@@ -892,3 +892,25 @@ def test_compose_relic_modifiers_no_roundout_relic_leaves_them_neutral():
     modifiers = compose_relic_modifiers(["prospectors_charm"])
     assert modifiers.splitter_child_hp_multiplier == 1.0
     assert modifiers.healer_heal_rate_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_boss_multiplier():
+    modifiers = compose_relic_modifiers(["titan_slayer", "titan_slayer"])
+    assert modifiers.damage_vs_boss_multiplier == RELICS["titan_slayer"].damage_vs_boss_multiplier ** 2
+
+
+def test_compose_relic_modifiers_no_titan_slayer_leaves_damage_vs_boss_multiplier_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.damage_vs_boss_multiplier == 1.0
+
+
+def test_compose_relic_modifiers_multiplies_damage_vs_marked_and_slowed_and_poisoned_multiplier():
+    modifiers = compose_relic_modifiers(["overwhelming_affliction", "overwhelming_affliction"])
+    assert modifiers.damage_vs_marked_and_slowed_and_poisoned_multiplier == (
+        RELICS["overwhelming_affliction"].damage_vs_marked_and_slowed_and_poisoned_multiplier ** 2
+    )
+
+
+def test_compose_relic_modifiers_no_overwhelming_affliction_leaves_triple_combo_neutral():
+    modifiers = compose_relic_modifiers(["prospectors_charm"])
+    assert modifiers.damage_vs_marked_and_slowed_and_poisoned_multiplier == 1.0
