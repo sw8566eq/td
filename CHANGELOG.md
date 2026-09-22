@@ -6,6 +6,50 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+### Added
+
+- Two new towers: **Overload Cannon** (charges for several seconds locked onto one target, then
+  fires a single massive burst -- an interrupted charge is lost outright, no partial credit) and
+  **Siphon** (converts a fraction of damage dealt into battle gold, the first tower whose own
+  mechanic generates economy from damage rather than kills). Both gated behind their own
+  meta-progression unlock, same as every prior non-starter tower.
+- 13 new relics (61 -> 74): Cannon's first-ever fully exclusive pair (can now target flying
+  enemies; 40% faster projectiles), a dedicated launch pair for each of the two new towers, a
+  damage bonus against Boss-tier enemies, the triple-status capstone (bonus damage against an enemy
+  simultaneously Marked, Slowed, *and* Poisoned), a third density-archetype relic (fire rate instead
+  of damage) and a third last-stand relic (range), and three round-out relics closing an
+  economy-safety-net gap and two enemy-counterplay gaps (reduced Splitter-child HP, slower Healer
+  healing).
+- Real CC0 art (Kenney's "Tower Defense (Top-Down)" pack) for all tiles and the original 10 towers,
+  plus 4 of 11 enemy species -- the rest still render as placeholder shapes; see README for how to
+  drop in more without touching code.
+- The Shop offers a 3rd relic slot once `total_floors_cleared` reaches 100 -- deliberately the
+  longest chase in the whole meta-progression system.
+- The account-wide unlock curve extended further: `seismic_slam` (Knockback's 2nd exclusive relic)
+  at 75 floors cleared, a second gated level ("Double Confluence") at 25 runs played.
+
+### Fixed
+
+- A real, previously-uncaught HUD layout bug: the wave-countdown caption and Start/Skip button lived
+  in the same bottom row as the Gold/Lives/Wave text and the tower build-menu buttons, at a
+  screen-relative (not tower-count-relative) position -- already colliding, unnoticed, at the
+  original 10-tower roster before either new tower above ever shipped. Fixed by moving the countdown
+  caption and Skip/Start button into the HUD's top strip alongside the speed/relics toggles.
+- Draft-screen layout bugs caught by live testing: a 5-card offer (reachable once the 3rd relic slot
+  above unlocks) overflowed the screen at the old fixed card width, and relic titles were never
+  wrapped or width-constrained at all, so a long one could already overflow a card even at 2 relics.
+
+### Engineering
+
+- `game.py` decomposition, phase 3: the achievement/meta-progression/toast-recording group extracted
+  into `ProgressTracker` (`progress_tracker.py`), following the same one-line-delegator shape as the
+  two prior extractions (`Renderer`, `InputHandler`).
+- Incremental `mypy` adoption continues: `run_escalation.py`/`progress.py`/`achievements.py` are now
+  strictly type-checked too (16 modules total).
+- README.md and CLAUDE.md brought back in sync with everything above (relic/tower/test counts, two
+  new architecture sections for the new towers' mechanics, the HUD fix's own design rationale) --
+  both had drifted since v0.4.0.
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
