@@ -88,14 +88,15 @@ there's a real choice in what to prioritize, not just "buy everything eventually
 
 ## Relics
 
-A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 61 of them as of
+A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 74 of them as of
 this writing, everything from "+20 gold at the start of every floor" to relics that make one specific
 tower's own signature mechanic (Basic's crit, Sniper's execute, Frost's slow, Poison's DoT,
-Knockback's shove) hit harder, and a handful of combo relics that reward running two towers' mechanics
-together (bonus damage against an enemy that's simultaneously Marked *and* Slowed, say). Almost none
-of them are gated behind an account-wide unlock -- see `relics.py` for the full registry and
-"Meta-progression" below for the handful that are. Press `R` while playing a run floor to bring up a
-read-only overlay of every relic you're currently holding.
+Knockback's shove) hit harder, a handful of combo relics that reward running two or three towers'
+mechanics together (bonus damage against an enemy that's simultaneously Marked *and* Slowed, say, or
+all three of Marked/Slowed/Poisoned at once), and one that boosts damage against Boss-tier enemies
+specifically. Almost none of them are gated behind an account-wide unlock -- see `relics.py` for the
+full registry and "Meta-progression" below for the handful that are. Press `R` while playing a run
+floor to bring up a read-only overlay of every relic you're currently holding.
 
 ## Controls
 
@@ -123,12 +124,13 @@ tower's tile corner, which still works too), and at max level, Upgrade is replac
 **Specialize** buttons -- see "Tower levels & specialization" below. Selling refunds a fraction of
 everything spent on that tower and frees its space immediately.
 
-The HUD shows a countdown to the next wave and a button (bottom-right) that reads "Start" before the
+The HUD's top strip shows a countdown to the next wave and a button that reads "Start" before the
 first wave -- it waits for you rather than auto-starting, so you get a beat to place towers first --
 and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space` does the
-same thing as clicking it. A second button next to it cycles the simulation speed (`1x`/`2x`/`3x`, or
-press `1`/`2`/`3` directly) -- real time still drives the frame rate, only the simulated world speeds
-up. `R` opens a read-only overlay of your currently-held relics (a run only); any key closes it.
+same thing as clicking it. The same strip also has a button that cycles the simulation speed
+(`1x`/`2x`/`3x`, or press `1`/`2`/`3` directly) -- real time still drives the frame rate, only the
+simulated world speeds up -- and, during a run, a "Relics: N" button. `R` opens a read-only overlay
+of your currently-held relics (a run only); any key closes it.
 
 `P` or `Esc` opens the pause menu; the same two keys close it again. `R` there asks for confirmation
 before restarting the current level (`R` again confirms, `Esc` cancels), `S` (shown only between
@@ -150,7 +152,7 @@ modes" below for what always applies regardless.
 
 ## Testing
 
-Run the test suite with `pytest` (from the venv) -- 1600+ tests covering every module. The
+Run the test suite with `pytest` (from the venv) -- 1870+ tests covering every module. The
 `Game`-level tests are split three ways by concern: `tests/test_game.py` (state machine, click/key
 handling, update loop, rendering), `tests/test_run.py` (the whole run lifecycle -- the branching map,
 Shop, Events, Rest, Treasure, the boss floor, relics, permadeath, meta-progression, save/resume,
@@ -166,9 +168,11 @@ Tiles and towers now have real art; some enemies still render as placeholder sha
 `assets.py`, `SPRITE_MANIFEST`). Source: Kenney's
 ["Tower Defense (Top-Down)"](https://kenney.nl/assets/tower-defense-top-down) pack, CC0 (public
 domain -- credit appreciated but not required). Coverage:
-- `assets/tiles/` (3/3) and `assets/towers/` (10/10) -- fully covered. The pack's own designs
-  (missile launchers, single/twin-barrel cannons, glowing turret domes) don't literally match this
-  game's tower names, so they're reassigned by shape/vibe rather than by name.
+- `assets/tiles/` (3/3) -- fully covered. `assets/towers/` (10/12) -- the ten towers that existed
+  when this pack was curated are covered (the pack's own designs -- missile launchers, single/
+  twin-barrel cannons, glowing turret domes -- don't literally match this game's tower names, so
+  they're reassigned by shape/vibe rather than by name); Overload Cannon and Siphon, added since,
+  still render as placeholder shapes.
 - `assets/enemies/` (4/11) -- `grunt`/`tank` (the pack's two top-down vehicle bodies) and
   `scout`/`flying` (its two planes) are covered; `boss`, `shielded`, `splitter`, `splitter_child`,
   `healer`, `final_boss`, and `final_boss_shielded` have no good match in this pack and still render
@@ -214,8 +218,8 @@ path renders as one unbroken tile -- no seams -- since it's never buildable anyw
 
 ## Towers
 
-Ten so far. In a run you start with three of them and unlock the rest (see "Runs" and
-"Meta-progression"); Practice mode and editor playtests always offer all ten.
+Twelve so far. In a run you start with three of them and unlock the rest (see "Runs" and
+"Meta-progression"); Practice mode and editor playtests always offer all twelve.
 
 - **Basic** -- cheap, single-target, no special mechanic; its damage scales especially steeply with
   level so it stays worth building late-game, and it has a native chance to land a bigger crit.
@@ -247,6 +251,12 @@ Ten so far. In a run you start with three of them and unlock the rest (see "Runs
   Switching targets -- because a different enemy wandered into range, or the targeting mode picked
   someone new -- resets the ramp on the very next shot. Weaker than Basic until a target is
   committed to, the roster's best sustained single-target damage once it's fully ramped.
+- **Overload Cannon** -- doesn't fire on a steady rhythm. Locks onto one target, charges for a few
+  seconds, then unleashes one massive burst -- high ceiling, but a real risk: if the target dies or
+  leaves range mid-charge, the whole charge is lost with no partial credit, and it starts over from
+  nothing.
+- **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
+  the only tower that generates economy from damage dealt rather than from kills.
 
 ## Tower levels & specialization
 
@@ -326,13 +336,13 @@ there's further to go.
 
 ## Meta-progression
 
-Six of the ten towers start locked account-wide behind lifetime counters (`meta_progression.py`):
-clearing floors unlocks Knockback, Poison, and Lightning; playing more runs unlocks Sniper, Support,
-and Beacon; reaching the endless final floor once unlocks Beam. An unlocked tower joins the pool the
-Shop can offer from -- it doesn't start in your hand, it just becomes a card you might see. A
-handful of the game's newest relics and one of its levels are gated the same way, behind steeper
-thresholds, so there's still something to chase long after every tower is unlocked. A toast pops up
-in-game the moment you unlock anything.
+Eight of the twelve towers start locked account-wide behind lifetime counters
+(`meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
+playing more runs unlocks Sniper, Support, Beacon, and Siphon; reaching the endless final floor once
+unlocks Beam. An unlocked tower joins the pool the Shop can offer from -- it doesn't start in your
+hand, it just becomes a card you might see. A handful of the game's newest relics and one of its
+levels are gated the same way, behind steeper thresholds, so there's still something to chase long
+after every tower is unlocked. A toast pops up in-game the moment you unlock anything.
 
 ## Practice, Difficulty, Endless, and Sandbox modes
 

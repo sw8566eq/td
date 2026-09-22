@@ -228,12 +228,12 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   break "the same seed offers the same cards" across two process launches.
 - `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
-  6 of the 61 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, the
+  6 of the 74 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, the
   cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`, and that same batch's
   `seismic_slam`) are gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own
   optional `unlocked_pool`/
   `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
-  below). 61 relics across eight effect shapes -- the original
+  below). 74 relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
   `interceptor_rounds` for fast enemies, `haggling_permit` for Shop-currency prices -- none gated),
@@ -406,6 +406,59 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   independent mechanism from `LightningTower`'s own tower-driven `chain_range`/`max_chain_targets` --
   it fires on any hit via a chance roll and is always exactly one non-recursive bounce, never a
   multi-link chain.
+
+  A fifth wave of six independent sessions, landed the same day (PRs #82-87), added six more
+  batches past the capstone above -- 74 relics total as of this writing, none needing a genuinely
+  new effect shape beyond the eight already described, each cited below against whichever existing
+  shape it reuses -- alongside two new towers, `OverloadCannonTower`/`SiphonTower` (see their own
+  dedicated sections below), each shipping with its own exclusive pair in the same wave, matching
+  every prior new-tower precedent (Beacon's own launch batch, for instance): a fifteenth batch closes
+  Cannon's own last gap -- of the ten towers that existed before this wave, Cannon alone had zero
+  fully-exclusive relics (only `heavy_ordnance`, shared 50/50 with Knockback, and the generic
+  `shockwave_rounds`) -- via `aerial_targeting_array` (`cannon_targets_flying`, a boolean
+  OR-composed exactly like `poison_ignores_shield`, requiring `CannonTower.can_target_flying` to
+  become a property reading it rather than staying a plain class attribute -- `KnockbackTower` keeps
+  its own separate `can_target_flying = False` untouched, so the relic can never leak there) and
+  `high_velocity_shells` (`cannon_projectile_speed_multiplier`, the first relic in the registry to
+  ever touch `projectile_speed`, a plain `create_projectile()` multiply); a sixteenth batch is
+  Overload Cannon's own launch pair, `overcharged_capacitors` (`overload_burst_multiplier`,
+  plain-multiply on that tower's own `burst_multiplier`) and `fusion_core`
+  (`overload_damage_multiplier`, via a `_relic_family_damage_bonus()` override identical in shape to
+  `storm_core`/`heavy_ordnance`); a seventeenth batch is Siphon Tower's own launch pair,
+  `refined_extraction` (`siphon_gold_fraction_multiplier`, the one relic in the whole registry read
+  at `Projectile._apply_direct_damage()` rather than `create_projectile()`/`_apply_hit_effects()` --
+  see Siphon Tower's own section below for why) and `amplified_coils` (`siphon_damage_multiplier`,
+  the same `_relic_family_damage_bonus()` shape again); an eighteenth batch deepens two existing
+  archetypes with a third relic each, reusing their existing shapes verbatim rather than inventing
+  new ones -- `overclocked_circuits` (a third density relic, but a fire-rate bonus instead of
+  damage: reuses `Tower.set_nearby_tower_bonus()`'s own already-computed neighbor count for a
+  second output rather than a second scan, and sets its own independent `tower_density_radius` so
+  it's functional standalone, the same "own numbers" precedent `reinforced_chassis` already set) and
+  `desperate_reach` (a third last-stand relic, `last_stand_range_multiplier`, `max()`'d exactly like
+  `last_stand_damage_multiplier`/`last_stand_fire_rate_multiplier`, folded into `effective_range()`
+  as one more additive term alongside the aura/generic-relic ones); a nineteenth batch closes out two
+  more gaps in the same "ungated per-enemy multiplier"/"cross-status combo" families the capstone
+  batch above established -- `titan_slayer` (`damage_vs_boss_multiplier`, the first relic to key off
+  a Boss-tier enemy, via a new `Enemy.IS_BOSS` class flag -- see "Boss enemy mechanics" below) and
+  `overwhelming_affliction` (`damage_vs_marked_and_slowed_and_poisoned_multiplier`, the triple-status
+  capstone the three pairwise combos above were always one relic short of, at 1.60x -- higher than
+  their own 1.35x, since it needs all three of Beacon/Frost/Poison invested in the same run to ever
+  trigger, reusing the exact same pre-hoisted `is_marked`/`is_slowed`/`is_poisoned` booleans with
+  zero new `getattr` calls, and threaded through **both** copies of the relic-tagging block --
+  `Tower.update()`'s own and `OverloadCannonTower.update()`'s duplicate, see that tower's own section
+  below for why two copies exist at all); and a twentieth, round-out batch of three closing an
+  economy-safety-net gap and two enemy-counterplay gaps rather than deepening an existing archetype
+  -- `emergency_reserves` (no `RelicModifiers` field at all, the second relic in this exact shape
+  after `guardians_reprieve`: a one-time-per-run gold refund checked directly against `run.relics`
+  inside `Game._spend_gold()`, gated on a new `RunState.used_emergency_reserves` flag),
+  `fracture_rounds` (`splitter_child_hp_multiplier`, the second relic in `containment_charges`' own
+  "flat, non-tower" shape, read from the identical `pending_spawns` drain loop -- structurally can
+  never touch `FinalBossEnemy`'s own live reinforcement summons, since those populate
+  `pending_spawns` while the boss is still alive, not inside the `enemy.is_dead` branch this relic's
+  own check is gated on), and `numbing_toxins` (`healer_heal_rate_multiplier`, threaded into
+  `WaveManager`'s own constructor kwargs exactly like `enemy_speed_multiplier`/`enemy_gold_multiplier`
+  above, applied post-construction via the same `hasattr`-gated patch-up pattern
+  `WaveManager._spawn_enemy` already uses for `ShieldedEnemy`'s own `max_shield`).
 - `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
   precisely because `floor_index` (the current node's row) is unbounded once the boss node's endless
   tail runs. `apply_elite_multiplier()` layers an Elite node's own extra bump on top -- the difficulty
@@ -647,6 +700,11 @@ resolution uses. `self.economy.unlimited_gold` (already exactly `self.unlimited_
 "Economy debug flag" below) makes every shop item free the same way it already makes battle gold
 spending free -- there's no separate sandbox flag for shop currency.
 
+Battle gold has a third source besides placing-a-tower's own starting pool and a floor's per-kill
+rewards: `SiphonTower` generates it mid-floor from a fraction of damage dealt (see that tower's own
+section below) -- still just `Economy.gold`, still reset fresh every floor like every other battle
+gold, not a new currency of its own.
+
 ### Content is registries, not conditionals
 
 Towers (`TOWER_TYPES` in `tower.py`), enemies (`ENEMY_TYPES` in `enemy.py`), and levels (`LEVELS`
@@ -704,6 +762,16 @@ just pulsed on a timer rather than continuously regenerating. Deliberately named
 difficulty-scaling model and sizes things a completely different way. It also needs its own
 `take_poison_damage()` override, unlike `FinalBossEnemy` -- see "Mark and Corrosive Poison's
 shield-bypass hook" below for why.
+
+`Enemy.IS_BOSS` (`False` on the base class, `True` on `BossEnemy` only) is a class-level flag added
+for `titan_slayer` (see the `relics.py` bullet above), mirroring `Tower.IS_SUPPORT`'s own shape
+exactly -- a plain boolean neither subclass ever needs to check dynamically, just inherit or
+override once. `FinalBossEnemy`/`FinalBossShieldedEnemy` both subclass `BossEnemy` directly and
+never override class-level flags like this one, so they inherit `IS_BOSS = True` for free, same as
+they already inherit Enrage/Armor unmodified. `Projectile._apply_hit_effects()` reads it via
+`getattr(enemy, "IS_BOSS", False)`, the same neutral-default idiom every other ungated per-enemy
+multiplier check here already uses, so a lightweight `FakeEnemy` test double that never sets the
+attribute is treated as non-boss rather than raising.
 
 ### Mark and Corrosive Poison's shield-bypass hook
 
@@ -978,6 +1046,49 @@ panel and
 plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless
 `"Damage: 0.0"`/a clickable targeting mode a support tower never reads.
 
+### Overload Cannon's charge-and-burst cycle
+
+`OverloadCannonTower` doesn't fire on the steady cooldown every other tower does -- it locks onto
+one target, charges for `1.0 / effective_fire_rate()` seconds (so every existing fire-rate relic,
+Support aura included, already speeds or slows the charge for free), then fires a single burst
+(`effective_damage() * burst_multiplier`, `burst_multiplier` a flat 1.8x moved only by
+specialization/relics, the same shape `BasicTower.crit_chance` already uses) and goes idle to start
+a fresh charge. The target is locked exactly once, when a charge begins -- `acquire_target()` is
+never called again mid-charge, deliberately: re-acquiring every frame would mean the tower never
+really commits to anything, which would remove the actual risk/reward tension this tower exists for.
+If the locked target dies, reaches the goal, or leaves range at any point while charging, the charge
+resets to zero outright -- no partial burst, no carry-over credit to a new target, mirroring
+`BeamTower`'s own "target switch resets the ramp" precedent.
+
+Needing its own `update()` override (its cadence doesn't match the base class's cooldown-then-fire
+loop) meant it also needs its own copy of the ~20-line relic-tagging block `Tower.update()` uses to
+copy every `relic_*` field onto a freshly-fired projectile -- a deliberate, accepted duplication
+rather than a shared-helper extraction, so that every other session adding a relic field to the base
+class's copy (as the nineteenth relic batch above already had to) only has to remember to mirror the
+same two lines into this tower's own copy, not refactor a shared call site every batch touches.
+Cross-referencing comments live at both sites; `test_tower.py`'s own dedicated regression test
+diffs the two blocks' actual output (via real fired projectiles, not a hardcoded field list) rather
+than trusting a static read, specifically to catch a future desync here.
+
+### Siphon Tower's damage-to-gold mechanic
+
+`SiphonTower` deals little direct damage, but converts a fraction of damage *dealt* --
+`siphon_gold_fraction`, flat across levels like `PoisonTower.poison_damage_per_tick`, only moved by
+specialization/relics -- into battle gold: the first tower whose own mechanic generates economy from
+damage rather than from a kill (`bounty_hunters_ledger` is the closest existing precedent, and that's
+a kill-gold-only relic, not a tower mechanic). It deliberately introduces **no** new `Tower`<->
+`Economy`/`Game` coupling -- neither class has ever held a live reference to the other, and this
+tower doesn't start now. Instead it extends the exact "drain a per-frame/accumulated value in
+`Game.update()`" idiom `fired_this_frame`/`impact_events`/`damage_events` already establish (see
+"Visual effects" below) to a non-visual use for the first time: `Tower.pending_siphon_gold`
+accumulates in `Projectile._apply_direct_damage()` -- the one true per-hit damage-attribution choke
+point, right next to the existing `damage_dealt`/`kills` bookkeeping, so an Arcing Rounds-style chain
+bounce or an Overkill-style carry-over hit generates Siphon gold too, for free -- and `Game.update()`
+drains only the whole-gold portion into `self.economy.add_gold()` each frame, carrying any sub-1-gold
+remainder forward rather than resetting it to zero, so fractional credit is never silently lost. Not
+serialized in `save_state.py`: a save only ever happens between waves, with no live combat state
+captured at all, and the remainder is worth less than 1 gold regardless.
+
 ### Tower targeting is broad-phase, not brute-force
 
 `Tower.acquire_target()` scans candidate enemies every time a tower's cooldown allows a shot, so
@@ -1105,6 +1216,32 @@ the same panel slot. `Game._handle_click` resolves a click there by the subject'
 click silently falls into `try_upgrade_tower` (a no-op once maxed) instead of specializing, which
 is exactly the bug the regression tests around `ACTION_AREA_TOP`/`build_specialize_button_rects`
 in `test_ui.py`/`test_game.py` exist to catch.
+
+### HUD layout: top strip vs. bottom row
+
+`ui.py`'s HUD bar splits into two vertical bands: a top strip (`HUD_TOP_STRIP_HEIGHT`, 32px) for
+controls whose position shouldn't depend on how many tower buttons are registered (`build_speed_
+button_rect`/`build_relics_button_rect`/`build_skip_button_rect`, all right-aligned there in that
+order), and a bottom row for the tower build-menu buttons (left, `build_button_rects`) and the
+Gold/Lives/Wave text (right, starting at `draw_hud`'s own `info_x`, which grows with however many
+buttons are actually drawn). The wave-countdown caption and Skip/Start button used to live in the
+*bottom* row instead, at a fixed position anchored to `settings.PLAY_WIDTH` regardless of the tower
+count -- which meant they were on an unavoidable collision course with `info_x` once the roster grew
+long enough, and a baseline screenshot of the pre-batch (10-tower) commit confirmed they already
+*were* colliding there, unnoticed, before the relic-and-tower batch that added Overload Cannon/Siphon
+Tower ever started. (Two of that batch's own sessions each independently shrank `BUTTON_SIZE` as an
+honest, partial fix for a symptom they didn't know was a much older, structural bug.) Fixed by moving
+the countdown caption and Skip/Start button into the top strip -- the countdown text now sits to the
+button's *left* (`midright` anchor), not above it, since a top-strip button has no headroom above it
+to float a caption over without spilling onto the grid -- which is what let the bottom row's
+`BUTTON_SIZE`/`BUTTON_MARGIN` (44/8, sized against the 12-tower roster's own worst-case Gold/Lives/
+Wave text width, e.g. `"Gold: unlimited   Shop: 999"`, with real headroom to spare) become the *only*
+constraint on fitting the button row, rather than also needing to dodge a fixed-position control in
+the same row. `test_ui.py`'s `test_hud_gold_lives_wave_text_fits_before_the_play_area_edge` is the
+regression test for the actual constraint this fixes, checked against `TOWER_ORDER`'s full length --
+distinct from the older, narrower `test_skip_button_does_not_overlap_the_tower_build_buttons`, which
+only ever checked the skip button's own `Rect` against the button row's `Rect`s and would never have
+caught text silently overflowing past both of them.
 
 ### Waves
 
@@ -1243,6 +1380,11 @@ packaged build. Before this was factored out, each independently wrote the same
   skipping -- strengthened, not weakened, by the branching map: row 0 is always Combat (see "The
   run's branching map" above), so a Shop node can never be reachable before at least one floor has
   cleared.
+  The tower curve itself later grew from 7 to 9 entries when Overload Cannon and Siphon Tower
+  shipped -- `unlock_overload_cannon` (`total_floors_cleared=8`) and `unlock_siphon`
+  (`runs_played=4`), each one notch past that curve's own prior maximum in its own counter family
+  (`unlock_lightning`'s `total_floors_cleared=5`, `unlock_beacon`'s `runs_played=3`) rather than
+  restarting either counter's progression from scratch.
   Once `META_UNLOCKS`' 7-tower curve started feeling exhausted too quickly (every tower unlocks
   within `runs_played<=3`), two more small, additive registries extended it to the *newest* relics
   and levels specifically -- `RelicMetaUnlock`/`RELIC_META_UNLOCKS` (`relic_key`/`counter`/`goal`,
@@ -1369,7 +1511,11 @@ removed, so a killing blow's own popup/flash still spawns at the position it lan
 being silently dropped. Adding a new transient visual effect anywhere in this codebase means
 following this same three-step shape: a class in `effects.py`, a per-frame event list on whatever
 produces the event, and one drain site in `Game.update()` -- never a new effect spawned directly
-from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering.
+from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering. The
+idiom generalizes past rendering too: `SiphonTower.pending_siphon_gold` (see that tower's own
+section above) is the same three-step shape applied to a real gameplay value instead of a visual
+one -- a per-tower accumulator populated with zero knowledge of `Economy`, drained by `Game.update()`
+into `self.economy.add_gold()` every frame.
 
 ### Audio
 
