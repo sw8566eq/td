@@ -6,6 +6,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-22
+
 ### Added
 
 - Two new towers: **Overload Cannon** (charges for several seconds locked onto one target, then
