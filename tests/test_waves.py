@@ -616,6 +616,57 @@ def test_default_endless_wave_compounds_across_repeated_calls():
     assert level.wave_specs[-1] == {(0, 0): {"grunt": 12}}
 
 
+def test_default_endless_wave_freezes_final_boss_count_instead_of_growing_it():
+    from waves import _default_endless_wave
+
+    level = make_level([{"final_boss": 1}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"final_boss": 1}}
+
+
+def test_default_endless_wave_freezes_final_boss_shielded_count_instead_of_growing_it():
+    from waves import _default_endless_wave
+
+    level = make_level([{"final_boss_shielded": 1}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"final_boss_shielded": 1}}
+
+
+def test_default_endless_wave_freezes_boss_species_while_growing_others_in_the_same_wave():
+    # Mirrors a real boss-tier level's own shape (see levels.py's
+    # LEVEL_16_WAVE_SPECS): a final_boss alongside regular species in the
+    # same spawn -- only the boss stays frozen, everything else escalates
+    # exactly as it would without one present.
+    from waves import _default_endless_wave
+
+    level = make_level([{"scout": 13, "flying": 8, "final_boss": 1}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"scout": 16, "flying": 10, "final_boss": 1}}
+
+
+def test_default_endless_wave_freezes_boss_species_across_repeated_calls():
+    from waves import _default_endless_wave
+
+    level = make_level([{"final_boss": 1}])
+    level.wave_specs.append(_default_endless_wave(level, wave_number=2))
+    level.wave_specs.append(_default_endless_wave(level, wave_number=3))
+    level.wave_specs.append(_default_endless_wave(level, wave_number=4))
+    assert level.wave_specs[-1] == {(0, 0): {"final_boss": 1}}
+
+
+def test_default_endless_wave_does_not_freeze_plain_boss_species():
+    # Regression guard: only the two final-boss species (whose own
+    # mechanics are live and periodically-triggered, not one-time) are
+    # exempt from growth -- plain BossEnemy, playable via an ordinary
+    # level's own generic "boss" entry in Survival mode, keeps escalating
+    # without limit exactly like every other species.
+    from waves import _default_endless_wave
+
+    level = make_level([{"boss": 1}])
+    next_wave = _default_endless_wave(level, wave_number=2)
+    assert next_wave == {(0, 0): {"boss": 2}}
+
+
 def test_enemy_hp_multiplier_also_scales_a_shielded_enemys_shield():
     level = make_level([{"shielded": 1}])
     manager = WaveManager(level, cell_to_pixel, spawn_interval=0.0, between_wave_delay=0.0,

@@ -309,16 +309,38 @@ class WaveManager:
             self.between_wave_timer = self.between_wave_delay
 
 
+
+# FinalBossEnemy/FinalBossShieldedEnemy each carry a live, periodically-
+# triggered, board-wide mechanic (reinforcement summons, a self-shield
+# pulse -- see enemy.py's own "Boss enemy mechanics" section in
+# CLAUDE.md) that doesn't compose the way a flat stat increase does: two
+# simultaneous copies isn't "twice as hard" the way double HP/speed
+# would be, it's two independent triggers piling up on top of each
+# other, growing chaotically rather than smoothly. Excluded from this
+# growth curve for that reason -- every boss-tier level's own authored
+# final wave has exactly one of these per spawn cell (see levels.py's
+# LEVEL_16/17_WAVE_SPECS), so this keeps it at exactly one for the rest
+# of that level's own endless tail, however long a run stays on it.
+# Deliberately narrow: plain BossEnemy (an ordinary level's own generic
+# "boss": N, playable in Survival mode) is NOT exempted -- its own
+# mechanics are one-time (Enrage/Armor), so a swarm of them is just more
+# tanky enemies, not a stacking-trigger problem, and endless mode's own
+# design is unbounded growth by intent everywhere else.
+_ENDLESS_GROWTH_EXEMPT_SPECIES = frozenset({"final_boss", "final_boss_shielded"})
+
+
 def _default_endless_wave(level, wave_number):
     """Extrapolate one more wave for endless/survival mode: keep the same
     per-spawn species mix as the immediately preceding wave
     (level.wave_specs[-1] -- whichever of the level's own last authored
     wave or a previously-generated endless one that is -- read *before*
     _advance_after_clear appends this new one), with every count bumped up
-    a bit further than last time. Growing relative to the previous wave
-    (rather than the level's original final wave) is what makes this
-    compound into unbounded escalation the longer a run goes, rather than
-    flattening out at some fixed ceiling above the authored content.
+    a bit further than last time, except _ENDLESS_GROWTH_EXEMPT_SPECIES
+    (see that constant's own comment), which stays frozen at whatever
+    count it already had. Growing relative to the previous wave (rather
+    than the level's original final wave) is what makes this compound into
+    unbounded escalation the longer a run goes, rather than flattening out
+    at some fixed ceiling above the authored content.
 
     `wave_number` (this new wave's 1-based number) isn't needed by this
     default growth curve, but is passed through for a custom
@@ -326,6 +348,9 @@ def _default_endless_wave(level, wave_number):
     number instead of the previous wave's own counts."""
     previous_wave = level.wave_specs[-1]
     return {
-        spawn_cell: {name: count + max(1, count // 4) for name, count in composition.items()}
+        spawn_cell: {
+            name: count if name in _ENDLESS_GROWTH_EXEMPT_SPECIES else count + max(1, count // 4)
+            for name, count in composition.items()
+        }
         for spawn_cell, composition in previous_wave.items()
     }
