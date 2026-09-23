@@ -31,8 +31,23 @@ jobs:
 
       - run: pip install -r requirements.txt # pygame, pytest, and pyinstaller together
 
-      # Don't ship a build the test suite itself wouldn't pass.
-      - run: pytest -q
+      # Same 3-step gate tests.yml runs on every push/PR -- a tag push used
+      # to skip straight to `pytest -q` with no lint/type/coverage-floor
+      # check of its own, so a release build's only quality gate was
+      # whatever tests.yml happened to already run on that commit (never
+      # guaranteed, since nothing stops tagging an arbitrary/local commit).
+      # Keep this in sync with tests.yml's own 3 steps by hand -- same
+      # already-accepted manual-sync tradeoff CLAUDE.md documents for the
+      # mypy module list itself (now a 4th copy of that list, not a new
+      # problem).
+      - run: ruff check .
+
+      - run: mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py run_escalation.py progress.py achievements.py
+
+      # Don't ship a build the test suite itself wouldn't pass -- same
+      # -v/--cov/--cov-fail-under=98 tests.yml runs, not the bare `pytest -q`
+      # this used to be.
+      - run: pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98
 
       # --onedir, deliberately not --onefile: --onefile re-extracts every
       # bundled file into a fresh temp directory on every single launch and

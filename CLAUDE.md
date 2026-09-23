@@ -1666,7 +1666,14 @@ under PyInstaller's `--onedir`, that resolves to the bundled `assets/` folder si
 the module itself regardless of launch directory, which is also why the release build step passes
 `--add-data "assets:assets"` to put it there in the first place.
 
-The workflow runs the full test suite before building (`pytest -q`) as a last line of defense, then
-tars up `dist/td` (a directory, not a single file -- `--onedir`'s whole point) and attaches it to
-the release via `gh release create`, using the pushed tag itself as both the release name and the
-archive's version suffix.
+The workflow runs the exact same 3-step gate `tests.yml` runs on every push/PR (`ruff check .`, the
+strict-mode `mypy` module list, `pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98`)
+before building, not just a bare `pytest -q` -- a tag push used to skip straight to the test suite
+with no lint/type/coverage-floor check of its own, so a release build's only quality gate was
+whatever `tests.yml` happened to already run on that commit, never structurally guaranteed (nothing
+stops tagging an arbitrary/local commit that skipped it). This makes the mypy module list a 4th
+copy across the repo (`pyproject.toml`'s override list, this file's Commands block, `tests.yml`,
+and now `release.yml`) -- the same manual-sync tradeoff already accepted above, not a new one. Once
+the gate passes, the workflow tars up `dist/td` (a directory, not a single file -- `--onedir`'s
+whole point) and attaches it to the release via `gh release create`, using the pushed tag itself as
+both the release name and the archive's version suffix.
