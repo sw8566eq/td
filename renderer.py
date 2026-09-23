@@ -80,6 +80,23 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.RUN_HISTORY:
+            ui.draw_run_history_screen(
+                game.screen, game.font, game.small_font,
+                game.run_history_state, game.run_history_scroll_offset, game.run_history_back_rect,
+            )
+            pygame.display.flip()
+            return
+
+        if game.state == GameState.UNLOCKS:
+            ui.draw_unlocks_screen(
+                game.screen, game.font, game.small_font,
+                game.unlocks_state["unlocked"], game.unlocks_state["counters"],
+                game.unlocks_scroll_offset, game.unlocks_back_rect,
+            )
+            pygame.display.flip()
+            return
+
         if game.state == GameState.HELP:
             ui.draw_help_screen(game.screen, game.font, game.small_font, game.help_back_rect)
             pygame.display.flip()

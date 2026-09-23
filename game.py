@@ -94,6 +94,16 @@ class GameState(Enum):
     ACHIEVEMENTS = auto()
     HELP = auto()
     CREDITS = auto()
+    # Read-only browsers for run_history.py/meta_progression.py's own
+    # on-disk state, both reachable straight from the menu (R/U) -- see
+    # Game._enter_run_history()/_enter_unlocks(). Unlike ACHIEVEMENTS'
+    # own small, fixed-size list, both scroll (Run History is genuinely
+    # unbounded; Unlocks' 4 registries combined already exceed a
+    # non-scrolling screen's row budget), so both share Esc's "back to
+    # menu" behavior with SETTINGS/ACHIEVEMENTS/HELP/CREDITS but get their
+    # own MOUSEWHEEL handling those four don't need.
+    RUN_HISTORY = auto()
+    UNLOCKS = auto()
     # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
     # curated subset of actions (see that module's own docstring for why
     # it's a subset, not every input_handler.py keydown check). Not folded
@@ -204,14 +214,32 @@ class Game:
         self.save_path = save_path or save_state.SAVE_PATH
         self._resumed_from_save = False
 
-        # Same injectable-path convention as the paths above. Neither needs
-        # an eagerly-loaded cached copy on Game the way achievements_state
-        # does -- there's no browse screen for either yet, only the read/
-        # write call sites in _record_meta_progress/_advance_run_floor/
-        # update()'s permadeath branch and card_pool.draft_offer's own
-        # default pool, each of which reads fresh at the point it matters.
+        # Same injectable-path convention as the paths above. Both also feed
+        # a real write call site independent of their own browse screen
+        # below (_record_meta_progress/_advance_run_floor/update()'s
+        # permadeath branch and card_pool.draft_offer's own default pool
+        # for meta_progression_path; _record_run_permadeath for
+        # run_history_path), each of which reads fresh at the point it
+        # matters rather than through the cached copy below.
         self.meta_progression_path = meta_progression_path or meta_progression.META_PROGRESSION_PATH
         self.run_history_path = run_history_path or run_history.RUN_HISTORY_PATH
+
+        # Eagerly-loaded cached copies, same "re-read fresh whenever the
+        # screen is (re-)entered" convention achievements_state above
+        # already follows (see _enter_run_history()/_enter_unlocks()) --
+        # needed here too, not just lazily on first entry, since the
+        # render() smoke test force-sets game.state across every GameState
+        # value without ever calling either _enter_* method first (see
+        # test_render_does_not_crash_in_any_state). Both screens scroll
+        # (see ui.py's own Run History/Unlocks sections), so each gets its
+        # own scroll_offset alongside achievements'/level_select's/
+        # wave_unit's own precedent, always reset to 0 on (re-)entry.
+        self.run_history_state = run_history.load_run_history(self.run_history_path)
+        self.run_history_scroll_offset = 0
+        self.run_history_back_rect = ui.build_run_history_back_rect()
+        self.unlocks_state = meta_progression.load_meta_progression(self.meta_progression_path)
+        self.unlocks_scroll_offset = 0
+        self.unlocks_back_rect = ui.build_unlocks_back_rect()
         # The active roguelike run, or None outside of one (classic/
         # Practice play, a map-editor playtest -- a Daily Run is still a
         # real run, see _start_daily_challenge). Same reset-inside-
@@ -1562,6 +1590,36 @@ class Game:
 
     def _handle_achievements_click(self, pos):
         return self.input_handler._handle_achievements_click(pos)
+
+    # --- Run History / Unlocks ---
+
+    def _enter_run_history(self):
+        # Same "always re-read" convention _enter_achievements() follows --
+        # a run's own result can have landed since this screen was last
+        # open (see _record_run_permadeath()). Always reopens scrolled to
+        # the top, same as _enter_level_select()'s own scroll_offset reset.
+        self.run_history_state = run_history.load_run_history(self.run_history_path)
+        self.run_history_scroll_offset = 0
+        self.state = GameState.RUN_HISTORY
+
+    def _handle_run_history_click(self, pos):
+        return self.input_handler._handle_run_history_click(pos)
+
+    def _scroll_run_history(self, wheel_y):
+        return self.input_handler._scroll_run_history(wheel_y)
+
+    def _enter_unlocks(self):
+        # Same "always re-read"/"reopens scrolled to the top" shape
+        # _enter_run_history() just above follows.
+        self.unlocks_state = meta_progression.load_meta_progression(self.meta_progression_path)
+        self.unlocks_scroll_offset = 0
+        self.state = GameState.UNLOCKS
+
+    def _handle_unlocks_click(self, pos):
+        return self.input_handler._handle_unlocks_click(pos)
+
+    def _scroll_unlocks(self, wheel_y):
+        return self.input_handler._scroll_unlocks(wheel_y)
 
     # --- Help / How to Play ---
 

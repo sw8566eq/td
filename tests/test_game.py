@@ -29,8 +29,10 @@ from conftest import (
 import achievements
 import difficulty
 import keybindings
+import meta_progression
 import player_settings
 import progress
+import run_history
 import save_state
 import settings
 import ui
@@ -2426,6 +2428,199 @@ def test_entering_achievements_reloads_state_from_disk(game):
 def test_render_achievements_screen_does_not_crash(game):
     game._enter_achievements()
     game.render()
+
+
+# --- Run History screen ---
+
+
+def test_menu_r_key_enters_run_history(game):
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RUN_HISTORY
+
+
+def test_run_history_escape_returns_to_menu(game):
+    game.state = GameState.RUN_HISTORY
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_run_history_unbound_key_is_a_no_op(game):
+    game.state = GameState.RUN_HISTORY
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.RUN_HISTORY
+
+
+def test_run_history_click_on_back_returns_to_menu(game):
+    game.state = GameState.RUN_HISTORY
+    game._handle_run_history_click(game.run_history_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_run_history_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.RUN_HISTORY
+    game._handle_run_history_click((0, 0))
+    assert game.state == GameState.RUN_HISTORY
+
+
+def test_entering_run_history_reloads_state_from_disk(game):
+    run_history.record_run_result(777, 4, game.run_history_path)
+    game._enter_run_history()
+    assert game.run_history_state == {777: 4}
+
+
+def test_render_run_history_screen_does_not_crash(game):
+    game._enter_run_history()
+    game.render()
+
+
+def _seed_many_run_history_entries(game, count):
+    # 20 entries comfortably overflows RUN_HISTORY_TOP..RUN_HISTORY_BOTTOM's
+    # own ~16-row viewport (see ui.py's own Run History section), forcing
+    # real scroll behavior rather than exercising only the "everything
+    # fits" path every other test above already covers.
+    for seed in range(count):
+        run_history.record_run_result(seed, seed % 6, game.run_history_path)
+    game._enter_run_history()
+
+
+def test_render_run_history_screen_with_entries_does_not_crash(game):
+    _seed_many_run_history_entries(game, 20)
+    game.render()  # exercises the per-row draw loop and the "more below" hint
+
+
+def test_scrolling_down_moves_the_run_history_offset(game):
+    _seed_many_run_history_entries(game, 20)
+    assert game.run_history_scroll_offset == 0
+    game._scroll_run_history(-1)  # wheel "down" gesture
+    assert game.run_history_scroll_offset > 0
+    game.render()  # now also exercises the "more above" hint
+
+
+def test_run_history_scroll_clamps_at_zero_and_at_max(game):
+    _seed_many_run_history_entries(game, 20)
+    game._scroll_run_history(1)  # can't scroll up past the top
+    assert game.run_history_scroll_offset == 0
+
+    max_scroll = ui.run_history_max_scroll(len(game.run_history_state))
+    for _ in range(50):
+        game._scroll_run_history(-1)
+    assert game.run_history_scroll_offset == max_scroll
+
+
+def test_entering_run_history_resets_scroll_to_the_top(game):
+    _seed_many_run_history_entries(game, 20)
+    game._scroll_run_history(-3)
+    assert game.run_history_scroll_offset > 0
+
+    game._enter_run_history()  # re-entering (e.g. via R again) starts back at the top
+    assert game.run_history_scroll_offset == 0
+
+
+def test_run_history_entries_sorts_by_floors_cleared_descending():
+    best_floors_cleared = {1: 3, 2: 9, 3: 1}
+    assert ui.run_history_entries(best_floors_cleared) == [(2, 9), (1, 3), (3, 1)]
+
+
+def test_run_history_entries_is_empty_for_empty_state():
+    assert ui.run_history_entries({}) == []
+
+
+# --- Unlocks screen ---
+
+
+def test_menu_u_key_enters_unlocks(game):
+    game._handle_keydown(pygame.K_u)
+    assert game.state == GameState.UNLOCKS
+
+
+def test_unlocks_escape_returns_to_menu(game):
+    game.state = GameState.UNLOCKS
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU
+
+
+def test_unlocks_unbound_key_is_a_no_op(game):
+    game.state = GameState.UNLOCKS
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.UNLOCKS
+
+
+def test_unlocks_click_on_back_returns_to_menu(game):
+    game.state = GameState.UNLOCKS
+    game._handle_unlocks_click(game.unlocks_back_rect.center)
+    assert game.state == GameState.MENU
+
+
+def test_unlocks_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.UNLOCKS
+    game._handle_unlocks_click((0, 0))
+    assert game.state == GameState.UNLOCKS
+
+
+def test_entering_unlocks_reloads_state_from_disk(game):
+    meta_progression.bump("total_floors_cleared", amount=1, path=game.meta_progression_path)  # unlocks Knockback
+    game._enter_unlocks()
+    assert "unlock_knockback" in game.unlocks_state["unlocked"]
+
+
+def test_render_unlocks_screen_does_not_crash(game):
+    game._enter_unlocks()
+    game.render()
+
+
+def test_render_unlocks_screen_with_an_unlocked_entry_does_not_crash(game):
+    # The blanket render-every-state smoke test only ever sees a fresh,
+    # nothing-unlocked meta_progression.json -- exercises the "Unlocked"
+    # (gold) status branch draw_unlocks_screen's default fixture can't.
+    meta_progression.bump("total_floors_cleared", amount=1, path=game.meta_progression_path)
+    game._enter_unlocks()
+    game.render()
+
+
+def test_scrolling_down_moves_the_unlocks_offset(game):
+    # Unlike Run History, Unlocks already has enough real registry entries
+    # (17 + 4 section headers) to overflow its own viewport with zero
+    # extra fixture data -- see ui.py's own Unlocks section docstring.
+    game._enter_unlocks()
+    assert game.unlocks_scroll_offset == 0
+    game._scroll_unlocks(-1)  # wheel "down" gesture
+    assert game.unlocks_scroll_offset > 0
+    game.render()  # now also exercises the "more above" hint
+
+
+def test_unlocks_scroll_clamps_at_zero_and_at_max(game):
+    game._enter_unlocks()
+    game._scroll_unlocks(1)  # can't scroll up past the top
+    assert game.unlocks_scroll_offset == 0
+
+    max_scroll = ui.unlocks_max_scroll(len(ui.unlocks_display_rows()))
+    for _ in range(50):
+        game._scroll_unlocks(-1)
+    assert game.unlocks_scroll_offset == max_scroll
+
+
+def test_entering_unlocks_resets_scroll_to_the_top(game):
+    game._enter_unlocks()
+    game._scroll_unlocks(-3)
+    assert game.unlocks_scroll_offset > 0
+
+    game._enter_unlocks()  # re-entering (e.g. via U again) starts back at the top
+    assert game.unlocks_scroll_offset == 0
+
+
+def test_unlocks_display_rows_has_one_header_per_non_empty_section():
+    rows = ui.unlocks_display_rows()
+    headers = [text for is_header, text, _key, _unlock in rows if is_header]
+    assert headers == ["Towers", "Relics", "Levels", "Shop"]
+
+
+def test_unlocks_display_rows_entry_count_matches_all_unlocks():
+    rows = ui.unlocks_display_rows()
+    entries = [row for row in rows if not row[0]]
+    assert len(entries) == (
+        len(meta_progression.META_UNLOCKS) + len(meta_progression.RELIC_META_UNLOCKS)
+        + len(meta_progression.LEVEL_META_UNLOCKS) + len(meta_progression.SHOP_META_UNLOCKS)
+    )
 
 
 # --- Help / How to Play screen ---

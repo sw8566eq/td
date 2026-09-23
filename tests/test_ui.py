@@ -99,6 +99,8 @@ from ui import (
     get_clicked_wave_unit_button,
     level_select_content_height,
     level_select_max_scroll,
+    list_content_height,
+    list_max_scroll,
     menu_options,
     wave_unit_content_height,
     wave_unit_max_scroll,
@@ -128,6 +130,8 @@ def test_menu_options_lists_every_key_in_documented_order():
         "H -- How to Play",
         "D -- Daily Run",
         "B -- Credits",
+        "R -- Run History",
+        "U -- Unlocks",
     ]
 
 
@@ -964,6 +968,53 @@ def test_level_select_max_scroll_is_positive_once_content_overflows_the_viewport
     max_scroll = level_select_max_scroll(overflowing_count)
     assert max_scroll > 0
     assert max_scroll == level_select_content_height(overflowing_count) - viewport_height
+
+
+# --- Generic scrollable-list helper (shared by level_select/wave_unit/
+# Run History/Unlocks) ---
+
+
+def test_list_content_height_is_zero_for_no_entries():
+    assert list_content_height(0, row_height=40, row_gap=10) == 0
+
+
+def test_list_content_height_has_no_trailing_gap():
+    assert list_content_height(1, row_height=40, row_gap=10) == 40
+    assert list_content_height(2, row_height=40, row_gap=10) == 90  # 40 + 10 + 40, not +10 again
+
+
+def test_list_content_height_with_zero_gap_matches_wave_unit_shape():
+    # wave_unit_content_height's own row stride already includes its gap
+    # (row_gap=0) -- confirms the generic helper reduces to that exact
+    # shape rather than double-counting a gap that doesn't exist.
+    assert list_content_height(3, row_height=32, row_gap=0) == 96
+
+
+def test_list_max_scroll_is_zero_when_everything_fits():
+    assert list_max_scroll(0, row_height=40, row_gap=10, viewport_top=0, viewport_bottom=500) == 0
+    assert list_max_scroll(1, row_height=40, row_gap=10, viewport_top=0, viewport_bottom=500) == 0
+
+
+def test_list_max_scroll_is_positive_once_content_overflows_the_viewport():
+    max_scroll = list_max_scroll(20, row_height=40, row_gap=10, viewport_top=0, viewport_bottom=100)
+    assert max_scroll > 0
+    assert max_scroll == list_content_height(20, row_height=40, row_gap=10) - 100
+
+
+def test_level_select_max_scroll_matches_the_generic_helper_directly():
+    # level_select_max_scroll/wave_unit_max_scroll are now thin wrappers --
+    # confirms they still agree with the generic function they delegate to.
+    count = 25
+    assert level_select_max_scroll(count) == list_max_scroll(
+        count, LEVEL_SELECT_ROW_HEIGHT, LEVEL_SELECT_ROW_GAP, LEVEL_SELECT_TOP, LEVEL_SELECT_BOTTOM,
+    )
+
+
+def test_wave_unit_max_scroll_matches_the_generic_helper_directly():
+    count = 25
+    assert wave_unit_max_scroll(count) == list_max_scroll(
+        count, WAVE_UNIT_ROW_HEIGHT, 0, WAVE_UNIT_ROWS_TOP, WAVE_UNIT_ROWS_BOTTOM,
+    )
 
 
 def test_build_level_select_rects_shifts_rows_up_by_the_scroll_offset():
