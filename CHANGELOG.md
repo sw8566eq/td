@@ -6,6 +6,45 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ## [Unreleased]
 
+### Added
+
+- Two new menu screens for data that was already being tracked but never had a viewer: **Run
+  History** (every seed you've played and its best floors-cleared result, sorted best-first) and
+  **Unlocks** (a live checklist of every account-wide tower/relic/level/Shop unlock, showing
+  progress toward whichever's still locked).
+- 8 new achievements (11 -> 19): collecting relics across your runs, playing Daily Runs, resolving
+  Random Events, and placing a Siphon Tower or Overload Cannon for the first time.
+- A **Run Guide** screen, reached from Help, explaining the run's own branching-map node types
+  (Combat/Elite/Shop/Event/Rest/Treasure/Boss) and the 5 status effects (Marked/Slowed/Poisoned/
+  Shielded/Knockback) for players who want more than the Help screen's own controls-only reference.
+- A real MIT license (see `LICENSE`) and a real Credits screen, replacing a long-standing
+  "License: TBD." placeholder -- Credits now also properly attributes the bundled Kenney CC0 art.
+
+### Fixed
+
+- Endless mode's final-boss species (`FinalBossEnemy`/`FinalBossShieldedEnemy`) no longer multiplies
+  without limit deep in a boss floor's endless tail -- both mechanics (periodic reinforcement
+  summons, a self-shield pulse) are live and recurring, not a one-time stat bump, so an unbounded
+  count would have made a long endless run on a boss floor field an ever-growing swarm of
+  simultaneous final bosses. Every other species still escalates without limit, exactly as
+  endless mode's own design intends.
+- A real, previously-uncaught layout bug: a scrollable list's "more above"/"more below" hint used to
+  render directly inside the same viewport as its rows, visually colliding with whatever row
+  happened to land in that same handful of pixels. Fixed across every scrollable screen (Run
+  History, Unlocks, the retrofitted Achievements screen) by reserving a small margin exclusively
+  for hints, kept structurally separate from the row-drawing viewport.
+
+### Engineering
+
+- `game.py` decomposition, phase 4: the Settings/Display/Audio/Keybindings cluster extracted into
+  `SettingsManager` (`settings_manager.py`), following the same one-line-delegator shape as the
+  three prior extractions (`Renderer`, `InputHandler`, `ProgressTracker`).
+- `release.yml` now runs the same `ruff`/`mypy`/coverage-floor gate `tests.yml` already runs on
+  every push/PR, not just a bare test run, before building a release binary.
+- A generic scrollable-list helper (`ui.list_max_scroll`, `InputHandler._scroll_list`) factored out
+  of level-select's and the wave editor's own previously-independent copies of the same scroll math,
+  now shared by both of those plus the three screens above.
+
 ## [0.5.0] - 2026-09-22
 
 ### Added
