@@ -28,6 +28,7 @@ import run_history
 import run_map
 import save_state
 import settings
+import settings_manager
 import shop
 import spatial_index
 import ui
@@ -281,50 +282,24 @@ class Game:
         # _delete_save_if_this_run_was_resumed().
         self.has_saved_run = save_state.has_saved_run(self.save_path)
 
-        # Persisted player preferences -- fullscreen and difficulty were the
-        # first genuinely cross-session prefs this game had (unlike
-        # time_scale/unlimited_gold above), so they're written through
-        # immediately on change rather than only on quit -- see
-        # set_fullscreen()/set_difficulty()/set_window_size().
+        # Injectable paths for settings_manager.SettingsManager below, same
+        # convention as every other path on Game -- kept as plain attribute
+        # assignment here (not inside SettingsManager itself) since
+        # settings_path/keybindings_path are trivial path config, no
+        # different from achievements_path/save_path/etc. just above.
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
-        saved_settings = player_settings.load_settings(self.settings_path)
-        self.fullscreen = saved_settings["fullscreen"]
-        self.sound_enabled = saved_settings["sound_enabled"]
-        self.sound_volume = saved_settings["sound_volume"]
-        # Windowed size -- read here so the very first apply_display_mode()
-        # call below already restores it (today's actual prior behavior:
-        # dragging the window to a new size was never persisted across a
-        # relaunch at all; see set_window_size()/the VIDEORESIZE handler
-        # for how this now stays current, preset click or organic drag
-        # alike). Meaningless while fullscreen, same as a drag already
-        # being ignored there -- see apply_display_mode's own docstring.
-        self.window_size = tuple(saved_settings["window_size"])
-        # Which difficulty.DIFFICULTY_MODES entry is currently active --
-        # read at _load_level_object time, so changing it mid-level has no
-        # effect until the next load_level()/reset() (same "applies on next
-        # load" semantics unlimited_gold already has).
-        self.difficulty = saved_settings["difficulty"]
-        if self.difficulty not in difficulty.DIFFICULTY_MODES:
-            self.difficulty = difficulty.DEFAULT_DIFFICULTY
-
-        # Same injectable-path convention as settings_path above, kept as
-        # a genuinely separate file/module from player_settings.py rather
-        # than one more key in that file's own dict -- see keybindings.py's
-        # own docstring for why key remapping only covers this one small
-        # registry of actions, not every input_handler.py keydown check.
         self.keybindings_path = keybindings_path or keybindings.BINDINGS_PATH
-        self.keybindings = keybindings.load_bindings(self.keybindings_path)
-        # GameState.KEYBINDS' own transient UI state: which action (if
-        # any) is currently waiting for its next keydown to become its new
-        # binding, and the last outcome to show on screen ("Rebound.",
-        # "Esc is reserved...", "Already used by ..."). Both reset fresh
-        # on _enter_keybinds(), same "computed fresh, not left stale from
-        # a previous visit" spirit as draft_choices/current_event.
-        self.keybind_listening_for = None
-        self.keybind_message = None
 
         pygame.init()
-        self.apply_display_mode()
+        # Constructed early, interleaved with pygame.init(), unlike
+        # Renderer/InputHandler/ProgressTracker below (all constructed late,
+        # once everything they read already exists) -- SettingsManager's own
+        # __init__ loads player_settings/keybindings and calls its own
+        # apply_display_mode() to create self.screen, which
+        # pygame.display.set_caption() below needs to already exist. See
+        # settings_manager.py's own module docstring for the full ordering
+        # rationale.
+        self.settings_manager = settings_manager.SettingsManager(self)
         pygame.display.set_caption(settings.WINDOW_TITLE)
         self.clock = pygame.time.Clock()
 
@@ -1102,130 +1077,45 @@ class Game:
         # of re-deriving the subject from the click-time mouse position.
         self._last_panel_subject = None
 
-    def apply_display_mode(self, size=None):
-        """(Re)create self.screen for the current self.fullscreen setting,
-        at `size` pixels -- defaults to self.window_size (the persisted
-        windowed size, itself defaulting to settings.SCREEN_WIDTH/HEIGHT --
-        see player_settings.DEFAULTS). Overridden explicitly by
-        set_window_size() (a Settings-screen preset click) and by
-        handle_events()'s pygame.VIDEORESIZE case (an organic drag) --
-        both also update self.window_size itself, so the *next* bare call
-        here (e.g. toggling fullscreen back off) still lands on whatever
-        size the player last actually chose, not silently back to the
-        hardcoded default.
-
-        pygame.SCALED (rendering at a fixed logical resolution, letterboxed
-        by SDL to whatever physical size the window becomes) was the first
-        choice here -- every Rect/pygame.mouse.get_pos() call in ui.py/
-        game.py would have kept working unmodified, since pygame reports
-        mouse coordinates in logical space under SCALED. Dropped: SCALED
-        allocates an SDL renderer, and constructing a second Game in the
-        same process without an intervening pygame.quit() -- which several
-        tests do, and which is otherwise perfectly safe -- fails with
-        "failed to create renderer" under the SDL dummy video driver this
-        whole suite runs under. Plain RESIZABLE has no such renderer and
-        needs no such teardown; the tradeoff is that dragging the window
-        to a non-16:PLAY_WIDTH+PANEL_WIDTH:9-ish aspect ratio just shows
-        more/less background (handled by re-running set_mode() at the new
-        size on VIDEORESIZE, same as this method's own default case)
-        rather than rescaling the content."""
-        flags = pygame.RESIZABLE
-        if self.fullscreen:
-            flags |= pygame.FULLSCREEN
-        self.screen = pygame.display.set_mode(size or self.window_size, flags)
-
+    # Settings/Display/Audio/Keybindings cluster -- extracted into
+    # settings_manager.SettingsManager (the fourth game.py-decomposition
+    # slice; see that module's own docstring). apply_display_mode/
+    # _save_player_settings/_save_keybindings have no delegator here at all
+    # (confirmed via grep: called only by their own cluster siblings, never
+    # from input_handler.py or a test) -- the same "private helper, no
+    # shim" shape progress_tracker.py already established.
     def set_fullscreen(self, value):
-        self.fullscreen = bool(value)
-        self.apply_display_mode()
-        self._save_player_settings()
+        return self.settings_manager.set_fullscreen(value)
 
     def set_sound_enabled(self, value):
-        self.sound_enabled = bool(value)
-        self.audio.set_enabled(self.sound_enabled)
-        self._save_player_settings()
+        return self.settings_manager.set_sound_enabled(value)
 
     def set_sound_volume(self, value):
-        self.sound_volume = max(0.0, min(1.0, value))
-        self.audio.set_volume(self.sound_volume)
-        self._save_player_settings()
+        return self.settings_manager.set_sound_volume(value)
 
     def adjust_sound_volume(self, direction):
-        """direction is +1 or -1 -- one Settings-screen Volume -/+ click's
-        worth of change, clamped by set_sound_volume itself so repeatedly
-        clicking past either extreme is a harmless no-op rather than
-        something this method also needs to guard against."""
-        self.set_sound_volume(self.sound_volume + direction * self.SOUND_VOLUME_STEP)
+        return self.settings_manager.adjust_sound_volume(direction)
 
     def set_difficulty(self, key):
-        if key in difficulty.DIFFICULTY_MODES:
-            self.difficulty = key
-            self._save_player_settings()
+        return self.settings_manager.set_difficulty(key)
 
     def set_window_size(self, size):
-        """A Settings-screen preset click -- see the VIDEORESIZE handler in
-        handle_events() for the other way self.window_size changes (an
-        organic drag), which persists through this same field/save call."""
-        if self.fullscreen:
-            return  # meaningless while fullscreen, same as a drag already being ignored there
-        self.window_size = tuple(size)
-        self.apply_display_mode(self.window_size)
-        self._save_player_settings()
-
-    def _save_player_settings(self):
-        player_settings.save_settings(
-            {
-                "fullscreen": self.fullscreen,
-                "sound_enabled": self.sound_enabled,
-                "sound_volume": self.sound_volume,
-                "difficulty": self.difficulty,
-                "window_size": list(self.window_size),
-            },
-            self.settings_path,
-        )
+        return self.settings_manager.set_window_size(size)
 
     def _enter_keybinds(self):
-        self.state = GameState.KEYBINDS
-        self.keybind_listening_for = None
-        self.keybind_message = None
+        return self.settings_manager._enter_keybinds()
 
     def rebind_action(self, action, key, mods):
-        """Apply a captured (key, mods) as `action`'s new binding, or
-        reject it -- leaving the existing binding untouched -- if the key
-        is globally reserved (keybindings.RESERVED_KEYS) or already used
-        by another action in the same dispatch group
-        (keybindings.find_conflict); same "reject silently, don't crash"
-        precedent try_place_tower's own unbuildable-spot case sets,
-        except this one does set a message (self.keybind_message) either
-        way, since GameState.KEYBINDS has nothing else on screen to show
-        the player *why* a click didn't do what they expected. Returns
-        whether the rebind actually applied, mainly for tests."""
-        if keybindings.is_reserved(key):
-            self.keybind_message = "Esc is reserved and can't be rebound."
-            return False
-        conflict = keybindings.find_conflict(self.keybindings, action, key, mods)
-        if conflict is not None:
-            self.keybind_message = f"Already used by {keybindings.ACTION_LABELS[conflict]}."
-            return False
-        self.keybindings[action] = (key, mods)
-        self._save_keybindings()
-        self.keybind_message = f"{keybindings.ACTION_LABELS[action]} rebound."
-        return True
+        return self.settings_manager.rebind_action(action, key, mods)
 
     def reset_keybindings(self):
-        self.keybindings = dict(keybindings.DEFAULT_BINDINGS)
-        self._save_keybindings()
-        self.keybind_message = "Reset to defaults."
-
-    def _save_keybindings(self):
-        keybindings.save_bindings(self.keybindings, self.keybindings_path)
+        return self.settings_manager.reset_keybindings()
 
     def set_time_scale(self, scale):
-        if scale in self.TIME_SCALES:
-            self.time_scale = scale
+        return self.settings_manager.set_time_scale(scale)
 
     def cycle_time_scale(self):
-        index = self.TIME_SCALES.index(self.time_scale)
-        self.time_scale = self.TIME_SCALES[(index + 1) % len(self.TIME_SCALES)]
+        return self.settings_manager.cycle_time_scale()
 
     def reset(self):
         """Restart whatever's currently loaded, exactly as it was when

@@ -1357,9 +1357,10 @@ SETTINGS_TOP = 160
 # own one-button-per-choice shape below), not a cycling toggle or a
 # dropdown. Every preset is >= the game's own fixed content size
 # (settings.SCREEN_WIDTH/HEIGHT, the first entry here) since dragging/
-# resizing under plain RESIZABLE never rescales that content (see Game.
-# apply_display_mode's own docstring) -- anything smaller would just clip
-# the grid or the stats panel, not shrink to fit.
+# resizing under plain RESIZABLE never rescales that content (see
+# settings_manager.SettingsManager.apply_display_mode's own docstring) --
+# anything smaller would just clip the grid or the stats panel, not shrink
+# to fit.
 WINDOW_SIZE_PRESETS = {
     "window_1200x704": (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT),  # Default -- exact content size
     "window_1440x840": (1440, 840),
