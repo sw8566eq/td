@@ -18,6 +18,12 @@ from difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from enemy import ENEMY_TYPES
 from keybindings import ACTION_LABELS, ACTION_ORDER
 from levels import LEVELS
+from meta_progression import (
+    LEVEL_META_UNLOCKS,
+    META_UNLOCKS,
+    RELIC_META_UNLOCKS,
+    SHOP_META_UNLOCKS,
+)
 from relics import RELICS
 from shop import can_afford, price_for
 from tower import TOWER_TYPES
@@ -1317,6 +1323,8 @@ MENU_KEY_HINTS = [
     # same spirit as "d" for Daily Run being the mnemonic exception, not
     # every letter here being one.
     ("b", "Credits"),
+    ("r", "Run History"),
+    ("u", "Unlocks"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -1666,6 +1674,223 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
         text = small_font.render(line, True, color)
         surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += ACHIEVEMENT_ROW_HEIGHT
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
+
+
+# --- Run History screen ---
+#
+# Read-only browser for run_history.py's own {seed: best_floors_cleared}
+# state -- persisted since M4c/Daily Run shipped, but never had a viewer
+# until now (see the v1.0 roadmap). Genuinely unbounded (one entry per
+# distinct seed ever played), unlike Achievements' small fixed registry,
+# so this scrolls via the generic list_max_scroll helper above, and its
+# Back button sits at a FIXED position below a fixed viewport bottom
+# rather than one computed from entry count (which Achievements'
+# build_achievements_back_rect can do specifically because
+# ACHIEVEMENT_ORDER is bounded) -- same "fixed action area below a
+# scrollable viewport" shape the wave editor sidebar's own Playtest/Save/
+# Back buttons already use below WAVE_UNIT_ROWS_BOTTOM.
+
+RUN_HISTORY_TOP = 90
+RUN_HISTORY_ROW_HEIGHT = 30
+RUN_HISTORY_SCROLL_STEP = RUN_HISTORY_ROW_HEIGHT  # one row per wheel click
+RUN_HISTORY_BOTTOM = settings.SCREEN_HEIGHT - 130
+# A dedicated strip at the top/bottom of (RUN_HISTORY_TOP, RUN_HISTORY_
+# BOTTOM), reserved for the "more above"/"more below" hints and kept
+# entirely separate from the row-drawing viewport below (RUN_HISTORY_
+# ROWS_TOP..RUN_HISTORY_ROWS_BOTTOM) -- found live via the run-td driver
+# that drawing a hint directly inside the row viewport (the original,
+# simpler version of this) visually collided with whatever row happened
+# to land in that same few pixels, garbling both. Always reserved,
+# whether or not a hint is actually showing at the moment (a dynamically-
+# sized viewport would make rows jump around as scroll_offset changes),
+# which is also why this feeds into run_history_max_scroll's own viewport
+# bounds below, not just the drawing code.
+RUN_HISTORY_HINT_MARGIN = 20
+RUN_HISTORY_ROWS_TOP = RUN_HISTORY_TOP + RUN_HISTORY_HINT_MARGIN
+RUN_HISTORY_ROWS_BOTTOM = RUN_HISTORY_BOTTOM - RUN_HISTORY_HINT_MARGIN
+RUN_HISTORY_BACK_BUTTON_WIDTH = 240
+RUN_HISTORY_BACK_BUTTON_HEIGHT = 40
+RUN_HISTORY_BACK_BUTTON_GAP = 24
+
+
+def run_history_entries(best_floors_cleared):
+    """[(seed, floors_cleared), ...] sorted by floors_cleared descending --
+    the one sort that needs no UI control, since a per-seed value is
+    already a *max* (see run_history.py's own docstring) and there's no
+    timestamp to sort by recency instead. Pulled out as its own pure
+    function, same "unit-testable directly" spirit as menu_options()."""
+    return sorted(best_floors_cleared.items(), key=lambda item: item[1], reverse=True)
+
+
+def run_history_max_scroll(entry_count):
+    return list_max_scroll(
+        entry_count, RUN_HISTORY_ROW_HEIGHT, 0, RUN_HISTORY_ROWS_TOP, RUN_HISTORY_ROWS_BOTTOM,
+    )
+
+
+def build_run_history_back_rect():
+    x = (settings.SCREEN_WIDTH - RUN_HISTORY_BACK_BUTTON_WIDTH) // 2
+    y = RUN_HISTORY_BOTTOM + RUN_HISTORY_BACK_BUTTON_GAP
+    return pygame.Rect(x, y, RUN_HISTORY_BACK_BUTTON_WIDTH, RUN_HISTORY_BACK_BUTTON_HEIGHT)
+
+
+def draw_run_history_screen(surface, font, small_font, best_floors_cleared, scroll_offset, back_rect):
+    """`best_floors_cleared` is run_history.load_run_history()'s own
+    return value -- read fresh whenever this screen is (re-)entered (see
+    Game._enter_run_history()), same "always re-read" spirit
+    _enter_achievements() already follows."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Run History", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    entries = run_history_entries(best_floors_cleared)
+    if not entries:
+        hint = small_font.render("No runs played yet.", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(center=(settings.SCREEN_WIDTH // 2, RUN_HISTORY_ROWS_TOP + 20)))
+
+    viewport = pygame.Rect(0, RUN_HISTORY_ROWS_TOP, settings.SCREEN_WIDTH, RUN_HISTORY_ROWS_BOTTOM - RUN_HISTORY_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+
+    y = RUN_HISTORY_ROWS_TOP - scroll_offset
+    for seed, floors_cleared in entries:
+        row_rect = pygame.Rect(0, y, settings.SCREEN_WIDTH, RUN_HISTORY_ROW_HEIGHT)
+        if row_rect.colliderect(viewport):
+            plural = "" if floors_cleared == 1 else "s"
+            line = f"Seed {seed} -- {floors_cleared} floor{plural} cleared"
+            text = small_font.render(line, True, settings.COLOR_TEXT)
+            surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += RUN_HISTORY_ROW_HEIGHT
+
+    surface.set_clip(previous_clip)
+
+    max_scroll = run_history_max_scroll(len(entries))
+    if max_scroll > 0:
+        if scroll_offset > 0:
+            more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, RUN_HISTORY_TOP + 4)))
+        if scroll_offset < max_scroll:
+            more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, RUN_HISTORY_BOTTOM - 4)))
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
+
+
+# --- Unlocks screen ---
+#
+# Read-only browser for meta_progression.py's 4 account-wide unlock
+# registries (Towers/Relics/Levels/Shop) -- same "doubles as a progress
+# tracker" spirit as the Achievements screen above (a locked entry shows
+# its live progress toward its own goal, not just "Locked"), but combined
+# across all 4 registries in one scrollable list rather than Achievements'
+# own single bounded one. 17 entries plus 4 section headers already
+# exceeds a non-scrolling screen's row budget, so this scrolls from day
+# one via the same generic list_max_scroll helper Run History uses above,
+# with the same fixed-position-Back-button shape for the same reason.
+
+UNLOCKS_TOP = 90
+UNLOCKS_ROW_HEIGHT = 30
+UNLOCKS_SCROLL_STEP = UNLOCKS_ROW_HEIGHT  # one row per wheel click
+UNLOCKS_BOTTOM = settings.SCREEN_HEIGHT - 130
+# Same dedicated hint margin as RUN_HISTORY_HINT_MARGIN, for the identical
+# reason -- see that constant's own comment.
+UNLOCKS_HINT_MARGIN = 20
+UNLOCKS_ROWS_TOP = UNLOCKS_TOP + UNLOCKS_HINT_MARGIN
+UNLOCKS_ROWS_BOTTOM = UNLOCKS_BOTTOM - UNLOCKS_HINT_MARGIN
+UNLOCKS_BACK_BUTTON_WIDTH = 240
+UNLOCKS_BACK_BUTTON_HEIGHT = 40
+UNLOCKS_BACK_BUTTON_GAP = 24
+
+# (section label, registry, the attribute naming its unlocked content,
+# a function from that attribute's value to a display name) -- one
+# section per meta_progression.py registry, each in that registry's own
+# insertion order. ShopMetaUnlock has no content attribute of its own (it
+# gates a Shop *behavior*, not a specific tower/relic/level id -- see
+# that class's own docstring), hence the None/fixed-string pair, mirroring
+# ProgressTracker._queue_meta_unlock_toasts' own trailing-else dispatch.
+UNLOCKS_SECTIONS = [
+    ("Towers", META_UNLOCKS, "tower_name", lambda name: TOWER_TYPES[name].display_name),
+    ("Relics", RELIC_META_UNLOCKS, "relic_key", lambda key: RELICS[key].display_name),
+    ("Levels", LEVEL_META_UNLOCKS, "level_id", lambda level_id: LEVELS[level_id].name),
+    ("Shop", SHOP_META_UNLOCKS, None, lambda _content: "3rd Shop relic offer slot"),
+]
+
+
+def unlocks_display_rows():
+    """Flat (is_header, text, key, unlock) rows spanning every
+    UNLOCKS_SECTIONS registry, one header row per non-empty section --
+    pulled out as its own pure function, same "unit-testable directly"
+    spirit as menu_options()/run_history_entries() above. `key`/`unlock`
+    are both None on a header row (there's nothing to look up progress
+    for); `unlock` is the actual MetaUnlock/RelicMetaUnlock/
+    LevelMetaUnlock/ShopMetaUnlock instance for an entry row, so the
+    caller never needs a second registry lookup to read its
+    counter/goal."""
+    rows = []
+    for section_name, registry, content_attr, display_name_fn in UNLOCKS_SECTIONS:
+        if not registry:
+            continue
+        rows.append((True, section_name, None, None))
+        for key, unlock in registry.items():
+            content = getattr(unlock, content_attr) if content_attr else None
+            rows.append((False, display_name_fn(content), key, unlock))
+    return rows
+
+
+def unlocks_max_scroll(row_count):
+    return list_max_scroll(row_count, UNLOCKS_ROW_HEIGHT, 0, UNLOCKS_ROWS_TOP, UNLOCKS_ROWS_BOTTOM)
+
+
+def build_unlocks_back_rect():
+    x = (settings.SCREEN_WIDTH - UNLOCKS_BACK_BUTTON_WIDTH) // 2
+    y = UNLOCKS_BOTTOM + UNLOCKS_BACK_BUTTON_GAP
+    return pygame.Rect(x, y, UNLOCKS_BACK_BUTTON_WIDTH, UNLOCKS_BACK_BUTTON_HEIGHT)
+
+
+def draw_unlocks_screen(surface, font, small_font, unlocked_keys, counters, scroll_offset, back_rect):
+    """`unlocked_keys`/`counters` are meta_progression.load_meta_progression()'s
+    own "unlocked"/"counters" values -- read fresh whenever this screen is
+    (re-)entered (see Game._enter_unlocks()), same convention
+    draw_achievements_screen's own docstring already follows."""
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Unlocks", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    rows = unlocks_display_rows()
+    viewport = pygame.Rect(0, UNLOCKS_ROWS_TOP, settings.SCREEN_WIDTH, UNLOCKS_ROWS_BOTTOM - UNLOCKS_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+
+    y = UNLOCKS_ROWS_TOP - scroll_offset
+    for is_header, text, key, unlock in rows:
+        row_rect = pygame.Rect(0, y, settings.SCREEN_WIDTH, UNLOCKS_ROW_HEIGHT)
+        if row_rect.colliderect(viewport):
+            if is_header:
+                rendered = small_font.render(text, True, settings.COLOR_TEXT)
+            else:
+                if key in unlocked_keys:
+                    status, color = "Unlocked", settings.COLOR_GOLD
+                else:
+                    progress_value = min(counters.get(unlock.counter, 0), unlock.goal)
+                    status, color = f"{progress_value}/{unlock.goal}", settings.COLOR_TEXT_DIM
+                rendered = small_font.render(f"{text} ({status})", True, color)
+            surface.blit(rendered, rendered.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y += UNLOCKS_ROW_HEIGHT
+
+    surface.set_clip(previous_clip)
+
+    max_scroll = unlocks_max_scroll(len(rows))
+    if max_scroll > 0:
+        if scroll_offset > 0:
+            more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, UNLOCKS_TOP + 4)))
+        if scroll_offset < max_scroll:
+            more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, UNLOCKS_BOTTOM - 4)))
 
     _draw_back_to_menu_button(surface, small_font, back_rect)
     _draw_escape_hint(surface, small_font)
@@ -2089,6 +2314,37 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects,
             surface.blit(text, (x, status_y + PANEL_ROW_HEIGHT * line_index))
 
 
+# --- Scrollable list helper (shared) ---
+#
+# The generic "more rows than fit a fixed viewport" math every scrollable
+# list screen in this codebase needs -- factored out once level_select's
+# and the wave editor's own already-independent, structurally identical
+# copies (level_select_content_height/level_select_max_scroll vs.
+# wave_unit_content_height/wave_unit_max_scroll, both now thin wrappers
+# around this) would otherwise have become 3 and 4 copies of the same
+# formula once the Run History and Unlocks screens needed it too. A list
+# with no separate inter-row gap (wave_unit's own rows, where
+# WAVE_UNIT_ROW_HEIGHT already is each row's full stride) just passes
+# row_gap=0.
+
+
+def list_content_height(entry_count, row_height, row_gap):
+    """Total stacked height of `entry_count` rows at `row_height` each,
+    `row_gap` between consecutive rows (not a trailing gap after the
+    last one)."""
+    if entry_count == 0:
+        return 0
+    return entry_count * (row_height + row_gap) - row_gap
+
+
+def list_max_scroll(entry_count, row_height, row_gap, viewport_top, viewport_bottom):
+    """How far a scrollable list can scroll before its last row reaches
+    the bottom of its own (viewport_top, viewport_bottom) viewport -- 0
+    once everything already fits without scrolling."""
+    overflow = list_content_height(entry_count, row_height, row_gap) - (viewport_bottom - viewport_top)
+    return max(0, overflow)
+
+
 # --- Wave editor ---
 #
 # A second screen reached from the map editor once its path is valid (see
@@ -2157,16 +2413,15 @@ def wave_unit_content_height(entry_count):
     """Total stacked height of `entry_count` rows -- unlike
     level_select_content_height, there's no separate inter-row gap constant
     to subtract a trailing copy of (WAVE_UNIT_ROW_HEIGHT already is each
-    row's full stride)."""
-    return entry_count * WAVE_UNIT_ROW_HEIGHT
+    row's full stride). Thin wrapper around the generic list_content_height."""
+    return list_content_height(entry_count, WAVE_UNIT_ROW_HEIGHT, 0)
 
 
 def wave_unit_max_scroll(entry_count):
     """How far the list can scroll before its last row reaches the bottom
     of the viewport -- 0 once every registered species already fits without
-    scrolling. Mirrors level_select_max_scroll exactly."""
-    overflow = wave_unit_content_height(entry_count) - (WAVE_UNIT_ROWS_BOTTOM - WAVE_UNIT_ROWS_TOP)
-    return max(0, overflow)
+    scrolling. Thin wrapper around the generic list_max_scroll."""
+    return list_max_scroll(entry_count, WAVE_UNIT_ROW_HEIGHT, 0, WAVE_UNIT_ROWS_TOP, WAVE_UNIT_ROWS_BOTTOM)
 
 
 def build_wave_unit_rects(scroll_offset=0):
@@ -2344,17 +2599,16 @@ LEVEL_THUMBNAIL_HEIGHT = 72
 
 def level_select_content_height(entry_count):
     """Total stacked height of `entry_count` rows, gaps included (but not
-    a trailing gap after the last one)."""
-    if entry_count == 0:
-        return 0
-    return entry_count * (LEVEL_SELECT_ROW_HEIGHT + LEVEL_SELECT_ROW_GAP) - LEVEL_SELECT_ROW_GAP
+    a trailing gap after the last one). Thin wrapper around the generic
+    list_content_height."""
+    return list_content_height(entry_count, LEVEL_SELECT_ROW_HEIGHT, LEVEL_SELECT_ROW_GAP)
 
 
 def level_select_max_scroll(entry_count):
     """How far the list can scroll before the last row reaches the bottom
-    of the viewport -- 0 once everything already fits without scrolling."""
-    overflow = level_select_content_height(entry_count) - (LEVEL_SELECT_BOTTOM - LEVEL_SELECT_TOP)
-    return max(0, overflow)
+    of the viewport -- 0 once everything already fits without scrolling.
+    Thin wrapper around the generic list_max_scroll."""
+    return list_max_scroll(entry_count, LEVEL_SELECT_ROW_HEIGHT, LEVEL_SELECT_ROW_GAP, LEVEL_SELECT_TOP, LEVEL_SELECT_BOTTOM)
 
 
 def build_level_select_rects(entries, scroll_offset=0):

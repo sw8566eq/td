@@ -67,6 +67,10 @@ class InputHandler:
                     self._handle_keybinds_click(event.pos)
                 elif game.state == GameState.ACHIEVEMENTS:
                     self._handle_achievements_click(event.pos)
+                elif game.state == GameState.RUN_HISTORY:
+                    self._handle_run_history_click(event.pos)
+                elif game.state == GameState.UNLOCKS:
+                    self._handle_unlocks_click(event.pos)
                 elif game.state == GameState.HELP:
                     self._handle_help_click(event.pos)
                 elif game.state == GameState.CREDITS:
@@ -94,6 +98,10 @@ class InputHandler:
                 self._scroll_level_select(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.WAVE_EDITOR:
                 self._scroll_wave_unit_list(event.y)
+            elif event.type == pygame.MOUSEWHEEL and game.state == GameState.RUN_HISTORY:
+                self._scroll_run_history(event.y)
+            elif event.type == pygame.MOUSEWHEEL and game.state == GameState.UNLOCKS:
+                self._scroll_unlocks(event.y)
             elif event.type == pygame.VIDEORESIZE and not game.fullscreen:
                 # Only while windowed -- a fullscreen window resizing away
                 # from the desktop resolution isn't something the player
@@ -140,18 +148,26 @@ class InputHandler:
                         game._start_daily_challenge()
                     elif letter == "b":
                         game.state = GameState.CREDITS
+                    elif letter == "r":
+                        game._enter_run_history()
+                    elif letter == "u":
+                        game._enter_unlocks()
                 else:
                     game.start_new_run()
         elif game.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
-                             GameState.HELP, GameState.CREDITS):
-            # These four share nothing but "Esc goes back to the menu" --
+                             GameState.HELP, GameState.CREDITS,
+                             GameState.RUN_HISTORY, GameState.UNLOCKS):
+            # These six share nothing but "Esc goes back to the menu" --
             # each is otherwise driven entirely by its own click handler
             # (Settings/Achievements have real buttons; Help/Credits are
-            # fully static). EDITOR isn't folded in here despite starting
-            # with the identical check, since it has real key handling of
-            # its own below Esc (see its own elif right after this one).
-            # KEYBINDS isn't folded in here either, for the same reason,
-            # plus its own Esc goes back to SETTINGS, not MENU.
+            # fully static; Run History/Unlocks add their own MOUSEWHEEL
+            # handling below, which Esc has nothing to do with -- scroll
+            # position is reset fresh on next entry regardless). EDITOR
+            # isn't folded in here despite starting with the identical
+            # check, since it has real key handling of its own below Esc
+            # (see its own elif right after this one). KEYBINDS isn't
+            # folded in here either, for the same reason, plus its own Esc
+            # goes back to SETTINGS, not MENU.
             if key == pygame.K_ESCAPE:
                 game.state = GameState.MENU
         elif game.state == GameState.KEYBINDS:
@@ -544,6 +560,12 @@ class InputHandler:
     def _handle_achievements_click(self, pos):
         self._handle_static_screen_back_click(pos, self.game.achievements_back_rect)
 
+    def _handle_run_history_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.game.run_history_back_rect)
+
+    def _handle_unlocks_click(self, pos):
+        self._handle_static_screen_back_click(pos, self.game.unlocks_back_rect)
+
     def _handle_help_click(self, pos):
         self._handle_static_screen_back_click(pos, self.game.help_back_rect)
 
@@ -694,22 +716,45 @@ class InputHandler:
 
         return False
 
+    def _scroll_list(self, wheel_y, current_offset, max_scroll, step):
+        """Shared body behind every "scroll a list screen" handler below --
+        pygame's MOUSEWHEEL.y is positive scrolling away from the player
+        (up the list -> less scroll_offset) and negative toward them (down
+        the list -> more), hence the sign flip. Returns the new, clamped
+        offset; callers still own writing it back onto whichever `Game`
+        attribute is theirs (and rebuilding any rects that depend on it --
+        Run History/Unlocks have none, unlike level_select/wave_unit)."""
+        new_offset = current_offset - wheel_y * step
+        return max(0, min(new_offset, max_scroll))
+
     def _scroll_level_select(self, wheel_y):
-        # pygame's MOUSEWHEEL.y is positive scrolling away from the
-        # player (up the list -> less scroll_offset) and negative toward
-        # them (down the list -> more) -- hence the sign flip.
         game = self.game
         max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
-        game.level_select_scroll_offset -= wheel_y * ui.LEVEL_SELECT_SCROLL_STEP
-        game.level_select_scroll_offset = max(0, min(game.level_select_scroll_offset, max_scroll))
+        game.level_select_scroll_offset = self._scroll_list(
+            wheel_y, game.level_select_scroll_offset, max_scroll, ui.LEVEL_SELECT_SCROLL_STEP,
+        )
         game._rebuild_level_select_rects()
 
     def _scroll_wave_unit_list(self, wheel_y):
-        # Same sign flip as _scroll_level_select -- pygame's MOUSEWHEEL.y is
-        # positive scrolling away from the player (up the list -> less
-        # scroll_offset) and negative toward them (down the list -> more).
         game = self.game
         max_scroll = ui.wave_unit_max_scroll(len(ui.ENEMY_ORDER))
-        game.wave_unit_scroll_offset -= wheel_y * ui.WAVE_UNIT_SCROLL_STEP
-        game.wave_unit_scroll_offset = max(0, min(game.wave_unit_scroll_offset, max_scroll))
+        game.wave_unit_scroll_offset = self._scroll_list(
+            wheel_y, game.wave_unit_scroll_offset, max_scroll, ui.WAVE_UNIT_SCROLL_STEP,
+        )
         game._rebuild_wave_unit_rects()
+
+    def _scroll_run_history(self, wheel_y):
+        game = self.game
+        entry_count = len(game.run_history_state)
+        max_scroll = ui.run_history_max_scroll(entry_count)
+        game.run_history_scroll_offset = self._scroll_list(
+            wheel_y, game.run_history_scroll_offset, max_scroll, ui.RUN_HISTORY_SCROLL_STEP,
+        )
+
+    def _scroll_unlocks(self, wheel_y):
+        game = self.game
+        row_count = len(ui.unlocks_display_rows())
+        max_scroll = ui.unlocks_max_scroll(row_count)
+        game.unlocks_scroll_offset = self._scroll_list(
+            wheel_y, game.unlocks_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
+        )
