@@ -1,6 +1,6 @@
 import json
 
-import progress
+from progression import progress
 
 
 def test_load_progress_on_a_missing_file_returns_empty():

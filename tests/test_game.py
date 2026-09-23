@@ -26,22 +26,17 @@ from conftest import (
     spy_on_audio,
 )
 
-import achievements
-import difficulty
-import keybindings
-import meta_progression
-import player_settings
-import progress
-import run_history
-import save_state
-import settings
-import ui
-from editor import EditorTool
-from enemy import Enemy, FinalBossEnemy, SplitterEnemy
-from game import GameState
-from levels import LEVELS
-from tower import TOWER_TYPES, BasicTower
-from waves import WaveState
+from core.editor import EditorTool
+from core.game import GameState
+from entities.enemy import Enemy, FinalBossEnemy, SplitterEnemy
+from entities.tower import TOWER_TYPES, BasicTower
+from entities.waves import WaveState
+from persistence import keybindings, player_settings, save_state
+from presentation import ui
+from progression import achievements, meta_progression, progress, run_history
+from run import difficulty
+from support import settings
+from world.levels import LEVELS
 
 # --- Initialization ---
 
@@ -1793,7 +1788,7 @@ def test_a_live_enemys_pending_spawns_join_self_enemies_and_are_cleared(playing_
 
 
 def test_a_projectile_hit_spawns_an_impact_effect_sized_to_its_splash_radius(playing_game):
-    from projectile import Projectile
+    from entities.projectile import Projectile
     playing_game.wave_manager.skip_delay()
     playing_game.update(dt=0.01)
     playing_game.update(dt=0.1)
@@ -3331,7 +3326,7 @@ def test_render_with_invulnerable_economy_shows_infinite_lives_does_not_crash(pl
 
 
 def test_render_draws_impact_effects_without_crashing(playing_game):
-    import effects
+    from entities import effects
     playing_game.impact_effects.append(effects.ExpandingRing((100, 100), max_radius=30))
     playing_game.render()
 
@@ -3538,7 +3533,7 @@ def test_handle_events_mousemotion_in_editor_paints_while_dragging(game):
 
 
 def test_handle_events_mousewheel_in_level_select_scrolls(game, monkeypatch):
-    monkeypatch.setattr("ui.level_select_max_scroll", lambda n: 1000)
+    monkeypatch.setattr("presentation.ui.level_select_max_scroll", lambda n: 1000)
     game._enter_level_select()
     _fire_event(game, pygame.event.Event(pygame.MOUSEWHEEL, y=-1, x=0, flipped=False))
     assert game.level_select_scroll_offset > 0

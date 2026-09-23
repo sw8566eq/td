@@ -1,7 +1,7 @@
 """Tests for the difficulty.py registry -- see waves.py/game.py for where
 these multipliers actually get applied."""
 
-from difficulty import DEFAULT_DIFFICULTY, DIFFICULTY_MODES
+from run.difficulty import DEFAULT_DIFFICULTY, DIFFICULTY_MODES
 
 
 def test_registry_has_easy_normal_and_hard():

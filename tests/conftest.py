@@ -28,10 +28,10 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 import pytest
 
-import settings
-from game import Game, GameState
-from levels import Level
-from run_map import MapNode, RunMap
+from core.game import Game, GameState
+from run.run_map import MapNode, RunMap
+from support import settings
+from world.levels import Level
 
 
 def make_game(tmp_path, prefix="", **kwargs):

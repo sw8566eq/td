@@ -1,9 +1,9 @@
 import pygame
 import pytest
 
-import pathing
-from assets import AssetManager
-from grid import Grid
+from presentation.assets import AssetManager
+from world import pathing
+from world.grid import Grid
 
 CORNERS = [(0, 4), (4, 4), (4, 1), (10, 1), (10, 7), (14, 7)]
 PATH_CELLS = pathing.path_cells_from_corners(CORNERS)

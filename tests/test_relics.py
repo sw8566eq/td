@@ -2,10 +2,16 @@ import random
 
 import pytest
 
-import meta_progression
-from relics import RELICS, Relic, RelicModifiers, compose_relic_modifiers, relic_offer
-from run_map import generate_run_map
-from run_state import RunState
+from progression import meta_progression
+from run.relics import (
+    RELICS,
+    Relic,
+    RelicModifiers,
+    compose_relic_modifiers,
+    relic_offer,
+)
+from run.run_map import generate_run_map
+from run.run_state import RunState
 
 
 def _run(relics=()):

@@ -1,8 +1,8 @@
 import pygame
 import pytest
 
-from projectile import Projectile
-from tower import (
+from entities.projectile import Projectile
+from entities.tower import (
     TOWER_TYPES,
     BasicTower,
     BeaconTower,
@@ -38,7 +38,7 @@ def test_base_tower_create_projectile_is_not_implemented():
 
 
 def test_draw_without_a_font_skips_the_upgrade_badge(tmp_path):
-    from assets import AssetManager
+    from presentation.assets import AssetManager
     tower = KnockbackTower(anchor_col=0, anchor_row=0, pixel_pos=(50, 50))
     surface = pygame.Surface((100, 100))
     # asset_root points at an empty dir, never the project's real assets/ --
@@ -50,7 +50,7 @@ def test_draw_without_a_font_skips_the_upgrade_badge(tmp_path):
 
     # No badge drawn: the corner it would occupy stays whatever the sprite
     # itself left there, not the badge's own selected-button color.
-    from settings import COLOR_BUTTON_SELECTED
+    from support.settings import COLOR_BUTTON_SELECTED
     cx, cy = tower.upgrade_badge_center()
     assert surface.get_at((cx, cy))[:3] != COLOR_BUTTON_SELECTED
 
@@ -80,7 +80,7 @@ def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():
 # Compact Framework-style relic actually sets footprint_subtiles) ---
 
 def test_tile_rect_is_a_full_tile_by_default():
-    import settings
+    from support import settings
     tower = BasicTower(anchor_col=2, anchor_row=3, pixel_pos=(0, 0))
     rect = tower.tile_rect()
     assert rect.size == (settings.TILE_SIZE, settings.TILE_SIZE)
@@ -88,7 +88,7 @@ def test_tile_rect_is_a_full_tile_by_default():
 
 
 def test_tile_rect_shrinks_with_footprint_subtiles():
-    import settings
+    from support import settings
     tower = BasicTower(anchor_col=2, anchor_row=3, pixel_pos=(0, 0))
     tower.footprint_subtiles = 6
 
@@ -116,8 +116,8 @@ def test_upgrade_badge_center_sits_on_the_shrunk_footprints_own_corner():
 
 
 def test_draw_requests_a_smaller_sprite_size_when_footprint_subtiles_is_reduced(tmp_path):
-    import settings
-    from assets import AssetManager
+    from presentation.assets import AssetManager
+    from support import settings
 
     class _SpyAssetManager(AssetManager):
         def __init__(self, asset_root):

@@ -1,10 +1,11 @@
 import random
 
-import meta_progression
-from relics import RELICS
-from run_map import generate_run_map
-from run_state import RunState
-from shop import (
+from entities.tower import TOWER_TYPES
+from progression import meta_progression
+from run.relics import RELICS
+from run.run_map import generate_run_map
+from run.run_state import RunState
+from run.shop import (
     ELITE_INCOME_MULTIPLIER,
     PRICE_ESCALATION,
     RELIC_OFFER_COUNT,
@@ -16,7 +17,6 @@ from shop import (
     income_for_floor,
     price_for,
 )
-from tower import TOWER_TYPES
 
 
 def _run(unlocked_towers=(), relics=()):

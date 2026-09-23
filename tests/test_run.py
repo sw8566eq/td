@@ -26,32 +26,28 @@ from conftest import (
     start_first_floor,
 )
 
-import achievements
-import events
-import meta_progression
-import progress
-import run_history
-import save_state
-import settings
-import shop
-import ui
-from card_pool import STARTER_TOWERS
-from difficulty import DIFFICULTY_MODES
-from enemy import FinalBossEnemy, GruntEnemy, ScoutEnemy, SplitterEnemy
-from events import EVENTS
-from game import (
+from core.game import (
     _DRAFT_RNG_STREAM,
     _FLOOR_RNG_STREAM,
     EMERGENCY_RESERVES_REFUND_AMOUNT,
     GameState,
 )
-from levels import LEVELS
-from relics import RELICS, Relic
-from run_map import MapNode, RunMap
-from run_state import RunState
-from shop import ShopItem
-from tower import TOWER_TYPES
-from waves import WaveState
+from entities.enemy import FinalBossEnemy, GruntEnemy, ScoutEnemy, SplitterEnemy
+from entities.tower import TOWER_TYPES
+from entities.waves import WaveState
+from persistence import save_state
+from presentation import ui
+from progression import achievements, meta_progression, progress, run_history
+from run import events, shop
+from run.card_pool import STARTER_TOWERS
+from run.difficulty import DIFFICULTY_MODES
+from run.events import EVENTS
+from run.relics import RELICS, Relic
+from run.run_map import MapNode, RunMap
+from run.run_state import RunState
+from run.shop import ShopItem
+from support import settings
+from world.levels import LEVELS
 
 
 def _begin_run_with_map(game, node_types, seed=1, level_id=1, difficulty=None, **run_overrides):
@@ -487,7 +483,7 @@ def test_escalation_composes_with_difficulty_rather_than_replacing_it(game):
 
     game._enter_node("3-0")
 
-    from run_escalation import escalation_for_floor
+    from run.run_escalation import escalation_for_floor
 
     hard = DIFFICULTY_MODES["hard"]
     escalation = escalation_for_floor(3)
@@ -934,7 +930,7 @@ def test_war_chest_multiplies_starting_gold_on_every_floor_not_just_once(game):
     # escalation multipliers here, which is itself part of what this test
     # proves: the relic keeps reapplying fresh each floor regardless of
     # what else that floor's own gold formula composes in.
-    from run_escalation import escalation_for_floor
+    from run.run_escalation import escalation_for_floor
     escalation_2 = escalation_for_floor(2)
     escalation_3 = escalation_for_floor(3)
     assert gold_floor_2 == round(
@@ -973,7 +969,7 @@ def test_relic_enemy_speed_multiplier_composes_into_wave_manager(game):
     # Composes with row 0's own early-grace speed discount too (see
     # run_escalation.py) -- mode.enemy_speed_multiplier is normal's 1.0x,
     # a no-op, so left out of the expected product below.
-    from run_escalation import escalation_for_floor
+    from run.run_escalation import escalation_for_floor
     escalation = escalation_for_floor(0)
     assert game.wave_manager.enemy_speed_multiplier == pytest.approx(
         escalation.enemy_speed_multiplier * RELICS["tangled_roots"].enemy_speed_multiplier
@@ -2527,7 +2523,7 @@ def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_li
     # run_escalation.py) -- still proves the pin (not "easy", the live
     # setting at resume time) by composing against normal's own
     # multiplier specifically.
-    from run_escalation import escalation_for_floor
+    from run.run_escalation import escalation_for_floor
     escalation = escalation_for_floor(0)
     assert game.wave_manager.enemy_hp_multiplier == pytest.approx(
         DIFFICULTY_MODES["normal"].enemy_hp_multiplier * escalation.enemy_hp_multiplier
@@ -2605,7 +2601,7 @@ def test_daily_run_pins_difficulty_to_normal_regardless_of_player_setting(game):
     # normal's 1.0x, not hard's 0.85x -- still scaled by row 0's own
     # early-grace starting-gold bonus (see run_escalation.py), which
     # applies regardless of difficulty.
-    from run_escalation import escalation_for_floor
+    from run.run_escalation import escalation_for_floor
     escalation = escalation_for_floor(0)
     assert game.economy.gold == round(level.starting_gold * escalation.starting_gold_multiplier)
 

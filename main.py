@@ -11,7 +11,7 @@ the menu, just skipping that step.
 
 import argparse
 
-from game import Game, GameState
+from core.game import Game, GameState
 
 
 def parse_args():

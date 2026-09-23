@@ -2,9 +2,9 @@ import random
 
 import pytest
 
-from enemy import GruntEnemy, HealerEnemy, ShieldedEnemy, TankEnemy
-from levels import Level
-from waves import WaveManager, WaveState
+from entities.enemy import GruntEnemy, HealerEnemy, ShieldedEnemy, TankEnemy
+from entities.waves import WaveManager, WaveState
+from world.levels import Level
 
 
 def cell_to_pixel(col, row):
@@ -592,7 +592,7 @@ def test_endless_uses_an_injected_wave_generator():
 
 
 def test_default_endless_wave_grows_counts_relative_to_the_previous_wave():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"grunt": 8}])
     next_wave = _default_endless_wave(level, wave_number=2)
@@ -600,7 +600,7 @@ def test_default_endless_wave_grows_counts_relative_to_the_previous_wave():
 
 
 def test_default_endless_wave_bumps_a_small_count_by_at_least_one():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"grunt": 1}])
     next_wave = _default_endless_wave(level, wave_number=2)
@@ -608,7 +608,7 @@ def test_default_endless_wave_bumps_a_small_count_by_at_least_one():
 
 
 def test_default_endless_wave_compounds_across_repeated_calls():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"grunt": 8}])
     level.wave_specs.append(_default_endless_wave(level, wave_number=2))  # {"grunt": 10}
@@ -617,7 +617,7 @@ def test_default_endless_wave_compounds_across_repeated_calls():
 
 
 def test_default_endless_wave_freezes_final_boss_count_instead_of_growing_it():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"final_boss": 1}])
     next_wave = _default_endless_wave(level, wave_number=2)
@@ -625,7 +625,7 @@ def test_default_endless_wave_freezes_final_boss_count_instead_of_growing_it():
 
 
 def test_default_endless_wave_freezes_final_boss_shielded_count_instead_of_growing_it():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"final_boss_shielded": 1}])
     next_wave = _default_endless_wave(level, wave_number=2)
@@ -637,7 +637,7 @@ def test_default_endless_wave_freezes_boss_species_while_growing_others_in_the_s
     # LEVEL_16_WAVE_SPECS): a final_boss alongside regular species in the
     # same spawn -- only the boss stays frozen, everything else escalates
     # exactly as it would without one present.
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"scout": 13, "flying": 8, "final_boss": 1}])
     next_wave = _default_endless_wave(level, wave_number=2)
@@ -645,7 +645,7 @@ def test_default_endless_wave_freezes_boss_species_while_growing_others_in_the_s
 
 
 def test_default_endless_wave_freezes_boss_species_across_repeated_calls():
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"final_boss": 1}])
     level.wave_specs.append(_default_endless_wave(level, wave_number=2))
@@ -660,7 +660,7 @@ def test_default_endless_wave_does_not_freeze_plain_boss_species():
     # exempt from growth -- plain BossEnemy, playable via an ordinary
     # level's own generic "boss" entry in Survival mode, keeps escalating
     # without limit exactly like every other species.
-    from waves import _default_endless_wave
+    from entities.waves import _default_endless_wave
 
     level = make_level([{"boss": 1}])
     next_wave = _default_endless_wave(level, wave_number=2)

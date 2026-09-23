@@ -5,7 +5,7 @@ rebind_action() build on."""
 
 import pygame
 
-from keybindings import (
+from persistence.keybindings import (
     ACTION_ORDER,
     DEFAULT_BINDINGS,
     EDITOR_ACTIONS,

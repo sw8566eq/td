@@ -19,12 +19,12 @@ from conftest import (
     mock_key_mods,
 )
 
-import persistence
-import settings
-import ui
-from editor import EditorTool
-from game import GameState
-from levels import Level
+from core.editor import EditorTool
+from core.game import GameState
+from persistence import persistence
+from presentation import ui
+from support import settings
+from world.levels import Level
 
 # --- Entering the map editor ---
 
@@ -462,7 +462,7 @@ def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch
         saved.append(level)
         return "/fake/custom_levels/custom-level.json"
 
-    monkeypatch.setattr("persistence.save_level", fake_save_level)
+    monkeypatch.setattr("persistence.persistence.save_level", fake_save_level)
 
     game.state = GameState.EDITOR
     _paint_valid_path(game)
@@ -481,7 +481,7 @@ def test_wave_editor_save_action_saves_the_level_when_playable(game, monkeypatch
 
 def test_wave_editor_save_action_is_a_no_op_while_unplayable(game, monkeypatch):
     saved = []
-    monkeypatch.setattr("persistence.save_level", lambda level: saved.append(level))
+    monkeypatch.setattr("persistence.persistence.save_level", lambda level: saved.append(level))
 
     game.state = GameState.WAVE_EDITOR
     assert not game.editor.can_play()
@@ -515,7 +515,7 @@ def _make_many_custom_levels(count):
 
 def test_scrolling_down_moves_the_level_select_rows_up(game, monkeypatch):
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
     assert game.level_select_scroll_offset == 0
 
@@ -529,7 +529,7 @@ def test_scrolling_down_moves_the_level_select_rows_up(game, monkeypatch):
 
 def test_scroll_offset_clamps_at_zero_and_at_max(game, monkeypatch):
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
 
     game._scroll_level_select(1)  # can't scroll up past the top
@@ -543,7 +543,7 @@ def test_scroll_offset_clamps_at_zero_and_at_max(game, monkeypatch):
 
 def test_enter_level_select_resets_scroll_to_the_top(game, monkeypatch):
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
     game._scroll_level_select(-3)
     assert game.level_select_scroll_offset > 0
@@ -554,7 +554,7 @@ def test_enter_level_select_resets_scroll_to_the_top(game, monkeypatch):
 
 def test_clicking_a_scrolled_row_still_loads_the_right_level(game, monkeypatch):
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
     max_scroll = ui.level_select_max_scroll(len(game.level_select_entries))
     for _ in range(50):
@@ -573,7 +573,7 @@ def test_clicking_a_scrolled_row_still_loads_the_right_level(game, monkeypatch):
 
 def test_clicking_a_partially_scrolled_off_row_above_the_viewport_is_a_no_op(game, monkeypatch):
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
     game.level_select_scroll_offset = 50
     game._rebuild_level_select_rects()
@@ -634,7 +634,7 @@ def test_level_select_click_on_a_built_in_entry_loads_it(game):
 
 def test_level_select_click_on_a_custom_entry_loads_it(game, monkeypatch):
     custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: [custom])
 
     game._enter_level_select()
     assert (custom.id, custom) in game.level_select_entries
@@ -662,7 +662,7 @@ def test_editor_load_action_enters_level_select_for_editing(game):
 
 def test_level_select_for_editing_lists_only_custom_levels(game, monkeypatch):
     custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: [custom])
 
     game._enter_level_select(purpose="edit")
 
@@ -672,7 +672,7 @@ def test_level_select_for_editing_lists_only_custom_levels(game, monkeypatch):
 
 def test_level_select_click_while_editing_loads_the_level_into_the_editor(game, monkeypatch):
     custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: [custom])
     game._enter_level_select(purpose="edit")
 
     game._handle_level_select_click(game.level_select_rects[custom.id].center)
@@ -841,7 +841,7 @@ def test_render_level_select_for_editing_does_not_crash(game, monkeypatch):
     game.render()
 
     custom = make_custom_level()
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: [custom])
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: [custom])
     game._enter_level_select(purpose="edit")
     game.render()
 
@@ -851,7 +851,7 @@ def test_render_level_select_with_more_levels_than_fit_does_not_crash(game, monk
     # viewport and "more above"/"more below" hints never actually draw
     # in any other render test.
     levels = _make_many_custom_levels(10)
-    monkeypatch.setattr("persistence.list_custom_levels", lambda: levels)
+    monkeypatch.setattr("persistence.persistence.list_custom_levels", lambda: levels)
     game._enter_level_select()
     game.render()  # scrolled to the top -- only "more below" should show
 

@@ -9,8 +9,7 @@ implementation could still violate it.
 import random
 from collections import deque
 
-from levels import LEVELS
-from run_map import (
+from run.run_map import (
     BOSS_LEVEL_IDS,
     GUARANTEED_REST_ROW,
     GUARANTEED_TREASURE_ROW,
@@ -24,6 +23,7 @@ from run_map import (
     heal_amount_for_row,
     treasure_shop_currency_for_row,
 )
+from world.levels import LEVELS
 
 _SEEDS = range(50)
 

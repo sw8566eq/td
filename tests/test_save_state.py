@@ -1,12 +1,12 @@
 import json
 
-import save_state
-import settings
-from levels import Level
-from run_map import MapNode, RunMap
-from run_state import RunState
-from tower import BasicTower, LightningTower
-from waves import WaveState
+from entities.tower import BasicTower, LightningTower
+from entities.waves import WaveState
+from persistence import save_state
+from run.run_map import MapNode, RunMap
+from run.run_state import RunState
+from support import settings
+from world.levels import Level
 
 # A small, hand-built map (not a real generate_run_map() output) shared by
 # every test below that needs a real RunState -- combat node "0-0" (level 1)

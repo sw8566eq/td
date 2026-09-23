@@ -1,13 +1,9 @@
 import pygame
 
-import settings
-from editor import TOOL_ORDER
-from enemy import ENEMY_TYPES
-from levels import Level
-from run_map import NODE_TYPES
-from shop import ShopItem
-from tower import TOWER_TYPES
-from ui import (
+from core.editor import TOOL_ORDER
+from entities.enemy import ENEMY_TYPES
+from entities.tower import TOWER_TYPES
+from presentation.ui import (
     ACHIEVEMENTS_BOTTOM,
     BUTTON_MARGIN,
     BUTTON_SIZE,
@@ -112,6 +108,10 @@ from ui import (
     wave_unit_content_height,
     wave_unit_max_scroll,
 )
+from run.run_map import NODE_TYPES
+from run.shop import ShopItem
+from support import settings
+from world.levels import Level
 
 # --- Main menu ---
 #
@@ -149,7 +149,7 @@ def test_menu_options_adds_continue_only_with_a_saved_run():
 
 
 def test_build_button_rects_has_one_entry_per_registered_tower():
-    from tower import TOWER_TYPES
+    from entities.tower import TOWER_TYPES
 
     rects = build_button_rects()
     assert set(rects.keys()) == set(TOWER_TYPES.keys())
@@ -241,7 +241,7 @@ def test_hud_gold_lives_wave_text_fits_before_the_play_area_edge():
 
 
 def test_settings_rects_has_one_entry_per_option():
-    from ui import SETTINGS_OPTION_ORDER
+    from presentation.ui import SETTINGS_OPTION_ORDER
 
     rects = build_settings_rects()
     assert set(rects.keys()) == set(SETTINGS_OPTION_ORDER)
@@ -301,7 +301,7 @@ def test_get_clicked_keybinds_entry_button():
 
 
 def test_keybind_row_rects_has_one_entry_per_action():
-    from keybindings import ACTION_ORDER
+    from persistence.keybindings import ACTION_ORDER
 
     rects = build_keybind_row_rects()
     assert set(rects.keys()) == set(ACTION_ORDER)
@@ -355,7 +355,7 @@ def test_binding_display_string_formats_a_key_with_multiple_modifiers():
 
 
 def test_draw_keybinds_screen_does_not_crash():
-    from keybindings import DEFAULT_BINDINGS
+    from persistence.keybindings import DEFAULT_BINDINGS
 
     pygame.font.init()
     font = pygame.font.SysFont(None, 32)
@@ -369,7 +369,7 @@ def test_draw_keybinds_screen_does_not_crash():
 
 
 def test_draw_keybinds_screen_while_listening_does_not_crash():
-    from keybindings import DEFAULT_BINDINGS
+    from persistence.keybindings import DEFAULT_BINDINGS
 
     pygame.font.init()
     font = pygame.font.SysFont(None, 32)
@@ -504,7 +504,7 @@ def test_draw_run_guide_screen_does_not_crash():
 
 
 def test_run_guide_lines_cover_every_map_node_type():
-    from run_map import NODE_TYPES
+    from run.run_map import NODE_TYPES
     covered = " ".join(RUN_GUIDE_LINES)
     for node_type in NODE_TYPES:
         assert MAP_NODE_TYPE_NAMES[node_type] in covered
@@ -589,7 +589,7 @@ def test_relics_overlay_lines_shows_a_placeholder_when_empty():
 
 
 def test_relics_overlay_lines_shows_one_line_per_relic():
-    from relics import RELICS
+    from run.relics import RELICS
 
     lines = _relics_overlay_lines(["war_chest", "sturdy_gate"])
     assert lines == [
@@ -684,7 +684,7 @@ def test_draw_results_table_with_results_does_not_raise():
 
 
 def test_draw_results_table_collapses_extra_rows_into_a_more_line():
-    from ui import RESULTS_MAX_ROWS
+    from presentation.ui import RESULTS_MAX_ROWS
 
     pygame.font.init()
     small_font = pygame.font.SysFont(None, 22)
@@ -782,7 +782,7 @@ def test_draw_draft_screen_with_relics_does_not_raise():
     font = pygame.font.SysFont(None, 32)
     small_font = pygame.font.SysFont(None, 22)
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
-    from relics import RELICS
+    from run.relics import RELICS
     choices = [ShopItem("relic", key, 10) for key in list(RELICS.keys())[:2]]
     rects = build_draft_choice_rects(len(choices))
     continue_rect = build_shop_continue_button_rect()
@@ -796,8 +796,8 @@ def test_draw_draft_screen_with_five_choices_does_not_raise():
     font = pygame.font.SysFont(None, 32)
     small_font = pygame.font.SysFont(None, 22)
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
-    from relics import RELICS
-    from tower import TOWER_TYPES
+    from entities.tower import TOWER_TYPES
+    from run.relics import RELICS
     choices = (
         [ShopItem("tower", name, 8) for name in list(TOWER_TYPES.keys())[:2]]
         + [ShopItem("relic", key, 10) for key in list(RELICS.keys())[:3]]
@@ -808,7 +808,7 @@ def test_draw_draft_screen_with_five_choices_does_not_raise():
 
 
 def test_format_wave_preview_orders_by_registry_order_not_dict_order():
-    from ui import ENEMY_ORDER
+    from presentation.ui import ENEMY_ORDER
 
     # Deliberately built out of ENEMY_ORDER's order to prove the formatter
     # re-sorts rather than trusting dict iteration order.

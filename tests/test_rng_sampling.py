@@ -1,6 +1,6 @@
 import random
 
-from rng_sampling import sample_up_to
+from support.rng_sampling import sample_up_to
 
 
 def test_sample_up_to_returns_the_requested_count_when_pool_has_enough():

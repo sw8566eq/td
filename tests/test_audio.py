@@ -33,8 +33,8 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 import pytest
 
-import audio
-from audio import (
+from presentation import audio
+from presentation.audio import (
     DEFAULT_ASSET_ROOT,
     SOUND_MANIFEST,
     SoundManager,
@@ -309,12 +309,18 @@ def test_preload_all_is_a_noop_when_the_mixer_never_came_up(monkeypatch):
 # --- DEFAULT_ASSET_ROOT (a packaged build's launch-cwd independence) ---
 
 def test_default_asset_root_is_anchored_to_the_assets_folder_not_a_bare_relative_path():
-    assert DEFAULT_ASSET_ROOT == os.path.join(os.path.dirname(os.path.abspath(audio.__file__)), "assets")
+    # Two directories up from audio.py's own location -- its package dir
+    # (presentation/), then that dir's parent, the project root -- since
+    # audio.py lives one level under the project root now (see
+    # json_io.module_relative_path).
+    package_dir = os.path.dirname(os.path.abspath(audio.__file__))
+    project_root = os.path.dirname(package_dir)
+    assert DEFAULT_ASSET_ROOT == os.path.join(project_root, "assets")
     assert os.path.isabs(DEFAULT_ASSET_ROOT)
 
 
 def test_default_asset_root_is_reused_from_assets_py_not_recomputed():
-    import assets as assets_module
+    import presentation.assets as assets_module
     assert audio.DEFAULT_ASSET_ROOT is assets_module.DEFAULT_ASSET_ROOT
 
 
