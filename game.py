@@ -104,6 +104,12 @@ class GameState(Enum):
     # own MOUSEWHEEL handling those four don't need.
     RUN_HISTORY = auto()
     UNLOCKS = auto()
+    # Reached from a button on HELP, not a new top-level menu key (see
+    # ui.RUN_GUIDE_ENTRY_BUTTON_WIDTH's own comment) -- a run-loop/status-
+    # effect explainer deepening HELP's own controls-only reference. Esc
+    # returns to HELP, not MENU, same "back to whichever screen this was
+    # entered from" precedent KEYBINDS' own Esc (back to SETTINGS) sets.
+    RUN_GUIDE = auto()
     # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
     # curated subset of actions (see that module's own docstring for why
     # it's a subset, not every input_handler.py keydown check). Not folded
@@ -201,6 +207,8 @@ class Game:
         # below already follow.
         self.achievements_scroll_offset = 0
         self.help_back_rect = ui.build_help_back_rect()
+        self.run_guide_entry_button_rect = ui.build_run_guide_entry_button_rect()
+        self.run_guide_back_rect = ui.build_run_guide_back_rect()
         self.credits_back_rect = ui.build_credits_back_rect()
         # Newly-unlocked-achievement toasts -- see _record_achievement().
         self.achievement_toasts = []
@@ -1640,6 +1648,11 @@ class Game:
 
     def _handle_help_click(self, pos):
         return self.input_handler._handle_help_click(pos)
+
+    # --- Run Guide ---
+
+    def _handle_run_guide_click(self, pos):
+        return self.input_handler._handle_run_guide_click(pos)
 
     # --- Credits ---
 

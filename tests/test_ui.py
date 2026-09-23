@@ -31,6 +31,9 @@ from ui import (
     MAP_NODE_TYPE_NAMES,
     MAP_TOOLTIP_MAX_WIDTH,
     PANEL_PADDING,
+    RUN_GUIDE_LINE_HEIGHT,
+    RUN_GUIDE_LINES,
+    RUN_GUIDE_TOP,
     TOWER_ORDER,
     WAVE_EDITOR_ACTION_ORDER,
     WAVE_UNIT_ROW_HEIGHT,
@@ -60,6 +63,8 @@ from ui import (
     build_level_select_rects,
     build_level_thumbnail,
     build_relics_button_rect,
+    build_run_guide_back_rect,
+    build_run_guide_entry_button_rect,
     build_sell_button_rect,
     build_settings_rects,
     build_shop_continue_button_rect,
@@ -83,6 +88,7 @@ from ui import (
     draw_level_select_screen,
     draw_relics_overlay,
     draw_results_table,
+    draw_run_guide_screen,
     draw_victory_screen,
     get_clicked_draft_choice,
     get_clicked_editor_action,
@@ -91,6 +97,7 @@ from ui import (
     get_clicked_keybinds_entry_button,
     get_clicked_keybinds_reset,
     get_clicked_level_select_entry,
+    get_clicked_run_guide_entry_button,
     get_clicked_settings_option,
     get_clicked_tower_button,
     get_clicked_volume_button,
@@ -460,8 +467,47 @@ def test_draw_help_screen_does_not_crash():
     small_font = pygame.font.SysFont(None, 22)
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     back_rect = build_help_back_rect()
+    run_guide_entry_button_rect = build_run_guide_entry_button_rect()
 
-    draw_help_screen(surface, font, small_font, back_rect)
+    draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect)
+
+
+# --- Run Guide screen ---
+
+
+def test_build_run_guide_entry_button_rect_sits_to_the_right_of_help_back():
+    entry_rect = build_run_guide_entry_button_rect()
+    back_rect = build_help_back_rect()
+    assert entry_rect.left >= back_rect.right
+
+
+def test_get_clicked_run_guide_entry_button():
+    rect = build_run_guide_entry_button_rect()
+    assert get_clicked_run_guide_entry_button(rect.center, rect) is True
+    assert get_clicked_run_guide_entry_button((0, 0), rect) is False
+
+
+def test_build_run_guide_back_rect_sits_below_the_last_run_guide_line():
+    rect = build_run_guide_back_rect()
+    last_line_bottom = RUN_GUIDE_TOP + len(RUN_GUIDE_LINES) * RUN_GUIDE_LINE_HEIGHT
+    assert rect.top >= last_line_bottom
+
+
+def test_draw_run_guide_screen_does_not_crash():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_run_guide_back_rect()
+
+    draw_run_guide_screen(surface, font, small_font, back_rect)
+
+
+def test_run_guide_lines_cover_every_map_node_type():
+    from run_map import NODE_TYPES
+    covered = " ".join(RUN_GUIDE_LINES)
+    for node_type in NODE_TYPES:
+        assert MAP_NODE_TYPE_NAMES[node_type] in covered
 
 
 # --- Credits screen ---

@@ -2707,6 +2707,44 @@ def test_render_help_screen_does_not_crash(game):
     game.render()
 
 
+# --- Run Guide screen ---
+
+
+def test_help_click_on_run_guide_entry_enters_run_guide(game):
+    game.state = GameState.HELP
+    game._handle_help_click(game.run_guide_entry_button_rect.center)
+    assert game.state == GameState.RUN_GUIDE
+
+
+def test_run_guide_escape_returns_to_help_not_menu(game):
+    game.state = GameState.RUN_GUIDE
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.HELP
+
+
+def test_run_guide_unbound_key_is_a_no_op(game):
+    game.state = GameState.RUN_GUIDE
+    game._handle_keydown(pygame.K_z)
+    assert game.state == GameState.RUN_GUIDE
+
+
+def test_run_guide_click_on_back_returns_to_help(game):
+    game.state = GameState.RUN_GUIDE
+    game._handle_run_guide_click(game.run_guide_back_rect.center)
+    assert game.state == GameState.HELP
+
+
+def test_run_guide_click_off_the_back_button_is_a_no_op(game):
+    game.state = GameState.RUN_GUIDE
+    game._handle_run_guide_click((0, 0))
+    assert game.state == GameState.RUN_GUIDE
+
+
+def test_render_run_guide_screen_does_not_crash(game):
+    game.state = GameState.RUN_GUIDE
+    game.render()
+
+
 # --- Credits screen ---
 
 

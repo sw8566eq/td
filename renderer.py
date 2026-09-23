@@ -98,7 +98,14 @@ class Renderer:
             return
 
         if game.state == GameState.HELP:
-            ui.draw_help_screen(game.screen, game.font, game.small_font, game.help_back_rect)
+            ui.draw_help_screen(
+                game.screen, game.font, game.small_font, game.help_back_rect, game.run_guide_entry_button_rect,
+            )
+            pygame.display.flip()
+            return
+
+        if game.state == GameState.RUN_GUIDE:
+            ui.draw_run_guide_screen(game.screen, game.font, game.small_font, game.run_guide_back_rect)
             pygame.display.flip()
             return
 
