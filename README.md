@@ -164,39 +164,49 @@ or anywhere else. (`tests/test_assets.py` stands alone and does its own.)
 
 ## Art
 
-Tiles and towers now have real art; some enemies still render as placeholder shapes (see
-`assets.py`, `SPRITE_MANIFEST`). Source: Kenney's
-["Tower Defense (Top-Down)"](https://kenney.nl/assets/tower-defense-top-down) pack, CC0 (public
-domain -- credit appreciated but not required). Coverage:
-- `assets/tiles/` (3/3) -- fully covered. `assets/towers/` (10/12) -- the ten towers that existed
-  when this pack was curated are covered (the pack's own designs -- missile launchers, single/
-  twin-barrel cannons, glowing turret domes -- don't literally match this game's tower names, so
-  they're reassigned by shape/vibe rather than by name); Overload Cannon and Siphon, added since,
-  still render as placeholder shapes.
-- `assets/enemies/` (4/11) -- `grunt`/`tank` (the pack's two top-down vehicle bodies) and
-  `scout`/`flying` (its two planes) are covered; `boss`, `shielded`, `splitter`, `splitter_child`,
-  `healer`, `final_boss`, and `final_boss_shielded` have no good match in this pack and still render
-  as placeholder circles -- `AssetManager` degrades gracefully per-sprite, so a partial pack is not a
-  blocker to shipping the rest.
-- `assets/projectiles/` (0/11, deliberately) -- these render at a fixed 12x12px, where a colored-dot
-  PNG would be visually indistinguishable from the existing flat-color-circle placeholder, so it
-  wasn't worth curating.
+Tiles, towers, and enemies all have real art now; only projectiles remain placeholder (see
+`assets.py`, `SPRITE_MANIFEST`). Two CC0 sources are in use:
+- Kenney's ["Tower Defense (Top-Down)"](https://kenney.nl/assets/tower-defense-top-down) pack
+  (kenney.nl), CC0 / public domain -- credit appreciated but not required.
+- Huntrt's ["The Apocalypse Constructor"](https://opengameart.org/content/the-apocalypse-constructor-sprites-audios)
+  (OpenGameArt.org), CC0.
+
+Coverage:
+- `assets/tiles/` (3/3) and `assets/towers/` (12/12) -- fully covered, Kenney. The pack's own
+  designs -- missile launchers, single/twin-barrel cannons, glowing turret domes -- don't literally
+  match this game's tower names, so they're reassigned by shape/vibe rather than by name (confirmed
+  by an exact per-pixel match against every tile already in use, to avoid two towers accidentally
+  sharing one source sprite).
+- `assets/enemies/` (11/11) -- fully covered. `grunt`/`tank` (Kenney's two top-down vehicle bodies)
+  and `scout`/`flying` (its two planes) are Kenney; the remaining 7 (`boss`, `shielded`, `splitter`,
+  `splitter_child`, `healer`, `final_boss`, `final_boss_shielded`) have no good match in that pack
+  and instead use flat-colored low-poly shapes cut from the Apocalypse Constructor's enemy
+  spritesheet (that sheet ships as plain white silhouettes meant to be tinted; each shape here was
+  cropped and tinted once, offline, to this game's own `SPRITE_MANIFEST` fallback color for that
+  slot, with a lighter outline stroke added to match the existing placeholder-circle style) --
+  distinct enough per-species to read at a glance, though stylistically more angular/abstract than
+  Kenney's vehicle sprites, a real (and accepted) style seam between the two sources.
+- `assets/projectiles/` (0/11, deliberately) -- these render at a fixed 12x12px; a real screenshot
+  comparison (small round sprites from both packs, scaled down to actual render size) confirmed they
+  blur into an indistinct blob at that size, visually inseparable from the existing flat-color-circle
+  placeholder -- not worth curating unless the render size itself changes.
 
 To fill in more of the manifest yourself: drop a CC0 pack's PNGs into the relevant `assets/`
 subdirectory using the filenames listed in `SPRITE_MANIFEST` and the real art appears automatically,
 no code changes needed (if a pack uses different filenames, just edit the path strings in that
-manifest). The most promising candidates for the remaining 7 enemies are itch.io's CC0-tagged
-tower-defense packs (e.g. Foozle's "Spire" enemy sets, Tisroc's slimes) -- genuinely top-down and
-purpose-built for this genre, unlike the sources already tried here, but itch.io gates downloads
-behind a JS/session flow rather than a plain fetchable URL, so grabbing them needs a real browser.
+manifest).
 
 ## Sound
 
-No audio files are bundled either -- every cue (a tower firing, an enemy dying, a wave starting, a
-floor clearing, a relic drafted, ...) is synthesized on the fly into a small chiptune-style blip
-instead (see `audio.py`), matching the placeholder-shape visual style rather than aiming for
-realism. Drop real files into `assets/sfx/` under the names in `SOUND_MANIFEST` (in `audio.py`) and
-they'll play instead, no code changes needed. Toggle sound entirely from Settings.
+13 of 18 cues are real audio now (also from Huntrt's "The Apocalypse Constructor" pack above, CC0) --
+tower fire (default/heavy/zap), enemy hit (small/splash)/killed, a life lost, tower placed/upgraded/
+sold, wave start, game over, and a relic acquired. The remaining 5 (floor cleared, boss defeated,
+victory, a tower unlocked in the Shop, an achievement toast) have no good match in that pack -- it's
+built for combat/economy cues, not celebratory fanfares/chimes -- and still synthesize on the fly
+into a small chiptune-style blip instead (see `audio.py`), matching the placeholder-shape visual
+style rather than aiming for realism. Drop real files into `assets/sfx/` under the names in
+`SOUND_MANIFEST` (in `audio.py`) and they'll play instead, no code changes needed. Toggle sound
+entirely from Settings.
 
 ## Tower placement
 
@@ -530,6 +540,6 @@ entry, not a change to the systems that already work.
 
 ## License
 
-The game's own code is MIT-licensed -- see [`LICENSE`](LICENSE). The bundled tile/tower art (see
-"Art" above) is a separate CC0 asset pack from Kenney, unaffected by and not covered by the MIT
-license above -- CC0 art carries no restrictions of its own either way.
+The game's own code is MIT-licensed -- see [`LICENSE`](LICENSE). The bundled art and audio (see
+"Art" and "Sound" above) are separate CC0 assets from Kenney and Huntrt, unaffected by and not
+covered by the MIT license above -- CC0 assets carry no restrictions of their own either way.

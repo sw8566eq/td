@@ -189,9 +189,12 @@ def test_boss_update_does_not_tick_armor_timer_for_dead_or_finished_enemies():
     assert dead.armor_timer == 2.0  # unchanged -- guarded before ever ticking
 
 
-def test_boss_draw_shows_a_status_ring_once_enraged():
+def test_boss_draw_shows_a_status_ring_once_enraged(tmp_path):
     from assets import AssetManager
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((100, 100))
     surface.fill((0, 0, 0))
 
@@ -205,9 +208,12 @@ def test_boss_draw_shows_a_status_ring_once_enraged():
     assert surface.get_at((int(boss.pos.x), ring_y)) != (0, 0, 0, 255)
 
 
-def test_boss_draw_omits_the_status_ring_before_any_mechanic_triggers():
+def test_boss_draw_omits_the_status_ring_before_any_mechanic_triggers(tmp_path):
     from assets import AssetManager
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((100, 100))
     surface.fill((0, 0, 0))
 
@@ -411,9 +417,12 @@ def test_final_boss_shielded_take_poison_damage_with_ignore_shield_bypasses_the_
     assert final_boss.hp == starting_hp - applied
 
 
-def test_final_boss_shielded_draw_shows_a_ring_only_while_pulse_shield_is_up():
+def test_final_boss_shielded_draw_shows_a_ring_only_while_pulse_shield_is_up(tmp_path):
     from assets import AssetManager
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((100, 100))
     surface.fill((0, 0, 0))
 
@@ -592,9 +601,12 @@ def test_shielded_enemy_update_is_a_no_op_for_dead_or_finished_enemies():
     assert finished.shield == shield_after_hit  # no regen after reaching the goal
 
 
-def test_shielded_enemy_draw_shows_a_shield_bar_while_shield_remains():
+def test_shielded_enemy_draw_shows_a_shield_bar_while_shield_remains(tmp_path):
     from assets import AssetManager
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((100, 100))
     surface.fill((0, 0, 0))
 
@@ -608,9 +620,12 @@ def test_shielded_enemy_draw_shows_a_shield_bar_while_shield_remains():
     assert surface.get_at((int(enemy.pos.x), bar_y)) != (0, 0, 0, 255)
 
 
-def test_shielded_enemy_draw_omits_the_shield_bar_once_shield_is_gone():
+def test_shielded_enemy_draw_omits_the_shield_bar_once_shield_is_gone(tmp_path):
     from assets import AssetManager
-    assets = AssetManager()
+    # asset_root points at an empty dir, never the project's real assets/ --
+    # this must stay true regardless of what real art has been dropped in
+    # locally (see test_assets.py's own docstring on this same precedent).
+    assets = AssetManager(asset_root=str(tmp_path))
     surface = pygame.Surface((100, 100))
     surface.fill((0, 0, 0))
 

@@ -8,6 +8,20 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Real art for the last 2 towers (Siphon, Overload Cannon) and all 7 remaining enemy species
+  (`boss`/`shielded`/`splitter`/`splitter_child`/`healer`/`final_boss`/`final_boss_shielded`) --
+  tiles, towers, and enemies are now fully covered (only projectiles, at a fixed 12x12px, stay
+  placeholder -- confirmed via a real render-size comparison that real art blurs into an
+  indistinguishable blob there). Source: Kenney's "Tower Defense (Top-Down)" pack for the 2 towers,
+  Huntrt's CC0 "The Apocalypse Constructor" (OpenGameArt.org) for the 7 enemies (tinted/outlined from
+  its silhouette spritesheet, since it ships as plain white shapes).
+- Real audio for 13 of 18 sound cues (also from "The Apocalypse Constructor"), replacing the
+  synthesized chiptune blip for tower fire, enemy hit/killed, life lost, tower placed/upgraded/sold,
+  wave start, game over, and relic acquired. The remaining 5 (floor cleared, boss defeated, victory,
+  tower unlocked in the Shop, achievement toast) have no fitting cue in that pack and stay
+  synthesized.
+- Credits screen and README updated to name both CC0 sources now in use.
+
 - Two new menu screens for data that was already being tracked but never had a viewer: **Run
   History** (every seed you've played and its best floors-cleared result, sorted best-first) and
   **Unlocks** (a live checklist of every account-wide tower/relic/level/Shop unlock, showing
