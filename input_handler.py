@@ -73,6 +73,8 @@ class InputHandler:
                     self._handle_unlocks_click(event.pos)
                 elif game.state == GameState.HELP:
                     self._handle_help_click(event.pos)
+                elif game.state == GameState.RUN_GUIDE:
+                    self._handle_run_guide_click(event.pos)
                 elif game.state == GameState.CREDITS:
                     self._handle_credits_click(event.pos)
                 elif game.state == GameState.DRAFT:
@@ -184,6 +186,9 @@ class InputHandler:
                 game.state = GameState.EDITOR  # one step back, same as the Back-to-Path button
             else:
                 self._handle_editor_undo_redo_keydown(key)
+        elif game.state == GameState.RUN_GUIDE:
+            if key == pygame.K_ESCAPE:
+                game.state = GameState.HELP  # one step back, same as the Back to Help button
         elif game.state == GameState.LEVEL_SELECT:
             if key == pygame.K_ESCAPE:
                 # Back to wherever this screen was entered from -- the
@@ -569,7 +574,20 @@ class InputHandler:
         self._handle_static_screen_back_click(pos, self.game.unlocks_back_rect)
 
     def _handle_help_click(self, pos):
-        self._handle_static_screen_back_click(pos, self.game.help_back_rect)
+        from game import GameState  # see module docstring
+
+        game = self.game
+        if ui.get_clicked_run_guide_entry_button(pos, game.run_guide_entry_button_rect):
+            game.state = GameState.RUN_GUIDE
+            return
+        self._handle_static_screen_back_click(pos, game.help_back_rect)
+
+    def _handle_run_guide_click(self, pos):
+        from game import GameState  # see module docstring
+
+        game = self.game
+        if game.run_guide_back_rect.collidepoint(pos):
+            game.state = GameState.HELP
 
     def _handle_credits_click(self, pos):
         self._handle_static_screen_back_click(pos, self.game.credits_back_rect)

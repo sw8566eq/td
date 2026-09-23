@@ -1946,7 +1946,8 @@ def _build_static_list_back_rect(line_count, top, line_height, width, height, ga
     return pygame.Rect(x, y, width, height)
 
 
-def _draw_static_list_screen(surface, font, small_font, title, lines, back_rect, top, line_height):
+def _draw_static_list_screen(surface, font, small_font, title, lines, back_rect, top, line_height,
+                              back_label="Back to Menu", escape_text="Esc -- Back to Menu"):
     surface.fill(settings.COLOR_BG)
     title_text = font.render(title, True, settings.COLOR_TEXT)
     surface.blit(title_text, title_text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
@@ -1957,8 +1958,8 @@ def _draw_static_list_screen(surface, font, small_font, title, lines, back_rect,
         surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += line_height
 
-    _draw_back_to_menu_button(surface, small_font, back_rect)
-    _draw_escape_hint(surface, small_font)
+    _draw_back_to_menu_button(surface, small_font, back_rect, back_label)
+    _draw_escape_hint(surface, small_font, escape_text)
 
 
 # --- Help / How to Play screen ---
@@ -1998,9 +1999,89 @@ def build_help_back_rect(line_count=_HELP_LINE_COUNT):
                                          HELP_BACK_BUTTON_GAP)
 
 
-def draw_help_screen(surface, font, small_font, back_rect):
+# The Help screen's own entry point into GameState.RUN_GUIDE -- placed to
+# the right of "Back to Menu" on that same row, same "to the right of
+# back" shape KEYBINDS_ENTRY_BUTTON_WIDTH already uses off SETTINGS,
+# rather than a new top-level menu key (Help is already the natural place
+# a player looking for more explanation would check first).
+RUN_GUIDE_ENTRY_BUTTON_WIDTH = 200
+
+
+def build_run_guide_entry_button_rect():
+    back_rect = build_help_back_rect()
+    x = back_rect.right + 24
+    y = back_rect.centery - HELP_BACK_BUTTON_HEIGHT // 2
+    return pygame.Rect(x, y, RUN_GUIDE_ENTRY_BUTTON_WIDTH, HELP_BACK_BUTTON_HEIGHT)
+
+
+def get_clicked_run_guide_entry_button(pos, run_guide_entry_button_rect):
+    return run_guide_entry_button_rect.collidepoint(pos)
+
+
+def draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect):
     _draw_static_list_screen(surface, font, small_font, "How to Play", HELP_LINES,
                               back_rect, HELP_TOP, HELP_LINE_HEIGHT)
+    _draw_back_to_menu_button(surface, small_font, run_guide_entry_button_rect, "Run Guide...")
+
+
+# --- Run Guide screen ---
+#
+# Reached from a button on the Help screen (not a new top-level menu key
+# -- see RUN_GUIDE_ENTRY_BUTTON_WIDTH's own comment). Deepens onboarding
+# past Help's own controls-only reference: a one-line-per-node-type
+# explainer of the run's own branching map (reusing MAP_NODE_TYPE_NAMES/
+# MAP_NODE_TYPE_DESCRIPTIONS verbatim -- the exact same source the map
+# screen's own hover tooltip already reads, so this can't drift out of
+# sync with what that tooltip says) plus a short status-effect glossary.
+# Deliberately does NOT also try to list all 74 relics (or even a
+# category summary) -- ui.draw_relics_overlay already shows every
+# currently-held relic's full name+description live, in-run, via the R
+# HUD button, which is a strictly more useful reference for relics
+# actually held than a static pre-run wall of text would be; this screen
+# just points at that instead. Reuses _draw_static_list_screen/
+# _build_static_list_back_rect verbatim, same as Help/Credits above --
+# zero new drawing primitives needed.
+
+RUN_GUIDE_TOP = 100
+RUN_GUIDE_LINE_HEIGHT = 34
+RUN_GUIDE_BACK_BUTTON_WIDTH = 240
+RUN_GUIDE_BACK_BUTTON_HEIGHT = 40
+RUN_GUIDE_BACK_BUTTON_GAP = 24
+
+_RUN_GUIDE_NODE_TYPE_LINES = [
+    f"{MAP_NODE_TYPE_NAMES[key]}: {MAP_NODE_TYPE_DESCRIPTIONS[key]}" for key in MAP_NODE_TYPE_NAMES
+]
+_RUN_GUIDE_STATUS_LINES = [
+    "Marked: extra damage taken for a few seconds (Beacon Tower)",
+    "Slowed: reduced movement speed for a few seconds (Frost Tower)",
+    "Poisoned: damage over time, ticking every second (Poison Tower)",
+    "Shielded: absorbs damage before HP does (some enemies)",
+    "Knocked back: pushed backward along its route (Knockback Tower)",
+]
+RUN_GUIDE_LINES = [
+    "Each run is a branching map of nodes -- pick your own path, floor by floor.",
+    *_RUN_GUIDE_NODE_TYPE_LINES,
+    *_RUN_GUIDE_STATUS_LINES,
+    ("Relics: 74 across Economy/Offense/Status/Defense/Tower-exclusive categories -- "
+     "press R in a run to see what you're holding"),
+]
+
+_RUN_GUIDE_LINE_COUNT = len(RUN_GUIDE_LINES)  # see _ACHIEVEMENT_COUNT above for why a singleton, not a bare len() default
+
+
+def build_run_guide_back_rect(line_count=_RUN_GUIDE_LINE_COUNT):
+    return _build_static_list_back_rect(line_count, RUN_GUIDE_TOP, RUN_GUIDE_LINE_HEIGHT,
+                                         RUN_GUIDE_BACK_BUTTON_WIDTH, RUN_GUIDE_BACK_BUTTON_HEIGHT,
+                                         RUN_GUIDE_BACK_BUTTON_GAP)
+
+
+def draw_run_guide_screen(surface, font, small_font, back_rect):
+    # back_label/escape_text overridden -- this screen's "back" returns to
+    # Help, not the Menu, matching Keybinds' own "Esc returns to its
+    # parent screen" precedent (see input_handler.py's RUN_GUIDE branch).
+    _draw_static_list_screen(surface, font, small_font, "Run Guide", RUN_GUIDE_LINES,
+                              back_rect, RUN_GUIDE_TOP, RUN_GUIDE_LINE_HEIGHT,
+                              back_label="Back to Help", escape_text="Esc -- Back to Help")
 
 
 # --- Credits screen ---
