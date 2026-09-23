@@ -178,7 +178,7 @@ domain -- credit appreciated but not required). Coverage:
   `healer`, `final_boss`, and `final_boss_shielded` have no good match in this pack and still render
   as placeholder circles -- `AssetManager` degrades gracefully per-sprite, so a partial pack is not a
   blocker to shipping the rest.
-- `assets/projectiles/` (0/9, deliberately) -- these render at a fixed 12x12px, where a colored-dot
+- `assets/projectiles/` (0/11, deliberately) -- these render at a fixed 12x12px, where a colored-dot
   PNG would be visually indistinguishable from the existing flat-color-circle placeholder, so it
   wasn't worth curating.
 
@@ -340,7 +340,7 @@ Eight of the twelve towers start locked account-wide behind lifetime counters
 (`meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
 playing more runs unlocks Sniper, Support, Beacon, and Siphon; reaching the endless final floor once
 unlocks Beam. An unlocked tower joins the pool the Shop can offer from -- it doesn't start in your
-hand, it just becomes a card you might see. A handful of the game's newest relics and one of its
+hand, it just becomes a card you might see. A handful of the game's newest relics and two of its
 levels are gated the same way, behind steeper thresholds, so there's still something to chase long
 after every tower is unlocked. A toast pops up in-game the moment you unlock anything.
 
@@ -525,3 +525,9 @@ entry, not a change to the systems that already work.
 - **New Random Event**: add an `Event(...)` entry to `EVENTS` in `events.py` with a short prompt and
   2-3 `EventOption`s, each a fixed, honestly-described delta (currency, lives, a relic grant, a tower
   unlock, or giving up a relic already held) -- see the existing sixteen for the shape.
+
+## License
+
+The game's own code is MIT-licensed -- see [`LICENSE`](LICENSE). The bundled tile/tower art (see
+"Art" above) is a separate CC0 asset pack from Kenney, unaffected by and not covered by the MIT
+license above -- CC0 art carries no restrictions of its own either way.
