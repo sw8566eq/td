@@ -102,6 +102,8 @@ class InputHandler:
                 self._scroll_run_history(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.UNLOCKS:
                 self._scroll_unlocks(event.y)
+            elif event.type == pygame.MOUSEWHEEL and game.state == GameState.ACHIEVEMENTS:
+                self._scroll_achievements(event.y)
             elif event.type == pygame.VIDEORESIZE and not game.fullscreen:
                 # Only while windowed -- a fullscreen window resizing away
                 # from the desktop resolution isn't something the player
@@ -757,4 +759,11 @@ class InputHandler:
         max_scroll = ui.unlocks_max_scroll(row_count)
         game.unlocks_scroll_offset = self._scroll_list(
             wheel_y, game.unlocks_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
+        )
+
+    def _scroll_achievements(self, wheel_y):
+        game = self.game
+        max_scroll = ui.achievements_max_scroll()
+        game.achievements_scroll_offset = self._scroll_list(
+            wheel_y, game.achievements_scroll_offset, max_scroll, ui.ACHIEVEMENTS_SCROLL_STEP,
         )

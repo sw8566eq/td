@@ -2061,6 +2061,37 @@ def test_event_escape_quits(game):
     assert game.running is False
 
 
+def test_choosing_any_event_option_bumps_events_resolved(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["traveling_collector"])
+    _begin_run_with_map(game, ["combat", "event"])
+    game._enter_node("1-0")
+
+    game._handle_event_click(game.event_option_rects[0].center)  # not the relic_cost trade
+
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters["events_resolved"] == 1
+
+
+def test_choosing_a_relic_granting_event_option_bumps_relics_collected(game, monkeypatch):
+    # wandering_merchant's own "trade" option (index 0) is grant_relic=True
+    # -- events.resolve_event_option grants its own relic directly onto
+    # `run` rather than routing through _grant_relic (see that function's
+    # own docstring for why), so this needs its own, separate bump site
+    # (Game._resolve_event_choice's own "relic" branch) -- confirming it
+    # actually fires is the whole point of this test, not implied by the
+    # Treasure-node coverage above.
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["wandering_merchant"])
+    _begin_run_with_map(game, ["combat", "event"], shop_currency=20)
+    game._enter_node("1-0")
+
+    game._handle_event_click(game.event_option_rects[0].center)  # "Trade 10 shop currency for a relic"
+
+    assert "relic" in game.event_resolution
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters["relics_collected"] == 1
+    assert counters["events_resolved"] == 1  # both bump from the same resolution
+
+
 # --- Rest nodes ---
 
 
@@ -2096,6 +2127,19 @@ def test_treasure_node_grants_currency_and_a_relic(game):
     assert game.state == GameState.TREASURE
     assert game.active_run.shop_currency == game.treasure_granted_currency
     assert game.treasure_granted_relic in game.active_run.relics
+
+
+def test_treasure_node_relic_grant_bumps_relics_collected_achievement_counter(game):
+    # _grant_relic() is the one choke point a Shop purchase and a
+    # Treasure node's guaranteed pick both route through -- covering it
+    # here covers both, no need to separately drive a Shop purchase to a
+    # relic-kind item too.
+    _begin_run_with_map(game, ["combat", "treasure"])
+
+    game._enter_node("1-0")
+
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters["relics_collected"] == 1
 
 
 def test_treasure_node_relic_grant_degrades_once_exhausted(game):
@@ -2180,6 +2224,30 @@ def test_permadeath_bumps_runs_played_and_records_run_history(game):
 
     assert meta_progression.load_meta_progression(game.meta_progression_path)["counters"]["runs_played"] == 1
     assert run_history.load_run_history(game.run_history_path) == {seed: 0}
+
+
+def test_daily_run_permadeath_bumps_daily_runs_played(game):
+    start_first_floor(game, seed=1, is_daily=True)
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters["daily_runs_played"] == 1
+
+
+def test_a_non_daily_run_permadeath_does_not_bump_daily_runs_played(game):
+    start_first_floor(game, seed=1)  # is_daily defaults to False
+    game.economy.lives = 1
+    game.enemies = []
+
+    game.economy.lose_life()
+    game.update(dt=0.01)
+
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters.get("daily_runs_played", 0) == 0
 
 
 def test_run_history_records_floors_cleared_at_time_of_death(game):

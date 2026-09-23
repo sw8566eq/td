@@ -8,8 +8,7 @@ from run_map import NODE_TYPES
 from shop import ShopItem
 from tower import TOWER_TYPES
 from ui import (
-    ACHIEVEMENT_ROW_HEIGHT,
-    ACHIEVEMENTS_TOP,
+    ACHIEVEMENTS_BOTTOM,
     BUTTON_MARGIN,
     BUTTON_SIZE,
     CREDITS_LINE_HEIGHT,
@@ -45,6 +44,7 @@ from ui import (
     _format_wave_preview,
     _relics_overlay_lines,
     _wrap_text,
+    achievements_max_scroll,
     binding_display_string,
     build_achievements_back_rect,
     build_button_rects,
@@ -388,11 +388,21 @@ def test_get_clicked_volume_button_returns_none_outside_both_buttons():
 
 # --- Achievements screen ---
 
-def test_build_achievements_back_rect_sits_below_the_last_achievement_row():
-    from achievements import ACHIEVEMENT_ORDER
+def test_build_achievements_back_rect_sits_below_the_fixed_viewport_bottom():
+    # No longer computed from ACHIEVEMENT_ORDER's own length -- the list
+    # now scrolls (see ui.py's own Achievements-screen comment), so the
+    # button sits at a fixed position instead, same shape
+    # build_run_history_back_rect/build_unlocks_back_rect already use.
     rect = build_achievements_back_rect()
-    last_row_bottom = ACHIEVEMENTS_TOP + len(ACHIEVEMENT_ORDER) * ACHIEVEMENT_ROW_HEIGHT
-    assert rect.top >= last_row_bottom
+    assert rect.top >= ACHIEVEMENTS_BOTTOM
+
+
+def test_achievements_max_scroll_is_positive_once_the_v1_batch_overflows_the_viewport():
+    # 19 achievements (post-v1.0 batch) at ACHIEVEMENT_ROW_HEIGHT=34 is a
+    # real, current overflow of the fixed viewport -- not a synthetic
+    # what-if the way test_list_max_scroll_is_positive_once_content_
+    # overflows_the_viewport's own generic-helper test needs to construct.
+    assert achievements_max_scroll() > 0
 
 
 def test_draw_achievements_screen_does_not_crash_with_nothing_unlocked():
@@ -402,7 +412,9 @@ def test_draw_achievements_screen_does_not_crash_with_nothing_unlocked():
     surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
     back_rect = build_achievements_back_rect()
 
-    draw_achievements_screen(surface, font, small_font, unlocked_keys=set(), counters={}, back_rect=back_rect)
+    draw_achievements_screen(
+        surface, font, small_font, unlocked_keys=set(), counters={}, scroll_offset=0, back_rect=back_rect,
+    )
 
 
 def test_draw_achievements_screen_shows_unlocked_and_in_progress_entries():
@@ -417,7 +429,20 @@ def test_draw_achievements_screen_shows_unlocked_and_in_progress_entries():
     draw_achievements_screen(
         surface, font, small_font,
         unlocked_keys={"first_blood"}, counters={"kills": 1, "towers_built": 0},
-        back_rect=back_rect,
+        scroll_offset=0, back_rect=back_rect,
+    )
+
+
+def test_draw_achievements_screen_with_scroll_offset_does_not_crash():
+    pygame.font.init()
+    font = pygame.font.SysFont(None, 32)
+    small_font = pygame.font.SysFont(None, 22)
+    surface = pygame.Surface((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    back_rect = build_achievements_back_rect()
+
+    draw_achievements_screen(
+        surface, font, small_font,
+        unlocked_keys=set(), counters={}, scroll_offset=achievements_max_scroll(), back_rect=back_rect,
     )
 
 

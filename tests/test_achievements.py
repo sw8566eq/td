@@ -86,6 +86,14 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "kills", "towers_built", "towers_maxed", "towers_specialized",
         "levels_cleared", "distinct_levels_cleared", "waves_survived",
         "bosses_defeated",
+        # v1.0 batch -- relics_collected/daily_runs_played/events_resolved
+        # are bumped from Game._grant_relic/_resolve_event_choice/
+        # _record_run_permadeath; siphon_built/overload_cannon_built are
+        # two instances of try_place_tower's generalized per-tower-type
+        # f"{tower_name}_built" counter (every TOWER_TYPES name is a valid
+        # counter this way, not just these two).
+        "relics_collected", "daily_runs_played", "events_resolved",
+        "siphon_built", "overload_cannon_built",
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key

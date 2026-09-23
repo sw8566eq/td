@@ -1422,6 +1422,21 @@ def test_try_place_tower_records_the_towers_built_achievement_counter(playing_ga
     assert counters["towers_built"] == 1
 
 
+def test_try_place_tower_records_a_per_tower_type_achievement_counter(playing_game):
+    # Generalized past just the two towers with an achievement keyed on it
+    # today (power_tap/overcharged) -- any TOWER_TYPES name gets its own
+    # f"{name}_built" counter for free, zero new plumbing needed to add a
+    # future achievement for a different tower.
+    anchor_col, anchor_row = find_buildable_anchor(playing_game)
+    playing_game.selected_tower_name = "basic"
+
+    playing_game.try_place_tower(anchor_col, anchor_row)
+
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["basic_built"] == 1
+    assert "cannon_built" not in counters  # only the tower actually placed gets bumped
+
+
 def test_try_place_tower_plays_the_tower_placed_sound(playing_game):
     anchor_col, anchor_row = find_buildable_anchor(playing_game)
     playing_game.selected_tower_name = "basic"
@@ -2428,6 +2443,38 @@ def test_entering_achievements_reloads_state_from_disk(game):
 def test_render_achievements_screen_does_not_crash(game):
     game._enter_achievements()
     game.render()
+
+
+def test_scrolling_down_moves_the_achievements_offset(game):
+    # The v1.0 batch (11 -> 19) already overflows the fixed viewport with
+    # zero extra fixture data -- see ui.py's own Achievements-screen
+    # comment -- so this needs no seeding, unlike Run History's own
+    # equivalent test.
+    game._enter_achievements()
+    assert game.achievements_scroll_offset == 0
+    game._scroll_achievements(-1)  # wheel "down" gesture
+    assert game.achievements_scroll_offset > 0
+    game.render()  # now also exercises the "more above" hint
+
+
+def test_achievements_scroll_clamps_at_zero_and_at_max(game):
+    game._enter_achievements()
+    game._scroll_achievements(1)  # can't scroll up past the top
+    assert game.achievements_scroll_offset == 0
+
+    max_scroll = ui.achievements_max_scroll()
+    for _ in range(50):
+        game._scroll_achievements(-1)
+    assert game.achievements_scroll_offset == max_scroll
+
+
+def test_entering_achievements_resets_scroll_to_the_top(game):
+    game._enter_achievements()
+    game._scroll_achievements(-3)
+    assert game.achievements_scroll_offset > 0
+
+    game._enter_achievements()  # re-entering (e.g. via A again) starts back at the top
+    assert game.achievements_scroll_offset == 0
 
 
 # --- Run History screen ---
