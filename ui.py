@@ -1754,13 +1754,16 @@ CREDITS_BACK_BUTTON_WIDTH = 240
 CREDITS_BACK_BUTTON_HEIGHT = 40
 CREDITS_BACK_BUTTON_GAP = 24
 
-# Placeholder content -- fill in real attribution/license text later; this
-# exists so there's a credits screen at all, not to make any final claim
-# about what it should say.
+# Only complete relative to what's real today -- revisit once more real
+# art/audio lands (see the v1.0 roadmap's own art-and-audio workstream):
+# the audio line below is accurate only as long as every cue is still
+# synthesized, and the art line only credits what's actually bundled.
 CREDITS_LINES = [
     "Tower Defense",
-    "Built with Python and pygame.",
-    "(c) the author. License: TBD.",
+    "A roguelike deckbuilder tower defense, built with Python and pygame.",
+    "(c) 2026 the project's contributors. Licensed under the MIT License -- see LICENSE.",
+    'Art: Kenney\'s "Tower Defense (Top-Down)" pack (kenney.nl), CC0 / public domain.',
+    "Sound: synthesized in-engine (audio.py) -- no external audio assets yet.",
 ]
 
 _CREDITS_LINE_COUNT = len(CREDITS_LINES)  # see _ACHIEVEMENT_COUNT above for why a singleton, not a bare len() default
