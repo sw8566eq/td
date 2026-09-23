@@ -81,6 +81,45 @@ ACHIEVEMENTS = {
     "boss_slayer": Achievement(
         "boss_slayer", "Boss Slayer", "Defeat the run's final boss.", "bosses_defeated", 1,
     ),
+    # A v1.0 batch of 8, closing the biggest count-disparity in the
+    # content registries (11 achievements against 74 relics before this)
+    # -- none tied to relics collected, Daily Runs, or specific towers.
+    # Thresholds pattern-matched against the existing registry's own
+    # escalation style (kills' 1/100/1000, waves_survived's 10/100 --
+    # roughly x5-10 per tier). relics_collected/daily_runs_played/
+    # events_resolved are new counters, bumped from Game (see
+    # Game._grant_relic/_resolve_event_choice/_record_run_permadeath) --
+    # never from inside Tower/Enemy/Economy, same rule every other counter
+    # here already follows, so resume_saved_run() can never double-count
+    # one. siphon_built/overload_cannon_built reuse the same per-tower-
+    # type pattern try_place_tower() already bumps every tower's own name
+    # under (f"{tower_name}_built"), so any future tower gets one for
+    # free with zero new plumbing -- these two are just the first
+    # achievements to actually key off it.
+    "relic_collector": Achievement(
+        "relic_collector", "Collector", "Collect 10 relics across your runs.", "relics_collected", 10,
+    ),
+    "relic_hoarder": Achievement(
+        "relic_hoarder", "Hoarder", "Collect 50 relics across your runs.", "relics_collected", 50,
+    ),
+    "daily_habit": Achievement(
+        "daily_habit", "Creature of Habit", "Play 7 Daily Runs.", "daily_runs_played", 7,
+    ),
+    "daily_devotee": Achievement(
+        "daily_devotee", "Daily Devotee", "Play 30 Daily Runs.", "daily_runs_played", 30,
+    ),
+    "crossroads": Achievement(
+        "crossroads", "Crossroads", "Resolve 5 Random Events.", "events_resolved", 5,
+    ),
+    "well_traveled": Achievement(
+        "well_traveled", "Well-Traveled", "Resolve 30 Random Events.", "events_resolved", 30,
+    ),
+    "power_tap": Achievement(
+        "power_tap", "Power Tap", "Place a Siphon Tower.", "siphon_built", 1,
+    ),
+    "overcharged": Achievement(
+        "overcharged", "Overcharged", "Place an Overload Cannon.", "overload_cannon_built", 1,
+    ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 

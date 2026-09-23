@@ -195,6 +195,11 @@ class Game:
         self.achievements_path = achievements_path or achievements.ACHIEVEMENTS_PATH
         self.achievements_state = achievements.load_achievements(self.achievements_path)
         self.achievements_back_rect = ui.build_achievements_back_rect()
+        # Scrolls since the v1.0 achievements batch (see ui.py's own
+        # Achievements-screen comment) -- always reset to 0 on (re-)entry,
+        # same convention run_history_scroll_offset/unlocks_scroll_offset
+        # below already follow.
+        self.achievements_scroll_offset = 0
         self.help_back_rect = ui.build_help_back_rect()
         self.credits_back_rect = ui.build_credits_back_rect()
         # Newly-unlocked-achievement toasts -- see _record_achievement().
@@ -695,6 +700,8 @@ class Game:
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
+        if self.active_run.is_daily:
+            self._record_achievement("daily_runs_played")
 
     def _handle_boss_defeated(self):
         """The map's boss node just ran out of authored waves for the
@@ -852,6 +859,7 @@ class Game:
         self.active_run.relics.append(relic_key)
         self._apply_one_time_relic_bonus(relics.RELICS[relic_key])
         self.audio.play("relic_acquired")
+        self._record_achievement("relics_collected")
 
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
@@ -893,8 +901,10 @@ class Game:
         # call site. Same two cues either way.
         if "relic" in self.event_resolution:
             self.audio.play("relic_acquired")
+            self._record_achievement("relics_collected")
         elif "tower" in self.event_resolution:
             self.audio.play("tower_unlocked_shop")
+        self._record_achievement("events_resolved")
         self.event_chosen_option = option
         self.event_phase = "resolved"
 
@@ -1581,9 +1591,14 @@ class Game:
         # convention persistence.list_custom_levels() follows, since an
         # achievement can have unlocked since this screen was last open
         # (e.g. right after a victory earned one -- see update()'s
-        # win-check).
+        # win-check). Always reopens scrolled to the top, same as
+        # _enter_run_history()/_enter_unlocks()'s own scroll_offset reset.
         self.achievements_state = achievements.load_achievements(self.achievements_path)
+        self.achievements_scroll_offset = 0
         self.state = GameState.ACHIEVEMENTS
+
+    def _scroll_achievements(self, wheel_y):
+        return self.input_handler._scroll_achievements(wheel_y)
 
     def _handle_static_screen_back_click(self, pos, back_rect):
         return self.input_handler._handle_static_screen_back_click(pos, back_rect)
@@ -1691,6 +1706,13 @@ class Game:
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
+        # Per-tower-type counter, generalized past just power_tap/
+        # overcharged (the two achievements that currently key off it) --
+        # self.selected_tower_name is already the exact TOWER_TYPES key
+        # here, so every tower type gets its own lifetime counter for
+        # free, and a future achievement can hang off any tower's own
+        # counter without ever touching this call site again.
+        self._record_achievement(f"{self.selected_tower_name}_built")
         self.audio.play("tower_placed")
         return True
 

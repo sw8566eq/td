@@ -75,7 +75,7 @@ class Renderer:
             ui.draw_achievements_screen(
                 game.screen, game.font, game.small_font,
                 game.achievements_state["unlocked"], game.achievements_state["counters"],
-                game.achievements_back_rect,
+                game.achievements_scroll_offset, game.achievements_back_rect,
             )
             pygame.display.flip()
             return

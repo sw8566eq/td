@@ -1625,31 +1625,47 @@ def draw_keybinds_screen(surface, font, small_font, keybind_row_rects, bindings,
 
 
 # --- Achievements screen ---
+#
+# Scrolls since the v1.0 achievements batch (11 -> 19) pushed
+# ACHIEVEMENT_ORDER past a non-scrolling screen's own row budget -- same
+# retrofit shape Run History/Unlocks below already establish (a fixed
+# Back button below a fixed viewport bottom, a dedicated hint margin kept
+# structurally separate from the row viewport so a scroll hint can never
+# overlap a row -- see RUN_HISTORY_HINT_MARGIN's own comment for why that
+# matters), migrated off the old "back button computed from the fixed
+# registry size" shape a short, truly-fixed list could get away with.
 
 ACHIEVEMENTS_TOP = 110
 ACHIEVEMENT_ROW_HEIGHT = 34
+ACHIEVEMENTS_SCROLL_STEP = ACHIEVEMENT_ROW_HEIGHT  # one row per wheel click
+ACHIEVEMENTS_BOTTOM = settings.SCREEN_HEIGHT - 130
+ACHIEVEMENTS_HINT_MARGIN = 20
+ACHIEVEMENTS_ROWS_TOP = ACHIEVEMENTS_TOP + ACHIEVEMENTS_HINT_MARGIN
+ACHIEVEMENTS_ROWS_BOTTOM = ACHIEVEMENTS_BOTTOM - ACHIEVEMENTS_HINT_MARGIN
 ACHIEVEMENTS_BACK_BUTTON_WIDTH = 240
 ACHIEVEMENTS_BACK_BUTTON_HEIGHT = 40
 ACHIEVEMENTS_BACK_BUTTON_GAP = 24
 
-# A module-level singleton rather than a bare len() call in the signature
-# below -- ACHIEVEMENT_ORDER is fixed at import time either way, but a
-# function call as a default argument always reads as a mutable-default
-# footgun to a linter.
-_ACHIEVEMENT_COUNT = len(ACHIEVEMENT_ORDER)
+
+def achievements_max_scroll():
+    return list_max_scroll(
+        len(ACHIEVEMENT_ORDER), ACHIEVEMENT_ROW_HEIGHT, 0, ACHIEVEMENTS_ROWS_TOP, ACHIEVEMENTS_ROWS_BOTTOM,
+    )
 
 
-def build_achievements_back_rect(achievement_count=_ACHIEVEMENT_COUNT):
-    """Rect for the Achievements screen's single 'Back to Menu' button,
-    stacked directly below the last achievement row -- the list is short
-    and fixed (the registry doesn't change at runtime), so unlike the
-    level-select browser this never needs to scroll."""
+def build_achievements_back_rect():
+    """Rect for the Achievements screen's single 'Back to Menu' button --
+    a fixed position below a fixed viewport bottom, same "can't compute
+    this from entry count once the list can overflow the screen" shape
+    build_run_history_back_rect/build_unlocks_back_rect below use, not
+    the old "stacked directly below the last row" shape a short, always-
+    fits list could get away with."""
     x = (settings.SCREEN_WIDTH - ACHIEVEMENTS_BACK_BUTTON_WIDTH) // 2
-    y = ACHIEVEMENTS_TOP + achievement_count * ACHIEVEMENT_ROW_HEIGHT + ACHIEVEMENTS_BACK_BUTTON_GAP
+    y = ACHIEVEMENTS_BOTTOM + ACHIEVEMENTS_BACK_BUTTON_GAP
     return pygame.Rect(x, y, ACHIEVEMENTS_BACK_BUTTON_WIDTH, ACHIEVEMENTS_BACK_BUTTON_HEIGHT)
 
 
-def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters, back_rect):
+def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters, scroll_offset, back_rect):
     """`unlocked_keys` and `counters` are achievements.load_achievements()'s
     own "unlocked"/"counters" values -- read fresh whenever this screen is
     (re-)entered (see Game._enter_achievements()), same "always re-read,
@@ -1662,18 +1678,35 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
     title = font.render("Achievements", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
 
-    y = ACHIEVEMENTS_TOP
+    viewport = pygame.Rect(0, ACHIEVEMENTS_ROWS_TOP, settings.SCREEN_WIDTH, ACHIEVEMENTS_ROWS_BOTTOM - ACHIEVEMENTS_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+
+    y = ACHIEVEMENTS_ROWS_TOP - scroll_offset
     for key in ACHIEVEMENT_ORDER:
-        achievement = ACHIEVEMENTS[key]
-        if key in unlocked_keys:
-            status, color = "Unlocked", settings.COLOR_GOLD
-        else:
-            progress_value = min(counters.get(achievement.counter, 0), achievement.goal)
-            status, color = f"{progress_value}/{achievement.goal}", settings.COLOR_TEXT_DIM
-        line = f"{achievement.display_name} -- {achievement.description} ({status})"
-        text = small_font.render(line, True, color)
-        surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        row_rect = pygame.Rect(0, y, settings.SCREEN_WIDTH, ACHIEVEMENT_ROW_HEIGHT)
+        if row_rect.colliderect(viewport):
+            achievement = ACHIEVEMENTS[key]
+            if key in unlocked_keys:
+                status, color = "Unlocked", settings.COLOR_GOLD
+            else:
+                progress_value = min(counters.get(achievement.counter, 0), achievement.goal)
+                status, color = f"{progress_value}/{achievement.goal}", settings.COLOR_TEXT_DIM
+            line = f"{achievement.display_name} -- {achievement.description} ({status})"
+            text = small_font.render(line, True, color)
+            surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += ACHIEVEMENT_ROW_HEIGHT
+
+    surface.set_clip(previous_clip)
+
+    max_scroll = achievements_max_scroll()
+    if max_scroll > 0:
+        if scroll_offset > 0:
+            more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, ACHIEVEMENTS_TOP + 4)))
+        if scroll_offset < max_scroll:
+            more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+            surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, ACHIEVEMENTS_BOTTOM - 4)))
 
     _draw_back_to_menu_button(surface, small_font, back_rect)
     _draw_escape_hint(surface, small_font)
@@ -1684,14 +1717,12 @@ def draw_achievements_screen(surface, font, small_font, unlocked_keys, counters,
 # Read-only browser for run_history.py's own {seed: best_floors_cleared}
 # state -- persisted since M4c/Daily Run shipped, but never had a viewer
 # until now (see the v1.0 roadmap). Genuinely unbounded (one entry per
-# distinct seed ever played), unlike Achievements' small fixed registry,
-# so this scrolls via the generic list_max_scroll helper above, and its
-# Back button sits at a FIXED position below a fixed viewport bottom
-# rather than one computed from entry count (which Achievements'
-# build_achievements_back_rect can do specifically because
-# ACHIEVEMENT_ORDER is bounded) -- same "fixed action area below a
-# scrollable viewport" shape the wave editor sidebar's own Playtest/Save/
-# Back buttons already use below WAVE_UNIT_ROWS_BOTTOM.
+# distinct seed ever played), so this scrolls via the generic
+# list_max_scroll helper above, same shape Achievements' own screen was
+# just retrofitted onto -- its Back button sits at a FIXED position below
+# a fixed viewport bottom, same "fixed action area below a scrollable
+# viewport" shape the wave editor sidebar's own Playtest/Save/Back
+# buttons already use below WAVE_UNIT_ROWS_BOTTOM.
 
 RUN_HISTORY_TOP = 90
 RUN_HISTORY_ROW_HEIGHT = 30

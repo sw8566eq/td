@@ -511,8 +511,10 @@ entry, not a change to the systems that already work.
 - **New achievement**: add an `Achievement(...)` entry to `ACHIEVEMENTS` in `achievements.py`,
   keyed off one of the existing cumulative counters (`kills`, `towers_built`, `towers_maxed`,
   `towers_specialized`, `levels_cleared`, `distinct_levels_cleared`, `waves_survived`,
-  `bosses_defeated`) or a new one -- a new counter just needs one `Game._record_achievement(...)`
-  call added at whatever point in `game.py` the event actually happens.
+  `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, or a
+  `f"{tower_name}_built"` counter for any `TOWER_TYPES` name) or a genuinely new one -- a new
+  counter just needs one `Game._record_achievement(...)` call added at whatever point in `game.py`
+  the event actually happens.
 - **New relic**: add a `Relic(...)` entry to `RELICS` in `relics.py` with whichever modifier
   fields it sets; `compose_relic_modifiers()` folds every held relic together into one bundle that
   feeds a floor's `Economy`/`WaveManager`/tower construction alongside difficulty and escalation, so
