@@ -1,5 +1,4 @@
-import settings
-from tower import (
+from entities.tower import (
     TOWER_TYPES,
     BasicTower,
     CannonTower,
@@ -10,6 +9,7 @@ from tower import (
     SniperTower,
     Tower,
 )
+from support import settings
 
 
 def make_tower(tower_cls=BasicTower, anchor_col=0, anchor_row=0):

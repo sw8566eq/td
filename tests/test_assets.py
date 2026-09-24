@@ -25,8 +25,8 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 import pytest
 
-import assets as assets_module
-from assets import DEFAULT_ASSET_ROOT, SPRITE_MANIFEST, AssetManager
+import presentation.assets as assets_module
+from presentation.assets import DEFAULT_ASSET_ROOT, SPRITE_MANIFEST, AssetManager
 
 MISSING_ASSET_ROOT = "/nonexistent/path/for/tests/xyz"
 
@@ -178,10 +178,13 @@ def test_default_asset_root_is_anchored_to_assets_py_not_a_bare_relative_path():
     # root for `python main.py` run from there -- a packaged --onedir
     # build (release.yml) launched from anywhere else would silently stop
     # finding its own bundled assets/ folder. DEFAULT_ASSET_ROOT must stay
-    # an absolute path derived from this module's own location instead.
-    assert DEFAULT_ASSET_ROOT == os.path.join(
-        os.path.dirname(os.path.abspath(assets_module.__file__)), "assets"
-    )
+    # an absolute path derived from this module's own location instead --
+    # two directories up (assets.py's own package dir, presentation/, then
+    # that dir's parent, the project root), since assets.py lives one
+    # level under the project root now (see json_io.module_relative_path).
+    package_dir = os.path.dirname(os.path.abspath(assets_module.__file__))
+    project_root = os.path.dirname(package_dir)
+    assert DEFAULT_ASSET_ROOT == os.path.join(project_root, "assets")
     assert os.path.isabs(DEFAULT_ASSET_ROOT)
 
 

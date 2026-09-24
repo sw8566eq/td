@@ -57,7 +57,7 @@ The final row is always a single **Boss** node. It loads in Endless mode from th
 waves never run out and there's no "you won the run" screen -- while the boss itself is still alive
 it periodically reinforces (or, on the other boss level, shields itself), and defeating it just means
 the fight keeps going, now boss-free. A run ends only by **permadeath** -- losing your last life --
-which records the run (`run_history.py`, keyed by seed, keeping your best result) and banks its
+which records the run (`progression/run_history.py`, keyed by seed, keeping your best result) and banks its
 progress toward the next one.
 
 Clearing a Combat or Elite floor's waves shows a **Floor Cleared** results screen, then returns you
@@ -67,7 +67,7 @@ screen instead and returns you to the map the same way.
 
 Three things make each floor harder than the last: the level itself gets more complex the deeper the
 row, a per-floor **escalation** multiplies enemy HP/speed/gold reward on top of your difficulty
-setting (`run_escalation.py` -- floor 0 is exactly 1.0x, so a run's first floor plays identically to
+setting (`run/run_escalation.py` -- floor 0 is exactly 1.0x, so a run's first floor plays identically to
 that level in Practice), and an Elite/Boss node layers a further bump of its own on top of that.
 
 `D` from the menu starts the **Daily Run** -- the same thing, seeded off today's UTC date, so
@@ -94,7 +94,7 @@ tower's own signature mechanic (Basic's crit, Sniper's execute, Frost's slow, Po
 Knockback's shove) hit harder, a handful of combo relics that reward running two or three towers'
 mechanics together (bonus damage against an enemy that's simultaneously Marked *and* Slowed, say, or
 all three of Marked/Slowed/Poisoned at once), and one that boosts damage against Boss-tier enemies
-specifically. Almost none of them are gated behind an account-wide unlock -- see `relics.py` for the
+specifically. Almost none of them are gated behind an account-wide unlock -- see `run/relics.py` for the
 full registry and "Meta-progression" below for the handful that are. Press `R` while playing a run
 floor to bring up a read-only overlay of every relic you're currently holding.
 
@@ -165,7 +165,7 @@ or anywhere else. (`tests/test_assets.py` stands alone and does its own.)
 ## Art
 
 Tiles, towers, and enemies all have real art now; only projectiles remain placeholder (see
-`assets.py`, `SPRITE_MANIFEST`). Two CC0 sources are in use:
+`presentation/assets.py`, `SPRITE_MANIFEST`). Two CC0 sources are in use:
 - Kenney's ["Tower Defense (Top-Down)"](https://kenney.nl/assets/tower-defense-top-down) pack
   (kenney.nl), CC0 / public domain -- credit appreciated but not required.
 - Huntrt's ["The Apocalypse Constructor"](https://opengameart.org/content/the-apocalypse-constructor-sprites-audios)
@@ -203,9 +203,9 @@ tower fire (default/heavy/zap), enemy hit (small/splash)/killed, a life lost, to
 sold, wave start, game over, and a relic acquired. The remaining 5 (floor cleared, boss defeated,
 victory, a tower unlocked in the Shop, an achievement toast) have no good match in that pack -- it's
 built for combat/economy cues, not celebratory fanfares/chimes -- and still synthesize on the fly
-into a small chiptune-style blip instead (see `audio.py`), matching the placeholder-shape visual
+into a small chiptune-style blip instead (see `presentation/audio.py`), matching the placeholder-shape visual
 style rather than aiming for realism. Drop real files into `assets/sfx/` under the names in
-`SOUND_MANIFEST` (in `audio.py`) and they'll play instead, no code changes needed. Toggle sound
+`SOUND_MANIFEST` (in `presentation/audio.py`) and they'll play instead, no code changes needed. Toggle sound
 entirely from Settings.
 
 ## Tower placement
@@ -218,7 +218,7 @@ red/blocked) in small-tile increments rather than snapping a whole tile at a tim
 straddle what used to be a tile boundary, tuck up against a path bend more precisely, or line up a
 row of towers' ranges exactly. Two footprints can never overlap even partially, regardless of whether
 their anchors happen to line up on any particular grid (`Grid.is_buildable`/`occupy`/`remove` in
-`grid.py`), so this is purely about placement *precision* -- it doesn't let you fit more towers into
+`world/grid.py`), so this is purely about placement *precision* -- it doesn't let you fit more towers into
 the same space.
 
 The map itself renders each buildable tile as that same 8x8 mosaic of individually-drawn small tiles
@@ -272,9 +272,9 @@ Twelve so far. In a run you start with three of them and unlock the rest (see "R
 
 Every tower can be upgraded twice (level 1 -> 3) by clicking its "+cost" badge in-game, or the
 sidebar's Upgrade button while it's pinned/hovered (`Tower.upgrade_badge_center`/
-`contains_upgrade_badge` in `tower.py` own the badge's position and hit-testing, so drawing and
+`contains_upgrade_badge` in `entities/tower.py` own the badge's position and hit-testing, so drawing and
 clicking can never disagree about where it is). Each level multiplies `damage` and `range` by a
-fixed amount (see `Tower.LEVEL_STAT_MULTIPLIERS` in `tower.py`); the upgrade's gold cost is a
+fixed amount (see `Tower.LEVEL_STAT_MULTIPLIERS` in `entities/tower.py`); the upgrade's gold cost is a
 multiplier of that tower's base `cost` (`Tower.UPGRADE_COST_MULTIPLIERS`). This is generic on the
 `Tower` base class, so new tower types get levels for free. A tower can opt its own special stat
 into scaling too by extending `LEVEL_SCALED_STATS`, e.g. `LEVEL_SCALED_STATS =
@@ -299,7 +299,7 @@ their own names on bigger damage/range/fire-rate instead. A specific tower overr
 ## Layout
 
 The window is `PLAY_WIDTH` (the grid + the HUD bar beneath it) plus a fixed `PANEL_WIDTH` stats
-sidebar on the right (both in `settings.py`) -- the window was simply grown to fit the sidebar rather
+sidebar on the right (both in `support/settings.py`) -- the window was simply grown to fit the sidebar rather
 than shrinking the grid. `ui.draw_tower_stats_panel()` reads a tower class's plain stats
 (`cost`/`damage`/`range`/`fire_rate`) plus its `EXTRA_STATS` (see below) to render the panel, so it
 needs no changes for new tower types. Its Upgrade/Specialize/Sell buttons sit at fixed positions in
@@ -347,7 +347,7 @@ there's further to go.
 ## Meta-progression
 
 Eight of the twelve towers start locked account-wide behind lifetime counters
-(`meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
+(`progression/meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
 playing more runs unlocks Sniper, Support, Beacon, and Siphon; reaching the endless final floor once
 unlocks Beam. An unlocked tower joins the pool the Shop can offer from -- it doesn't start in your
 hand, it just becomes a card you might see. A handful of the game's newest relics and two of its
@@ -363,7 +363,7 @@ Practice touches your progress, achievements, or meta-progression unlocks. Real 
 clearing run floors.
 
 **Difficulty** (`S` from the main menu -> Settings) picks one of Easy/Normal/Hard -- a bundle of
-multipliers on enemy HP/speed/gold reward and starting gold/lives (`difficulty.py`). Normal is every
+multipliers on enemy HP/speed/gold reward and starting gold/lives (`run/difficulty.py`). Normal is every
 multiplier at 1.0, i.e. exactly the original numbers -- see "Settings" below for how your choice
 persists. A run snapshots your setting when it starts, so changing it mid-run doesn't move the
 goalposts partway through; the per-floor escalation (see "Runs") stacks on top of it rather than
@@ -405,8 +405,8 @@ in-game the moment you unlock a new one. None of this counts while playing in Sa
 includes all of Practice.
 
 Achievements are deliberately separate from the **meta-progression** unlocks described above:
-achievements are trophies with no gameplay consequence (`achievements.py`), meta-progression unlocks
-change what a future run's Shop can offer you (`meta_progression.py`). They're tracked in separate
+achievements are trophies with no gameplay consequence (`progression/achievements.py`), meta-progression unlocks
+change what a future run's Shop can offer you (`progression/meta_progression.py`). They're tracked in separate
 files and separate registries, so one number never has to serve both purposes.
 
 ## Save & resume
@@ -473,7 +473,7 @@ send a wave of grunts while another sends tanks, or sits that wave out
 entirely. A wave still needs at least one unit from *some* spawn before you
 can move on. **Playtest** loads the level you're editing immediately,
 without saving; **Save** writes it to `custom_levels/` (as JSON, via
-`persistence.py`) under a name slugged from the level's name -- the
+`persistence/persistence.py`) under a name slugged from the level's name -- the
 sidebar shows exactly where afterward -- and `L`'s level browser will find
 it from then on, this session or a future one. Since a saved level is a
 self-contained JSON file with nothing player-specific in it, sharing one
@@ -494,22 +494,22 @@ spawn's queue is a possible future refinement.
 The game is built so new content is additive -- a new subclass or registry
 entry, not a change to the systems that already work.
 
-- **New tower**: subclass `Tower` in `tower.py`, set its stats
+- **New tower**: subclass `Tower` in `entities/tower.py`, set its stats
   (`cost`/`range`/`damage`/`fire_rate`/`sprite_name`) and implement
   `create_projectile()`, then add it to `TOWER_TYPES`. It shows up in the
   build menu automatically. If it has its own special mechanic (splash,
   slow, knockback, ...), list it in `EXTRA_STATS` as
   `(label, attribute_name, format_function)` and it shows up in the stats
   panel automatically too. Override `SPECIALIZATIONS` with your own two named,
-  mechanic-specific level-3 choices -- see how every current tower does this in `tower.py` --
+  mechanic-specific level-3 choices -- see how every current tower does this in `entities/tower.py` --
   rather than leaving it on the generic Power/Precision placeholder. A new tower not in
   `card_pool.STARTER_TOWERS` also needs a `MetaUnlock` entry (see below) or it can never be offered.
-- **New enemy**: subclass `Enemy` in `enemy.py`, override its stats
+- **New enemy**: subclass `Enemy` in `entities/enemy.py`, override its stats
   (`base_hp`, `base_speed`, `base_reward`, etc. -- or `update()`/
   `take_damage()` too, for something like a shielded unit or `BossEnemy`'s enrage/armor phase),
   then add it to `ENEMY_TYPES` under a short name. Reference that name from a level's
   `wave_specs` to use it.
-- **New built-in level**: add a `Level(...)` entry to `LEVELS` in `levels.py` with its own path
+- **New built-in level**: add a `Level(...)` entry to `LEVELS` in `world/levels.py` with its own path
   (`path_cells`/`spawn_cells`/`goal_cells` -- `pathing.path_cells_from_corners()` turns a terse
   ordered corner list into `path_cells` for a simple single-lane route; a branching/merging level
   unions several corner lists together instead), wave composition (`wave_specs`, a list of
@@ -518,23 +518,23 @@ entry, not a change to the systems that already work.
   consume whichever level is active generically, so this needs no other changes. Give its final wave
   a `"boss": 1` entry to match every other level. A player-made level doesn't need a registry entry
   at all -- see "Map editor" above.
-- **New achievement**: add an `Achievement(...)` entry to `ACHIEVEMENTS` in `achievements.py`,
+- **New achievement**: add an `Achievement(...)` entry to `ACHIEVEMENTS` in `progression/achievements.py`,
   keyed off one of the existing cumulative counters (`kills`, `towers_built`, `towers_maxed`,
   `towers_specialized`, `levels_cleared`, `distinct_levels_cleared`, `waves_survived`,
   `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, or a
   `f"{tower_name}_built"` counter for any `TOWER_TYPES` name) or a genuinely new one -- a new
-  counter just needs one `Game._record_achievement(...)` call added at whatever point in `game.py`
+  counter just needs one `Game._record_achievement(...)` call added at whatever point in `core/game.py`
   the event actually happens.
-- **New relic**: add a `Relic(...)` entry to `RELICS` in `relics.py` with whichever modifier
+- **New relic**: add a `Relic(...)` entry to `RELICS` in `run/relics.py` with whichever modifier
   fields it sets; `compose_relic_modifiers()` folds every held relic together into one bundle that
   feeds a floor's `Economy`/`WaveManager`/tower construction alongside difficulty and escalation, so
   nothing else needs changing for a per-floor or per-tower effect. Most relics aren't unlock-gated --
-  only a handful of the newest ones are, via `RELIC_META_UNLOCKS` in `meta_progression.py`.
+  only a handful of the newest ones are, via `RELIC_META_UNLOCKS` in `progression/meta_progression.py`.
 - **New tower/relic/level unlock**: add a `MetaUnlock`/`RelicMetaUnlock`/`LevelMetaUnlock` entry to
-  `META_UNLOCKS`/`RELIC_META_UNLOCKS`/`LEVEL_META_UNLOCKS` in `meta_progression.py`, pairing the
+  `META_UNLOCKS`/`RELIC_META_UNLOCKS`/`LEVEL_META_UNLOCKS` in `progression/meta_progression.py`, pairing the
   tower name/relic key/level id with a threshold on one of the lifetime run counters
   (`total_floors_cleared`, `runs_played`, `runs_reached_endless`, `bosses_defeated`).
-- **New Random Event**: add an `Event(...)` entry to `EVENTS` in `events.py` with a short prompt and
+- **New Random Event**: add an `Event(...)` entry to `EVENTS` in `run/events.py` with a short prompt and
   2-3 `EventOption`s, each a fixed, honestly-described delta (currency, lives, a relic grant, a tower
   unlock, or giving up a relic already held) -- see the existing sixteen for the shape.
 

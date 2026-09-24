@@ -1,6 +1,6 @@
 from datetime import date
 
-import daily_challenge
+from run import daily_challenge
 
 
 def test_todays_seed_is_deterministic_for_a_given_date():

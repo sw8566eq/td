@@ -1,5 +1,5 @@
-from run_map import MapNode, RunMap
-from run_state import RunState
+from run.run_map import MapNode, RunMap
+from run.run_state import RunState
 
 # A tiny, hand-built two-row map (not a real generate_run_map() output) --
 # enough to exercise RunState's own properties without depending on the

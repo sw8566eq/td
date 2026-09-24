@@ -1,9 +1,9 @@
 import pytest
 
-import settings
-from enemy import ENEMY_TYPES
-from levels import LEVELS, Level, _corridor_level, generate_default_waves
-from run_map import BOSS_LEVEL_IDS
+from entities.enemy import ENEMY_TYPES
+from run.run_map import BOSS_LEVEL_IDS
+from support import settings
+from world.levels import LEVELS, Level, _corridor_level, generate_default_waves
 
 
 def test_all_registered_levels_have_in_bounds_path_cells():

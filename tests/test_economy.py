@@ -1,4 +1,4 @@
-from economy import Economy
+from world.economy import Economy
 
 
 def test_starts_with_given_gold_and_lives():

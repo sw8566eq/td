@@ -2,8 +2,8 @@ import random
 
 import pytest
 
-import pathing
-from pathing import (
+from world import pathing
+from world.pathing import (
     PathTopology,
     RoutingError,
     junctions_of,

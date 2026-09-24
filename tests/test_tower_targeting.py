@@ -1,7 +1,7 @@
 import pygame
 
-from spatial_index import EnemySpatialIndex
-from tower import BasicTower, CannonTower, KnockbackTower
+from entities.tower import BasicTower, CannonTower, KnockbackTower
+from world.spatial_index import EnemySpatialIndex
 
 
 class FakeEnemy:

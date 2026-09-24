@@ -1,10 +1,10 @@
 import json
 
-import meta_progression
-from card_pool import STARTER_TOWERS
-from levels import LEVELS
-from relics import RELICS
-from tower import TOWER_TYPES
+from entities.tower import TOWER_TYPES
+from progression import meta_progression
+from run.card_pool import STARTER_TOWERS
+from run.relics import RELICS
+from world.levels import LEVELS
 
 
 def test_load_meta_progression_on_a_missing_file_returns_empty_state():

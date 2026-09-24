@@ -1,6 +1,6 @@
 import pygame
 
-from effects import ExpandingRing, FloatingText
+from entities.effects import ExpandingRing, FloatingText
 
 
 def _font():

@@ -1,6 +1,6 @@
 import pygame
 
-from spatial_index import EnemySpatialIndex
+from world.spatial_index import EnemySpatialIndex
 
 
 class FakeEnemy:

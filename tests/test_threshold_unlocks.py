@@ -1,6 +1,6 @@
 import json
 
-from threshold_unlocks import (
+from progression.threshold_unlocks import (
     bump_counter,
     empty_counters_state,
     load_counters_state,

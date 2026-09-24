@@ -1,6 +1,6 @@
 import pygame
 
-from projectile import (
+from entities.projectile import (
     CHOKE_POINT_DISTANCE_THRESHOLD,
     FAST_ENEMY_SPEED_THRESHOLD,
     GIANT_SLAYER_HP_THRESHOLD,
@@ -198,7 +198,7 @@ def test_relic_poison_roll_is_independent_per_enemy_not_one_shared_roll(monkeypa
     hit = FakeEnemy((5, 0))
     missed = FakeEnemy((10, 0))
     draws = iter([0.1, 0.1, 0.9])  # < 0.5 chance, < 0.5 chance, >= 0.5 chance
-    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    monkeypatch.setattr("entities.projectile.random.random", lambda: next(draws))
     projectile = Projectile(
         pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
         relic_poison_chance=0.5, relic_poison_effect=(3, 0.5, 2.0),
@@ -253,7 +253,7 @@ def test_relic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
     crit = FakeEnemy((5, 0))
     normal = FakeEnemy((10, 0))
     draws = iter([0.1, 0.1, 0.9])
-    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    monkeypatch.setattr("entities.projectile.random.random", lambda: next(draws))
     projectile = Projectile(
         pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
         relic_crit_chance=0.5, relic_crit_damage_multiplier=2.0,
@@ -317,7 +317,7 @@ def test_basic_crit_roll_is_independent_per_enemy_in_a_splash(monkeypatch):
     crit = FakeEnemy((5, 0))
     normal = FakeEnemy((10, 0))
     draws = iter([0.1, 0.1, 0.9])
-    monkeypatch.setattr("projectile.random.random", lambda: next(draws))
+    monkeypatch.setattr("entities.projectile.random.random", lambda: next(draws))
     projectile = Projectile(
         pos=(0, 0), target=target, speed=1000, damage=10, splash_radius=20,
         crit_chance=0.5, crit_damage_multiplier=2.0,

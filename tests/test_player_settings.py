@@ -1,7 +1,7 @@
 """Tests for player_settings.py -- mirrors test_progress.py's tmp_path style
 so the real repo-root player_settings.json is never touched."""
 
-from player_settings import DEFAULTS, load_settings, save_settings
+from persistence.player_settings import DEFAULTS, load_settings, save_settings
 
 
 def test_missing_file_returns_the_defaults(tmp_path):

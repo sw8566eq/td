@@ -1,7 +1,7 @@
 import pytest
 
-from editor import Editor, EditorTool
-from levels import Level
+from core.editor import Editor, EditorTool
+from world.levels import Level
 
 
 def cell_center_px(cell, tile_size=64):

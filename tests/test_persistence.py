@@ -1,7 +1,7 @@
 import json
 
-import persistence
-from levels import Level
+from persistence import persistence
+from world.levels import Level
 
 
 def make_branching_level(name="Test Level", **overrides):

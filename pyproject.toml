@@ -10,7 +10,7 @@ target-version = "py313"
 # tables -- see CLAUDE.md's "Content is registries, not conditionals" -- never
 # mutated at runtime, so the generic mutable-class-default warning doesn't
 # apply to this file's own deliberate pattern.
-"tower.py" = ["RUF012"]
+"entities/tower.py" = ["RUF012"]
 
 [tool.coverage.run]
 omit = ["tests/*", ".venv/*"]
@@ -70,8 +70,8 @@ follow_imports = "silent"
 # catch: `current_node_id: str = None` was a required field silently
 # defaulting to None -- fixed to `str | None = None`, with `assert
 # self.current_node_id is not None` added to current_level_id/current_row
-# to narrow it back down before indexing into the map (game.py:744 already
-# treated it as Optional, so this was never hypothetical). Once run_state.py
+# to narrow it back down before indexing into the map (core/game.py:744
+# already treated it as Optional, so this was never hypothetical). Once run_state.py
 # itself was annotated, relics.py/shop.py/events.py's own `if TYPE_CHECKING:
 # from run_state import RunState` guards became unnecessary -- no import
 # cycle exists, so all three now import RunState for real.
@@ -90,9 +90,10 @@ follow_imports = "silent"
 # type, unlike run_history.py's old problem where an untyped call's
 # return value was forwarded directly.
 module = [
-    "relics", "run_map", "events", "shop", "rng_sampling", "difficulty", "economy", "run_history", "json_io",
-    "threshold_unlocks", "meta_progression", "run_state", "card_pool", "run_escalation", "progress",
-    "achievements",
+    "run.relics", "run.run_map", "run.events", "run.shop", "support.rng_sampling", "run.difficulty",
+    "world.economy", "progression.run_history", "persistence.json_io", "progression.threshold_unlocks",
+    "progression.meta_progression", "run.run_state", "run.card_pool", "run.run_escalation",
+    "progression.progress", "progression.achievements",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

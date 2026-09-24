@@ -42,7 +42,7 @@ jobs:
       # problem).
       - run: ruff check .
 
-      - run: mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py run_escalation.py progress.py achievements.py
+      - run: mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py
 
       # Don't ship a build the test suite itself wouldn't pass -- same
       # -v/--cov/--cov-fail-under=98 tests.yml runs, not the bare `pytest -q`
@@ -51,18 +51,20 @@ jobs:
 
       # --onedir, deliberately not --onefile: --onefile re-extracts every
       # bundled file into a fresh temp directory on every single launch and
-      # deletes it again on exit. progress.py/achievements.py/
-      # player_settings.py/save_state.py all resolve their JSON file's path
-      # relative to their own module's __file__ (see CLAUDE.md's "Small
-      # on-disk JSON state files" section) -- under --onefile that's a
-      # different, vanishing directory every run, so nothing would ever
-      # actually persist across launches. --onedir keeps that directory
-      # stable (it's just the unpacked folder next to the executable), so
-      # persistence works exactly like a normal `python main.py` run.
-      # assets/ is bundled the same way, and works for the same reason:
-      # assets.py's DEFAULT_ASSET_ROOT is __file__-relative too, not
-      # cwd-relative, so it finds its bundled assets/ folder regardless of
-      # what directory the binary gets launched from.
+      # deletes it again on exit. progression/progress.py/
+      # progression/achievements.py/persistence/player_settings.py/
+      # persistence/save_state.py all resolve their JSON file's path
+      # relative to the project root, computed from their own module's
+      # __file__ (see CLAUDE.md's "Small on-disk JSON state files" section)
+      # -- under --onefile that's a different, vanishing directory every
+      # run, so nothing would ever actually persist across launches.
+      # --onedir keeps that directory stable (it's just the unpacked folder
+      # next to the executable), so persistence works exactly like a
+      # normal `python main.py` run. assets/ is bundled the same way, and
+      # works for the same reason: presentation/assets.py's
+      # DEFAULT_ASSET_ROOT is __file__-relative too, not cwd-relative, so
+      # it finds its bundled assets/ folder regardless of what directory
+      # the binary gets launched from.
       - name: Build the release binary
         run: pyinstaller --onedir --name td --add-data "assets:assets" main.py
 

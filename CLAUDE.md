@@ -20,7 +20,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- also what CI runs, gates the same workflow
 
-mypy relics.py run_map.py events.py shop.py rng_sampling.py difficulty.py economy.py run_history.py json_io.py threshold_unlocks.py meta_progression.py run_state.py card_pool.py run_escalation.py progress.py achievements.py   # type check -- only the modules annotated so far; also what CI runs
+mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py   # type check -- only the modules annotated so far; also what CI runs
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # build a Linux release binary locally -- see "Release binary" below
 ```
@@ -31,7 +31,7 @@ reformats 73 of the ~82 tracked files, since its compact one-line registry entri
 commas ruff format's line-fitting logic doesn't preserve; not worth that scale of mechanical churn).
 `pytest-cov`'s own floor (`--cov-fail-under=98` above) was picked with real headroom below the
 measured 98.68% -- 99% already fails today with zero slack -- enough that ordinary future work
-shouldn't flake CI while still catching a genuine coverage regression. `tower.py`'s
+shouldn't flake CI while still catching a genuine coverage regression. `entities/tower.py`'s
 per-file `RUF012` ignore is deliberate: every `Tower` subclass's class-level `EXTRA_STATS`/
 `SPECIALIZATIONS` dicts are read-only content tables (see "Content is registries, not conditionals"
 below), never mutated at runtime, which is exactly what that rule can't tell apart from a genuine
@@ -42,22 +42,22 @@ permissive project-wide (`disallow_untyped_defs`/`check_untyped_defs` both `fals
 this codebase -- pygame-facing code especially -- has no type hints yet; a `[[tool.mypy.overrides]]`
 block opts specific modules into strict checking (`disallow_untyped_defs`/`disallow_incomplete_defs`/
 `check_untyped_defs`/`warn_return_any` all `true`) as they get annotated, one at a time, rather than
-annotating the whole codebase in one pass. `relics.py`/`run_map.py`/`events.py`/`shop.py` are the
+annotating the whole codebase in one pass. `run/relics.py`/`run/run_map.py`/`run/events.py`/`run/shop.py` are the
 first four: small, pygame-free, and already the most heavily-commented "content is data" modules in
 the codebase, so typing their registries/functions was mostly transcribing what the docstrings
-already said -- annotating them also caught one genuine pre-existing bug apiece in `relics.py`'s
+already said -- annotating them also caught one genuine pre-existing bug apiece in `run/relics.py`'s
 `RelicModifiers` dataclass (`poison_effect`/`chain_effect`/`slow_effect`/`mark_effect: tuple = None`
 and `knockback_effect: float = None` were all typed as required, non-`Optional` fields defaulting to
 `None` -- mypy's `assignment` check catches exactly this class of "the type hint lied" bug, which
 nothing else in this codebase's tooling would have). `follow_imports = "silent"` (also project-wide)
 is what keeps checking one of these four from also re-reporting pre-existing errors in whatever
-*they* import that isn't itself annotated (`relics.py` -> `meta_progression.py`, `shop.py`/
-`events.py` -> `card_pool.py` -> `tower.py`, ...) -- without it, annotating one small module could
+*they* import that isn't itself annotated (`run/relics.py` -> `progression/meta_progression.py`, `run/shop.py`/
+`run/events.py` -> `run/card_pool.py` -> `entities/tower.py`, ...) -- without it, annotating one small module could
 fail CI over an unrelated error several imports away, in a file nobody's touched yet. A parameter
 typed against another module's dataclass (`run: RunState` in all three of `relics.relic_offer`/
-`shop.build_offer`/`events.resolve_event_option`) is a real top-level import now (`run_state.py` was
+`shop.build_offer`/`events.resolve_event_option`) is a real top-level import now (`run/run_state.py` was
 annotated in a later pass -- see below -- and doesn't import any of these three back, so there's no
-actual cycle); it started out imported under `if TYPE_CHECKING:` instead, back when `run_state.py`
+actual cycle); it started out imported under `if TYPE_CHECKING:` instead, back when `run/run_state.py`
 itself was still unannotated, the standard shape for a type-only import when the imported module
 isn't itself part of the strict-checked set yet. `rng_sampling.sample_up_to` -- the one shared helper
 all three of `relics.relic_offer`/`run_map.generate_run_map`/`card_pool.draft_offer` call into -- is
@@ -70,27 +70,27 @@ file's Commands block/CI step above, and expect any function it calls into that 
 annotated to need the same "would this call silently launder into `Any`" check `sample_up_to` needed
 here.
 
-A second pass added five more modules: `rng_sampling.py` (already fully typed per the paragraph
-above, just missing from the override list until now -- zero new annotation work), `difficulty.py`
+A second pass added five more modules: `support/rng_sampling.py` (already fully typed per the paragraph
+above, just missing from the override list until now -- zero new annotation work), `run/difficulty.py`
 (a typed `@dataclass DifficultyMode` already; just needed `DIFFICULTY_MODES`/`DIFFICULTY_ORDER`/
-`DEFAULT_DIFFICULTY` themselves annotated), `economy.py` (plain `int`/`bool` signatures throughout,
-its own docstring already said "pure Python, no pygame dependency"), `run_history.py`, and
-`json_io.py` -- the last one a genuine prerequisite, not an independent addition: annotating
+`DEFAULT_DIFFICULTY` themselves annotated), `world/economy.py` (plain `int`/`bool` signatures throughout,
+its own docstring already said "pure Python, no pygame dependency"), `progression/run_history.py`, and
+`persistence/json_io.py` -- the last one a genuine prerequisite, not an independent addition: annotating
 `run_history.load_run_history() -> dict[int, int]` to `return load_json_with_fallback(...)` directly
-surfaced a *fresh* `no-any-return` error, because `json_io.py` itself was still unannotated --
+surfaced a *fresh* `no-any-return` error, because `persistence/json_io.py` itself was still unannotated --
 `follow_imports = "silent"` only suppresses re-reporting an unannotated callee's own errors, it
 doesn't stop `warn_return_any` from firing when a strict function's return is directly the result of
 an untyped call. This is the identical problem `sample_up_to` above already solves for
-`relics.py`/`run_map.py`/`events.py`/`shop.py`; `json_io.load_json_with_fallback` needed the same PEP
+`run/relics.py`/`run/run_map.py`/`run/events.py`/`run/shop.py`; `json_io.load_json_with_fallback` needed the same PEP
 695 generic treatment (`def load_json_with_fallback[T](path, transform: Callable[[Any], T], default:
 Callable[[], T]) -> T`) for the same reason -- whenever a newly-annotated module's own return
 expression is directly the result of calling an unannotated shared helper, expect to have to type
 that helper too, not just the module on top.
 
-A third pass added `threshold_unlocks.py`/`meta_progression.py`/`run_state.py`/`card_pool.py` --
-this one edited already-strict files too, not just added new ones. `threshold_unlocks.py` is generic
-across `achievements.Achievement`/`meta_progression.py`'s `MetaUnlock`/`RelicMetaUnlock`/
-`LevelMetaUnlock`, none of which it can import without a cycle (`achievements.py` already imports
+A third pass added `progression/threshold_unlocks.py`/`progression/meta_progression.py`/`run/run_state.py`/`run/card_pool.py` --
+this one edited already-strict files too, not just added new ones. `progression/threshold_unlocks.py` is generic
+across `achievements.Achievement`/`progression/meta_progression.py`'s `MetaUnlock`/`RelicMetaUnlock`/
+`LevelMetaUnlock`, none of which it can import without a cycle (`progression/achievements.py` already imports
 *it*) -- typed structurally instead, via a `ThresholdUnlockEntry(Protocol)` (`counter: str`,
 `goal: int`) and a `CountersState(TypedDict)`, with its `registry` parameters typed `Mapping[str,
 ThresholdUnlockEntry]`, not `dict` -- `dict`'s invariance would otherwise reject
@@ -100,29 +100,29 @@ already-strict `relics._default_relic_pool` (typed `str | None` even though `rel
 coalesces `None` away with `meta_progression_path or meta_progression.META_PROGRESSION_PATH` before
 ever calling it -- fixed to plain `str`; `card_pool._default_unlocked_pool` had the identical
 coalesce-then-call shape and got the same fix, rather than reflexively copying the wrong one).
-`run_state.py` had a genuine "type lied" bug, the same class v0.3.0's `RelicModifiers` catch was:
+`run/run_state.py` had a genuine "type lied" bug, the same class v0.3.0's `RelicModifiers` catch was:
 `current_node_id: str = None` was a required field silently defaulting to `None` -- fixed to
 `str | None = None`, with `assert self.current_node_id is not None` added to `current_level_id`/
-`current_row` to narrow it back down before indexing into the map (`game.py`'s own
+`current_row` to narrow it back down before indexing into the map (`core/game.py`'s own
 `_available_node_ids` already treated it as Optional via `if run.current_node_id is None:`, so this
 was never hypothetical -- just previously an uncaught `KeyError(None)` waiting to happen instead of a
-clear assertion). Once `run_state.py` itself was annotated, `relics.py`/`shop.py`/`events.py`'s own
+clear assertion). Once `run/run_state.py` itself was annotated, `run/relics.py`/`run/shop.py`/`run/events.py`'s own
 `if TYPE_CHECKING: from run_state import RunState` guards became unnecessary busywork -- no import
-cycle actually exists (`run_state.py` only reaches `run_map.py`/`levels.py`/`rng_sampling.py`), so all
+cycle actually exists (`run/run_state.py` only reaches `run/run_map.py`/`world/levels.py`/`support/rng_sampling.py`), so all
 three now import `RunState` for real, same as any other cross-module type.
 
-A fourth pass added `run_escalation.py`/`progress.py`/`achievements.py` -- all three pygame-free and
-each needing only bare-function annotations, no dataclass fixes this time: `run_escalation.py`
+A fourth pass added `run/run_escalation.py`/`progression/progress.py`/`progression/achievements.py` -- all three pygame-free and
+each needing only bare-function annotations, no dataclass fixes this time: `run/run_escalation.py`
 already had a typed `@dataclass FloorEscalation`, so its four bare functions
 (`_early_grace_factor`/`escalation_for_floor`/`apply_elite_multiplier`/`apply_boss_multiplier`) just
-needed `int`/`FloorEscalation` signatures; `progress.py` mirrors `run_history.py`'s already-solved
+needed `int`/`FloorEscalation` signatures; `progression/progress.py` mirrors `progression/run_history.py`'s already-solved
 `dict[int, int]`-via-`load_json_with_fallback` shape exactly, so it needed no fresh `json_io`-style
-prerequisite of its own; `achievements.py` mirrors `meta_progression.py`'s own `Achievement`/
-`load_*`/`bump()`/`set_counter()` shapes verbatim (both already share `threshold_unlocks.py`'s
-mechanics). `achievements.py`'s one unannotated import, `levels.LEVELS` (used only via
+prerequisite of its own; `progression/achievements.py` mirrors `progression/meta_progression.py`'s own `Achievement`/
+`load_*`/`bump()`/`set_counter()` shapes verbatim (both already share `progression/threshold_unlocks.py`'s
+mechanics). `progression/achievements.py`'s one unannotated import, `levels.LEVELS` (used only via
 `len(levels.LEVELS)` for the `campaign_complete` achievement's own goal), needed no attention: `len()`
 always resolves to a concrete `int` regardless of its argument's own inferred type, unlike
-`run_history.py`'s old problem where an untyped call's return value was forwarded directly.
+`progression/run_history.py`'s old problem where an untyped call's return value was forwarded directly.
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
@@ -139,7 +139,43 @@ browser screens as `Game` drives them). `Editor` itself is still tested directly
 
 ## Architecture
 
-`Game` (`game.py`) is the state machine and frame loop: it owns `Grid`, `Economy`, `WaveManager`,
+### Organized into folders
+
+Every source module lives in one of eight top-level package folders, grouped by domain rather than
+alphabetically or by when it was added -- a repo-wide housekeeping pass that moved 40 previously-flat
+`.py` files (everything except `main.py`, which stays at the repo root as the entry point) into place
+with no behavior change. Every folder sits exactly one level under the repo root, deliberately not
+nested any deeper (no wrapping `src/`/`td/` package) -- this project isn't pip-installed, it's run
+from checkout or PyInstaller-bundled, so a `src/` layout's usual benefit doesn't apply, and staying
+flat matches how `assets/`/`tests/` already sat at the root before this pass.
+
+- `core/` -- the `Game` state machine and its decomposed slices (`Renderer`, `InputHandler`,
+  `ProgressTracker`, `SettingsManager`), plus the map editor `Game` drives.
+- `entities/` -- live per-level actors (`Tower`, `Enemy`, `Projectile`) and their spawn timing
+  (`waves.py`) / transient visual effects (`effects.py`).
+- `world/` -- a level's own geometry (`grid.py`/`pathing.py`), the spatial index used for tower
+  targeting, its authored economy config, and the level registry.
+- `run/` -- the roguelike run's own meta-layer: the branching map, card/relic drafting, the Shop,
+  Random Events, difficulty scaling, and Daily Run seeding.
+- `progression/` -- cross-run persistent progress: achievements, account-wide meta-unlocks,
+  level-clear records, and per-seed run history -- as opposed to `run/`'s single-run mechanics.
+- `persistence/` -- generic on-disk JSON state infrastructure (`json_io.py`), save/resume, player
+  settings, keybindings, and custom level files.
+- `presentation/` -- drawing (`ui.py`) and sprite/sound asset loading (`assets.py`, `audio.py`).
+- `support/` -- small cross-cutting utilities and global constants (`rng_sampling.py`, `settings.py`)
+  used by nearly every other package.
+
+Every intra-project import is fully qualified against this structure (`from entities.tower import
+TOWER_TYPES`, `import progression.achievements as achievements`, ...), never a relative import --
+kept uniform on purpose so any import site is greppable by its target's bare module name regardless
+of which package is doing the importing. The one real technical wrinkle this move required:
+`json_io.module_relative_path()` (see that module's own docstring) resolves every local JSON state
+file/`assets/`/`custom_levels/` path relative to the *project root*, not the calling module's own
+directory directly -- it walks up two levels (package dir, then that dir's parent) precisely because
+every caller now lives at this same, single level of nesting. A module moved any deeper would need
+that helper's own logic extended, not just its own call site fixed up.
+
+`Game` (`core/game.py`) is the state machine and frame loop: it owns `Grid`, `Economy`, `WaveManager`,
 and the live `enemies`/`towers`/`projectiles` lists, and drives `handle_events()` ->
 `update(dt)` -> `render()` each frame. `_load_level_object()` rebuilds all of that from a `Level`
 in one call -- it's the single choke point every way of starting a level funnels through
@@ -147,9 +183,9 @@ in one call -- it's the single choke point every way of starting a level funnels
 `_load_combat_node()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
 `advance_or_replay_level()` are just "call it again."
 
-`Game.render()` itself is a one-line delegator to `renderer.Renderer.render()` (`renderer.py`) --
+`Game.render()` itself is a one-line delegator to `renderer.Renderer.render()` (`core/renderer.py`) --
 the first cut of decomposing `Game` out of a single ~2900-line file, picked as the first slice
-because it was the most self-contained: it only ever reads `Game`'s state and delegates to `ui.py`'s
+because it was the most self-contained: it only ever reads `Game`'s state and delegates to `presentation/ui.py`'s
 drawing functions, the one exception being `_last_panel_subject` (written here, read back by
 `Game._handle_panel_action_click`, see "Stats panel subject resolution" below). `Renderer` holds a
 `game` reference rather than a narrower set of parameters, since `render()` reads on the order of 40
@@ -157,13 +193,13 @@ distinct `Game` attributes/methods across its own per-state dispatch -- a narrow
 just be the same coupling spelled out longhand. The hit-testing/query helpers `render()` calls
 (`_hovered_tower()`, `_stats_panel_subject()`, ...) stay on `Game` itself, not `Renderer`, since
 `_handle_click`/`_handle_panel_action_click` read those same methods to resolve what a click acts on
--- moving them would split one shared source of truth into two copies that could drift. `renderer.py`
-imports `GameState` lazily, inside `render()` itself, to avoid a circular import (`game.py` ->
-`renderer.py` -> `game.py`) that a top-level import would hit before `GameState` is even defined.
+-- moving them would split one shared source of truth into two copies that could drift. `core/renderer.py`
+imports `GameState` lazily, inside `render()` itself, to avoid a circular import (`core/game.py` ->
+`core/renderer.py` -> `core/game.py`) that a top-level import would hit before `GameState` is even defined.
 
 Input handling -- `handle_events`, `_handle_keydown`, the `_handle_*_click` family, and the two
 scroll handlers (`_scroll_level_select`/`_scroll_wave_unit_list`) -- is the second slice, moved into
-`input_handler.InputHandler` (`input_handler.py`) the same way: `Game`'s own method of each name is a
+`input_handler.InputHandler` (`core/input_handler.py`) the same way: `Game`'s own method of each name is a
 one-line delegator to the identically-named method on `self.input_handler`. The boundary drawn there
 is "translates a raw pygame event (a key, a click position, a wheel delta) into a decision" moves;
 "given an already-resolved semantic value, does the actual state mutation" stays on `Game` --
@@ -173,7 +209,7 @@ concretely, `_handle_editor_action`/`_handle_wave_editor_action`/`_handle_editor
 `game.` exactly as they always were called via `self.`. Confirmed before the move: every one of the
 21 relocated methods is only ever called by another one of the 21 (mostly from `handle_events`'s own
 dispatch, or `_handle_click` calling `_handle_panel_action_click`) -- never from anywhere else in
-`game.py` -- so every such call becomes `self.` on the `InputHandler` instance, never `game.`. One
+`core/game.py` -- so every such call becomes `self.` on the `InputHandler` instance, never `game.`. One
 sharp edge that fell out of this: three of `Game`'s own delegators (`_handle_editor_undo_redo_keydown`,
 `_handle_panel_action_click`, `_handle_static_screen_back_click`) become unreachable except by a
 *direct* call, since the callers that used to reach them are now `InputHandler` methods calling their
@@ -183,7 +219,7 @@ name to keep coverage honest (see `test_game.py`/`test_game_editor.py`'s own "ca
 The achievement/meta-progression/toast-recording group (`_record_level_cleared`/
 `_record_progress_counter`/`_record_achievement`/`_queue_achievement_toasts`/`_record_meta_progress`/
 `_queue_meta_unlock_toasts`/`_queue_toast`) is the third slice, moved into
-`progress_tracker.ProgressTracker` (`progress_tracker.py`) the same way. This slice improves on
+`progress_tracker.ProgressTracker` (`core/progress_tracker.py`) the same way. This slice improves on
 `InputHandler`'s own precedent rather than repeating its sharp edge: this group's real callers
 (`try_place_tower`/`try_upgrade_tower`/`try_specialize_tower`, `update()`'s own kill/wave/level-clear
 hooks, `_advance_run_floor`, `_record_run_permadeath`, `_handle_boss_defeated`) all stay on `Game`,
@@ -192,7 +228,7 @@ one-line delegator only for the 5 methods with a real external caller or a direc
 (`_record_level_cleared`/`_record_achievement`/`_record_meta_progress`/`_queue_meta_unlock_toasts`/
 `_queue_toast`), while `_record_progress_counter`/`_queue_achievement_toasts` (called only by methods
 that moved here too) get no `Game`-level shim at all -- the same "private helper, no delegator" shape
-`renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
+`core/renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
 move, so unlike `InputHandler`'s slice, no new "called directly" regression tests were needed.
 
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
@@ -204,7 +240,7 @@ main path is a run. Read the next section before anything else here.
 A **run** is a seeded, full branching map of nodes (see "The run's branching map" below), shown to
 the player from the very start, each combat/elite node one full `_load_level_object()` pass on one
 `Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load always
-did. What's new is `RunState` (`run_state.py`), the small bundle that survives *across* those resets:
+did. What's new is `RunState` (`run/run_state.py`), the small bundle that survives *across* those resets:
 seed, `map`, `current_node_id`, `visited_node_ids`, `difficulty`, lives, `shop_currency`,
 `unlocked_towers`, and `relics`. Battle gold (`Economy.gold`) is deliberately *not* one of these --
 see "Two currencies: battle gold and the Shop" below for the split this reflects. Placed towers and
@@ -216,23 +252,23 @@ about runs -- `resume_saved_run()` for a classic save, say -- structurally can't
 
 The pieces, each a small module in this codebase's registry-or-bare-function style:
 
-- `run_map.py` -- `generate_run_map(rng)`: the whole branching map, generated once, up front (see
+- `run/run_map.py` -- `generate_run_map(rng)`: the whole branching map, generated once, up front (see
   "The run's branching map" below for the full shape). Combat/elite level ids are still sampled from
   `LEVELS`, but no longer read as a single flat ascending ramp the way the old, retired
   `run_floors.sample_floor_sequence` did -- see that section for what replaced it.
-- `card_pool.py` -- a "card" is, for v1, exactly a `TOWER_TYPES` key. `STARTER_TOWERS` is what every
+- `run/card_pool.py` -- a "card" is, for v1, exactly a `TOWER_TYPES` key. `STARTER_TOWERS` is what every
   run begins with; `draft_offer(rng, run, ...)` samples `count` names from the account-wide unlocked
   pool minus what the run already holds, returning *fewer* than `count` once exhausted rather than
   raising. `_default_unlocked_pool` reorders into `TOWER_TYPES`' own registry order before sampling
   -- `rng.sample`'s result depends on its input's order, so feeding it a raw `set` would silently
   break "the same seed offers the same cards" across two process launches.
-- `relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
+- `run/relics.py` -- `RELICS`, a registry of run-wide passive modifiers, plus `relic_offer()` (mirroring
   `draft_offer`) and `compose_relic_modifiers()`. Mostly not unlock-gated, unlike tower cards -- only
   6 of the 74 (the category-gaps batch's `flak_rounds`/`breach_charges`/`containment_charges`, the
   cross-status combo-capstone batch's `frostbitten_mark`/`plague_mark`, and that same batch's
   `seismic_slam`) are gated at all, via `meta_progression.RELIC_META_UNLOCKS`; `relic_offer()`'s own
   optional `unlocked_pool`/
-  `meta_progression_path` params mirror `draft_offer`'s exactly (see the `meta_progression.py` bullet
+  `meta_progression_path` params mirror `draft_offer`'s exactly (see the `progression/meta_progression.py` bullet
   below). 74 relics across eight effect shapes -- the original
   three, plus five more added since, plus a fourth batch of four closing archetype/coverage gaps
   (`shockwave_rounds`/`arc_conductor` for the previously-unsupported Chain/AoE archetype,
@@ -275,31 +311,31 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   extension of an existing hook: see the **flat, non-tower** bullet below for the actual new
   mechanic, none gated -- plus a tenth batch of two giving Basic tower its own crit-boosting pair
   (`adrenaline_rounds`/`twitch_reflex`, `basic_crit_damage_multiplier`/`basic_crit_chance_multiplier`,
-  read only in `BasicTower.create_projectile()` (`tower.py:929-930`) against that tower's own native
+  read only in `BasicTower.create_projectile()` (`entities/tower.py:929-930`) against that tower's own native
   `crit_chance`/`crit_damage_multiplier` -- distinct from the generic, `max()`-composed
   `RelicModifiers.crit_chance`/`crit_damage_multiplier` `lucky_strikes`/`focused_fire`/
   `precision_engineering` already grant every tower, so the two families stack rather than collide)
   -- plus an eleventh batch doing the same for Sniper's execute mechanic (`kill_shot`/`wounded_prey`,
   `execute_damage_multiplier`/`execute_threshold_multiplier`, read in `SniperTower.
-  create_projectile()` at `tower.py:1173-1174`) -- plus a twelfth for Frost's slow (`glacial_core`/
+  create_projectile()` at `entities/tower.py:1173-1174`) -- plus a twelfth for Frost's slow (`glacial_core`/
   `permafrost`, `frost_slow_multiplier`/`frost_duration_multiplier`, read in `FrostTower.
-  create_projectile()` at `tower.py:1019-1020`; `glacial_core` is 0.8, not 1.25, the same
+  create_projectile()` at `entities/tower.py:1019-1020`; `glacial_core` is 0.8, not 1.25, the same
   inverted-direction quirk `slow_factor` itself already has) -- plus a thirteenth for Poison's own
   tower-side DoT (`toxic_payload`/`festering_wound`, `poison_tower_tick_multiplier`/
   `poison_tower_duration_multiplier`, read in `PoisonTower.create_projectile()` at
-  `tower.py:1216-1218`) -- plus a fourteenth, cross-status combo-capstone batch of three
+  `entities/tower.py:1216-1218`) -- plus a fourteenth, cross-status combo-capstone batch of three
   (`frostbitten_mark`/`plague_mark`/`chill_rot`, `damage_vs_marked_and_slowed_multiplier`/
   `damage_vs_marked_and_poisoned_multiplier`/`damage_vs_slowed_and_poisoned_multiplier`, all 1.35x --
   the highest per-relic power multiplier in the registry, since assembling two towers' worth of build
   investment to trigger at all is a harder condition than holding any single-status relic -- read
-  generically in `Projectile._apply_hit_effects()` (`projectile.py:398-417`) against pre-hoisted
+  generically in `Projectile._apply_hit_effects()` (`entities/projectile.py:398-417`) against pre-hoisted
   `is_slowed`/`is_marked`/`is_poisoned` booleans, the same per-enemy-status group
   `damage_vs_flying_multiplier`/`damage_vs_shielded_multiplier`/`damage_vs_healer_multiplier` already
   established) plus `seismic_slam` in the same batch, Knockback's second exclusive relic
-  (`knockback_duration_multiplier`, read in `KnockbackTower.create_projectile()` at `tower.py:1073`,
+  (`knockback_duration_multiplier`, read in `KnockbackTower.create_projectile()` at `entities/tower.py:1073`,
   same shape as `heavy_ordnance` before it) -- every field across all five of these batches is copied
   onto the tower once at construction (`Game._construct_tower`, alongside every other per-tower relic
-  field), exactly the block at `game.py:1895-1906`, and multiplied in verbatim at each owning tower's
+  field), exactly the block at `core/game.py:1887-1898`, and multiplied in verbatim at each owning tower's
   own `create_projectile()`, so none needed new `Tower`/`Projectile` plumbing beyond the field itself,
   and none are gated (see the meta-progression bullet below for the two of these fourteen batches'
   relics that now are):
@@ -341,7 +377,7 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   **escalating-per-floor** (`veterans_momentum`'s `tower_damage_growth_per_floor`, folded into
   `tower_damage_multiplier` via `compose_relic_modifiers`' `floor_index` parameter -- fed the current
   node's *row* now that a run is a branching map rather than a flat sequence (see `RunState.
-  current_row`), but still named `floor_index` throughout `relics.py` since the escalation math itself
+  current_row`), but still named `floor_index` throughout `run/relics.py` since the escalation math itself
   doesn't care what kind of int it's handed; grows with the row reached instead of being a flat
   per-floor constant); **conditionally-revocable** (`misers_coffer`'s
   `gold_per_floor_bonus_while_unspent`, folded into `gold_per_floor_bonus` gated on the new
@@ -459,15 +495,15 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `WaveManager`'s own constructor kwargs exactly like `enemy_speed_multiplier`/`enemy_gold_multiplier`
   above, applied post-construction via the same `hasattr`-gated patch-up pattern
   `WaveManager._spawn_enemy` already uses for `ShieldedEnemy`'s own `max_shield`).
-- `run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
+- `run/run_escalation.py` -- `escalation_for_floor(floor_index)`, a bare formula rather than a registry
   precisely because `floor_index` (the current node's row) is unbounded once the boss node's endless
   tail runs. `apply_elite_multiplier()` layers an Elite node's own extra bump on top -- the difficulty
   half of the risk/reward trade an Elite node offers; see `shop.income_for_floor`'s own
   `ELITE_INCOME_MULTIPLIER` for the reward half.
-- `events.py` -- `EVENTS`, a registry of Random Event nodes (a short prompt plus 2-3 options), plus
+- `run/events.py` -- `EVENTS`, a registry of Random Event nodes (a short prompt plus 2-3 options), plus
   `pick_event()` (deterministic per node) and `resolve_event_option()`. See "The run's branching map"
   below for the full node-type writeup.
-- `meta_progression.py` / `run_history.py` -- cross-run persistence; see the on-disk-state section.
+- `progression/meta_progression.py` / `progression/run_history.py` -- cross-run persistence; see the on-disk-state section.
 
 `Game.start_new_run(seed=None, is_daily=False)` builds the `RunState` (map generated once, up front,
 via `run_map.generate_run_map`) and calls `_enter_map()` -- unlike the old flat sequence, a run no
@@ -477,7 +513,7 @@ dispatches on that node's own type; for a Combat/Elite node that's `_load_combat
 composes *three* independent extra factors into the one `_load_level_object()` call -- the run's
 snapshotted `difficulty`, `escalation_for_floor(node.row)` (bumped further by
 `apply_elite_multiplier` for an Elite node), and `compose_relic_modifiers(run.relics, node.row, ...)`
--- each an extra multiplier on top of what's already there, never a replacement, per `difficulty.py`'s
+-- each an extra multiplier on top of what's already there, never a replacement, per `run/difficulty.py`'s
 own rule. The run's very first resolved node is the one asymmetric case for lives: `RunState` starts
 with `lives=0` as a placeholder and *captures* that node's freshly-loaded `Economy`'s lives (checked
 via `not run.visited_node_ids`), while every node after that *restores* into it instead. Battle gold
@@ -496,14 +532,14 @@ A run ends **only** by permadeath. The map's boss node (the sole node in its fin
 `endless=True`, so `all_waves_complete` structurally can never fire for it, and `update()`'s win-check
 routes a run to `_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the
 run" event by construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
-`run_history.py` and bumps the meta-progression counters; `RunState.floors_cleared` (what both of
+`progression/run_history.py` and bumps the meta-progression counters; `RunState.floors_cleared` (what both of
 those read) counts only visited Combat/Elite nodes, not every node stopped at -- a Shop/Event/Rest/
 Treasure detour doesn't inflate the score.
 
 Every rng a node needs (its own enemy routing, its Shop offer, a Random Event's own pick and its
 chosen option's item grant, a Treasure's own relic pick) is re-derived on demand via `Game._run_rng
 (run, stream, key)` rather than carried as one continuously-consumed `random.Random`. That's what
-lets `save_state.py` serialize a run without serializing any RNG state at all -- a resumed run just
+lets `persistence/save_state.py` serialize a run without serializing any RNG state at all -- a resumed run just
 re-derives the identical objects (`resume_saved_run()` is why `run` is a parameter here rather than
 read off `self.active_run`: it needs this derivation *before* `_load_level_object()` sets `self.
 active_run`). The seed itself is a string (`f"{run.seed}:{stream}:{key}"`), not
@@ -519,16 +555,16 @@ node id alone identifies *which visit*, not *which purchase* or *which option* -
 A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
 `start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
 snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.
-`run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
+`progression/run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
 needs no special handling anywhere. The whole map is generated from that same date-derived seed, so
 every player sees the identical branching map (and Shop/Event offers) on a given day too.
 
 ### The run's branching map
 
-A run's map (`run_map.py`) is a Slay-the-Spire-style row-based DAG, generated once, up front (`Game.
+A run's map (`run/run_map.py`) is a Slay-the-Spire-style row-based DAG, generated once, up front (`Game.
 start_new_run`), and shown to the player in full from the start -- not fog-of-war, not revealed
 fork-by-fork. `ROW_COUNT` rows (6, unchanged from the old flat sequence's own floor count, which
-keeps `run_escalation.py`'s tuned growth constants meaning the same thing they always did); edges
+keeps `run/run_escalation.py`'s tuned growth constants meaning the same thing they always did); edges
 only ever run from one row to the next, never skip a row or point backward, which is what keeps
 "every node reachable, every node can reach the boss" provable by simple induction (see
 `_generate_edges`' own docstring) rather than needing a general graph-reachability pass after the
@@ -563,13 +599,13 @@ The seven node types:
 - **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
   escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
   `ELITE_INCOME_MULTIPLIER`) -- risk/reward, not "harder for its own sake."
-- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `shop.py` verbatim, only
+- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `run/shop.py` verbatim, only
   reached via a map node now rather than automatically after every floor clear (see "Two currencies"
   below for what this replaced).
-- **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`events.py`), each a fixed,
+- **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`run/events.py`), each a fixed,
   honestly-described delta (shop currency, lives, a relic grant, a tower unlock, or -- since the
   gaps-and-synergies batch -- giving up a relic already held, `EventOption.relic_cost`) rather than
-  a hidden-odds gamble, same "say exactly what it does" precedent `relics.py`'s own registry sets.
+  a hidden-odds gamble, same "say exactly what it does" precedent `run/relics.py`'s own registry sets.
   `Game.event_options` (`events.available_options(event, run)`) is the actual rendered/clickable
   subset -- may be shorter than the event's own full `options` tuple if a `relic_cost` option got
   dropped for holding no relics; a `relic_cost` option must always be the last in its tuple, since
@@ -605,7 +641,7 @@ The seven node types:
   `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
   before/after check reads to detect the boss node's authored waves running out for the first time,
   firing `Game._handle_boss_defeated()`: a one-shot-per-run toast, a `bosses_defeated` bump on both
-  `meta_progression.py` and `achievements.py` (the `"boss_slayer"` achievement), and a persistent
+  `progression/meta_progression.py` and `progression/achievements.py` (the `"boss_slayer"` achievement), and a persistent
   `RunState.boss_defeated` flag that appends "-- Boss defeated!" onto the HUD's existing Wave line for
   the rest of the (still-ongoing, still-endless) fight -- piggybacked onto that line rather than a new
   one, same headroom reasoning `shop_currency`'s own comment in `ui.draw_hud` already gives.
@@ -641,7 +677,7 @@ A run tracks two independent currencies, deliberately never convertible into eac
 gold** (`Economy.gold`, unchanged as a concept -- what places/upgrades/specializes/sells towers
 mid-floor) resets fresh every floor rather than carrying forward, and **shop currency**
 (`RunState.shop_currency`) persists across the whole run and is what actually buys cards at the Shop
-(`GameState.DRAFT` -- see its own naming note in `game.py` for why the code still says "draft"
+(`GameState.DRAFT` -- see its own naming note in `core/game.py` for why the code still says "draft"
 throughout even though the screen is a shop now, only reached via a map node -- see "The run's
 branching map" above -- rather than automatically after every floor clear). A Treasure node and a
 Random Event's own `grant_relic`/`unlock_random_tower` options also grant cards/currency directly
@@ -652,7 +688,7 @@ floor's own `_load_level_object()` call (relic-adjustable via `RelicModifiers.st
 multiplier`/`gold_per_floor_bonus`, both applied every floor now with no first-node special case
 left).
 
-`shop.py` is where the Shop's own logic lives, mirroring `card_pool.py`/`relics.py`'s own
+`run/shop.py` is where the Shop's own logic lives, mirroring `run/card_pool.py`/`run/relics.py`'s own
 registry-and-bare-function shape:
 
 - `build_offer(rng, run, meta_progression_path=None)` -- this shop visit's items, mixing both card
@@ -680,7 +716,7 @@ registry-and-bare-function shape:
   (actually charging it) can't drift apart on what "the current price" means.
 - `income_for_floor(floor_index, leftover_gold, is_elite=False)` -- shop currency earned at a floor
   clear (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (the
-  cleared node's own row, mirroring `run_escalation.py`'s own per-floor growth on a much smaller
+  cleared node's own row, mirroring `run/run_escalation.py`'s own per-floor growth on a much smaller
   scale) plus `LEFTOVER_GOLD_CONVERSION_RATE` of whatever battle gold was still unspent at that
   moment -- since battle gold itself never carries forward (see above), this is what makes hoarding
   it in an already-won fight pay off instead of the surplus just vanishing when the floor resets.
@@ -707,8 +743,8 @@ gold, not a new currency of its own.
 
 ### Content is registries, not conditionals
 
-Towers (`TOWER_TYPES` in `tower.py`), enemies (`ENEMY_TYPES` in `enemy.py`), and levels (`LEVELS`
-in `levels.py`) are all `{name: class_or_instance}` dicts. `Grid`, `WaveManager`, `ui.py`'s build
+Towers (`TOWER_TYPES` in `entities/tower.py`), enemies (`ENEMY_TYPES` in `entities/enemy.py`), and levels (`LEVELS`
+in `world/levels.py`) are all `{name: class_or_instance}` dicts. `Grid`, `WaveManager`, `presentation/ui.py`'s build
 menu, and `Game`'s placement logic all iterate or index these registries generically -- adding a
 new tower/enemy/level is subclassing (or a new `Level(...)`) plus one registry line, never a
 change to the systems that consume it. The run loop added one wrinkle to exactly one of those
@@ -719,7 +755,7 @@ directly, rebuilt on demand by `_rebuild_button_rects()` inside `_load_level_obj
 re-checks membership itself as defense in depth, since `selected_tower_name` could in principle
 outlive the menu that set it. `Tower.EXTRA_STATS` (label, attribute, format-fn tuples)
 is how a subclass's special mechanic (splash radius, slow %, chain range, ...) shows up in the
-stats panel automatically. `Projectile` (`projectile.py`) is a single data-parametrized class, not
+stats panel automatically. `Projectile` (`entities/projectile.py`) is a single data-parametrized class, not
 one subclass per tower -- splash/slow/knockback/chain/mark are just constructor args a tower's
 `create_projectile()` passes in, and the hit-resolution algorithm doesn't care which combination
 it got (see "Mark and Corrosive Poison's shield-bypass hook" below for why Mark's own
@@ -727,7 +763,7 @@ amplification math still lives in `Enemy`, not here).
 
 ### Boss enemy mechanics
 
-`BossEnemy` (`enemy.py`) layers two self-contained, one-time mechanics on top of the generic
+`BossEnemy` (`entities/enemy.py`) layers two self-contained, one-time mechanics on top of the generic
 `Enemy` base, following the same "override `take_damage()`/`update()`, guard `is_dead`/
 `reached_goal` first" shape `ShieldedEnemy`'s regenerating shield already established: **enrage**
 (a permanent speed multiplier once HP drops to/below `ENRAGE_HP_FRACTION` of `max_hp`, capped at
@@ -748,7 +784,7 @@ every other one-time enemy mechanic in this file is.
 `FinalBossShieldedEnemy` is a second final-boss species, giving the run's two boss-tier levels
 (`run_map.BOSS_LEVEL_IDS`, 16 and 17) genuinely distinct fights rather than an identical script
 behind different topology -- Level 16 still uses `FinalBossEnemy`, Level 17 uses this one instead
-(`levels.py`'s own `LEVEL_17_WAVE_SPECS`, the only line that changed to wire it in). It also
+(`world/levels.py`'s own `LEVEL_17_WAVE_SPECS`, the only line that changed to wire it in). It also
 subclasses `BossEnemy` directly and inherits Enrage/Armor unmodified, but its own extra mechanic is
 a periodic self-shield pulse in place of summoned reinforcements: every `SHIELD_PULSE_INTERVAL`
 seconds while alive, it grants itself `pulse_shield` worth `SHIELD_PULSE_FRACTION` of its own
@@ -764,7 +800,7 @@ difficulty-scaling model and sizes things a completely different way. It also ne
 shield-bypass hook" below for why.
 
 `Enemy.IS_BOSS` (`False` on the base class, `True` on `BossEnemy` only) is a class-level flag added
-for `titan_slayer` (see the `relics.py` bullet above), mirroring `Tower.IS_SUPPORT`'s own shape
+for `titan_slayer` (see the `run/relics.py` bullet above), mirroring `Tower.IS_SUPPORT`'s own shape
 exactly -- a plain boolean neither subclass ever needs to check dynamically, just inherit or
 override once. `FinalBossEnemy`/`FinalBossShieldedEnemy` both subclass `BossEnemy` directly and
 never override class-level flags like this one, so they inherit `IS_BOSS = True` for free, same as
@@ -779,7 +815,7 @@ Two mechanics from the tower/relic synergy batch live inside `Enemy` itself rath
 `Projectile`/a per-species special case, because each has to affect *every* damage source
 uniformly, not just a tower's own direct hit resolution:
 
-- **Mark** (`BeaconTower`'s own mechanic, `tower.py`) is `Enemy.mark_damage_multiplier`/
+- **Mark** (`BeaconTower`'s own mechanic, `entities/tower.py`) is `Enemy.mark_damage_multiplier`/
   `mark_timer`, decayed in `update()` exactly like `slow_timer`/`slow_multiplier`, and set via
   `Enemy.apply_mark(multiplier, duration)` -- same guard/refresh shape as `apply_slow()`, except
   both the multiplier *and* the duration combine via `max()`, not `min()`/`max()`, since a bigger
@@ -820,7 +856,7 @@ uniformly, not just a tower's own direct hit resolution:
 
 ### Grid has two coordinate systems
 
-`Grid` (`grid.py`) tracks the map at two granularities at once:
+`Grid` (`world/grid.py`) tracks the map at two granularities at once:
 - **Coarse tile coords** (`col, row`; unit = `TILE_SIZE`, 64px) -- path, blocked cells, and the
   rendered mosaic. Comes straight from a `Level`'s `path_cells`/`spawn_cells`/`goal_cells`/
   `blocked_cells` (see "Paths are a graph, not a route" below).
@@ -871,9 +907,9 @@ caught anything; the fix was requiring every leaf of the tree to be a spawn or a
 `Enemy` itself needs **zero branching logic**: `WaveManager` samples one concrete flat pixel
 waypoint list per spawned enemy (`pathing.sample_route`, weighted-random at branch points, default
 uniform) and hands it to the same `Enemy.__init__(waypoints_px, wave_number)` as always. All of the
-graph complexity lives in `pathing.py` and at spawn time, not in movement.
+graph complexity lives in `world/pathing.py` and at spawn time, not in movement.
 
-`levels.py`'s hand-written levels stay a terse ordered corner list (`pathing.path_cells_from_corners`
+`world/levels.py`'s hand-written levels stay a terse ordered corner list (`pathing.path_cells_from_corners`
 walks each axis-aligned segment into the cell set) purely as an authoring convenience; a `Level`
 built by the map editor's tile-paint brush builds `path_cells`/`spawn_cells`/`goal_cells` directly,
 with no corner list involved. Both end up as the exact same shape -- one representation, not two
@@ -881,7 +917,7 @@ parallel formats.
 
 ### Map editor and custom levels
 
-`editor.py`'s `Editor` (driven by `GameState.EDITOR` in `game.py`, entered via `E` from the menu or
+`core/editor.py`'s `Editor` (driven by `GameState.EDITOR` in `core/game.py`, entered via `E` from the menu or
 `main.py --editor`) is a freeform tile-paint brush: drag to paint/erase `path_cells`, separate
 Spawn/Goal tools mark `spawn_cells`/`goal_cells`. Junctions are **auto-detected** from painted
 geometry (`pathing.junctions_of` -- any cell with 3+ path-neighbors) rather than the player ever
@@ -944,7 +980,7 @@ before the next spawn's even starts. A spawn with fewer enemies queued for the w
 contributing to later rounds once its own queue empties; it doesn't hold the others back or get
 padded with empty turns to stay in sync.
 
-`persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
+`persistence/persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
 `load_level_file`/`list_custom_levels` (de)serialize a `Level` to JSON under `custom_levels/`
 (gitignored -- local player data, not shipped content), slugging the level's name into a stable
 filename/id with a numeric suffix on collision. `list_custom_levels` skips a corrupt or
@@ -955,7 +991,7 @@ persists across game sessions with no extra work -- `Game._enter_level_select()`
 an earlier run shows up exactly like one saved this session. Since the saved file is just
 self-contained JSON with no player-specific data, it doubles as this game's map-sharing mechanism:
 handing someone the file and having them drop it into their own `custom_levels/` is enough --
-`Game.last_saved_path` (shown in the wave editor's sidebar after Save, see `ui.py`) exists purely to
+`Game.last_saved_path` (shown in the wave editor's sidebar after Save, see `presentation/ui.py`) exists purely to
 tell the player where to find that file on disk to go do that.
 
 `ui.build_level_thumbnail(level, width, height)` renders a level's `path_cells`/`spawn_cells`/
@@ -1021,7 +1057,7 @@ an actual `surface.set_clip()` around the row loop, plus a "more above"/"more be
 
 ### Support towers and the two-pass update loop
 
-`SupportTower` (`tower.py`) is the one `TOWER_TYPES` entry that never attacks at all
+`SupportTower` (`entities/tower.py`) is the one `TOWER_TYPES` entry that never attacks at all
 (`damage = fire_rate = 0`, `IS_SUPPORT = True`) -- instead, every frame, it buffs every *other*
 tower within its `range` (`buff_damage_multiplier`/`buff_range_multiplier`, its own
 `LEVEL_SCALED_STATS` in place of the now-meaningless `damage`). This needed one real change to
@@ -1040,7 +1076,7 @@ by `Game._construct_tower`, never reset) -- deliberately **additive** with `aura
 and a nearby Support tower's own buff genuinely stack rather than the stronger one silently winning
 the way two overlapping Support towers already do. `SupportTower.update()`'s own reach check uses
 `effective_range()` too, for the same "no relic singles out one tower type" reason -- a Range relic
-widens a Support tower's own aura radius, not just its role as an aura *recipient*. `ui.py`'s stats
+widens a Support tower's own aura radius, not just its role as an aura *recipient*. `presentation/ui.py`'s stats
 panel and
 `Game._handle_panel_action_click` both check `IS_SUPPORT` to skip the targeting-mode row and the
 plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless
@@ -1086,16 +1122,16 @@ point, right next to the existing `damage_dealt`/`kills` bookkeeping, so an Arci
 bounce or an Overkill-style carry-over hit generates Siphon gold too, for free -- and `Game.update()`
 drains only the whole-gold portion into `self.economy.add_gold()` each frame, carrying any sub-1-gold
 remainder forward rather than resetting it to zero, so fractional credit is never silently lost. Not
-serialized in `save_state.py`: a save only ever happens between waves, with no live combat state
+serialized in `persistence/save_state.py`: a save only ever happens between waves, with no live combat state
 captured at all, and the remainder is worth less than 1 gold regardless.
 
 ### Tower targeting is broad-phase, not brute-force
 
 `Tower.acquire_target()` scans candidate enemies every time a tower's cooldown allows a shot, so
 naively this is an O(towers x enemies) pass every frame -- fine at the game's original scale, but
-endless mode's design is *unbounded* enemy growth by intent (`waves.py`'s `_default_endless_wave`
+endless mode's design is *unbounded* enemy growth by intent (`entities/waves.py`'s `_default_endless_wave`
 compounds every generated wave off the last), so this is exactly the place that growth eventually
-gets felt. `spatial_index.EnemySpatialIndex` (`spatial_index.py`) narrows the scan without changing
+gets felt. `spatial_index.EnemySpatialIndex` (`world/spatial_index.py`) narrows the scan without changing
 what any tower actually targets: a uniform grid of `(cell_x, cell_y) -> [enemy, ...]` buckets (a
 tree wasn't worth it -- the play area is small and fixed-size regardless of enemy count, so a flat
 dict is both simpler and, at this scale, at least as fast), rebuilt from scratch once per frame in
@@ -1119,10 +1155,10 @@ never attacks and so never calls `acquire_target()` at all.
 
 ### Key remapping is curated, not repo-wide
 
-`keybindings.py` lets the player rebind a small, deliberately-chosen subset of actions --
+`persistence/keybindings.py` lets the player rebind a small, deliberately-chosen subset of actions --
 `PLAYING_ACTIONS` (`pause`/`skip_wave`/`time_scale_1`/`time_scale_2`/`time_scale_3`/`open_relics`)
 and `EDITOR_ACTIONS` (`editor_undo`/`editor_redo`) -- not every hardcoded `pygame.K_*` check
-`input_handler.py`'s `_handle_keydown` makes. The reason it's a subset: several keys there already
+`core/input_handler.py`'s `_handle_keydown` makes. The reason it's a subset: several keys there already
 carry *different logical meanings* depending on game state (`Escape` alone means quit, back,
 cancel-a-pending-confirm, or resume depending on which state reads it; `R`/`P`/`S` each carry 2-3
 meanings of their own), and a real remapping system would mean splitting each of those into
@@ -1138,7 +1174,7 @@ both a plain action and `editor_undo`/`editor_redo`'s Ctrl+Z/Ctrl+Y defaults, ra
 "combo" concept bolted on. `keybindings.normalize_mods()` collapses `pygame.key.get_mods()`'s
 left/right-specific bits down to those three canonical ones (so a binding captured with the right
 Ctrl still matches a later press of the left Ctrl); `keybindings.matches(binding, key, mods)` is what
-every dispatch site (`input_handler.py`'s `PLAYING`/`_handle_editor_undo_redo_keydown` branches) and
+every dispatch site (`core/input_handler.py`'s `PLAYING`/`_handle_editor_undo_redo_keydown` branches) and
 the capture UI both call, and mirrors each action's own pre-remapping behavior exactly: an
 unmodified binding matches on the key alone regardless of whatever else is incidentally held (Space
 still skips the wave delay whether or not Shift happens to be down too, same as before this module
@@ -1158,7 +1194,7 @@ KEYBINDS` has nothing else on screen to explain *why* a click didn't do what was
 `PLAYING`'s own "pause" action needed one extra piece of symmetry beyond a plain dispatch-site swap:
 `Escape`'s own fixed pause behavior stays completely separate from the "pause" *action* (Escape
 always pauses regardless of what's bound), but the action itself is one *toggle* -- so
-`input_handler.py`'s `PAUSED` branch checks the exact same `keybindings.matches(game.keybindings
+`core/input_handler.py`'s `PAUSED` branch checks the exact same `keybindings.matches(game.keybindings
 ["pause"], ...)` the `PLAYING` branch does for its own P-to-resume equivalent, not a second hardcoded
 `pygame.K_p`. Get this wrong and rebinding "pause" away from P lets a player pause with their new key
 but never un-pause with it (only the stale default P, or Escape, would still resume) -- a half-migrated
@@ -1172,11 +1208,11 @@ would run past the bottom of the fixed 1200x704 canvas -- same "own small rect, 
 column" shape `build_volume_button_rects` already uses) is one row per `keybindings.ACTION_ORDER`
 action, each a button showing its current binding; clicking one starts "listening"
 (`Game.keybind_listening_for`), and the next keydown is captured as that action's new binding
-(`input_handler.py`'s `_handle_keybinds_keydown`) -- a bare modifier keydown (`keybindings.
+(`core/input_handler.py`'s `_handle_keybinds_keydown`) -- a bare modifier keydown (`keybindings.
 MODIFIER_KEY_CODES`) doesn't complete a capture on its own (waiting for the real key it's meant to
 combine with), and Escape cancels the capture instead of ever being captured itself. A Reset button
 restores `keybindings.DEFAULT_BINDINGS` wholesale. Persisted the same way as every other small
-on-disk JSON state file (see that section below) -- `keybindings.py`'s own `load_bindings`/
+on-disk JSON state file (see that section below) -- `persistence/keybindings.py`'s own `load_bindings`/
 `save_bindings`, injectable via `Game(keybindings_path=...)` exactly like `settings_path` etc., so
 tests and the `run-td` skill's driver never touch the real repo-root `keybindings.json`.
 
@@ -1209,7 +1245,7 @@ after the mouse moves away) > the tower type currently selected to build > nothi
 `_handle_click()` both call it, so the panel and its action buttons (Upgrade / two Specialize
 choices / Sell, built by `ui.build_*_button_rect()`) always agree on which tower they act on.
 
-Upgrade and the first Specialize button **intentionally share the same `Rect`** (`ui.py`,
+Upgrade and the first Specialize button **intentionally share the same `Rect`** (`presentation/ui.py`,
 `ACTION_AREA_TOP`) -- a tower is never both upgradeable and specializable at once, so they occupy
 the same panel slot. `Game._handle_click` resolves a click there by the subject's *actual state*
 (maxed or not), not by which `if` happens to run first -- get that backwards and a maxed tower's
@@ -1219,7 +1255,7 @@ in `test_ui.py`/`test_game.py` exist to catch.
 
 ### HUD layout: top strip vs. bottom row
 
-`ui.py`'s HUD bar splits into two vertical bands: a top strip (`HUD_TOP_STRIP_HEIGHT`, 32px) for
+`presentation/ui.py`'s HUD bar splits into two vertical bands: a top strip (`HUD_TOP_STRIP_HEIGHT`, 32px) for
 controls whose position shouldn't depend on how many tower buttons are registered (`build_speed_
 button_rect`/`build_relics_button_rect`/`build_skip_button_rect`, all right-aligned there in that
 order), and a bottom row for the tower build-menu buttons (left, `build_button_rects`) and the
@@ -1245,7 +1281,7 @@ caught text silently overflowing past both of them.
 
 ### Waves
 
-`WaveManager` (`waves.py`) is a small state machine: `AWAITING_START` -> `BETWEEN_WAVES` ->
+`WaveManager` (`entities/waves.py`) is a small state machine: `AWAITING_START` -> `BETWEEN_WAVES` ->
 `SPAWNING` -> (loop) -> `DONE`. Wave 1 starts in `AWAITING_START` and never advances on its own --
 `skip_delay()` (the HUD's Start/Skip button, or `Space`) is what moves it to `BETWEEN_WAVES` with
 the timer zeroed, same as skipping any later between-wave countdown. Every wave after the first
@@ -1270,7 +1306,7 @@ below).
 
 ### Difficulty modes, Sandbox/Practice mode, and player settings
 
-`difficulty.py`'s `DIFFICULTY_MODES` registry (easy/normal/hard, same `{key: ...}` shape as every
+`run/difficulty.py`'s `DIFFICULTY_MODES` registry (easy/normal/hard, same `{key: ...}` shape as every
 other registry in this codebase) is a bundle of multipliers -- `enemy_hp_multiplier`/
 `enemy_speed_multiplier`/`enemy_gold_multiplier`/`starting_gold_multiplier`/
 `starting_lives_multiplier` -- composed as an *extra* factor on top of `Enemy`'s own existing
@@ -1279,7 +1315,7 @@ byte-for-byte the pre-difficulty behavior -- neither `Enemy` nor `Economy` neede
 support this; `WaveManager._spawn_enemy` (enemy stats, applied post-construction) and
 `Game._load_level_object` (starting gold/lives) are the only two application points. The active
 difficulty is a **sticky, cross-session player preference** (`self.difficulty`, persisted via
-`player_settings.py`), read at `_load_level_object` time -- changing it mid-level has no effect
+`persistence/player_settings.py`), read at `_load_level_object` time -- changing it mid-level has no effect
 until the next level load, the same "applies on next load" precedent `unlimited_gold` already set.
 
 **Sandbox/Creative mode** is a player-reachable, per-level alternative to the CLI-only
@@ -1291,11 +1327,11 @@ Practice mode (below) absorbed that entirely -- picking any level to play always
 left to arm it separately. It sets both `Economy.unlimited_gold` and a new `Economy.invulnerable`
 (`lose_life()` becomes a no-op, `is_out_of_lives` stays `False` regardless of `self.lives`,
 mirroring `unlimited_gold`'s "never actually deducted" precedent rather than a decrement-then-clamp
-`ui.py` would then have to also mask). A sandbox win intentionally does *not* record progress or
+`presentation/ui.py` would then have to also mask). A sandbox win intentionally does *not* record progress or
 bump any achievement/meta-progression counter -- trivializing victory shouldn't trivialize real
 progress -- the same reasoning that already keeps a genuine endless run's `all_waves_complete` from
 ever firing at all. `Game._record_level_cleared()`'s own `if self.sandbox: return` is the one gate
-for the `progress.py` half; `_record_achievement`/`_record_meta_progress` share a second one inside
+for the `progression/progress.py` half; `_record_achievement`/`_record_meta_progress` share a second one inside
 `_record_progress_counter()`, the helper both delegate to, rather than either repeating it at its
 own call sites. `_record_run_permadeath()` carries a third, separate `if self.sandbox: return` of
 its own -- its `run_history.record_run_result()` call has no sandbox awareness to delegate to, so
@@ -1306,7 +1342,7 @@ loads `sandbox=True`. That's a deliberate design position, not an implementation
 progress comes only from playing a run, so a standalone level is explicitly a place to experiment
 and earns nothing. It's also what retired `progress.is_unlocked()`: with no progress to gate on and
 no gate to apply it to, sequential campaign unlocking was removed outright rather than left
-half-wired (see the `progress.py` bullet below for what survived).
+half-wired (see the `progression/progress.py` bullet below for what survived).
 
 The `GameState.SETTINGS` screen (`S` from the menu) is where `fullscreen` and `difficulty` actually
 get changed (`ui.draw_settings_screen`/`get_clicked_settings_option`); both persist immediately on
@@ -1326,7 +1362,7 @@ same as `custom_levels/`. That shared shape isn't just convention --
 `json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
 `load_*()`s is ultimately built on (`achievements.load_achievements()`/`meta_progression.
 load_meta_progression()` go through `threshold_unlocks.load_counters_state()`'s own thin wrapper
-around it, since those two share their load/save/bump mechanics -- see the `meta_progression.py`
+around it, since those two share their load/save/bump mechanics -- see the `progression/meta_progression.py`
 bullet below for that split -- rather than calling it directly themselves): it does the file-exists
 check and `try`/`except` itself, and takes
 `transform` (parsed JSON -> whatever shape the caller wants, also where a caller raises on
@@ -1334,24 +1370,24 @@ well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
 accidentally shared across calls) as the two places each module still supplies its own behavior.
 `json_io.module_relative_path(module_file, *parts)` factors out the other shape all nine
-on-disk-state modules share (the seven above, plus `persistence.py`'s `LEVELS_DIR` and `assets.py`'s
+on-disk-state modules share (the seven above, plus `persistence/persistence.py`'s `LEVELS_DIR` and `presentation/assets.py`'s
 `DEFAULT_ASSET_ROOT`): a path anchored to the calling module's own `__file__`, not the process's
 current working directory -- see "Release binary" below for why that distinction matters for a
 packaged build. Before this was factored out, each independently wrote the same
 `os.path.join(os.path.dirname(os.path.abspath(__file__)), ...)` expression.
 
-- `progress.py` tracks `{level_id: best_lives_remaining}`. It is now a *record*, not a gate: it
+- `progression/progress.py` tracks `{level_id: best_lives_remaining}`. It is now a *record*, not a gate: it
   used to also own sequential unlocking (`is_unlocked()`), which the run loop retired outright --
-  a run picks its own floors, `meta_progression.py` gates what the draft can offer, and Practice
+  a run picks its own floors, `progression/meta_progression.py` gates what the draft can offer, and Practice
   plays anything immediately, so there was nothing left for it to gate. `Game._record_level_cleared()`
   is the single writer, called from both `_advance_run_floor()` (a floor clear -- the common case
   now) and `update()`'s `VICTORY` branch (Practice/editor playtest). Keeping those two paths on one
   helper is load-bearing rather than tidiness: the bookkeeping used to live inline in the `VICTORY`
-  branch alone, which a run never reaches, so `progress.py` and the `distinct_levels_cleared`
+  branch alone, which a run never reaches, so `progression/progress.py` and the `distinct_levels_cleared`
   achievement derived from it had quietly become unreachable in normal play. A custom
   (editor-authored) level still bumps the naive `levels_cleared` tally but is never recorded here --
   it has no registry id to key on.
-- `achievements.py` is a registry (`ACHIEVEMENTS`, same shape as every other registry) of
+- `progression/achievements.py` is a registry (`ACHIEVEMENTS`, same shape as every other registry) of
   unlockable achievements, each keyed off a threshold on one of a handful of cumulative lifetime
   counters (kills, towers built/maxed/specialized, levels cleared, waves survived). `bump()` mirrors
   `progress.mark_level_cleared()`'s exact load-mutate-save-return shape, so it's always safe to call
@@ -1364,10 +1400,10 @@ packaged build. Before this was factored out, each independently wrote the same
   `_record_progress_counter()` helper `_record_achievement`/`_record_meta_progress` both delegate
   to, rather than at each of *their* own call sites, mirroring `_record_level_cleared`'s own single
   guard.
-- `meta_progression.py` is the run loop's cross-run unlock registry (`META_UNLOCKS`: one
+- `progression/meta_progression.py` is the run loop's cross-run unlock registry (`META_UNLOCKS`: one
   `TOWER_TYPES` name each, gated on a threshold on `total_floors_cleared`/`runs_played`/
-  `runs_reached_endless`), sharing its load/save/bump-counter mechanics with `achievements.py` via
-  `threshold_unlocks.py`'s own `load_counters_state`/`save_counters_state`/`bump_counter`/
+  `runs_reached_endless`), sharing its load/save/bump-counter mechanics with `progression/achievements.py` via
+  `progression/threshold_unlocks.py`'s own `load_counters_state`/`save_counters_state`/`bump_counter`/
   `set_counter` (each module's own `load_*`/`save_*`/`bump()` just delegates its body to these,
   supplying its own registry/path/schema version) while keeping a genuinely separate file, registry,
   and JSON state.
@@ -1404,7 +1440,7 @@ packaged build. Before this was factored out, each independently wrote the same
   (`frostbitten_mark`/`plague_mark`, thresholds `total_floors_cleared=50`/`runs_played=20`, both
   further out than the first wave's own 10-25 range) once that first curve itself started feeling
   exhausted -- `chill_rot`, the third relic in that same batch, stays deliberately ungated so the
-  mechanic itself is still reachable early (see the `relics.py` bullet above). A third wave
+  mechanic itself is still reachable early (see the `run/relics.py` bullet above). A third wave
   completed that same batch's gating with `seismic_slam` (Knockback's 2nd exclusive relic, the only
   relic from that batch still ungated after the second wave) at `total_floors_cleared=75` -- past
   even `frostbitten_mark`'s 50 -- and added a second `LEVEL_META_UNLOCKS` gate, `Double Confluence`
@@ -1439,11 +1475,11 @@ packaged build. Before this was factored out, each independently wrote the same
   registries a newly-unlocked key belongs to (`"New tower/relic/level unlocked: ..."`, name read off
   `TOWER_TYPES`/`RELICS`/`LEVELS` respectively, since none of the three unlock classes carry a
   `display_name` of their own) rather than assuming every key `bump()` returns is a tower unlock.
-- `run_history.py` records `{seed: best_floors_cleared}`, written once per run by
+- `progression/run_history.py` records `{seed: best_floors_cleared}`, written once per run by
   `_record_run_permadeath()`. Per-seed max rather than last-write, which is what makes a replayed
   seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
   handling here at all, it's just another seed.
-- `save_state.py` saves a single in-progress session -- but **only** between waves. ("Session," not
+- `persistence/save_state.py` saves a single in-progress session -- but **only** between waves. ("Session," not
   "run": `save_run()`/`can_save_run()`/`resume_saved_run()`/`_resumed_from_save` predate the
   overhaul and name *whatever's being played*, classic level or roguelike run alike -- unrelated to
   `RunState`/`Game.active_run`/`start_new_run()`, which are always the roguelike run specifically.
@@ -1489,14 +1525,14 @@ packaged build. Before this was factored out, each independently wrote the same
   `load_run()` falls all the way back to "nothing to resume," same as any other corrupt/incompatible
   save -- acceptable since `save_state.json` is local, gitignored player data, same reasoning this
   whole family of on-disk files already leans on.
-- `keybindings.py` persists the player's rebound keys; see "Key remapping is curated, not
+- `persistence/keybindings.py` persists the player's rebound keys; see "Key remapping is curated, not
   repo-wide" above for the actual registry/matching/conflict logic -- it follows this same one-JSON-
   file, defensive-load, injectable-path shape, just with `(key, mods)` pairs as its values instead of
   a flat settings dict.
 
 ### Visual effects: the drain-a-per-frame-event-list idiom
 
-`effects.py` holds small, short-lived, data-parametrized visual effects -- `FloatingText` (a
+`entities/effects.py` holds small, short-lived, data-parametrized visual effects -- `FloatingText` (a
 rising, fading damage-number popup) and `ExpandingRing` (a growing, fading ring, reused for both a
 splash-blast flash and an enemy death poof via different constructor args, the same "one class,
 several constructor-arg shapes" spirit as `Projectile` itself). Both are spawned via the same
@@ -1504,12 +1540,12 @@ idiom: the thing that actually causes the effect (`Enemy.damage_events`, a list 
 amounts appended in `take_damage()` and cleared every frame; `Projectile.impact_events`, one
 `(impact_pos, splash_radius_or_None)` tuple appended once per resolved hit in `_resolve_hit()`,
 counted once per *projectile* the same way `shots_hit` already is) has zero knowledge of
-`effects.py` at all -- `Game.update()` is the one place that drains each per-frame list into an
+`entities/effects.py` at all -- `Game.update()` is the one place that drains each per-frame list into an
 owned, aged-and-pruned effect list (`self.damage_numbers`/`self.impact_effects`) every frame, in
 each case *before* whatever produced the event (a dead enemy, a dead projectile) is actually
 removed, so a killing blow's own popup/flash still spawns at the position it landed rather than
 being silently dropped. Adding a new transient visual effect anywhere in this codebase means
-following this same three-step shape: a class in `effects.py`, a per-frame event list on whatever
+following this same three-step shape: a class in `entities/effects.py`, a per-frame event list on whatever
 produces the event, and one drain site in `Game.update()` -- never a new effect spawned directly
 from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering. The
 idiom generalizes past rendering too: `SiphonTower.pending_siphon_gold` (see that tower's own
@@ -1519,7 +1555,7 @@ into `self.economy.add_gold()` every frame.
 
 ### Audio
 
-`audio.py` mirrors `assets.py` closely (read that module's own docstring first): every sound is
+`presentation/audio.py` mirrors `presentation/assets.py` closely (read that module's own docstring first): every sound is
 referenced elsewhere by a logical name (`"tower_placed"`, `"enemy_killed"`, ...), never a file
 path. `SoundManager` (constructed once on `Game` as `self.audio`, right after `self.assets`,
 reusing `assets.DEFAULT_ASSET_ROOT` directly rather than recomputing the same path a second way --
@@ -1604,7 +1640,7 @@ silent as it already was -- no new "denied" sound anywhere, mirroring each of th
 existing silent-no-op precedent.
 
 `GameState.SETTINGS`'s "Sound: On/Off" row is `self.sound_enabled`, persisted via
-`player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
+`persistence/player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
 `set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). A "Volume: N%"
 control sits inline on that same row (-/+ buttons, `SOUND_VOLUME_STEP`-sized 10% steps) --
 `Game.adjust_sound_volume(direction)` calls `set_sound_volume()`, which clamps to `[0.0, 1.0]`,
@@ -1615,9 +1651,9 @@ way `set_fullscreen()`/`set_sound_enabled()` already do.
 ### Assets
 
 Every sprite is referenced elsewhere by a logical name (`"tower_basic"`, `"enemy_grunt"`, ...),
-never a file path. `AssetManager` (`assets.py`) looks the name up in `SPRITE_MANIFEST` for a
+never a file path. `AssetManager` (`presentation/assets.py`) looks the name up in `SPRITE_MANIFEST` for a
 relative path + fallback color/shape; if the file exists under `asset_root` (default
-`DEFAULT_ASSET_ROOT`, an `assets/` folder resolved relative to `assets.py`'s own location, not the
+`DEFAULT_ASSET_ROOT`, an `assets/` folder resolved relative to `presentation/assets.py`'s own location, not the
 process's current working directory -- see "Release binary" below for why that distinction matters
 for a packaged build) it loads and scales that, otherwise it synthesizes a placeholder (rounded
 rect / circle with an outline at normal sizes, a plain flat fill below ~12px so tiny sprites like
@@ -1629,7 +1665,7 @@ no code changes unless filenames differ from the manifest.
 `Economy.unlimited_gold` (set via `Game(unlimited_gold=...)`, which `main.py --unlimited-gold`
 threads through) makes `can_afford()` always `True` and `spend()` a no-op that leaves `gold`
 untouched -- every purchase path (place/upgrade/specialize a tower) needed no changes to support
-it. `ui.py`'s HUD shows `"Gold: unlimited"` while it's set. Sandbox mode (see "Difficulty modes,
+it. `presentation/ui.py`'s HUD shows `"Gold: unlimited"` while it's set. Sandbox mode (see "Difficulty modes,
 Sandbox mode, and player settings" above) reuses this exact flag for its own unlimited-gold behavior
 (`unlimited_gold=self.unlimited_gold or sandbox`) rather than introducing a second, parallel
 concept -- `Economy.invulnerable` is the one genuinely new flag Sandbox needed. The Shop (see "Two
@@ -1646,7 +1682,7 @@ been verified on either.
 
 It's `--onedir`, never `--onefile`, and that's load-bearing rather than a style preference:
 `--onefile` re-extracts every bundled file into a *fresh* temp directory on every single launch and
-deletes it again on exit. `progress.py`/`achievements.py`/`player_settings.py`/`save_state.py` (see
+deletes it again on exit. `progression/progress.py`/`progression/achievements.py`/`persistence/player_settings.py`/`persistence/save_state.py` (see
 "Small on-disk JSON state files" above) all resolve their JSON file's path relative to their own
 module's `__file__` -- under `--onefile` that's a different, vanishing directory every run, so none
 of progress/achievements/settings/a saved run would actually survive being closed and reopened,
@@ -1656,12 +1692,12 @@ works exactly like an ordinary `python main.py` run. This was verified empirical
 building a throwaway diagnostic executable and comparing `__file__` across two separate launches is
 what caught it, since it isn't the kind of bug a single smoke-test launch would ever surface.
 
-`assets.py`'s `DEFAULT_ASSET_ROOT` exists for the same category of reason: it used to be a bare
+`presentation/assets.py`'s `DEFAULT_ASSET_ROOT` exists for the same category of reason: it used to be a bare
 `asset_root="assets"` default, resolved against the process's current working directory -- fine for
 `python main.py` run from the repo root (the only way this project was ever launched before a
 packaged build existed), but a packaged binary double-clicked from a file manager or run via a PATH
 symlink has no such guarantee about its own cwd. `DEFAULT_ASSET_ROOT` is computed once, relative to
-`assets.py`'s own `__file__`, the same fix in the same spirit as the JSON state files above -- and
+`presentation/assets.py`'s own `__file__`, the same fix in the same spirit as the JSON state files above -- and
 under PyInstaller's `--onedir`, that resolves to the bundled `assets/` folder sitting right next to
 the module itself regardless of launch directory, which is also why the release build step passes
 `--add-data "assets:assets"` to put it there in the first place.

@@ -1,6 +1,6 @@
 import json
 
-import achievements
+from progression import achievements
 
 
 def test_load_achievements_on_a_missing_file_returns_empty_state():
@@ -100,7 +100,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
 
 
 def test_campaign_complete_goal_matches_the_live_levels_registry():
-    from levels import LEVELS
+    from world.levels import LEVELS
     assert achievements.ACHIEVEMENTS["campaign_complete"].goal == len(LEVELS)
 
 
@@ -122,7 +122,7 @@ def test_set_counter_never_regresses_below_its_current_value(tmp_path):
 
 def test_set_counter_returns_newly_crossed_achievement_keys(tmp_path):
     path = tmp_path / "achievements.json"
-    from levels import LEVELS
+    from world.levels import LEVELS
 
     newly_unlocked = achievements.set_counter("distinct_levels_cleared", len(LEVELS), path=path)
 

@@ -1,6 +1,6 @@
 import json
 
-import run_history
+from progression import run_history
 
 
 def test_load_run_history_on_a_missing_file_returns_empty():
