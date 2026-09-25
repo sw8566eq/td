@@ -174,7 +174,7 @@ class Renderer:
                 game.draft_choices, game.draft_choice_rects, game._hovered_draft_choice(),
                 game.shop_purchased_indices, game.active_run.shop_currency,
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
-                game.relic_modifiers.shop_price_multiplier,
+                game._shop_price_multiplier(),
             )
             pygame.display.flip()
             return

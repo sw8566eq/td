@@ -32,7 +32,13 @@ from core.game import (
     EMERGENCY_RESERVES_REFUND_AMOUNT,
     GameState,
 )
-from entities.enemy import FinalBossEnemy, GruntEnemy, ScoutEnemy, SplitterEnemy
+from entities.enemy import (
+    FinalBossEnemy,
+    GruntEnemy,
+    ScoutEnemy,
+    SplitterChildEnemy,
+    SplitterEnemy,
+)
 from entities.tower import TOWER_TYPES
 from entities.waves import WaveState
 from persistence import save_state
@@ -625,6 +631,25 @@ def test_restarting_after_permadeath_does_not_resurrect_the_run(playing_game):
     assert playing_game.active_run is None
 
 
+def test_restarting_after_permadeath_replays_the_floor_as_practice(playing_game):
+    # The run-less reload above must not be progress-earning play: a run is
+    # never sandboxed itself, so carrying its own sandbox=False through
+    # would let the player win a standalone level that still records level
+    # progress/achievements/meta-progression -- forced to sandbox instead,
+    # same as any other Practice level.
+    start_first_floor(playing_game, seed=1)
+    playing_game.economy.lives = 1
+    playing_game.economy.lose_life()
+    playing_game.update(dt=0.01)
+    assert playing_game.state == GameState.GAME_OVER
+
+    playing_game.reset()
+
+    assert playing_game.sandbox is True
+    assert playing_game.economy.invulnerable
+    assert playing_game.economy.unlimited_gold
+
+
 # --- The Shop: buying tower/relic cards from a Shop map node ---
 
 
@@ -677,11 +702,9 @@ def test_buying_a_shop_item_deducts_its_escalated_price(game):
 
 
 def test_haggling_permit_relic_discounts_what_a_shop_purchase_charges(game):
-    # relics=["haggling_permit"] must reach _begin_run_with_map *before*
-    # the first floor loads -- relic_modifiers (what Game._try_buy_shop_item
-    # actually reads) is only ever recomputed at floor-load time, see
-    # CLAUDE.md's own "every rng a node needs" section for the same
-    # "resolved once, at load time" shape this mirrors.
+    # Held from the start of the run here; see the test just below for a
+    # Permit gained only after the last floor load (Game._shop_price_
+    # multiplier composes from run.relics fresh, not relic_modifiers).
     _enter_run_shop(game, relics=["haggling_permit"])
     assert len(game.draft_choices) >= 1
     game.active_run.shop_currency = 9999
@@ -693,6 +716,38 @@ def test_haggling_permit_relic_discounts_what_a_shop_purchase_charges(game):
     charged = currency_before - game.active_run.shop_currency
     assert charged == shop.price_for(game.draft_choices[0], 0, discount_multiplier=0.85)
     assert charged < undiscounted_price
+
+
+def test_haggling_permit_gained_after_the_last_floor_load_still_discounts_the_shop(game):
+    # Regression: the Shop used to read game.relic_modifiers, which is only
+    # recomposed at combat-floor load -- a Permit picked up between floors
+    # (a Treasure/Event, or bought earlier this same visit) was silently
+    # ignored until the *next* fight. Granted here after the first floor
+    # already loaded, then the Shop entered directly.
+    run = _enter_run_shop(game)
+    assert game.relic_modifiers.shop_price_multiplier == 1.0  # stale, from the floor load
+    game._grant_relic("haggling_permit")
+    game.draft_choices = [ShopItem("relic", "overkill", 100)]
+    game.draft_choice_rects = ui.build_draft_choice_rects(1)
+    game.shop_purchased_indices = set()
+    run.shop_currency = 9999
+
+    game._try_buy_shop_item(0)
+
+    assert 9999 - run.shop_currency == shop.price_for(game.draft_choices[0], 0, discount_multiplier=0.85)
+
+
+def test_giving_up_haggling_permit_between_floors_ends_its_shop_discount(game):
+    run = _enter_run_shop(game, relics=["haggling_permit"])
+    run.relics.remove("haggling_permit")  # e.g. an Event's relic_cost option
+    game.draft_choices = [ShopItem("relic", "overkill", 100)]
+    game.draft_choice_rects = ui.build_draft_choice_rects(1)
+    game.shop_purchased_indices = set()
+    run.shop_currency = 9999
+
+    game._try_buy_shop_item(0)
+
+    assert 9999 - run.shop_currency == 100
 
 
 def test_buying_an_unaffordable_shop_item_does_nothing(game):
@@ -1577,8 +1632,11 @@ def test_fracture_rounds_reduces_a_splitters_spawned_childrens_hp(game, monkeypa
     game.update(dt=0.01)
 
     assert len(children) == SplitterEnemy.SPLIT_COUNT
+    # The floor's own spawn multipliers (row 0's early-grace HP discount)
+    # apply first, then Fracture Rounds shrinks that already-scaled max_hp.
+    floor_hp_multiplier = game.wave_manager.enemy_hp_multiplier
     for child, original_max_hp in zip(children, unreduced_max_hp):
-        assert child.max_hp == pytest.approx(original_max_hp * 0.5)
+        assert child.max_hp == pytest.approx(original_max_hp * floor_hp_multiplier * 0.5)
         assert child.hp == pytest.approx(child.max_hp)  # spawned at full (reduced) health
         assert child in game.enemies
 
@@ -1604,9 +1662,54 @@ def test_fracture_rounds_does_not_reduce_a_final_bosss_live_reinforcements(game,
     reinforcements = [enemy for enemy in game.enemies if enemy is not boss]
     assert len(reinforcements) == FinalBossEnemy.SUMMON_COUNT
     reference_scout = ScoutEnemy(boss.waypoints, boss.wave_number)  # same construction, unaffected
+    # Scaled by the floor's own spawn multipliers like any wave spawn, but
+    # never by Fracture Rounds' extra 0.5.
+    expected_max_hp = reference_scout.max_hp * game.wave_manager.enemy_hp_multiplier
     for scout in reinforcements:
-        assert scout.max_hp == reference_scout.max_hp
-        assert scout.hp == reference_scout.max_hp
+        assert scout.max_hp == pytest.approx(expected_max_hp)
+        assert scout.hp == pytest.approx(expected_max_hp)
+
+
+def test_splitter_children_get_the_floors_spawn_multipliers(game):
+    # Regression: a SplitterEnemy's children are built by the splitter
+    # itself, never by WaveManager._spawn_enemy, so they used to enter play
+    # at baseline stats regardless of difficulty/escalation/relics.
+    game.start_new_run(seed=1)
+    _enter_first_node(game)
+    game.wave_manager.enemy_hp_multiplier = 2.0
+    game.wave_manager.enemy_gold_multiplier = 3.0
+    game.wave_manager.enemy_speed_multiplier = 0.5
+    waypoints = [pygame.Vector2(0, 0), pygame.Vector2(100, 0)]
+    splitter = SplitterEnemy(waypoints, wave_number=1)
+    splitter.take_damage(splitter.max_hp)
+    children = list(splitter.pending_spawns)
+    reference = SplitterChildEnemy(waypoints, wave_number=1)
+    game.enemies = [splitter]
+
+    game.update(dt=0.01)
+
+    for child in children:
+        assert child in game.enemies
+        assert child.max_hp == pytest.approx(reference.max_hp * 2.0)
+        assert child.hp == pytest.approx(child.max_hp)
+        assert child.gold_reward == round(reference.gold_reward * 3.0)
+        assert child.speed == pytest.approx(reference.speed * 0.5)
+
+
+def test_final_boss_reinforcements_get_the_floors_spawn_multipliers(game):
+    game.start_new_run(seed=1)
+    _enter_first_node(game)
+    game.wave_manager.enemy_hp_multiplier = 2.5
+    boss = FinalBossEnemy([pygame.Vector2(0, 0), pygame.Vector2(10**7, 0)], wave_number=1)
+    game.enemies = [boss]
+
+    game.update(dt=FinalBossEnemy.SUMMON_INTERVAL + 0.01)
+
+    reinforcements = [enemy for enemy in game.enemies if enemy is not boss]
+    assert len(reinforcements) == FinalBossEnemy.SUMMON_COUNT
+    reference_scout = ScoutEnemy(boss.waypoints, boss.wave_number)
+    for scout in reinforcements:
+        assert scout.max_hp == pytest.approx(reference_scout.max_hp * 2.5)
 
 
 def _enter_run_with_relic(game, monkeypatch, relic_key, **relic_kwargs):

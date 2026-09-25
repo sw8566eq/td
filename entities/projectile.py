@@ -380,6 +380,11 @@ class Projectile:
         application of every hit effect. Keeping it non-recursive means
         the bounce needs no recursion guard and can never cascade)."""
         was_alive = not enemy.is_dead
+        # Read before the hit lands, for Siphon's own overkill cap below --
+        # None (not a numeric default) for a lightweight test double that
+        # doesn't track hp at all, so the cap is simply skipped there
+        # rather than zeroing out every siphon credit.
+        hp_before = getattr(enemy, "hp", None)
         # take_damage() returns however much of `amount` actually reached
         # hp -- usually all of it, but a shielded or armored enemy
         # (ShieldedEnemy/BossEnemy) can absorb part of a hit first, and
@@ -408,11 +413,19 @@ class Projectile:
             # bonus_multiplier is Refined Extraction's own bonus -- the one
             # relic in the whole registry read at this exact site rather
             # than inside create_projectile()/_apply_hit_effects.
+            #
+            # Capped at the hp the hit actually removed, not `applied`
+            # itself -- Enemy.take_damage() deliberately reports an
+            # overkill hit's full nominal amount (see its own comment), so
+            # crediting `applied` directly would pay out gold for damage
+            # beyond whatever hp the target had left, rewarding hits on
+            # nearly-dead enemies as if the whole shot had landed.
             siphon_fraction = (
                 self.source.siphon_gold_fraction * self.source.relic_siphon_gold_fraction_bonus_multiplier
             )
             if siphon_fraction:
-                self.source.pending_siphon_gold += applied * siphon_fraction
+                siphoned = applied if hp_before is None else min(applied, hp_before)
+                self.source.pending_siphon_gold += siphoned * siphon_fraction
         return applied
 
     def _apply_hit_effects(self, enemy, enemies):

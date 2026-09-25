@@ -636,7 +636,10 @@ The seven node types:
   death, which is what required generalizing `Game.update()`'s own drain of that list: every enemy's
   own `pending_spawns` is now drained into `still_alive` and cleared *before* the dead/goal/alive split
   runs, not only inside the `if enemy.is_dead:` branch the way it worked before `FinalBossEnemy`
-  existed. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
+  existed. That same drain also runs every child/summon through `WaveManager.apply_spawn_multipliers()`
+  (the post-construction difficulty/escalation/relic scaling `_spawn_enemy` applies to every wave
+  spawn) before Fracture Rounds/Containment Charges touch it -- these enemies are constructed by their
+  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
   the boss, run over" screen -- `WaveManager.authored_waves_cleared` (a new flag, distinct from
   `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
   before/after check reads to detect the boss node's authored waves running out for the first time,
@@ -713,7 +716,10 @@ registry-and-bare-function shape:
   covers the battle-gold half of the economy, this is the shop-currency half). Kept as a pure
   function of a purchase *count* (and this one relic-driven multiplier), not mutable per-item state,
   so `ui.draw_draft_screen` (showing what the *next* purchase would cost) and `Game._try_buy_shop_item`
-  (actually charging it) can't drift apart on what "the current price" means.
+  (actually charging it) can't drift apart on what "the current price" means. Both read the
+  multiplier via `Game._shop_price_multiplier()`, composed fresh from `run.relics` -- never from
+  `Game.relic_modifiers`, which is only recomposed at combat-floor load and so is stale for a Permit
+  gained or given up between floors (Treasure, Event, or earlier in the same Shop visit).
 - `income_for_floor(floor_index, leftover_gold, is_elite=False)` -- shop currency earned at a floor
   clear (`Game._advance_run_floor`): a small flat amount that escalates with `floor_index` (the
   cleared node's own row, mirroring `run/run_escalation.py`'s own per-floor growth on a much smaller
@@ -1121,7 +1127,10 @@ accumulates in `Projectile._apply_direct_damage()` -- the one true per-hit damag
 point, right next to the existing `damage_dealt`/`kills` bookkeeping, so an Arcing Rounds-style chain
 bounce or an Overkill-style carry-over hit generates Siphon gold too, for free -- and `Game.update()`
 drains only the whole-gold portion into `self.economy.add_gold()` each frame, carrying any sub-1-gold
-remainder forward rather than resetting it to zero, so fractional credit is never silently lost. Not
+remainder forward rather than resetting it to zero, so fractional credit is never silently lost. The
+credit is capped at the hp a hit actually removed (`min(applied, hp_before)`), not `applied` itself --
+`Enemy.take_damage()` reports an overkill hit's full nominal amount, which would otherwise pay out gold
+for damage past a nearly-dead target's remaining hp. Not
 serialized in `persistence/save_state.py`: a save only ever happens between waves, with no live combat state
 captured at all, and the remainder is worth less than 1 gold regardless.
 
