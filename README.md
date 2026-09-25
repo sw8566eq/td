@@ -144,7 +144,8 @@ options shown, then any key moves on; **Rest** and **Treasure** resolve themselv
 key continues from there. `Esc` quits from any of these, or from the main menu, game-over, or victory
 screens (there's no pause menu to open on any of those). `R` restarts from the game-over screen, and
 -- from the victory screen a Practice or playtested level can still reach -- advances to the next
-level if there is one, otherwise replays the one you just won.
+level if there is one, otherwise replays the one you just won. `M` on either screen returns to the
+main menu, e.g. to start a fresh run after a permadeath.
 
 The level browser (`L`) has one extra toggle, reset every time you reopen it: `V` arms **Endless**
 (Survival) mode for whichever level you pick next -- see "Practice, Difficulty, Endless, and Sandbox

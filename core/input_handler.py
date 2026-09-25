@@ -283,12 +283,20 @@ class InputHandler:
             elif key == pygame.K_r:
                 game.reset()
                 game.state = GameState.PLAYING
+            elif key == pygame.K_m:
+                # Back to the main menu to start a fresh run -- before this,
+                # the only ways out of a dead run were quitting the whole
+                # app or a Practice replay's Save & Quit (which overwrites
+                # whatever run save is on disk).
+                game.state = GameState.MENU
         elif game.state == GameState.VICTORY:
             if key == pygame.K_ESCAPE:
                 game.running = False
             elif key == pygame.K_r:
                 game.advance_or_replay_level()
                 game.state = GameState.PLAYING
+            elif key == pygame.K_m:
+                game.state = GameState.MENU
         elif game.state == GameState.FLOOR_CLEARED:
             # Escape quits, same as every other post-battle results screen
             # (VICTORY/GAME_OVER just above) -- any other key returns to
@@ -297,7 +305,7 @@ class InputHandler:
             # here (that's the map screen's job, entered next).
             if key == pygame.K_ESCAPE:
                 game.running = False
-            else:
+            elif key not in keybindings.MODIFIER_KEY_CODES:  # e.g. Alt from Alt-Tab -- same as MENU
                 game._enter_map()
         elif game.state == GameState.MAP:
             # No keyboard equivalent for picking a node, same as the build
@@ -324,7 +332,7 @@ class InputHandler:
             # DRAFT above.
             if key == pygame.K_ESCAPE:
                 game.running = False
-            elif game.event_phase == "resolved":
+            elif game.event_phase == "resolved" and key not in keybindings.MODIFIER_KEY_CODES:
                 game._finish_node(game.active_run.current_node_id)
         elif game.state == GameState.REST:
             # A Rest node has nothing to choose -- it's already resolved
@@ -333,14 +341,14 @@ class InputHandler:
             # FLOOR_CLEARED above.
             if key == pygame.K_ESCAPE:
                 game.running = False
-            else:
+            elif key not in keybindings.MODIFIER_KEY_CODES:
                 game._finish_node(game.active_run.current_node_id)
         elif game.state == GameState.TREASURE:
             # Same "already resolved on entry, press any key to continue"
             # shape as REST above.
             if key == pygame.K_ESCAPE:
                 game.running = False
-            else:
+            elif key not in keybindings.MODIFIER_KEY_CODES:
                 game._finish_node(game.active_run.current_node_id)
 
     def _handle_right_click(self):

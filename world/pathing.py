@@ -249,6 +249,15 @@ def validate_topology(path_cells, spawn_cells, goal_cells, cols, rows):
     if dead_ends:
         problems.append(f"{len(dead_ends)} cell(s) are a dead end that never reaches a goal: {dead_ends[:5]}")
 
+    # Every leaf being a spawn or goal (the dead-end check above) still
+    # allows a component whose only leaves are spawns -- a lone spawn tile,
+    # or a lane with a spawn at each end -- which has no goal to walk to at
+    # all; sample_route() would raise RoutingError the moment an enemy
+    # spawned there.
+    stranded_spawns = sorted(spawn_cells - _bfs(neighbors, goal_cells))
+    if stranded_spawns:
+        problems.append(f"{len(stranded_spawns)} spawn point(s) can't reach any goal: {stranded_spawns[:5]}")
+
     return problems
 
 

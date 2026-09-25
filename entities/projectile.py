@@ -150,7 +150,8 @@ class Projectile:
                  relic_damage_vs_marked_and_slowed_and_poisoned_multiplier=1.0,
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
-                 execute_hp_threshold=0.0, execute_damage_multiplier=1.0):
+                 execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
+                 can_hit_flying=True):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -260,6 +261,13 @@ class Projectile:
         # chance-rolled block below them.
         self.execute_hp_threshold = execute_hp_threshold
         self.execute_damage_multiplier = execute_damage_multiplier
+        # Mirrors the firing tower's own can_target_flying (see tower.py) --
+        # False only for a ground-bound tower (Cannon without Aerial
+        # Targeting Array, Knockback). acquire_target() already keeps such a
+        # tower from *aiming* at a flyer; this keeps its splash, and any
+        # relic bounce/overkill carry off its hits, from landing on one
+        # anyway -- a flyer is untouchable by that tower, full stop.
+        self.can_hit_flying = can_hit_flying
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -316,7 +324,7 @@ class Projectile:
         hit_anything = False
         if self.splash_radius > 0:
             for enemy in enemies:
-                if enemy.is_dead or enemy.reached_goal:
+                if enemy.is_dead or enemy.reached_goal or not self._can_hit(enemy):
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
                     self._apply_hit_effects(enemy, enemies)
@@ -351,6 +359,12 @@ class Projectile:
             hit.add(next_target)
             current = next_target
 
+    def _can_hit(self, enemy):
+        """Whether this shot may touch `enemy` at all -- see can_hit_flying.
+        getattr with a False default, same as Tower.acquire_target(), since
+        not every enemy stand-in (tests, mainly) defines is_flying."""
+        return self.can_hit_flying or not getattr(enemy, "is_flying", False)
+
     def _find_chain_target(self, current, excluded, chain_range, enemies):
         """Nearest live, not-yet-`excluded` enemy within `chain_range` of
         `current`, or None -- the nearest-unvisited-hop lookup shared by
@@ -360,7 +374,7 @@ class Projectile:
         next_target = None
         next_distance = None
         for enemy in enemies:
-            if enemy.is_dead or enemy.reached_goal or enemy in excluded:
+            if enemy.is_dead or enemy.reached_goal or enemy in excluded or not self._can_hit(enemy):
                 continue
             distance = current.pos.distance_to(enemy.pos)
             if distance <= chain_range and (next_target is None or distance < next_distance):

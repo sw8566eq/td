@@ -70,6 +70,19 @@ DEFAULT_BINDINGS = {
 # behavior -- a rebind that looks like it worked but silently doesn't.
 RESERVED_KEYS = frozenset({pygame.K_ESCAPE})
 
+# The pause menu's own fixed option keys (input_handler.py's PAUSED
+# branch). "pause" is the one rebindable action that branch also reads --
+# as the resume toggle, checked *before* these -- so binding it to one of
+# them would silently make that option unreachable (Pause on S, say, and
+# S resumes instead of Save & Quit). Only "pause" is ever read in PAUSED,
+# so no other action needs this check.
+PAUSE_MENU_KEYS = {
+    pygame.K_r: "Restart Level",
+    pygame.K_e: "Return to Map Editor",
+    pygame.K_s: "Save & Quit",
+    pygame.K_q: "Quit",
+}
+
 # Pure modifier keys never complete a capture on their own -- pressing
 # Ctrl while lining up a Ctrl+Z rebind fires a KEYDOWN for K_LCTRL first;
 # the capture UI (input_handler.py's _handle_keybinds_keydown) waits for
@@ -138,6 +151,14 @@ def find_conflict(bindings, action, key, mods):
 
 def is_reserved(key):
     return key in RESERVED_KEYS
+
+
+def fixed_key_conflict(action, key):
+    """The label of a fixed, non-rebindable option `key` would shadow if
+    bound to `action`, or None -- see PAUSE_MENU_KEYS."""
+    if action == "pause":
+        return PAUSE_MENU_KEYS.get(key)
+    return None
 
 
 def _coerce_binding(value, default):

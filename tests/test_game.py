@@ -380,6 +380,16 @@ def test_game_over_escape_quits(game):
     assert game.running is False
 
 
+@pytest.mark.parametrize("state_name", ["GAME_OVER", "VICTORY"])
+def test_results_screen_m_returns_to_the_main_menu(game, state_name):
+    # Regression: after a run's permadeath the only ways out were quitting
+    # the app or a Practice replay's Save & Quit.
+    game.state = getattr(GameState, state_name)
+    game._handle_keydown(pygame.K_m)
+    assert game.state == GameState.MENU
+    assert game.running is True
+
+
 def test_handle_keydown_on_an_unrecognized_state_is_a_no_op(game):
     # Not reachable through real play -- GameState's if/elif chain already
     # covers every one of its members, VICTORY included, so this only
@@ -2247,6 +2257,24 @@ def test_keybinds_rebinding_to_a_key_already_used_in_the_same_group_is_rejected(
 
     assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
     assert game.keybind_message == "Already used by Skip Wave / Start."
+
+
+def test_keybinds_rebinding_pause_onto_a_pause_menu_option_key_is_rejected(game):
+    # The PAUSED branch checks "pause" (as its resume toggle) before its own
+    # fixed R/E/S/Q options, so Pause on S would make Save & Quit unreachable.
+    game._enter_keybinds()
+    game._handle_keybinds_click(game.keybind_row_rects["pause"].center)
+
+    game._handle_keydown(pygame.K_s)
+
+    assert game.keybindings["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+    assert game.keybind_message == "Already used by the pause menu's Save & Quit."
+
+
+def test_keybinds_other_playing_actions_may_still_use_pause_menu_keys(game):
+    # Only "pause" is ever read in PAUSED, so e.g. skip_wave on Q is fine.
+    assert game.rebind_action("skip_wave", pygame.K_q, 0)
+    assert game.keybindings["skip_wave"] == (pygame.K_q, 0)
 
 
 def test_keybinds_reset_restores_every_default(game):

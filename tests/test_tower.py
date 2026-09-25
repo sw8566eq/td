@@ -297,6 +297,17 @@ def test_shockwave_rounds_relic_widens_cannon_and_knockback_splash_radius():
         assert projectile.splash_radius == base_splash_radius * 1.20, tower_cls.__name__
 
 
+def test_cannon_and_knockback_projectiles_only_hit_flyers_when_the_tower_can_target_them():
+    for tower_cls in (CannonTower, KnockbackTower):
+        tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        assert tower.create_projectile(FakeEnemy()).can_hit_flying is False, tower_cls.__name__
+    cannon = CannonTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+    cannon.relic_cannon_targets_flying = True  # aerial_targeting_array
+    assert cannon.create_projectile(FakeEnemy()).can_hit_flying is True
+    assert LightningTower(anchor_col=0, anchor_row=0, pixel_pos=(0, 0)).create_projectile(
+        FakeEnemy()).can_hit_flying is True
+
+
 def test_high_velocity_shells_relic_boosts_cannon_projectile_speed():
     # Cannon's second exclusive relic (aerial_targeting_array, its first,
     # is a targeting-mode change tested in test_tower_targeting.py, not a

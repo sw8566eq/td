@@ -125,6 +125,21 @@ def test_a_dead_end_branch_that_never_reaches_a_goal_is_rejected():
     assert any("dead end" in p for p in problems)
 
 
+def test_a_lone_spawn_tile_with_no_goal_is_rejected():
+    # An isolated spawn tile is its own component whose only "leaf" is a
+    # spawn, so the dead-end check alone would let it through -- and
+    # sample_route() would then raise RoutingError on the first spawn.
+    path_cells = _corridor() | {(10, 5)}
+    problems = validate_topology(path_cells, [(0, 0), (10, 5)], [(3, 0)], cols=15, rows=9)
+    assert any("can't reach any goal" in p for p in problems)
+
+
+def test_a_spawn_to_spawn_lane_with_no_goal_is_rejected():
+    path_cells = _corridor() | {(0, 5), (1, 5), (2, 5)}
+    problems = validate_topology(path_cells, [(0, 0), (0, 5), (2, 5)], [(3, 0)], cols=15, rows=9)
+    assert any("can't reach any goal" in p for p in problems)
+
+
 def test_out_of_bounds_cells_are_rejected():
     path_cells = {(0, 0), (1, 0), (-1, 0)}
     problems = validate_topology(path_cells, spawn_cells=[(-1, 0)], goal_cells=[(1, 0)], cols=15, rows=9)

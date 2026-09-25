@@ -2430,6 +2430,85 @@ def test_first_floor_clear_queues_a_new_tower_unlocked_toast(game):
     assert any("New tower unlocked" in toast.text for toast in game.achievement_toasts)
 
 
+@pytest.mark.parametrize("state_name", ["FLOOR_CLEARED", "REST", "TREASURE", "EVENT"])
+def test_bare_modifier_key_does_not_dismiss_a_continue_screen(game, state_name):
+    # Same regression as the menu's own: the Alt of an Alt-Tab used to count
+    # as "press any key to continue" and skip straight past these screens.
+    start_first_floor(game, seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game.state = getattr(GameState, state_name)
+    game.event_phase = "resolved"
+
+    game._handle_keydown(pygame.K_LALT)
+    assert game.state == getattr(GameState, state_name)
+
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.MAP
+
+
+def test_m_after_permadeath_returns_to_the_menu_and_any_key_starts_a_fresh_run(game):
+    start_first_floor(game, seed=1)
+    old_run = game.active_run
+    game.economy.lives = 0
+    game.update(dt=0.01)
+    assert game.state == GameState.GAME_OVER
+
+    game._handle_keydown(pygame.K_m)
+    assert game.state == GameState.MENU
+    game._handle_keydown(pygame.K_SPACE)
+
+    assert game.state == GameState.MAP
+    assert game.active_run is not old_run
+
+
+def test_toasts_keep_aging_outside_combat(game):
+    # Most unlocks are queued off the board (a floor clear, a Shop/Treasure
+    # relic, an Event) -- they must still fade out there, not sit frozen.
+    start_first_floor(game, seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    assert game.state == GameState.FLOOR_CLEARED
+    assert game.achievement_toasts
+
+    game.update(dt=10.0)  # comfortably past any toast's lifetime
+
+    assert game.achievement_toasts == []
+
+
+def test_toasts_queued_on_the_map_survive_the_next_floor_load(game):
+    start_first_floor(game, seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._queue_toast("Achievement unlocked: Collector")
+
+    other_combat = next(
+        node.id for row in game.active_run.map.rows for node in row
+        if node.node_type == "combat" and node.id != game.active_run.current_node_id
+    )
+    game._enter_node(other_combat)
+
+    assert any("Collector" in toast.text for toast in game.achievement_toasts)
+
+
+@pytest.mark.parametrize("state_name", ["MAP", "FLOOR_CLEARED"])
+def test_toasts_are_drawn_on_run_screens(game, monkeypatch, state_name):
+    start_first_floor(game, seed=1)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    if state_name == "MAP":
+        game._enter_map()
+    assert game.state == getattr(GameState, state_name)
+    game._queue_toast("hello")
+    drawn = []
+    monkeypatch.setattr(type(game.achievement_toasts[-1]), "draw", lambda self, *a: drawn.append(self.text))
+
+    game.render()
+
+    assert "hello" in drawn
+
+
 def test_queue_meta_unlock_toasts_handles_a_relic_unlock_key(game):
     # _queue_meta_unlock_toasts must dispatch on which of META_UNLOCKS/
     # RELIC_META_UNLOCKS/LEVEL_META_UNLOCKS a key belongs to, not assume

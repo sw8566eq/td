@@ -138,6 +138,40 @@ def test_level_accepts_different_compositions_per_spawn_in_the_same_wave():
     )  # must not raise
 
 
+def _two_cell_level(**overrides):
+    kwargs = {
+        "id": 999, "name": "Level", "path_cells": frozenset({(0, 0), (1, 0)}),
+        "spawn_cells": ((0, 0),), "goal_cells": ((1, 0),), "wave_specs": [{(0, 0): {"grunt": 3}}],
+    }
+    return Level(**{**kwargs, **overrides})
+
+
+@pytest.mark.parametrize("bad_gold", ["150", -1, 12.5, True, None])
+def test_level_rejects_an_invalid_starting_gold(bad_gold):
+    # Regression: a hand-edited custom level's "starting_gold": "150" passed
+    # list_custom_levels() and then crashed Economy construction on play.
+    with pytest.raises(ValueError):
+        _two_cell_level(starting_gold=bad_gold)
+
+
+@pytest.mark.parametrize("bad_lives", [0, -3, "20", 2.0, True])
+def test_level_rejects_an_invalid_starting_lives(bad_lives):
+    # 0 lives was an instant Game Over on the first frame.
+    with pytest.raises(ValueError):
+        _two_cell_level(starting_lives=bad_lives)
+
+
+@pytest.mark.parametrize("bad_weight", [-1.0, float("inf"), float("nan"), "2", True])
+def test_level_rejects_a_negative_or_non_numeric_branch_weight(bad_weight):
+    with pytest.raises(ValueError):
+        _two_cell_level(branch_weights={((0, 0), (1, 0)): bad_weight})
+
+
+def test_level_accepts_valid_starting_gold_lives_and_branch_weights():
+    level = _two_cell_level(starting_gold=0, starting_lives=1, branch_weights={((0, 0), (1, 0)): 0})
+    assert level.starting_lives == 1
+
+
 def test_generate_default_waves_ramps_enemy_count_per_wave():
     waves = generate_default_waves((0, 0), total_waves=3, enemy_type="grunt", base_count=5, count_step=2)
     assert waves == [
