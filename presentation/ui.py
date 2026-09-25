@@ -2018,9 +2018,13 @@ def get_clicked_run_guide_entry_button(pos, run_guide_entry_button_rect):
     return run_guide_entry_button_rect.collidepoint(pos)
 
 
-def draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect):
+def draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect, back_to_map=False):
+    # back_to_map: opened from the run map's own H (see Game.help_return_
+    # state), so Back/Esc return there -- label them honestly.
+    destination = "Map" if back_to_map else "Menu"
     _draw_static_list_screen(surface, font, small_font, "How to Play", HELP_LINES,
-                              back_rect, HELP_TOP, HELP_LINE_HEIGHT)
+                              back_rect, HELP_TOP, HELP_LINE_HEIGHT,
+                              back_label=f"Back to {destination}", escape_text=f"Esc -- Back to {destination}")
     _draw_back_to_menu_button(surface, small_font, run_guide_entry_button_rect, "Run Guide...")
 
 

@@ -376,21 +376,43 @@ class Editor:
         }
 
     def paste_clipboard(self, anchor_cell):
-        """Re-add the clipboard's cells, offset from `anchor_cell` -- a
-        no-op if nothing's been copied yet. Additive (never erases
-        anything already there), same spirit as every other paint tool.
-        A pasted spawn starts with zero wave-composition entries in every
-        wave, identical to freshly painting a brand-new spawn with the
-        Spawn tool -- the player fills its waves in afterward as normal."""
-        if self.clipboard is None:
-            return
+        """Re-add the clipboard's cells, offset from `anchor_cell` --
+        returns True if a paste happened, False (a no-op) if nothing's been
+        copied yet or `anchor_cell` itself is off the grid (e.g. a click on
+        the sidebar while a paste is pending). Additive (never erases
+        anything already there), same spirit as every other paint tool,
+        and clipped to the grid: any pasted cell that would land out of
+        bounds is dropped, since nothing else in the editor can reach an
+        off-grid cell to erase it again (paint_at() ignores them), leaving
+        undo as the only escape. Pasted spawns/goals follow the Spawn/Goal
+        tools' own exclusivity rule (_apply_tool) -- a pasted spawn clears
+        a goal already on that cell, a pasted goal clears a spawn (and its
+        wave data) -- rather than leaving a cell that's both. A pasted
+        spawn starts with zero wave-composition entries in every wave,
+        identical to freshly painting a brand-new spawn with the Spawn
+        tool -- the player fills its waves in afterward as normal."""
+        if self.clipboard is None or not self.in_bounds(anchor_cell):
+            return False
         self.begin_stroke()
         anchor_col, anchor_row = anchor_cell
-        self.path_cells.update((anchor_col + dc, anchor_row + dr) for dc, dr in self.clipboard["path"])
-        self.spawn_cells.update((anchor_col + dc, anchor_row + dr) for dc, dr in self.clipboard["spawn"])
-        self.goal_cells.update((anchor_col + dc, anchor_row + dr) for dc, dr in self.clipboard["goal"])
+
+        def placed(offsets):
+            return [
+                cell for cell in ((anchor_col + dc, anchor_row + dr) for dc, dr in offsets)
+                if self.in_bounds(cell)
+            ]
+
+        self.path_cells.update(placed(self.clipboard["path"]))
+        for cell in placed(self.clipboard["spawn"]):
+            self.goal_cells.discard(cell)
+            self.spawn_cells.add(cell)
+        for cell in placed(self.clipboard["goal"]):
+            self.spawn_cells.discard(cell)
+            self._forget_spawn(cell)
+            self.goal_cells.add(cell)
         self.end_stroke()
         self.validate()
+        return True
 
     def clear(self):
         """Reset everything -- path *and* waves -- back to a blank slate."""

@@ -898,10 +898,10 @@ def test_paste_clipboard_stamps_at_a_new_anchor_additively():
     editor.select_region((0, 0), (1, 0))
     editor.copy_selection()
 
-    editor.paste_clipboard((10, 10))
+    editor.paste_clipboard((10, 5))
 
-    assert (10, 10) in editor.path_cells
-    assert (11, 10) in editor.path_cells
+    assert (10, 5) in editor.path_cells
+    assert (11, 5) in editor.path_cells
     assert (0, 0) in editor.path_cells  # original untouched -- additive, not a move
 
 
@@ -913,9 +913,9 @@ def test_paste_clipboard_includes_a_copied_spawn_marker():
     editor.select_region((0, 0), (1, 0))
     editor.copy_selection()
 
-    editor.paste_clipboard((10, 10))
+    editor.paste_clipboard((10, 5))
 
-    assert (10, 10) in editor.spawn_cells
+    assert (10, 5) in editor.spawn_cells
 
 
 def test_pasted_spawn_has_no_wave_data_attached():
@@ -924,9 +924,9 @@ def test_pasted_spawn_has_no_wave_data_attached():
     editor.select_region((0, 0), (0, 0))
     editor.copy_selection()
 
-    editor.paste_clipboard((10, 10))
+    editor.paste_clipboard((10, 5))
 
-    assert editor.wave_specs[0].get((10, 10)) is None
+    assert editor.wave_specs[0].get((10, 5)) is None
 
 
 def test_paste_with_empty_clipboard_is_a_no_op():
@@ -941,9 +941,76 @@ def test_paste_is_undoable_as_one_step():
     _paint_corridor(editor, [(0, 0), (1, 0)])
     editor.select_region((0, 0), (1, 0))
     editor.copy_selection()
-    editor.paste_clipboard((10, 10))
-    assert (10, 10) in editor.path_cells
+    editor.paste_clipboard((10, 5))
+    assert (10, 5) in editor.path_cells
 
     editor.undo()
 
-    assert (10, 10) not in editor.path_cells
+    assert (10, 5) not in editor.path_cells
+
+
+def test_paste_clipboard_drops_cells_that_would_land_off_the_grid():
+    # Regression: pasting near an edge used to add out-of-bounds cells that
+    # no tool can erase again (paint_at() ignores off-grid pixels), leaving
+    # the path permanently invalid short of undo.
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0), (2, 0), (3, 0)])
+    editor.select_region((0, 0), (3, 0))
+    editor.copy_selection()
+
+    assert editor.paste_clipboard((editor.cols - 2, 5)) is True
+
+    assert all(editor.in_bounds(cell) for cell in editor.path_cells)
+    assert (editor.cols - 2, 5) in editor.path_cells
+    assert (editor.cols - 1, 5) in editor.path_cells
+
+
+def test_paste_clipboard_refuses_an_off_grid_anchor():
+    editor = Editor()
+    _paint_corridor(editor, [(0, 0), (1, 0)])
+    editor.select_region((0, 0), (1, 0))
+    editor.copy_selection()
+    before = set(editor.path_cells)
+    undo_depth = len(editor._undo_stack)
+
+    assert editor.paste_clipboard((editor.cols + 3, 2)) is False
+
+    assert editor.path_cells == before
+    assert len(editor._undo_stack) == undo_depth  # no empty undo step pushed
+
+
+def test_pasting_a_goal_onto_a_spawn_replaces_it_and_forgets_its_waves():
+    # Same exclusivity rule the Goal tool itself enforces (_apply_tool).
+    editor = Editor()
+    editor.set_tool(EditorTool.SPAWN)
+    editor._apply_tool((2, 2))
+    editor.end_stroke()
+    editor.wave_specs = [{(2, 2): {"grunt": 3}}]
+    editor.set_tool(EditorTool.GOAL)
+    editor._apply_tool((5, 2))
+    editor.end_stroke()
+    editor.select_region((5, 2), (5, 2))
+    editor.copy_selection()
+
+    editor.paste_clipboard((2, 2))
+
+    assert (2, 2) in editor.goal_cells
+    assert (2, 2) not in editor.spawn_cells
+    assert (2, 2) not in editor.wave_specs[0]
+
+
+def test_pasting_a_spawn_onto_a_goal_replaces_it():
+    editor = Editor()
+    editor.set_tool(EditorTool.GOAL)
+    editor._apply_tool((5, 2))
+    editor.end_stroke()
+    editor.set_tool(EditorTool.SPAWN)
+    editor._apply_tool((2, 2))
+    editor.end_stroke()
+    editor.select_region((2, 2), (2, 2))
+    editor.copy_selection()
+
+    editor.paste_clipboard((5, 2))
+
+    assert (5, 2) in editor.spawn_cells
+    assert (5, 2) not in editor.goal_cells

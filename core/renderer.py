@@ -100,6 +100,7 @@ class Renderer:
         if game.state == GameState.HELP:
             ui.draw_help_screen(
                 game.screen, game.font, game.small_font, game.help_back_rect, game.run_guide_entry_button_rect,
+                back_to_map=game.help_return_state == GameState.MAP,
             )
             pygame.display.flip()
             return

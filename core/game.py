@@ -199,6 +199,11 @@ class Game:
         # below already follow.
         self.achievements_scroll_offset = 0
         self.help_back_rect = ui.build_help_back_rect()
+        # Which screen the Help screen's Esc/Back returns to -- MENU when
+        # opened from the menu's own H, MAP when opened from the run map's
+        # own H (the first-run map hint points players there mid-run, and
+        # dumping them on the main menu would strand the run's map screen).
+        self.help_return_state = GameState.MENU
         self.run_guide_entry_button_rect = ui.build_run_guide_entry_button_rect()
         self.run_guide_back_rect = ui.build_run_guide_back_rect()
         self.credits_back_rect = ui.build_credits_back_rect()

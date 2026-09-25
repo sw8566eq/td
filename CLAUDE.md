@@ -953,7 +953,10 @@ puzzle out why a rectangle fails validation. **Copy/paste** (`select_region()`/`
 relative to wherever the paste lands; a pasted spawn starts with zero wave composition entries in
 every wave -- wave data never carries over on copy, since the whole point of `wave_specs` staying
 keyed by concrete spawn cell is that a copy is a genuinely new spawn point, not an alias for the one
-it was copied from.
+it was copied from. A paste is clipped to the grid (an off-grid anchor is refused outright, leaving the
+paste armed; any pasted cell that would land off-grid is dropped) -- nothing else in the editor can
+reach an off-grid cell to erase it, since `paint_at()` ignores out-of-bounds pixels -- and pasted
+spawns/goals follow the Spawn/Goal tools' own exclusivity rule rather than leaving a cell that's both.
 
 Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
 edits `Editor.wave_specs` directly -- the exact same `[{spawn_cell: {enemy_type_name: count}}, ...]`

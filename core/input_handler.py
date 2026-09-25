@@ -83,12 +83,13 @@ class InputHandler:
                     self._handle_map_click(event.pos)
                 elif game.state == GameState.EVENT:
                     self._handle_event_click(event.pos)
+                elif game.state in (GameState.REST, GameState.TREASURE):
+                    # Both screens promise "Press any key or click to
+                    # continue" (see ui.draw_rest_screen/draw_treasure_
+                    # screen) -- already resolved on entry, so a click
+                    # continues exactly like any non-Escape key does.
+                    game._finish_node(game.active_run.current_node_id)
                 else:
-                    # REST/TREASURE deliberately have no click handler of
-                    # their own -- same "press any key" precedent FLOOR_
-                    # CLEARED sets (see _handle_keydown), a click there
-                    # just falls through here and no-ops (game.state !=
-                    # PLAYING).
                     self._handle_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 self._handle_right_click()
@@ -129,6 +130,12 @@ class InputHandler:
         if game.state == GameState.MENU:
             if key == pygame.K_ESCAPE:
                 game.running = False
+            elif key in keybindings.MODIFIER_KEY_CODES:
+                # A bare modifier (Shift, Ctrl, the Alt of an Alt-Tab away
+                # from the window, ...) isn't a deliberate "any key" press
+                # -- without this it would fall through to the catch-all
+                # below and silently start a brand-new run.
+                pass
             else:
                 # letter, not the raw pygame key constant, so this stays in
                 # lockstep with ui.MENU_KEY_HINTS/MENU_KEY_LETTERS -- the
@@ -147,6 +154,7 @@ class InputHandler:
                     elif letter == "a":
                         game._enter_achievements()
                     elif letter == "h":
+                        game.help_return_state = GameState.MENU
                         game.state = GameState.HELP
                     elif letter == "d":
                         game._start_daily_challenge()
@@ -158,13 +166,19 @@ class InputHandler:
                         game._enter_unlocks()
                 else:
                     game.start_new_run()
+        elif game.state == GameState.HELP:
+            # Split out of the group just below: Help can be opened from
+            # the run map too (see the MAP branch's own H), so its Esc goes
+            # back to wherever it was opened from, not always MENU.
+            if key == pygame.K_ESCAPE:
+                game.state = game.help_return_state
         elif game.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
-                             GameState.HELP, GameState.CREDITS,
+                             GameState.CREDITS,
                              GameState.RUN_HISTORY, GameState.UNLOCKS):
-            # These six share nothing but "Esc goes back to the menu" --
+            # These five share nothing but "Esc goes back to the menu" --
             # each is otherwise driven entirely by its own click handler
-            # (Settings/Achievements have real buttons; Help/Credits are
-            # fully static; Run History/Unlocks add their own MOUSEWHEEL
+            # (Settings/Achievements have real buttons; Credits is fully
+            # static; Run History/Unlocks add their own MOUSEWHEEL
             # handling below, which Esc has nothing to do with -- scroll
             # position is reset fresh on next entry regardless). EDITOR
             # isn't folded in here despite starting with the identical
@@ -288,9 +302,13 @@ class InputHandler:
         elif game.state == GameState.MAP:
             # No keyboard equivalent for picking a node, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
-            # same as every other non-PLAYING screen offers.
+            # same as every other non-PLAYING screen offers. H opens Help
+            # (the first-run map hint promises it), returning here after.
             if key == pygame.K_ESCAPE:
                 game.running = False
+            elif key == pygame.K_h:
+                game.help_return_state = GameState.MAP
+                game.state = GameState.HELP
         elif game.state == GameState.DRAFT:
             # No keyboard equivalent for picking a card, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
@@ -418,8 +436,11 @@ class InputHandler:
             return
 
         if game.editor.paste_pending:
-            game.editor.paste_clipboard(game.editor.pixel_to_tile(*pos))
-            game.editor.paste_pending = False
+            # Stays pending after a click off the grid (paste_clipboard
+            # refuses an out-of-bounds anchor), so a stray click on the
+            # sidebar doesn't silently throw the paste away.
+            if game.editor.paste_clipboard(game.editor.pixel_to_tile(*pos)):
+                game.editor.paste_pending = False
             return
 
         if game.editor.active_tool in SHAPE_TOOLS:
@@ -580,7 +601,8 @@ class InputHandler:
         if ui.get_clicked_run_guide_entry_button(pos, game.run_guide_entry_button_rect):
             game.state = GameState.RUN_GUIDE
             return
-        self._handle_static_screen_back_click(pos, game.help_back_rect)
+        if game.help_back_rect.collidepoint(pos):
+            game.state = game.help_return_state
 
     def _handle_run_guide_click(self, pos):
         from core.game import GameState  # see module docstring

@@ -33,6 +33,21 @@ def test_level_rejects_unknown_enemy_type_in_wave_specs():
         )
 
 
+@pytest.mark.parametrize("bad_count", [2.5, -1, True, "3"])
+def test_level_rejects_a_non_integer_or_negative_enemy_count(bad_count):
+    # Regression: a fractional count passed the total-sum check and then
+    # crashed WaveManager._begin_wave()'s range(count) mid-game.
+    with pytest.raises(ValueError):
+        Level(
+            id=999,
+            name="Bad Level",
+            path_cells=frozenset({(0, 0), (1, 0)}),
+            spawn_cells=((0, 0),),
+            goal_cells=((1, 0),),
+            wave_specs=[{(0, 0): {"grunt": 3, "scout": bad_count}}],
+        )
+
+
 def test_level_rejects_a_wave_with_no_enemies_in_it():
     with pytest.raises(ValueError):
         Level(

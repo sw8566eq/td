@@ -54,6 +54,31 @@ class Level:
             # failing clearly here at Level-definition time.
             raise ValueError(f"Level {self.id!r} has no waves in wave_specs")
         for wave_number, wave in enumerate(self.wave_specs, start=1):
+            for spawn_cell, composition in wave.items():
+                if spawn_cell not in self.spawn_cells:
+                    raise ValueError(
+                        f"Level {self.id!r} wave {wave_number} references spawn cell "
+                        f"{spawn_cell!r}, which isn't one of this level's spawn_cells"
+                    )
+                for enemy_name, count in composition.items():
+                    # WaveManager._begin_wave() builds each spawn queue via
+                    # range(count) -- a float (or a bool, which is an int
+                    # subclass but never a meaningful count) from a
+                    # hand-edited/imported level file would otherwise
+                    # load fine and crash mid-game when this wave starts.
+                    # Checked before the total below, so a non-numeric
+                    # count fails here as a clear ValueError rather than a
+                    # TypeError out of sum().
+                    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                        raise ValueError(
+                            f"Level {self.id!r} wave {wave_number} has an invalid count "
+                            f"{count!r} for {enemy_name!r} (must be a non-negative integer)"
+                        )
+                    if enemy_name not in ENEMY_TYPES:
+                        raise ValueError(
+                            f"Level {self.id!r} wave {wave_number} references unknown "
+                            f"enemy type {enemy_name!r} (known: {sorted(ENEMY_TYPES)})"
+                        )
             total = sum(count for composition in wave.values() for count in composition.values())
             if total <= 0:
                 # A wave with nothing in it isn't a crash (WaveManager's
@@ -63,18 +88,6 @@ class Level:
                 # skipped wave slip through unnoticed (e.g. one left empty,
                 # across every spawn, by the wave editor).
                 raise ValueError(f"Level {self.id!r} wave {wave_number} has no enemies in it")
-            for spawn_cell, composition in wave.items():
-                if spawn_cell not in self.spawn_cells:
-                    raise ValueError(
-                        f"Level {self.id!r} wave {wave_number} references spawn cell "
-                        f"{spawn_cell!r}, which isn't one of this level's spawn_cells"
-                    )
-                for enemy_name in composition:
-                    if enemy_name not in ENEMY_TYPES:
-                        raise ValueError(
-                            f"Level {self.id!r} wave {wave_number} references unknown "
-                            f"enemy type {enemy_name!r} (known: {sorted(ENEMY_TYPES)})"
-                        )
 
         problems = pathing.validate_topology(
             self.path_cells, self.spawn_cells, self.goal_cells,
