@@ -1688,6 +1688,21 @@ def test_siphon_gold_accumulation_is_proportional_to_damage_actually_applied():
     assert source.pending_siphon_gold == 17.5  # 35 applied * 0.5
 
 
+def test_siphon_gold_is_capped_at_the_hp_a_killing_blow_actually_removed():
+    # Enemy.take_damage() reports an overkill hit's full nominal damage, so
+    # Siphon must cap its own credit at the target's remaining hp -- a
+    # 50-damage shot finishing off a 4-hp enemy siphons from 4, not 50.
+    source = FakeTower()
+    source.siphon_gold_fraction = 0.5
+    target = KillableFakeEnemy((0, 0), hp=4)
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=50, source=source)
+
+    projectile.update(dt=1.0, enemies=[target])
+
+    assert target.is_dead
+    assert source.pending_siphon_gold == 2.0  # 4 hp removed * 0.5
+
+
 def test_refined_extraction_relic_scales_siphon_gold_accumulation():
     # refined_extraction's own bonus (relic_siphon_gold_fraction_bonus_
     # multiplier) doesn't map onto a Projectile constructor kwarg the way
@@ -1755,7 +1770,10 @@ def test_overkill_carry_over_hit_also_accumulates_siphon_gold_on_the_source():
     projectile.update(dt=1.0, enemies=[target, nearby])
 
     assert nearby.damage_taken == 7.5  # (20 - 5) * 0.5, same as the existing overkill test
-    assert source.pending_siphon_gold == 13.75  # (20 + 7.5) applied * 0.5
+    # The primary hit only siphons the 5 hp it actually removed, not its
+    # full nominal 20 -- the overflow is credited once, via the carry-over
+    # hit itself, never twice.
+    assert source.pending_siphon_gold == 6.25  # (5 + 7.5) hp removed * 0.5
 
 
 def test_splash_counts_one_shot_hit_but_cumulative_damage_across_every_enemy_touched():

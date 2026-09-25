@@ -214,11 +214,26 @@ class WaveManager:
 
         Difficulty multipliers are applied here, after construction, rather
         than threaded into Enemy.__init__ -- Enemy's own per-wave scaling
-        (_scale) stays untouched, and this is the only place a live Enemy
-        instance is ever built, so there's exactly one call site to adjust."""
+        (_scale) stays untouched, and this is the only place a
+        wave-spawned enemy is built (see apply_spawn_multipliers for the
+        one other kind of enemy that needs the same scaling)."""
         route_cells = pathing.sample_route(self.topology, spawn_cell, self.level.branch_weights, self.rng)
         waypoints_px = [self.cell_to_pixel(col, row) for col, row in route_cells]
         enemy = enemy_cls(waypoints_px, self.current_wave_number)
+        self.apply_spawn_multipliers(enemy)
+        return enemy
+
+    def apply_spawn_multipliers(self, enemy):
+        """Scale a freshly-constructed `enemy` by this floor's difficulty/
+        escalation/relic multipliers -- called here for every wave spawn,
+        and by Game.update() for every enemy that enters play mid-fight via
+        Enemy.pending_spawns instead (a SplitterEnemy's children, a
+        FinalBossEnemy's summoned Scouts). Those are constructed directly
+        by their parent enemy, not by _spawn_enemy, so without this second
+        call site they'd enter play at baseline Normal-difficulty,
+        un-escalated stats even on a Hard boss floor. Must be called
+        exactly once per enemy, right after construction -- every
+        multiplier here compounds if applied twice."""
         enemy.max_hp *= self.enemy_hp_multiplier
         enemy.hp = enemy.max_hp
         # Re-clamped to max_speed, not just multiplied -- Enemy.__init__
@@ -245,7 +260,6 @@ class WaveManager:
             enemy.shield = enemy.max_shield
         if hasattr(enemy, "heal_rate"):  # HealerEnemy only
             enemy.heal_rate *= self.healer_heal_rate_multiplier
-        return enemy
 
     def _begin_wave(self):
         wave_spec = self.level.wave_specs[self.wave_index]  # {spawn_cell: {enemy_name: count}}

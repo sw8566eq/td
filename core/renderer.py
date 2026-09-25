@@ -100,6 +100,7 @@ class Renderer:
         if game.state == GameState.HELP:
             ui.draw_help_screen(
                 game.screen, game.font, game.small_font, game.help_back_rect, game.run_guide_entry_button_rect,
+                back_to_map=game.help_return_state == GameState.MAP,
             )
             pygame.display.flip()
             return
@@ -174,7 +175,7 @@ class Renderer:
                 game.draft_choices, game.draft_choice_rects, game._hovered_draft_choice(),
                 game.shop_purchased_indices, game.active_run.shop_currency,
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
-                game.relic_modifiers.shop_price_multiplier,
+                game._shop_price_multiplier(),
             )
             pygame.display.flip()
             return

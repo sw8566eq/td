@@ -24,10 +24,11 @@ spirit save_state.py already applies to `sold_towers` on an even older save.
 import json
 import os
 
-from entities.tower import TOWER_TYPES
+from entities.tower import TOWER_TYPES, Tower
 from entities.waves import WaveState
 from persistence.json_io import load_json_with_fallback, module_relative_path
 from persistence.persistence import level_from_dict, level_to_dict
+from run.difficulty import DIFFICULTY_MODES
 from run.relics import RELICS
 from run.run_map import NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
@@ -207,9 +208,21 @@ def _parse_and_validate_save(data):
         raise ValueError(f"saved run's wave_state {data['wave_state']!r} is not resumable")
     if not 0 <= data["wave_index"] < len(data["level"].wave_specs):
         raise ValueError("saved run's wave_index is out of range for its own level")
+    # Game._load_level_object() indexes DIFFICULTY_MODES with this directly
+    # (for a run-less save -- a run's own difficulty is checked in
+    # _parse_and_validate_active_run below), so an unknown key would
+    # otherwise crash "Continue" outright instead of reading as "nothing
+    # to resume."
+    if data["difficulty"] not in DIFFICULTY_MODES:
+        raise ValueError(f"saved run's difficulty {data['difficulty']!r} is not a known difficulty mode")
     for tower_data in data["towers"] + data.get("sold_towers", []):
         if tower_data["type"] not in TOWER_TYPES:
             raise ValueError(f"saved run references an unrecognized tower type {tower_data['type']!r}")
+        # Tower.acquire_target() looks targeting_mode up in its strategy
+        # table -- an unknown one loads fine but crashes mid-fight the
+        # first time that tower has an enemy in range.
+        if tower_data["targeting_mode"] not in Tower.TARGETING_MODES:
+            raise ValueError(f"saved run references an unrecognized targeting mode {tower_data['targeting_mode']!r}")
     run_data = data.get("run")  # absent (older save) and explicit None both mean "no active run"
     data["run"] = _parse_and_validate_active_run(run_data) if run_data is not None else None
     return data
@@ -263,6 +276,8 @@ def _parse_and_validate_active_run(run_data):
     for relic_key in run_data["relics"]:
         if relic_key not in RELICS:
             raise ValueError(f"saved run's relics references an unrecognized relic {relic_key!r}")
+    if run_data["difficulty"] not in DIFFICULTY_MODES:
+        raise ValueError(f"saved run's own difficulty {run_data['difficulty']!r} is not a known difficulty mode")
     return _run_from_dict(run_data)
 
 

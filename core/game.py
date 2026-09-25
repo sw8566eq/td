@@ -199,6 +199,11 @@ class Game:
         # below already follow.
         self.achievements_scroll_offset = 0
         self.help_back_rect = ui.build_help_back_rect()
+        # Which screen the Help screen's Esc/Back returns to -- MENU when
+        # opened from the menu's own H, MAP when opened from the run map's
+        # own H (the first-run map hint points players there mid-run, and
+        # dumping them on the main menu would strand the run's map screen).
+        self.help_return_state = GameState.MENU
         self.run_guide_entry_button_rect = ui.build_run_guide_entry_button_rect()
         self.run_guide_back_rect = ui.build_run_guide_back_rect()
         self.credits_back_rect = ui.build_credits_back_rect()
@@ -834,7 +839,7 @@ class Game:
         can't drift."""
         run = self.active_run
         item = self.draft_choices[index]
-        price = shop.price_for(item, len(self.shop_purchased_indices), self.relic_modifiers.shop_price_multiplier)
+        price = shop.price_for(item, len(self.shop_purchased_indices), self._shop_price_multiplier())
         unlimited = self.economy.unlimited_gold
         if not shop.can_afford(run.shop_currency, price, unlimited):
             return
@@ -846,6 +851,18 @@ class Game:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
         self.shop_purchased_indices.add(index)
+
+    def _shop_price_multiplier(self):
+        """A Haggling Permit-style relic's shop discount, composed fresh
+        from the run's *current* relics -- not read off self.relic_
+        modifiers, which is only recomposed when a combat floor loads and
+        so goes stale the moment a relic is gained or given up between
+        floors (a Treasure pick, an Event grant/relic_cost, or a Shop
+        purchase earlier in this same visit). Shared by _try_buy_shop_item
+        (what's charged) and the renderer (what's shown) so the two can't
+        drift. shop_price_multiplier doesn't depend on floor_index/
+        has_spent_gold, so their defaults are fine here."""
+        return relics.compose_relic_modifiers(self.active_run.relics).shop_price_multiplier
 
     def _grant_relic(self, relic_key):
         """Add `relic_key` to the active run's relics and apply its
@@ -1178,7 +1195,8 @@ class Game:
         outcome is already recorded, so resurrecting it here would let a
         player undo their own death for free. That falls through to the
         same plain, run-less reload every other reset() has always done,
-        same as classic/Practice/playtest play. Only ever reachable with the
+        same as classic/Practice/playtest play -- forced to sandbox, so
+        it's Practice and earns nothing. Only ever reachable with the
         current node still a combat/elite/boss one -- PAUSED is only
         reachable from PLAYING, which only a combat/elite/boss node's own
         load ever enters, so run.map.node(run.current_node_id) is always a
@@ -1196,11 +1214,19 @@ class Game:
             run = self.active_run
             self._load_combat_node(run.map.node(run.current_node_id))
         else:
+            # A dead run's floor replays as Practice (sandbox), never as
+            # progress-earning play: a run is never sandboxed itself, so
+            # carrying self.sandbox through here would otherwise hand the
+            # player a standalone, run-less level whose win still records
+            # level progress/achievements/meta-progression -- exactly what
+            # Practice mode's "standalone play earns nothing" rule exists
+            # to prevent (see CLAUDE.md's Practice mode section).
+            sandbox = self.sandbox or self.active_run is not None
             if self.current_level_id is None:
                 # custom level: nothing in LEVELS to re-look-up
-                self._load_level_object(self.level, endless=self.endless, sandbox=self.sandbox)
+                self._load_level_object(self.level, endless=self.endless, sandbox=sandbox)
             else:
-                self.load_level(self.current_level_id, endless=self.endless, sandbox=self.sandbox)
+                self.load_level(self.current_level_id, endless=self.endless, sandbox=sandbox)
             self.state = GameState.MENU
 
     def has_next_level(self):
@@ -2093,6 +2119,14 @@ class Game:
             # re-queue the same already-spawned children again next frame
             # (see Enemy.pending_spawns).
             if enemy.pending_spawns:
+                # Every child/summon is constructed directly by its parent
+                # enemy, never by WaveManager._spawn_enemy, so it hasn't
+                # had this floor's difficulty/escalation/relic multipliers
+                # applied yet -- done first, before either relic below, so
+                # Fracture Rounds shrinks an already-scaled max_hp and
+                # Containment Charges' flat damage lands against it too.
+                for child in enemy.pending_spawns:
+                    self.wave_manager.apply_spawn_multipliers(child)
                 # A Containment Charges-style relic's own flat damage is
                 # applied here, once per child, right before they ever join
                 # self.enemies -- the one place pending_spawns is ever read

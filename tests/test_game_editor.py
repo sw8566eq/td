@@ -273,6 +273,24 @@ def test_paste_pending_takes_priority_over_the_active_tool(game):
     assert game.editor._shape_start is None  # never started a Line drag
 
 
+def test_a_click_off_the_grid_keeps_a_pending_paste_armed(game):
+    # Regression: a click on empty sidebar space used to paste the whole
+    # clipboard off-grid (unerasable) and disarm the paste.
+    game.state = GameState.EDITOR
+    _paint_valid_path(game)
+    game.editor.set_tool(EditorTool.SELECT)
+    game._handle_editor_click(cell_center_px((0, 2)))
+    game._handle_editor_mouse_up(cell_center_px((2, 2)))
+    game.editor.copy_selection()
+    game.editor.paste_pending = True
+    before = set(game.editor.path_cells)
+
+    game._handle_editor_click((settings.PLAY_WIDTH + 5, settings.SCREEN_HEIGHT - 5))
+
+    assert game.editor.paste_pending is True
+    assert game.editor.path_cells == before
+
+
 def test_waves_action_is_a_no_op_while_the_editors_path_is_invalid(game):
     game.state = GameState.EDITOR
     assert not game.editor.path_is_valid()

@@ -137,6 +137,15 @@ def test_menu_any_key_starts_a_new_run(game):
     assert game.active_run is not None
 
 
+@pytest.mark.parametrize("key", [pygame.K_LALT, pygame.K_LSHIFT, pygame.K_RCTRL, pygame.K_LGUI])
+def test_menu_bare_modifier_key_does_not_start_a_run(game, key):
+    # Regression: e.g. the Alt of an Alt-Tab away from the window used to
+    # fall through to "any key starts a run".
+    game._handle_keydown(key)
+    assert game.state == GameState.MENU
+    assert game.active_run is None
+
+
 def test_menu_escape_quits_without_starting(game):
     game._handle_keydown(pygame.K_ESCAPE)
     assert game.running is False
@@ -2691,6 +2700,45 @@ def test_help_click_on_back_returns_to_menu(game):
     assert game.state == GameState.MENU
 
 
+def test_map_h_key_opens_help_and_escape_returns_to_the_map(game):
+    # Regression: the first-run map hint promises "Press H for full
+    # controls", but H used to do nothing on the map screen.
+    game.start_new_run(seed=1)
+    assert game.state == GameState.MAP
+
+    game._handle_keydown(pygame.K_h)
+    assert game.state == GameState.HELP
+
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MAP
+
+
+def test_help_back_button_returns_to_the_map_when_opened_from_it(game):
+    game.start_new_run(seed=1)
+    game._handle_keydown(pygame.K_h)
+
+    game._handle_help_click(game.help_back_rect.center)
+
+    assert game.state == GameState.MAP
+
+
+def test_help_opened_from_the_menu_after_the_map_still_returns_to_the_menu(game):
+    game.start_new_run(seed=1)
+    game._handle_keydown(pygame.K_h)
+    game.state = GameState.MENU  # e.g. the run later ended
+
+    game._handle_keydown(pygame.K_h)
+    game._handle_keydown(pygame.K_ESCAPE)
+
+    assert game.state == GameState.MENU
+
+
+def test_render_help_screen_opened_from_the_map_does_not_crash(game):
+    game.start_new_run(seed=1)
+    game._handle_keydown(pygame.K_h)
+    game.render()
+
+
 def test_help_click_off_the_back_button_is_a_no_op(game):
     game.state = GameState.HELP
     game._handle_help_click((0, 0))
@@ -3601,3 +3649,18 @@ def test_run_calls_the_frame_loop_methods_once_per_iteration_until_stopped(game,
     game.run()
 
     assert calls == ["handle_events", "update", "render", "pygame.quit", "sys.exit"]
+
+
+@pytest.mark.parametrize("state", [GameState.REST, GameState.TREASURE])
+def test_handle_events_left_click_continues_from_rest_and_treasure(game, state):
+    # Regression: both screens say "Press any key or click to continue",
+    # but a click used to fall through to _handle_click and do nothing.
+    game.start_new_run(seed=1)
+    node_id = game.active_run.map.start_node_ids[0]
+    game.active_run.current_node_id = node_id
+    game.state = state
+
+    _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(5, 5), button=1))
+
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == [node_id]

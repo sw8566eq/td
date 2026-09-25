@@ -505,3 +505,37 @@ def test_delete_saved_run_on_a_missing_file_is_a_no_op(tmp_path):
     path = tmp_path / "save_state.json"
     save_state.delete_saved_run(path=path)  # must not raise
     assert not path.exists()
+
+
+def test_load_run_with_an_unrecognized_difficulty_returns_none(tmp_path):
+    # Regression: Game._load_level_object() indexes DIFFICULTY_MODES with
+    # this directly, so an unknown key used to crash "Continue".
+    path = tmp_path / "save_state.json"
+    save_state.save_run(_FakeGame(make_level(), []), path=path)
+    data = json.loads(path.read_text())
+    data["difficulty"] = "insane"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_a_run_with_an_unrecognized_difficulty_returns_none(tmp_path):
+    path = tmp_path / "save_state.json"
+    save_state.save_run(_FakeGame(make_level(), [], active_run=make_run()), path=path)
+    data = json.loads(path.read_text())
+    data["run"]["difficulty"] = "insane"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
+
+
+def test_load_run_with_an_unrecognized_targeting_mode_returns_none(tmp_path):
+    # Regression: loaded fine, then crashed with KeyError the first time
+    # the tower had an enemy in range (Tower.acquire_target()).
+    path = tmp_path / "save_state.json"
+    save_state.save_run(_FakeGame(make_level(), [make_tower(BasicTower)]), path=path)
+    data = json.loads(path.read_text())
+    data["towers"][0]["targeting_mode"] = "random"
+    path.write_text(json.dumps(data))
+
+    assert save_state.load_run(path=path) is None
