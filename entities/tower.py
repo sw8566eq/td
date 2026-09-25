@@ -1135,6 +1135,7 @@ class CannonTower(Tower):
             speed=self.projectile_speed * self.relic_cannon_projectile_speed_bonus_multiplier,
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
+            can_hit_flying=self.can_target_flying,
             sprite_name="projectile_cannon", source=self,
         )
 
@@ -1232,6 +1233,7 @@ class KnockbackTower(Tower):
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             knockback_duration=self.knockback_duration * self.relic_knockback_duration_bonus_multiplier,
+            can_hit_flying=self.can_target_flying,
             sprite_name="projectile_knockback", source=self,
         )
 

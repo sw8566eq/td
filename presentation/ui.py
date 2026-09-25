@@ -2173,15 +2173,15 @@ def _draw_overlay_with_results(surface, font, small_font, title, subtitle, title
 
 
 def draw_game_over_screen(surface, font, small_font, results=None):
-    _draw_overlay_with_results(surface, font, small_font, "Game Over", "Press R to restart",
+    _draw_overlay_with_results(surface, font, small_font, "Game Over", "Press R to restart, M for main menu",
                                 settings.COLOR_LIVES, results)
 
 
 def draw_victory_screen(surface, font, small_font, has_next_level=False, results=None):
     if has_next_level:
-        title, subtitle = "Level Complete!", "Press R for the next level"
+        title, subtitle = "Level Complete!", "Press R for the next level, M for main menu"
     else:
-        title, subtitle = "Victory!", "Press R to play again"
+        title, subtitle = "Victory!", "Press R to play again, M for main menu"
     _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_GOLD, results)
 
 

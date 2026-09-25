@@ -166,6 +166,7 @@ class Renderer:
                 run.shop_currency if has_played_a_node else None,
                 first_run=game._map_is_first_run,
             )
+            self._draw_toasts()
             pygame.display.flip()
             return
 
@@ -177,6 +178,7 @@ class Renderer:
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
             )
+            self._draw_toasts()
             pygame.display.flip()
             return
 
@@ -186,6 +188,7 @@ class Renderer:
                 game.event_option_rects,
                 game._hovered_event_option(), game.event_phase, game.event_chosen_option, game.event_resolution,
             )
+            self._draw_toasts()
             pygame.display.flip()
             return
 
@@ -193,6 +196,7 @@ class Renderer:
             ui.draw_rest_screen(
                 game.screen, game.font, game.small_font, game.rest_heal_amount, game.active_run.lives,
             )
+            self._draw_toasts()
             pygame.display.flip()
             return
 
@@ -201,6 +205,7 @@ class Renderer:
                 game.screen, game.font, game.small_font,
                 game.treasure_granted_relic, game.treasure_granted_currency,
             )
+            self._draw_toasts()
             pygame.display.flip()
             return
 
@@ -250,9 +255,6 @@ class Renderer:
             game.upgrade_button_rect, game.specialize_button_rects, game.sell_button_rect,
             game._hovered_specialize_key(panel_subject),
         )
-        for toast in game.achievement_toasts:
-            toast.draw(game.screen, game.small_font)
-
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
                                 game.current_level_id is None, game.can_save_run(),
@@ -287,7 +289,19 @@ class Renderer:
                 game._cached_tower_results,
             )
 
+        # Drawn last, on top of any overlay -- a toast is most often queued
+        # by the very event that raises FLOOR_CLEARED/GAME_OVER (a floor
+        # clear's meta-unlock, a permadeath's runs_played unlock).
+        self._draw_toasts()
         pygame.display.flip()
+
+    def _draw_toasts(self):
+        """Achievement/unlock toasts -- shared by the board and by every
+        full-screen run state (MAP/DRAFT/EVENT/REST/TREASURE), since relic,
+        event, and floor-clear unlocks are all queued from outside combat."""
+        game = self.game
+        for toast in game.achievement_toasts:
+            toast.draw(game.screen, game.small_font)
 
     def _render_placement_preview(self):
         game = self.game

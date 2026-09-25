@@ -200,6 +200,10 @@ class SettingsManager:
         if keybindings.is_reserved(key):
             game.keybind_message = "Esc is reserved and can't be rebound."
             return False
+        fixed_conflict = keybindings.fixed_key_conflict(action, key)
+        if fixed_conflict is not None:
+            game.keybind_message = f"Already used by the pause menu's {fixed_conflict}."
+            return False
         conflict = keybindings.find_conflict(game.keybindings, action, key, mods)
         if conflict is not None:
             game.keybind_message = f"Already used by {keybindings.ACTION_LABELS[conflict]}."

@@ -87,6 +87,52 @@ def test_splash_skips_an_enemy_that_reached_the_goal():
     assert gone.damage_taken == 0
 
 
+def test_ground_only_splash_skips_a_flying_enemy_in_the_blast():
+    # A Cannon/Knockback shot can't aim at a flyer (acquire_target), and
+    # its splash mustn't land on one that happens to be in the blast either.
+    target = FakeEnemy((0, 0))
+    flyer = FakeEnemy((10, 0))
+    flyer.is_flying = True
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=15, splash_radius=20,
+        knockback_duration=0.5, can_hit_flying=False,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, flyer])
+
+    assert target.damage_taken == 15
+    assert flyer.damage_taken == 0
+    assert flyer.knockback_applied is None
+
+
+def test_splash_that_can_hit_flying_still_damages_a_flyer_in_the_blast():
+    target = FakeEnemy((0, 0))
+    flyer = FakeEnemy((10, 0))
+    flyer.is_flying = True
+    projectile = Projectile(pos=(0, 0), target=target, speed=1000, damage=15, splash_radius=20)
+
+    projectile.update(dt=1.0, enemies=[target, flyer])
+
+    assert flyer.damage_taken == 15
+
+
+def test_ground_only_shot_never_bounces_or_carries_overkill_onto_a_flyer():
+    target = FakeEnemy((0, 0))
+    target.hp = 1.0
+    flyer = FakeEnemy((10, 0))
+    flyer.is_flying = True
+    projectile = Projectile(
+        pos=(0, 0), target=target, speed=1000, damage=15, can_hit_flying=False,
+        relic_chain_chance=1.0, relic_chain_effect=(0.5, 100),
+        relic_overkill_carry_fraction=1.0,
+    )
+
+    projectile.update(dt=1.0, enemies=[target, flyer])
+
+    assert target.damage_taken == 15
+    assert flyer.damage_taken == 0
+
+
 def test_slow_effect_applied_on_direct_hit():
     target = FakeEnemy((0, 0))
     projectile = Projectile(

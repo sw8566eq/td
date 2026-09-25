@@ -231,6 +231,13 @@ that moved here too) get no `Game`-level shim at all -- the same "private helper
 `core/renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
 move, so unlike `InputHandler`'s slice, no new "called directly" regression tests were needed.
 
+Toasts (`Game.achievement_toasts`) are the one per-frame effect list that is *not* PLAYING-scoped:
+most unlocks are queued off the board (a Shop/Treasure/Event relic, a floor clear's meta-unlock, a
+permadeath's `runs_played` unlock), so `Game.update()` ages them on real, unscaled `dt` *before* its
+own `state != PLAYING` early return, `Renderer._draw_toasts()` draws them on every full-screen run
+state (MAP/DRAFT/EVENT/REST/TREASURE) and on top of the board's overlays, and a floor load no longer
+clears them -- a toast queued on the map just keeps fading into the next fight.
+
 **The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
 played on its own still works exactly as it always did, but that's now Practice, a side path; the
 main path is a run. Read the next section before anything else here.
@@ -454,7 +461,10 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   `shockwave_rounds`) -- via `aerial_targeting_array` (`cannon_targets_flying`, a boolean
   OR-composed exactly like `poison_ignores_shield`, requiring `CannonTower.can_target_flying` to
   become a property reading it rather than staying a plain class attribute -- `KnockbackTower` keeps
-  its own separate `can_target_flying = False` untouched, so the relic can never leak there) and
+  its own separate `can_target_flying = False` untouched, so the relic can never leak there; both
+  towers pass their `can_target_flying` into `Projectile(can_hit_flying=...)`, which is what keeps
+  a ground-only shot's splash and any Arcing Rounds bounce/Overkill carry off it from landing on a
+  flyer that merely happened to be nearby -- `acquire_target()` alone only stops *aiming* at one) and
   `high_velocity_shells` (`cannon_projectile_speed_multiplier`, the first relic in the registry to
   ever touch `projectile_speed`, a plain `create_projectile()` multiply); a sixteenth batch is
   Overload Cannon's own launch pair, `overcharged_capacitors` (`overload_burst_multiplier`,
@@ -908,7 +918,11 @@ branch leads to a dead end. `pathing.PathTopology.leads_to_goal` is what keeps t
 wandering into a *different* spawn's own dead-end branch at a merge point -- an early version of
 this validated per-cell reachability with an undirected BFS from the goal, which is trivially true
 for every cell in a connected tree (you can always walk backward to it) and so never actually
-caught anything; the fix was requiring every leaf of the tree to be a spawn or a goal.
+caught anything; the fix was requiring every leaf of the tree to be a spawn or a goal. That leaf
+rule alone still admits a component whose only leaves are *spawns* (a lone spawn tile, or a lane
+with a spawn at each end) -- no goal anywhere to walk to, so `sample_route` would raise
+`RoutingError` on the first spawn -- which is why `validate_topology` also BFSes out from the goals
+and rejects any spawn that search never reaches.
 
 `Enemy` itself needs **zero branching logic**: `WaveManager` samples one concrete flat pixel
 waypoint list per spawned enemy (`pathing.sample_route`, weighted-random at branch points, default
@@ -1084,8 +1098,12 @@ by `Game._construct_tower`, never reset) -- deliberately **additive** with `aura
 (`range * (1.0 + (aura - 1.0) + (relic - 1.0))`), not multiplicative and not `max()`'d, so a relic
 and a nearby Support tower's own buff genuinely stack rather than the stronger one silently winning
 the way two overlapping Support towers already do. `SupportTower.update()`'s own reach check uses
-`effective_range()` too, for the same "no relic singles out one tower type" reason -- a Range relic
-widens a Support tower's own aura radius, not just its role as an aura *recipient*. `presentation/ui.py`'s stats
+`relic_adjusted_range()` (times its own `relic_aura_range_bonus_multiplier`), for the same "no relic
+singles out one tower type" reason -- a Range relic widens a Support tower's own aura radius, not
+just its role as an aura *recipient* -- but deliberately *not* `effective_range()`: folding the
+transient aura term in would let one Support tower's buff on another widen that other tower's own
+broadcast within the same frame, an order-dependent chain reaction (see `relic_adjusted_range()`'s
+own docstring). `presentation/ui.py`'s stats
 panel and
 `Game._handle_panel_action_click` both check `IS_SUPPORT` to skip the targeting-mode row and the
 plain Damage/Range/Fire-rate stat block, which would otherwise show a meaningless

@@ -1121,10 +1121,6 @@ class Game:
         self.projectiles = []
         self.damage_numbers = []
         self.impact_effects = []
-        # A toast still queued the instant a level ends (e.g. an
-        # achievement unlocked on the killing blow of the last wave) would
-        # otherwise keep rising/fading on top of whatever loads next.
-        self.achievement_toasts = []
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
@@ -1998,6 +1994,14 @@ class Game:
                 self.economy.add_gold(EMERGENCY_RESERVES_REFUND_AMOUNT)
 
     def update(self, dt):
+        # Toasts age in every state, not just PLAYING, and on real (unscaled)
+        # time -- most unlocks are queued from outside combat (a Shop/
+        # Treasure relic, an Event, a floor clear, a permadeath), and they'd
+        # otherwise sit frozen on those screens.
+        for toast in self.achievement_toasts:
+            toast.update(dt)
+        self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
+
         if self.state != GameState.PLAYING:
             return
 
@@ -2089,10 +2093,6 @@ class Game:
         for ring in self.impact_effects:
             ring.update(dt)
         self.impact_effects = [r for r in self.impact_effects if not r.dead]
-
-        for toast in self.achievement_toasts:
-            toast.update(dt)
-        self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
 
         still_alive = []
         kills_this_frame = 0

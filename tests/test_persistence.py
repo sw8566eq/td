@@ -106,3 +106,15 @@ def test_list_custom_levels_skips_a_file_whose_level_fails_its_own_validation(tm
 
     levels = persistence.list_custom_levels(directory=tmp_path)
     assert [level.name for level in levels] == ["Good Level"]
+
+
+def test_list_custom_levels_skips_a_file_with_a_non_integer_starting_gold(tmp_path):
+    # Regression: "starting_gold": "150" used to load fine here and then
+    # crash the game with a TypeError the moment the level was played.
+    bad_data = persistence.level_to_dict(make_branching_level(name="Bad Gold"))
+    bad_data["starting_gold"] = "150"
+    (tmp_path / "bad_gold.json").write_text(json.dumps(bad_data))
+    persistence.save_level(make_branching_level(name="Good Level"), directory=tmp_path)
+
+    levels = persistence.list_custom_levels(directory=tmp_path)
+    assert [level.name for level in levels] == ["Good Level"]

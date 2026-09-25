@@ -24,6 +24,7 @@ each spawn point in the same wave. A single-spawn level's wave still needs
 that one spawn_cell key -- see _single_spawn_waves() for the common case.
 """
 
+import math
 from dataclasses import dataclass, field
 
 from entities.enemy import ENEMY_TYPES
@@ -89,6 +90,28 @@ class Level:
                 # across every spawn, by the wave editor).
                 raise ValueError(f"Level {self.id!r} wave {wave_number} has no enemies in it")
 
+        # A hand-edited custom level file (see persistence.py) could carry any
+        # JSON value here; rejecting it at construction is what lets
+        # list_custom_levels() skip it rather than crashing once it's played
+        # (a string starting_gold fails the moment Economy is built; 0 lives
+        # is an instant Game Over; a negative or infinite weight breaks rng.choices -- 0
+        # is fine, it closes a fork).
+        if isinstance(self.starting_gold, bool) or not isinstance(self.starting_gold, int) or self.starting_gold < 0:
+            raise ValueError(
+                f"Level {self.id!r} has an invalid starting_gold {self.starting_gold!r} "
+                f"(must be a non-negative integer)"
+            )
+        if isinstance(self.starting_lives, bool) or not isinstance(self.starting_lives, int) or self.starting_lives < 1:
+            raise ValueError(
+                f"Level {self.id!r} has an invalid starting_lives {self.starting_lives!r} "
+                f"(must be a positive integer)"
+            )
+        for edge, weight in self.branch_weights.items():
+            if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0 <= weight < math.inf:
+                raise ValueError(
+                    f"Level {self.id!r} has an invalid branch weight {weight!r} for {edge!r} "
+                    f"(must be a non-negative number)"
+                )
         problems = pathing.validate_topology(
             self.path_cells, self.spawn_cells, self.goal_cells,
             settings.GRID_COLS, settings.GRID_ROWS,
