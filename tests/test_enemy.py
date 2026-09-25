@@ -122,6 +122,21 @@ def test_boss_enrage_threshold_uses_live_max_hp_not_a_cached_one():
     assert boss.enraged is True
 
 
+def test_boss_armor_fully_absorbing_a_hit_records_no_damage_event():
+    # Otherwise every small hit during the armor window (a Beacon's 1-damage
+    # flash, a poison tick) pops a floating "0" damage number.
+    boss = BossEnemy(LONG_WAYPOINTS, wave_number=1)
+    boss.take_damage(400)  # enters the armor phase
+    boss.damage_events.clear()
+    hp_before = boss.hp
+
+    applied = boss.take_damage(BossEnemy.ARMOR_FLAT_REDUCTION)
+
+    assert applied == 0.0
+    assert boss.hp == hp_before
+    assert boss.damage_events == []
+
+
 def test_boss_armor_phase_reduces_flat_damage_until_it_expires():
     boss = BossEnemy(LONG_WAYPOINTS, wave_number=1)  # max_hp=500, armor at hp<=100
     boss.take_damage(400)  # hp == 100 -- crosses both enrage and armor thresholds

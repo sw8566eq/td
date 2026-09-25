@@ -2191,6 +2191,41 @@ def test_choosing_a_relic_granting_event_option_bumps_relics_collected(game, mon
     assert counters["events_resolved"] == 1  # both bump from the same resolution
 
 
+def test_an_unaffordable_event_option_cannot_be_chosen(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["stranded_caravan"])
+    _begin_run_with_map(game, ["combat", "event"], shop_currency=0, lives=5)
+    game._enter_node("1-0")
+    towers_before = list(game.active_run.unlocked_towers)
+
+    game._handle_event_click(game.event_option_rects[0].center)  # "Buy the schematics (-9 ...)"
+
+    assert game.event_phase == "choose"  # nothing happened
+    assert game.active_run.unlocked_towers == towers_before
+    assert game.active_run.shop_currency == 0
+
+
+def test_an_affordable_event_option_still_charges_its_cost(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["stranded_caravan"])
+    _begin_run_with_map(game, ["combat", "event"], shop_currency=9, lives=5)
+    game._enter_node("1-0")
+
+    game._handle_event_click(game.event_option_rects[0].center)
+
+    assert game.event_phase == "resolved"
+    assert game.active_run.shop_currency == 0
+
+
+def test_render_event_with_an_unaffordable_option_does_not_crash(game, monkeypatch):
+    monkeypatch.setattr(events, "pick_event", lambda rng: EVENTS["stranded_caravan"])
+    _begin_run_with_map(game, ["combat", "event"], shop_currency=0, lives=5)
+    game._enter_node("1-0")
+    mock_mouse_pos(game.event_option_rects[0].center)  # hovering it must not highlight
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
+
+
 # --- Rest nodes ---
 
 
@@ -2712,15 +2747,15 @@ def test_resuming_a_daily_run_keeps_its_pinned_difficulty_despite_a_different_li
     )
 
 
-def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
+def test_a_resumed_runs_own_floor_reloads_still_count_as_resumed(game):
     # Regression guard: _load_level_object() resets _resumed_from_save to
     # False on every call, the right default for a genuinely new/unrelated
-    # load -- but _load_combat_node() (what every floor transition after a
-    # resume goes through) used to inherit that reset unconditionally too,
-    # silently un-marking the run as resumed the moment its very next
-    # floor loaded. That left _delete_save_if_this_run_was_resumed()
-    # gated on an already-False flag by the time this run actually
-    # concluded, so its now-stale save file was never cleaned up.
+    # load -- but _load_combat_node() (what a mid-floor Restart of a
+    # resumed run goes through) used to inherit that reset unconditionally
+    # too, silently un-marking the run as resumed. That left
+    # _delete_save_if_this_run_was_resumed() gated on an already-False
+    # flag by the time this run actually concluded, so its now-stale save
+    # file was never cleaned up.
     _begin_run_with_map(game, ["combat", "shop", "combat"])
     game._enter_node("0-0")
     game.save_run()
@@ -2728,16 +2763,8 @@ def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
     game._continue_saved_run()
     assert game._resumed_from_save is True
 
-    finish_all_waves(game)
-    game.update(dt=0.01)  # -> FLOOR_CLEARED
-    game._enter_map()
-    game._enter_node("1-0")  # the shop node
-    game.active_run.shop_currency = 9999
-    game._handle_draft_click(game.draft_choice_rects[0].center)  # buy an item
-    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map, still same run
-    assert game._resumed_from_save is True
-
-    game._enter_node("2-0")  # the next combat node
+    game.state = GameState.PAUSED
+    game.reset()  # restarts the resumed run's own current node
     assert game._resumed_from_save is True
 
     game.economy.lives = 1
@@ -2746,6 +2773,43 @@ def test_a_resumed_runs_own_floor_transitions_still_count_as_resumed(game):
 
     assert game.state == GameState.GAME_OVER
     assert not save_state.has_saved_run(game.save_path)  # the stale save is actually cleaned up now
+
+
+def test_clearing_a_resumed_runs_floor_deletes_its_now_stale_save(game):
+    # A save is only ever taken mid-floor, so once that floor clears the
+    # save points back at progress this clear already credited -- left on
+    # disk, quit-and-Continue would replay the floor and re-bump
+    # total_floors_cleared/achievements every time.
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
+    game.save_run()
+    game.state = GameState.MENU
+    game._continue_saved_run()
+
+    finish_all_waves(game)
+    game.update(dt=0.01)
+
+    assert game.state == GameState.FLOOR_CLEARED
+    assert not save_state.has_saved_run(game.save_path)
+    assert game.has_saved_run is False
+    assert game._resumed_from_save is False
+
+
+def test_clearing_a_fresh_runs_floor_keeps_an_unrelated_save(game):
+    # Save one run, then start a brand new one instead of continuing it --
+    # the new run's floor clear must not delete the other run's save.
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
+    game.save_run()
+    game.state = GameState.MENU
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
+
+    finish_all_waves(game)
+    game.update(dt=0.01)
+
+    assert game.state == GameState.FLOOR_CLEARED
+    assert save_state.has_saved_run(game.save_path)
 
 
 # --- Daily Run ---

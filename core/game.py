@@ -675,6 +675,14 @@ class Game:
             node.row, self.economy.gold, is_elite=node.node_type == "elite",
         )
         self._record_meta_progress("total_floors_cleared")
+        # A save is only ever taken mid-floor (see can_save_run), so once
+        # the floor it was taken on clears, it points back at progress
+        # this clear has already credited. Left on disk, quitting now and
+        # "Continue"-ing would replay that floor and bump total_floors_
+        # cleared/achievements again, as many times as the player liked.
+        # Same resumed-only guard the win/loss branches use, so a fresh
+        # run never deletes some other run's still-valid save.
+        self._delete_save_if_this_run_was_resumed()
         self._cache_tower_results()
         self.audio.play("floor_cleared")
         self.state = GameState.FLOOR_CLEARED
@@ -898,10 +906,20 @@ class Game:
     def _handle_event_click(self, pos):
         return self.input_handler._handle_event_click(pos)
 
+    def _can_afford_event_option(self, option):
+        """events.can_afford_option against the active run -- shared by
+        _resolve_event_choice (what's allowed) and the renderer (what's
+        greyed out) so the two can't drift, same pairing _shop_price_
+        multiplier gives the Shop. self.economy.unlimited_gold waives the
+        currency half the same way it does for Shop purchases."""
+        return events.can_afford_option(option, self.active_run, unlimited_currency=self.economy.unlimited_gold)
+
     def _resolve_event_choice(self, index):
         run = self.active_run
         node_id = run.current_node_id
         option = self.event_options[index]
+        if not self._can_afford_event_option(option):
+            return  # silent no-op, same as an unaffordable Shop card
         # Keyed on the option actually chosen (not the event itself, and
         # not just the node) -- see events.resolve_event_option's own
         # docstring for why only the branch actually taken needs to be
@@ -1674,7 +1692,8 @@ class Game:
         return self.input_handler._handle_credits_click(pos)
 
     def _delete_save_if_this_run_was_resumed(self):
-        """Called from both of update()'s win/loss branches -- a resumed
+        """Called from both of update()'s win/loss branches and from
+        _advance_run_floor (see its own comment) -- a resumed
         run that's been played out to a real conclusion has nothing left to
         "Continue" back into, so its save file shouldn't still be offered.
         Guarded on _resumed_from_save (see __init__'s comment on it) so a

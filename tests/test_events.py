@@ -2,7 +2,13 @@ import random
 
 from entities.tower import TOWER_TYPES
 from run.card_pool import STARTER_TOWERS
-from run.events import EVENTS, available_options, pick_event, resolve_event_option
+from run.events import (
+    EVENTS,
+    available_options,
+    can_afford_option,
+    pick_event,
+    resolve_event_option,
+)
 from run.relics import RELICS
 from run.run_map import MapNode, RunMap
 from run.run_state import RunState
@@ -70,6 +76,41 @@ def test_resolve_event_option_applies_currency_delta():
     run = _run(shop_currency=10)
     resolve_event_option(run, option, random.Random(1))
     assert run.shop_currency == 10 + option.shop_currency_delta
+
+
+def _option(event_key, option_key):
+    return next(o for o in EVENTS[event_key].options if o.key == option_key)
+
+
+def test_a_currency_costing_option_is_unaffordable_without_enough_currency():
+    option = _option("stranded_caravan", "buy_the_schematics")  # -9 shop currency
+    assert not can_afford_option(option, _run(shop_currency=8, lives=5))
+    assert can_afford_option(option, _run(shop_currency=9, lives=5))
+
+
+def test_unlimited_currency_waives_only_the_currency_cost():
+    assert can_afford_option(_option("stranded_caravan", "buy_the_schematics"), _run(shop_currency=0, lives=5),
+                             unlimited_currency=True)
+    lives_costing = next(o for e in EVENTS.values() for o in e.options if o.lives_delta < 0)
+    assert not can_afford_option(lives_costing, _run(lives=1), unlimited_currency=True)
+
+
+def test_a_lives_costing_option_is_unaffordable_if_it_would_leave_no_lives():
+    option = next(o for e in EVENTS.values() for o in e.options if o.lives_delta == -2)
+    assert not can_afford_option(option, _run(lives=2))
+    assert can_afford_option(option, _run(lives=3))
+
+
+def test_a_cost_free_option_is_always_affordable():
+    option = _option("stranded_caravan", "leave_them_be")
+    assert can_afford_option(option, _run(shop_currency=0, lives=1))
+
+
+def test_every_event_has_an_option_affordable_with_nothing():
+    # Otherwise a broke, 1-life run could land on an Event it can't leave.
+    broke = _run(shop_currency=0, lives=1)
+    for event in EVENTS.values():
+        assert any(can_afford_option(o, broke) for o in available_options(event, broke)), event.key
 
 
 def test_resolve_event_option_clamps_shop_currency_at_zero():

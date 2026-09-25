@@ -187,6 +187,7 @@ class Renderer:
                 game.screen, game.font, game.small_font, game.current_event, game.event_options,
                 game.event_option_rects,
                 game._hovered_event_option(), game.event_phase, game.event_chosen_option, game.event_resolution,
+                affordable=[game._can_afford_event_option(option) for option in game.event_options],
             )
             self._draw_toasts()
             pygame.display.flip()
