@@ -37,7 +37,7 @@ class EventOption:
     label: str
     description: str
     shop_currency_delta: int = 0  # can be negative -- a cost
-    lives_delta: int = 0  # can be negative -- resolve_event_option clamps at >=1, never kills via an event
+    lives_delta: int = 0  # can be negative -- a cost; see can_afford_option (resolve_event_option still clamps at >=1 as a backstop)
     grant_relic: bool = False
     unlock_random_tower: bool = False
     # A genuinely new resource direction -- every option above only ever
@@ -351,6 +351,24 @@ def available_options(event: Event, run: RunState) -> list[EventOption]:
     _resolve_event_choice's indexing) can use this list directly without
     it ever desyncing against what's actually on screen."""
     return [option for option in event.options if not option.relic_cost or run.relics]
+
+
+def can_afford_option(option: EventOption, run: RunState, unlimited_currency: bool = False) -> bool:
+    """Whether `run` can actually pay `option`'s own costs right now --
+    enough shop currency for a negative shop_currency_delta, and enough
+    lives that a negative lives_delta still leaves at least one. An
+    unaffordable option is still shown (greyed out, see ui.
+    draw_event_screen) but can't be chosen -- unlike a relic_cost option
+    with no relics to give up, it isn't dropped from available_options(),
+    since dropping one mid-tuple would shift every later option's index.
+    Without this check, resolve_event_option()'s own clamps would let the
+    option's reward through with its cost silently floored away (a free
+    tower or relic at 0 currency or 1 life). `unlimited_currency` mirrors
+    the Shop's own --unlimited-gold/sandbox waiver (shop.can_afford) for
+    the currency half only -- lives are never waived."""
+    if option.shop_currency_delta < 0 and not unlimited_currency and run.shop_currency + option.shop_currency_delta < 0:
+        return False
+    return not (option.lives_delta < 0 and run.lives + option.lives_delta < 1)
 
 
 def resolve_event_option(

@@ -460,6 +460,11 @@ class BossEnemy(Enemy):
             return 0.0
         if self.armor_timer > 0:
             amount = max(0.0, amount - self.ARMOR_FLAT_REDUCTION)
+            if amount <= 0:
+                # Fully absorbed -- return before super() so no 0-damage
+                # event (a floating "0" popup) is recorded, same as
+                # ShieldedEnemy's own fully-absorbed hit.
+                return 0.0
         applied = super().take_damage(amount)
         if self.is_dead:
             return applied  # a killing blow -- no mechanic left to trigger
