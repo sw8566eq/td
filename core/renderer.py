@@ -165,7 +165,7 @@ class Renderer:
                 game._hovered_map_node(),
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
-                first_run=game._map_is_first_run, ascension_level=run.ascension,
+                first_run=game._map_is_first_run, ascension_level=run.ascension, act_number=run.act + 1,
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -189,7 +189,7 @@ class Renderer:
                 game.screen, game.font, game.small_font, game._reward_cards(), game.reward_rects,
                 game._hovered_reward_card(), game.reward_claimed_indices,
                 [game._reward_card_available(i) for i in range(len(game.reward_rects))],
-                game.shop_continue_button_rect, is_elite=node.node_type == "elite",
+                game.shop_continue_button_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -248,7 +248,7 @@ class Renderer:
         # FLOOR_CLEARED's own screen already uses, just also shown live
         # during PLAYING itself now, not only between floors.
         floor_label = (
-            f"Floor {game.active_run.current_row + 1}/{game.active_run.map.final_row_index + 1}"
+            f"Act {game.active_run.act + 1}  Floor {game.active_run.current_row + 1}/{game.active_run.map.final_row_index + 1}"
             if game.active_run is not None else None
         )
         if game.active_run is not None and game.active_run.ascension:
@@ -311,6 +311,7 @@ class Renderer:
                 game.screen, game.font, game.small_font,
                 node.row + 1, game.active_run.map.final_row_index + 1,
                 game._cached_tower_results,
+                act_cleared=game.active_run.act + 1 if node.node_type == "boss" else None,
             )
 
         # Drawn last, on top of any overlay -- a toast is most often queued

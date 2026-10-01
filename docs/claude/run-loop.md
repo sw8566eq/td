@@ -61,8 +61,8 @@ currency (`shop.income_for_floor`, with an Elite bonus -- see above). One detail
 next node isn't loaded until the player picks it from the map, which is what leaves `self.towers`/
 `self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
-A run ends **only** by permadeath. The map's boss node (the sole node in its final row) always loads
-`endless=True`, so `all_waves_complete` structurally can never fire for it, and `update()`'s win-check
+A run is `run_map.ACT_COUNT` (3) acts -- see "Acts" below. A run ends **only** by permadeath. The final
+act's boss node (the sole node in its final row) always loads `endless=True`, so `all_waves_complete` structurally can never fire for it, and `update()`'s win-check
 routes a run to `_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the
 run" event by construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
 `progression/run_history.py` and bumps the meta-progression counters; `RunState.floors_cleared` (what both of
@@ -106,3 +106,21 @@ max semantics, never a threshold registry entry), cached on `Game.highest_ascens
 re-reads the file per frame; `_handle_boss_defeated` -> `_unlock_next_ascension` raises it (never for
 Daily/Sandbox) and auto-advances `selected_ascension` if the player was at the top. The menu's
 Left/Right (`change_selected_ascension`) is caught before the "any key starts a run" catch-all.
+
+## Acts
+
+`RunState.act` (0-based, `< run_map.ACT_COUNT`) says which act's map `RunState.map` is. Only the last
+act's boss is endless (`RunState.is_final_floor` = final act *and* final row); an earlier act's boss is
+an ordinary finite floor, so `update()`'s win-check routes it through `_advance_run_floor` like any
+floor (which also bumps `bosses_defeated` + the `acts_cleared` achievement counter there -- the endless
+final boss still goes through `_handle_boss_defeated` instead, the only place Ascension unlocks).
+Its reward (`rewards.build_combat_reward(..., is_boss=True)`) is a pick-one `boss_relic_choices` row
+plus a potion, no towers; leaving it calls `Game._leave_reward_screen` -> `_advance_act`: bank
+`floors_cleared` into `floors_cleared_prior_acts`, bump `act`, generate a fresh map from
+`Random(f"{seed}:act:{act}")` (act 0 still uses `Random(seed)`, so existing seeds are unchanged), clear
+`visited_node_ids`/`current_node_id`, heal `ACT_HEAL_LIVES`. Node ids repeat across acts, so
+`_run_rng` folds `act{n}:` into the key for act >= 1 (again leaving act 0 byte-identical). Everything
+that scaled by `node.row` now reads `run.depth_of(node.row)` (= `act * ROW_COUNT + row`): escalation,
+relic modifiers, shop income, rest heal, treasure, Liquid Gold. The first-node lives capture is
+gated on `act == 0` so act 2's first node restores the carried lives instead of re-capturing.
+`floors_cleared` counts combat/elite/boss nodes (a visited boss is always an earlier act's).

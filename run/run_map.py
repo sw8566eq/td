@@ -31,6 +31,11 @@ from world.levels import LEVELS, Level
 # momentum's escalating bonus) meaning the same thing they always did: a
 # node at row 3 escalates exactly like floor_index=3 used to.
 ROW_COUNT = 6
+# A run is ACT_COUNT maps back to back, Slay the Spire style: beating an
+# act's boss moves the run onto a fresh, deeper map (Game._advance_act).
+# Only the last act's boss is endless (the run's score chase); see
+# RunState.depth for how escalation keeps climbing across acts.
+ACT_COUNT = 3
 # The horizontal grid every row's node columns are drawn from -- not every
 # row uses every column (see MIN_ROW_WIDTH/MAX_ROW_WIDTH), just enough to
 # lay a row's actual nodes out with real gaps between them.

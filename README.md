@@ -55,17 +55,22 @@ node types:
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
 
-The final row is always a single **Boss** node. It loads in Endless mode from the very start, so its
-waves never run out and there's no "you won the run" screen -- while the boss itself is still alive
-it periodically reinforces (or, on the other boss level, shields itself), and defeating it just means
-the fight keeps going, now boss-free. A run ends only by **permadeath** -- losing your last life --
-which records the run (`progression/run_history.py`, keyed by seed, keeping your best result) and banks its
-progress toward the next one.
+The final row is always a single **Boss** node, and a run is **three acts** -- three maps back to
+back, Slay the Spire style. Beating Act 1's or Act 2's boss clears it like any floor, then lets you
+pick one of three boss relics (plus a potion) and moves you on to the next act's fresh map, healing
+10 lives on the way. Every act is harder than the last: escalation keeps counting rows across acts,
+so Act 2's first fight is tougher than Act 1's boss. **Act 3's boss** loads in Endless mode from the
+very start, so its waves never run out and there's no "you won the run" screen -- while the boss
+itself is still alive it periodically reinforces (or, on the other boss level, shields itself), and
+defeating it just means the fight keeps going, now boss-free, for score. A run ends only by
+**permadeath** -- losing your last life -- which records the run (`progression/run_history.py`,
+keyed by seed, keeping your best result) and banks its progress toward the next one.
 
-Clearing a Combat or Elite floor's waves shows a **Floor Cleared** results screen, then returns you
-to the map to pick your next node. The Boss floor never reaches that screen -- it's Endless from the
-start, so its waves never technically finish (see above); every other node type resolves in its own
-screen instead and returns you to the map the same way.
+Clearing a Combat, Elite, or act Boss floor's waves shows a **Floor Cleared** results screen, then
+the reward screen (see "Rewards and potions" below), then returns you to the map to pick your next
+node. The final boss never reaches that screen -- it's Endless from the start, so its waves never
+technically finish (see above); every other node type resolves in its own screen instead and returns
+you to the map the same way.
 
 Three things make each floor harder than the last: the level itself gets more complex the deeper the
 row, a per-floor **escalation** multiplies enemy HP/speed/gold reward on top of your difficulty
@@ -101,7 +106,7 @@ fire faster for a few seconds. Potions carry between floors until used.
 
 ## Ascension
 
-Defeating a run's boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks
+Defeating a run's final (Act 3) boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks
 the next one, up to 10. Each level keeps every rule below it and adds one more: tougher Elites, more
 enemy HP, less starting gold per floor, tougher bosses, weaker Rest sites, fewer starting lives,
 faster enemies, pricier Shops, one fewer tower on each reward screen, and finally even more enemy HP.
