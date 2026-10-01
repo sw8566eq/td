@@ -279,3 +279,18 @@ def has_unlocked_third_relic_slot(path: str = META_PROGRESSION_PATH) -> bool:
     id, so a plain bool is the natural shape rather than a pool/set."""
     state = load_meta_progression(path)
     return "unlock_third_relic_slot" in state["unlocked"]
+
+
+# Ascension (run/ascension.py) -- the highest level this account may
+# pick. Not a threshold unlock: it's the counter itself, raised (never
+# lowered, see threshold_unlocks.set_counter) whenever a boss falls.
+HIGHEST_ASCENSION_COUNTER = "highest_ascension"
+
+
+def highest_unlocked_ascension(path: str = META_PROGRESSION_PATH) -> int:
+    return load_meta_progression(path)["counters"].get(HIGHEST_ASCENSION_COUNTER, 0)
+
+
+def unlock_ascension(level: int, path: str = META_PROGRESSION_PATH) -> None:
+    """Raise the highest unlocked ascension to at least `level`."""
+    threshold_unlocks.set_counter(ALL_UNLOCKS, HIGHEST_ASCENSION_COUNTER, level, path, SCHEMA_VERSION)

@@ -140,6 +140,10 @@ class InputHandler:
                 # -- without this it would fall through to the catch-all
                 # below and silently start a brand-new run.
                 pass
+            elif key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # Pick the next run's Ascension (see run/ascension.py) --
+                # never starts a run itself.
+                game.change_selected_ascension(1 if key == pygame.K_RIGHT else -1)
             else:
                 # letter, not the raw pygame key constant, so this stays in
                 # lockstep with ui.MENU_KEY_HINTS/MENU_KEY_LETTERS -- the

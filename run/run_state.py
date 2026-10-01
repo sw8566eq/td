@@ -117,6 +117,9 @@ class RunState:
     # Tower types forged at a Rest node's Smith (Game._forge_tower) --
     # every copy placed afterward starts one level up, for free.
     forged_towers: list[str] = field(default_factory=list)
+    # This run's Ascension level (run/ascension.py), snapshotted at
+    # start_new_run and never changed mid-run.
+    ascension: int = 0
 
     @property
     def current_level_id(self) -> object:
