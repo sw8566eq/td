@@ -18,6 +18,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- **Commanders**: pick one before every run -- The Warden, The Alchemist, The Marksman, The Engineer
+  -- each with its own three starter towers and signature starting relic (plus starting potions or a
+  pre-forged tower for some). Three unlock through play, shown on the Unlocks screen.
 - **Three acts per run**: beating Act 1's and Act 2's boss now clears it like a floor, offers a
   pick-one-of-three **boss relic** plus a potion, heals 10 lives, and moves the run onto a fresh,
   harder map. Only Act 3's boss is the endless score chase. Two new achievements (Into the Depths,

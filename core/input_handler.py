@@ -83,6 +83,8 @@ class InputHandler:
                     self._handle_map_click(event.pos)
                 elif game.state == GameState.REWARD:
                     self._handle_reward_click(event.pos)
+                elif game.state == GameState.COMMANDER_SELECT:
+                    self._handle_commander_select_click(event.pos)
                 elif game.state == GameState.EVENT:
                     self._handle_event_click(event.pos)
                 elif game.state == GameState.REST:
@@ -173,7 +175,12 @@ class InputHandler:
                     elif letter == "u":
                         game._enter_unlocks()
                 else:
-                    game.start_new_run()
+                    game._enter_commander_select()
+        elif game.state == GameState.COMMANDER_SELECT:
+            # Picking is mouse-only (like the Shop's cards); Escape backs
+            # out to the menu without starting anything.
+            if key == pygame.K_ESCAPE:
+                game.state = GameState.MENU
         elif game.state == GameState.HELP:
             # Split out of the group just below: Help can be opened from
             # the run map too (see the MAP branch's own H), so its Esc goes
@@ -662,6 +669,11 @@ class InputHandler:
             index = ui.get_clicked_draft_choice(pos, game.rest_smith_rects)
             if index is not None:
                 game._forge_tower(game.rest_smith_choices[index])
+
+    def _handle_commander_select_click(self, pos):
+        index = ui.get_clicked_draft_choice(pos, self.game.commander_rects)
+        if index is not None:
+            self.game._choose_commander(index)
 
     def _handle_reward_click(self, pos):
         """A click on the post-combat reward screen -- Continue/Skip (back

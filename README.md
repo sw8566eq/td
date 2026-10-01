@@ -34,10 +34,16 @@ moving just the `td` binary out on its own would leave those behind.
 
 ## Runs
 
-Press any unbound key at the main menu to start a run. That generates a **branching map** -- six
-rows of nodes, shown to you in full from the start, no fog of war -- and hands you a starter pool of
-three towers: Basic, Cannon, and Frost (`card_pool.STARTER_TOWERS`). The build menu shows only those
-three at first; the rest exist but you can't build them until you've unlocked them (see
+Press any unbound key at the main menu, then pick a **Commander** -- Slay the Spire's characters. Each
+one sets your three starter towers and a signature starting relic: **The Warden** (Basic, Cannon,
+Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
+Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
+and **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) unlock as you play.
+The Daily Run always uses The Warden.
+
+That generates a **branching map** -- six rows of nodes, shown to you in full from the start, no fog
+of war. The build menu shows only your three starter towers at first; more join your run from
+rewards, the Shop, and Events (and the full pool grows as you unlock towers -- see
 "Meta-progression" below).
 
 Row 0 is always three Combat choices -- your very first click always starts a real fight. From

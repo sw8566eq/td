@@ -31,6 +31,7 @@ from entities import effects
 from entities.tower import TOWER_TYPES
 from progression import achievements, meta_progression, progress
 from run import relics
+from run.commanders import COMMANDERS
 from support import settings
 from world.levels import LEVELS
 
@@ -137,6 +138,9 @@ class ProgressTracker:
             elif key in meta_progression.LEVEL_META_UNLOCKS:
                 unlock = meta_progression.LEVEL_META_UNLOCKS[key]
                 self._queue_toast(f"New level unlocked: {LEVELS[unlock.level_id].name}!")
+            elif key in meta_progression.COMMANDER_META_UNLOCKS:
+                unlock = meta_progression.COMMANDER_META_UNLOCKS[key]
+                self._queue_toast(f"New commander unlocked: {COMMANDERS[unlock.commander_key].display_name}!")
             else:
                 self._queue_toast("New Shop upgrade unlocked: a 3rd relic offer every visit!")
 

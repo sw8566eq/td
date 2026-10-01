@@ -199,6 +199,29 @@ SHOP_META_UNLOCKS: dict[str, ShopMetaUnlock] = {
     "unlock_third_relic_slot": ShopMetaUnlock("unlock_third_relic_slot", "total_floors_cleared", 100),
 }
 
+class CommanderMetaUnlock:
+    """One registry entry -- `commander_key` (a run/commanders.COMMANDERS
+    key) becomes pickable on the Commander select screen once `counter`
+    reaches `goal`. Same shape as MetaUnlock/RelicMetaUnlock/
+    LevelMetaUnlock."""
+
+    def __init__(self, key: str, commander_key: str, counter: str, goal: int) -> None:
+        self.key = key
+        self.commander_key = commander_key
+        self.counter = counter
+        self.goal = goal
+
+
+# Every Commander but the default (commanders.DEFAULT_COMMANDER, always
+# available) -- an early, a mid and a late chase, so a new player meets a
+# second Commander after their very first run.
+COMMANDER_META_UNLOCKS: dict[str, CommanderMetaUnlock] = {
+    "unlock_alchemist": CommanderMetaUnlock("unlock_alchemist", "alchemist", "runs_played", 1),
+    "unlock_marksman": CommanderMetaUnlock("unlock_marksman", "marksman", "total_floors_cleared", 8),
+    "unlock_engineer": CommanderMetaUnlock("unlock_engineer", "engineer", "bosses_defeated", 1),
+}
+
+
 # Every registry above shares one JSON file's flat {"counters": ..,
 # "unlocked": {key, ...}} state -- a single combined dict lets bump() below
 # unlock across all four content kinds from one shared counter (e.g.
@@ -206,8 +229,8 @@ SHOP_META_UNLOCKS: dict[str, ShopMetaUnlock] = {
 # know in advance which registry a given counter_name belongs to. Key
 # namespaces never collide (every key is its own "unlock_<name>" string),
 # so merging is safe.
-ALL_UNLOCKS: dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock | ShopMetaUnlock] = {
-    **META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS,
+ALL_UNLOCKS: dict[str, MetaUnlock | RelicMetaUnlock | LevelMetaUnlock | ShopMetaUnlock | CommanderMetaUnlock] = {
+    **META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS, **COMMANDER_META_UNLOCKS,
 }
 
 
@@ -294,3 +317,18 @@ def highest_unlocked_ascension(path: str = META_PROGRESSION_PATH) -> int:
 def unlock_ascension(level: int, path: str = META_PROGRESSION_PATH) -> None:
     """Raise the highest unlocked ascension to at least `level`."""
     threshold_unlocks.set_counter(ALL_UNLOCKS, HIGHEST_ASCENSION_COUNTER, level, path, SCHEMA_VERSION)
+
+
+def unlocked_commanders(default: str, path: str = META_PROGRESSION_PATH) -> set[str]:
+    """`default` (commanders.DEFAULT_COMMANDER, passed in rather than
+    imported for the same circular-import reason unlocked_tower_pool
+    doesn't import card_pool) plus every COMMANDER_META_UNLOCKS entry this
+    account has reached -- by its recorded unlock *or* its counter already
+    being at goal, so an account that crossed a threshold before this
+    registry existed doesn't have to wait for that counter's next bump."""
+    state = load_meta_progression(path)
+    counters = state["counters"]
+    return {default} | {
+        unlock.commander_key for key, unlock in COMMANDER_META_UNLOCKS.items()
+        if key in state["unlocked"] or counters.get(unlock.counter, 0) >= unlock.goal
+    }
