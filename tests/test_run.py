@@ -3440,3 +3440,31 @@ def test_render_treasure_does_not_crash(game):
     game._enter_node("1-0")
 
     game.render()
+
+
+# --- Run-over summary ---
+
+
+def test_run_summary_lines_recap_progress_and_identity():
+    run = RunState(seed=1, map=make_linear_run_map(["combat", "combat"]), difficulty="normal",
+                   unlocked_towers=[], visited_node_ids=["0-0"], act=1, floors_cleared_prior_acts=6,
+                   commander="alchemist", ascension=2, relics=["lucky_strikes"])
+    assert ui.run_summary_lines(run) == [
+        "Act 2, 7 floors cleared", "The Alchemist, Ascension 2, 1 relic",
+    ]
+    run.boss_defeated = True
+    run.ascension = 0
+    run.relics = []
+    run.floors_cleared_prior_acts = 0
+    assert ui.run_summary_lines(run) == [
+        "Act 2, 1 floor cleared -- final boss defeated!", "The Alchemist, 0 relics",
+    ]
+
+
+def test_render_run_over_with_summary_and_toasts_does_not_crash(game):
+    start_first_floor(game, seed=1)
+    game.economy.lives = 0
+    game.update(dt=0.01)
+    assert game.state == GameState.GAME_OVER
+    game._queue_toast("A toast with a backing plate")
+    game.render()
