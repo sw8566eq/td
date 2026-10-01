@@ -114,6 +114,9 @@ class RunState:
     # Potion keys currently held (potions.py) -- at most potions.
     # POTION_SLOTS, duplicates allowed, consumed by Game.use_potion.
     potions: list[str] = field(default_factory=list)
+    # Tower types forged at a Rest node's Smith (Game._forge_tower) --
+    # every copy placed afterward starts one level up, for free.
+    forged_towers: list[str] = field(default_factory=list)
 
     @property
     def current_level_id(self) -> object:

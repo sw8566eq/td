@@ -244,7 +244,7 @@ def _format_currency(value, unlimited):
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
-             floor_label=None, boss_defeated=False):
+             floor_label=None, boss_defeated=False, forged_towers=()):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -279,6 +279,11 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         cost_text = small_font.render(str(tower_cls.cost), True, settings.COLOR_TEXT)
         cost_rect = cost_text.get_rect(center=(rect.centerx, rect.bottom - 10))
         surface.blit(cost_text, cost_rect)
+        if name in forged_towers:
+            # A forged type (see Game._forge_tower) -- Slay the Spire's own
+            # "+" for an upgraded card.
+            plus = small_font.render("+", True, settings.COLOR_GOLD)
+            surface.blit(plus, plus.get_rect(topright=(rect.right - 3, rect.y + 1)))
 
     # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
     # menu shows only its own drafted subset (see build_button_rects), and
@@ -671,7 +676,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "elite": "A harder floor -- pays more Shop currency on clear.",
     "shop": "Spend Shop currency on new towers and relics.",
     "event": "A short encounter with a few fixed choices.",
-    "rest": "Heals some of your lives, no choice involved.",
+    "rest": "Rest to heal lives, or Smith to forge a tower (placed at level 2).",
     "treasure": "A guaranteed relic, plus some Shop currency.",
     "boss": "The run's final fight -- continues endlessly once cleared.",
 }
@@ -980,20 +985,100 @@ def draw_event_screen(surface, font, small_font, event, options, option_rects, h
     surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
 
 
-def draw_rest_screen(surface, font, small_font, heal_amount, lives_after):
-    """A Rest node's static, already-resolved screen (see Game.
-    _enter_rest_node -- there's no player choice here, unlike Event/Shop)."""
+SMITH_CHOICE_WIDTH = 220
+SMITH_CHOICE_HEIGHT = 56
+SMITH_CHOICE_GAP = 16
+SMITH_CHOICE_COLUMNS = 4
+SMITH_CHOICES_TOP = 250
+REST_BACK_BUTTON_WIDTH = 160
+REST_BACK_BUTTON_HEIGHT = 40
+
+
+def build_smith_choice_rects(count):
+    """`count` rects for the Smith's tower picker, a centered grid of
+    SMITH_CHOICE_COLUMNS columns -- a run can hold all 12 towers, too many
+    for build_draft_choice_rects' single row of full cards."""
+    rects = []
+    for index in range(count):
+        row, col = divmod(index, SMITH_CHOICE_COLUMNS)
+        in_this_row = min(SMITH_CHOICE_COLUMNS, count - row * SMITH_CHOICE_COLUMNS)
+        row_width = in_this_row * SMITH_CHOICE_WIDTH + (in_this_row - 1) * SMITH_CHOICE_GAP
+        start_x = (settings.SCREEN_WIDTH - row_width) // 2
+        rects.append(pygame.Rect(
+            start_x + col * (SMITH_CHOICE_WIDTH + SMITH_CHOICE_GAP),
+            SMITH_CHOICES_TOP + row * (SMITH_CHOICE_HEIGHT + SMITH_CHOICE_GAP),
+            SMITH_CHOICE_WIDTH, SMITH_CHOICE_HEIGHT,
+        ))
+    return rects
+
+
+def build_rest_back_rect():
+    """The Smith picker's Back button (returns to the Rest/Smith choice),
+    centered under the deepest possible grid (12 towers = 3 rows)."""
+    rows = math.ceil(len(TOWER_TYPES) / SMITH_CHOICE_COLUMNS)
+    y = SMITH_CHOICES_TOP + rows * (SMITH_CHOICE_HEIGHT + SMITH_CHOICE_GAP) + 20
+    return pygame.Rect((settings.SCREEN_WIDTH - REST_BACK_BUTTON_WIDTH) // 2, y,
+                       REST_BACK_BUTTON_WIDTH, REST_BACK_BUTTON_HEIGHT)
+
+
+def _draw_option_box(surface, small_font, rect, label, description, enabled, hovered):
+    """One Event-style option box -- label on top, wrapped description
+    under it; shared by the Rest screen's two choices."""
+    fill_color = settings.COLOR_BUTTON_SELECTED if (enabled and hovered) else settings.COLOR_HUD_BG
+    pygame.draw.rect(surface, fill_color, rect, border_radius=8)
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+    label_surface = small_font.render(label, True, settings.COLOR_GOLD if enabled else settings.COLOR_TEXT_DIM)
+    surface.blit(label_surface, label_surface.get_rect(midtop=(rect.centerx, rect.y + 10)))
+    desc_y = rect.y + 16 + label_surface.get_height()
+    for line in _wrap_text(description, small_font, rect.width - 24):
+        desc = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+        surface.blit(desc, desc.get_rect(midtop=(rect.centerx, desc_y)))
+        desc_y += desc.get_height() + 2
+
+
+def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, option_rects, smith_choices,
+                     smith_rects, back_rect, forged_tower, hovered_index):
+    """A Rest node's campfire (see Game._enter_rest_node), by `phase`:
+    "choose" shows Rest and Smith as two Event-style options; "smith" a
+    grid of `smith_choices` tower names to forge, plus Back; "resolved"
+    what happened (`forged_tower` set for Smith, None for Rest)."""
     surface.fill(settings.COLOR_BG)
     center_x = settings.SCREEN_WIDTH // 2
-    mid_y = settings.SCREEN_HEIGHT // 2
     title = font.render("Rest Site", True, settings.COLOR_GOLD)
-    surface.blit(title, title.get_rect(center=(center_x, mid_y - 50)))
-    heal_line = small_font.render(f"You rest and recover {heal_amount} lives.", True, settings.COLOR_TEXT)
-    surface.blit(heal_line, heal_line.get_rect(center=(center_x, mid_y)))
-    lives_line = small_font.render(f"Lives: {lives_after}", True, settings.COLOR_LIVES)
-    surface.blit(lives_line, lives_line.get_rect(center=(center_x, mid_y + 30)))
-    hint = small_font.render("Press any key or click to continue", True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint, hint.get_rect(center=(center_x, mid_y + 70)))
+    surface.blit(title, title.get_rect(midtop=(center_x, 70)))
+    lives_line = small_font.render(f"Lives: {lives}", True, settings.COLOR_LIVES)
+    surface.blit(lives_line, lives_line.get_rect(midtop=(center_x, 120)))
+
+    if phase == "choose":
+        can_smith = bool(smith_choices)
+        _draw_option_box(surface, small_font, option_rects[0], "Rest",
+                         f"Recover {heal_amount} lives.", True, hovered_index == 0)
+        smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
+                      if can_smith else "Every tower you hold is already forged.")
+        _draw_option_box(surface, small_font, option_rects[1], "Smith", smith_text, can_smith, hovered_index == 1)
+    elif phase == "smith":
+        prompt = small_font.render("Choose a tower to forge", True, settings.COLOR_TEXT)
+        surface.blit(prompt, prompt.get_rect(midtop=(center_x, SMITH_CHOICES_TOP - 50)))
+        for index, name in enumerate(smith_choices):
+            rect = smith_rects[index]
+            fill_color = settings.COLOR_BUTTON_SELECTED if index == hovered_index else settings.COLOR_HUD_BG
+            pygame.draw.rect(surface, fill_color, rect, border_radius=8)
+            pygame.draw.rect(surface, settings.COLOR_BUTTON, rect, width=2, border_radius=8)
+            label = small_font.render(TOWER_TYPES[name].display_name, True, settings.COLOR_GOLD)
+            surface.blit(label, label.get_rect(center=rect.center))
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, back_rect, border_radius=6)
+        back_label = small_font.render("Back", True, settings.COLOR_TEXT)
+        surface.blit(back_label, back_label.get_rect(center=back_rect.center))
+    else:
+        if forged_tower is None:
+            text = f"You rest and recover {heal_amount} lives."
+        else:
+            text = f"{TOWER_TYPES[forged_tower].display_name} forged: it is now placed at level 2, for free."
+        line = small_font.render(text, True, settings.COLOR_TEXT)
+        surface.blit(line, line.get_rect(center=(center_x, settings.SCREEN_HEIGHT // 2)))
+        hint = small_font.render("Press any key or click to continue", True, settings.COLOR_TEXT_DIM)
+        surface.blit(hint, hint.get_rect(center=(center_x, settings.SCREEN_HEIGHT // 2 + 40)))
+
     esc_hint = small_font.render("Esc -- Quit", True, settings.COLOR_TEXT_DIM)
     surface.blit(esc_hint, (60, settings.SCREEN_HEIGHT - 40))
 

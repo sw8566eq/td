@@ -15,6 +15,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   run's fights -- click one to use it. Six to start: Fire Bomb, Frost Flask, Marking Dust, Liquid
   Gold, Mending Salve, Overclock Elixir. Elite floors always drop one; ordinary fights sometimes do.
   Two new achievements (First Sip, Alchemist) track potion use.
+- **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
+  every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
+  cards; forged towers show a `+` on their build button).
 
 - Real art for the last 2 towers (Siphon, Overload Cannon) and all 7 remaining enemy species
   (`boss`/`shielded`/`splitter`/`splitter_child`/`healer`/`final_boss`/`final_boss_shielded`) --

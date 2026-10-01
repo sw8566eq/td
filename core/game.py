@@ -307,11 +307,18 @@ class Game:
         self.event_phase = "choose"
         self.event_chosen_option = None
         self.event_resolution = None
-        # A Rest node's own result, for GameState.REST's static screen to
-        # show -- set once, by _enter_rest_node, the instant the node
-        # auto-resolves (there's no player choice to make on this screen,
-        # unlike Event/Shop).
+        # A Rest node's own three-phase state (see _enter_rest_node):
+        # "choose" between Rest and Smith, "smith" while picking which
+        # tower to forge, "resolved" once one's done. rest_heal_amount is
+        # what Rest would heal (shown on its option before choosing);
+        # rest_forged_tower is Smith's pick once made (None after a Rest).
+        self.rest_phase = "choose"
         self.rest_heal_amount = 0
+        self.rest_forged_tower = None
+        self.rest_option_rects = ui.build_event_option_rects(2)
+        self.rest_smith_choices = []
+        self.rest_smith_rects = []
+        self.rest_back_rect = ui.build_rest_back_rect()
         # A Treasure node's own result, for GameState.TREASURE's static
         # screen to show -- set once, by _enter_treasure_node, the instant
         # the node auto-resolves. treasure_granted_relic is None once every
@@ -1053,14 +1060,43 @@ class Game:
         self.event_phase = "resolved"
 
     def _enter_rest_node(self, node):
-        """A Rest node auto-resolves the instant it's entered -- no player
-        choice to make, unlike Shop/Event -- healing run.lives by run_map.
-        heal_amount_for_row(node.row) and showing a static confirmation
-        screen (see ui.draw_rest_screen)."""
-        heal = run_map.heal_amount_for_row(node.row)
-        self.active_run.lives += heal
-        self.rest_heal_amount = heal
+        """A Rest node offers Slay the Spire's campfire choice: Rest (heal
+        run.lives by run_map.heal_amount_for_row(node.row)) or Smith (forge
+        one held tower type -- see _forge_tower). Nothing happens until the
+        player picks one (see _choose_rest_option)."""
+        self.rest_heal_amount = run_map.heal_amount_for_row(node.row)
+        self.rest_forged_tower = None
+        self.rest_phase = "choose"
+        self.rest_smith_choices = self._forgeable_towers()
+        self.rest_smith_rects = ui.build_smith_choice_rects(len(self.rest_smith_choices))
         self.state = GameState.REST
+
+    def _forgeable_towers(self):
+        """Every tower the run holds and hasn't forged yet, in build-menu
+        order -- what Smith can pick from."""
+        run = self.active_run
+        return [name for name in self._active_tower_names() if name not in run.forged_towers]
+
+    def _handle_rest_click(self, pos):
+        return self.input_handler._handle_rest_click(pos)
+
+    def _choose_rest_option(self, index):
+        """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
+        tower) -- Smith is a no-op once there's nothing left to forge."""
+        if index == 0:
+            self.active_run.lives += self.rest_heal_amount
+            self.rest_phase = "resolved"
+        elif self.rest_smith_choices:
+            self.rest_phase = "smith"
+
+    def _forge_tower(self, name):
+        """Forge `name` for the rest of the run: every copy placed from
+        now on starts at level 2 for free (see try_place_tower) -- the
+        tower defense take on Slay the Spire's upgraded cards."""
+        self.active_run.forged_towers.append(name)
+        self.rest_forged_tower = name
+        self.rest_phase = "resolved"
+        self.audio.play("tower_upgraded")
 
     def _enter_treasure_node(self, node):
         """A Treasure node auto-resolves the instant it's entered -- a
@@ -1499,7 +1535,11 @@ class Game:
         from before these existed resumable rather than KeyError-ing."""
         tower_cls = TOWER_TYPES[tower_data["type"]]
         tower = self._construct_tower(tower_cls, tower_data["anchor_col"], tower_data["anchor_row"])
-        for _ in range(tower_data["level"] - 1):
+        # Replays a forged tower's free level the same way it was first
+        # reached (see _apply_forge), so its refund value survives a resume.
+        if tower_data.get("forged", False):
+            self._apply_forge(tower)
+        for _ in range(tower_data["level"] - tower.level):
             tower.upgrade()
         if tower_data["specialization"] is not None:
             tower.specialize(tower_data["specialization"])
@@ -1859,6 +1899,8 @@ class Game:
 
         self._spend_gold(tower_cls.cost)
         tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
+        if self.active_run is not None and self.selected_tower_name in self.active_run.forged_towers:
+            self._apply_forge(tower)
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
@@ -1961,6 +2003,14 @@ class Game:
         tower.relic_cannon_targets_flying = self.relic_modifiers.cannon_targets_flying
         tower.relic_cannon_projectile_speed_bonus_multiplier = self.relic_modifiers.cannon_projectile_speed_multiplier
         return tower
+
+    def _apply_forge(self, tower):
+        """A forged tower type's free head start (see _forge_tower): one
+        level up at no cost -- total_invested stays at the base placement
+        cost, so selling it doesn't refund gold that was never spent."""
+        tower.upgrade()
+        tower.total_invested = tower.cost
+        tower.forged = True
 
     def _current_footprint_subtiles(self):
         """How many subtiles square a freshly-constructed tower's
@@ -2447,6 +2497,12 @@ class Game:
         currently over, or None -- same purpose _hovered_draft_choice
         serves for the Shop screen's own cards."""
         return ui.get_clicked_event_option(pygame.mouse.get_pos(), self.event_option_rects)
+
+    def _hovered_rest_rect_index(self):
+        """Index of the Rest screen's option (choose phase) or Smith tower
+        (smith phase) under the mouse, or None."""
+        rects = self.rest_option_rects if self.rest_phase == "choose" else self.rest_smith_rects
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), rects)
 
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered
