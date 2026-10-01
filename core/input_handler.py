@@ -81,6 +81,8 @@ class InputHandler:
                     self._handle_draft_click(event.pos)
                 elif game.state == GameState.MAP:
                     self._handle_map_click(event.pos)
+                elif game.state == GameState.REWARD:
+                    self._handle_reward_click(event.pos)
                 elif game.state == GameState.EVENT:
                     self._handle_event_click(event.pos)
                 elif game.state in (GameState.REST, GameState.TREASURE):
@@ -306,6 +308,13 @@ class InputHandler:
             if key == pygame.K_ESCAPE:
                 game.running = False
             elif key not in keybindings.MODIFIER_KEY_CODES:  # e.g. Alt from Alt-Tab -- same as MENU
+                game._enter_reward_screen()
+        elif game.state == GameState.REWARD:
+            # Picking a card is mouse-only, same as DRAFT below; Enter
+            # skips whatever's left, same as clicking Continue/Skip.
+            if key == pygame.K_ESCAPE:
+                game.running = False
+            elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 game._enter_map()
         elif game.state == GameState.MAP:
             # No keyboard equivalent for picking a node, same as the build
@@ -631,6 +640,17 @@ class InputHandler:
         if node_id is None or node_id not in game._available_node_ids():
             return
         game._enter_node(node_id)
+
+    def _handle_reward_click(self, pos):
+        """A click on the post-combat reward screen -- Continue/Skip (back
+        to the map, leaving anything unclaimed) or one reward card."""
+        game = self.game
+        if game.shop_continue_button_rect.collidepoint(pos):
+            game._enter_map()
+            return
+        index = ui.get_clicked_draft_choice(pos, game.reward_rects)
+        if index is not None:
+            game._take_reward_card(index)
 
     def _handle_draft_click(self, pos):
         """A click anywhere on the Shop screen -- either the Continue

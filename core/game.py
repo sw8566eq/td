@@ -22,6 +22,7 @@ from run import (
     difficulty,
     events,
     relics,
+    rewards,
     run_escalation,
     run_map,
     shop,
@@ -50,6 +51,7 @@ _DRAFT_RNG_STREAM = "draft"
 _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's own id
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
+_REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
 # params -- both dataclasses are frozen, so one shared instance is safe to
@@ -150,6 +152,10 @@ class GameState(Enum):
     EVENT = auto()
     REST = auto()
     TREASURE = auto()
+    # The post-combat reward screen (see rewards.py/Game._enter_reward_
+    # screen) -- reached from FLOOR_CLEARED, full-screen like the other
+    # run screens above, and always leads back to MAP.
+    REWARD = auto()
 
 
 class Game:
@@ -313,6 +319,15 @@ class Game:
         # degrades the same way.
         self.treasure_granted_relic = None
         self.treasure_granted_currency = 0
+        # The post-combat reward screen's own state (see _enter_reward_
+        # screen) -- `reward` is a rewards.CombatReward, `reward_rects` one
+        # Rect per card (tower choices first, then the Elite relic, if
+        # any), reward_taken_tower/reward_relic_taken what's been claimed
+        # so far this visit.
+        self.reward = None
+        self.reward_rects = []
+        self.reward_taken_tower = None
+        self.reward_relic_taken = False
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -736,6 +751,59 @@ class Game:
         self._record_achievement("bosses_defeated")
         self.audio.play("boss_defeated")
         self._queue_toast("Boss defeated! Fighting on for score...")
+
+    # --- Post-combat rewards ---
+
+    def _enter_reward_screen(self):
+        """Leave FLOOR_CLEARED for this floor's post-combat reward (see
+        rewards.py) -- straight on to the map instead if there's nothing
+        left to offer (every tower already held, and no Elite relic).
+        Keyed on the cleared node's own id, so the same seed always
+        rewards the same cards and a reroll-by-reload can't fish for a
+        better pick."""
+        run = self.active_run
+        node = run.map.node(run.current_node_id)
+        rng = self._run_rng(run, _REWARD_RNG_STREAM, node.id)
+        self.reward = rewards.build_combat_reward(
+            rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
+        )
+        if self.reward.is_empty:
+            self._enter_map()
+            return
+        self.reward_rects = ui.build_draft_choice_rects(len(self._reward_cards()))
+        self.reward_taken_tower = None
+        self.reward_relic_taken = False
+        self.state = GameState.REWARD
+
+    def _reward_cards(self):
+        """(kind, key) per reward card, in reward_rects' own order --
+        every tower choice, then the Elite relic if there is one."""
+        cards = [("tower", name) for name in self.reward.tower_choices]
+        if self.reward.relic is not None:
+            cards.append(("relic", self.reward.relic))
+        return cards
+
+    def _handle_reward_click(self, pos):
+        return self.input_handler._handle_reward_click(pos)
+
+    def _take_reward_card(self, index):
+        """Claim reward card `index` -- at most one tower per reward (the
+        rest of the tower row is forfeited, same as Slay the Spire's own
+        pick-one-card screen), the Elite relic independently. A no-op for
+        an already-claimed card or a second tower."""
+        kind, key = self._reward_cards()[index]
+        if kind == "tower":
+            if self.reward_taken_tower is not None:
+                return
+            self.reward_taken_tower = key
+            self.active_run.unlocked_towers.append(key)
+            self.audio.play("tower_unlocked_shop")
+        elif not self.reward_relic_taken:
+            self.reward_relic_taken = True
+            self._grant_relic(key)
+
+    def _hovered_reward_card(self):
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.reward_rects)
 
     # --- The run's own branching map ---
 

@@ -44,7 +44,7 @@ from entities.waves import WaveState
 from persistence import save_state
 from presentation import ui
 from progression import achievements, meta_progression, progress, run_history
-from run import events, shop
+from run import card_pool, events, rewards, shop
 from run.card_pool import STARTER_TOWERS
 from run.difficulty import DIFFICULTY_MODES
 from run.events import EVENTS
@@ -444,14 +444,109 @@ def test_floor_clear_never_reaches_classic_victory(game):
     assert game.state == GameState.FLOOR_CLEARED
 
 
-def test_floor_cleared_any_key_returns_to_the_map(game):
+def test_floor_cleared_any_key_opens_the_reward_screen(game):
     start_first_floor(game, seed=1)
     finish_all_waves(game)
     game.update(dt=0.01)
 
     game._handle_keydown(pygame.K_SPACE)
 
+    assert game.state == GameState.REWARD
+    # A fresh account's tower pool is still mostly meta-locked, so this
+    # can be fewer than TOWER_REWARD_COUNT -- but never zero on floor 1.
+    assert 1 <= len(game.reward.tower_choices) <= rewards.TOWER_REWARD_COUNT
+    assert game.reward.relic is None  # an ordinary Combat floor -- no Elite relic
+
+
+def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game):
+    start_first_floor(game, seed=1)
+    game.active_run.unlocked_towers = list(TOWER_TYPES)
+    finish_all_waves(game)
+    game.update(dt=0.01)
+
+    game._handle_keydown(pygame.K_SPACE)
+
     assert game.state == GameState.MAP
+
+
+def _clear_into_reward(game, node_types=("combat", "combat")):
+    _begin_run_with_map(game, list(node_types))
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.REWARD
+
+
+def test_taking_a_reward_tower_adds_it_and_forfeits_the_others(game, monkeypatch):
+    monkeypatch.setattr(card_pool, "_default_unlocked_pool", lambda _path: list(TOWER_TYPES))
+    _clear_into_reward(game)
+    first, second = game.reward.tower_choices[:2]
+
+    game._handle_reward_click(game.reward_rects[0].center)
+    game._handle_reward_click(game.reward_rects[1].center)
+
+    assert first in game.active_run.unlocked_towers
+    assert second not in game.active_run.unlocked_towers
+    assert game.reward_taken_tower == first
+    assert game.state == GameState.REWARD  # still free to Continue whenever
+
+
+def test_reward_continue_returns_to_the_map_without_marking_a_second_visit(game):
+    _clear_into_reward(game)
+    visited_before = list(game.active_run.visited_node_ids)
+
+    game._handle_reward_click(game.shop_continue_button_rect.center)
+
+    assert game.state == GameState.MAP
+    assert game.active_run.visited_node_ids == visited_before
+
+
+def test_reward_enter_key_skips_and_escape_quits(game):
+    _clear_into_reward(game)
+    game._handle_keydown(pygame.K_a)
+    assert game.state == GameState.REWARD
+    game._handle_keydown(pygame.K_RETURN)
+    assert game.state == GameState.MAP
+
+    _clear_into_reward(game)
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.running is False
+
+
+def test_reward_click_off_any_card_does_nothing(game):
+    _clear_into_reward(game)
+    game._handle_reward_click((1, 1))
+    assert game.reward_taken_tower is None
+    assert game.state == GameState.REWARD
+
+
+def test_elite_reward_includes_a_claimable_relic(game):
+    _clear_into_reward(game, node_types=("elite", "combat"))
+    relic_key = game.reward.relic
+    assert relic_key is not None
+    relic_index = len(game.reward.tower_choices)
+
+    game._handle_reward_click(game.reward_rects[relic_index].center)
+    game._handle_reward_click(game.reward_rects[relic_index].center)  # a second claim is a no-op
+
+    assert game.active_run.relics == [relic_key]
+    assert game.reward_relic_taken is True
+
+
+def test_reward_is_deterministic_per_seed_and_node(game):
+    _clear_into_reward(game)
+    first_reward = game.reward
+    _clear_into_reward(game)
+    assert game.reward == first_reward
+
+
+def test_render_reward_does_not_crash(game):
+    _clear_into_reward(game, node_types=("elite", "combat"))
+    game.render()
+    game._take_reward_card(0)
+    game._take_reward_card(len(game.reward.tower_choices))
+    game.render()
 
 
 def test_floor_cleared_escape_quits(game):
@@ -2479,7 +2574,9 @@ def test_bare_modifier_key_does_not_dismiss_a_continue_screen(game, state_name):
     assert game.state == getattr(GameState, state_name)
 
     game._handle_keydown(pygame.K_SPACE)
-    assert game.state == GameState.MAP
+    # FLOOR_CLEARED continues onto its post-combat reward, every other
+    # screen straight back to the map.
+    assert game.state == (GameState.REWARD if state_name == "FLOOR_CLEARED" else GameState.MAP)
 
 
 def test_m_after_permadeath_returns_to_the_menu_and_any_key_starts_a_fresh_run(game):

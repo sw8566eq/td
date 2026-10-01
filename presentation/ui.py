@@ -1095,7 +1095,7 @@ def get_clicked_draft_choice(pos, draft_choice_rects):
     return None
 
 
-def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price):
+def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag=None):
     """The fill+border every shop card (tower or relic) shares, plus its
     price tag/SOLD badge -- pulled out so the two card kinds' own
     content-drawing can't drift apart on hover color/border width/radius,
@@ -1106,7 +1106,12 @@ def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, 
     border_color = settings.COLOR_BUTTON if (purchased or affordable) else settings.COLOR_BUTTON_DISABLED
     pygame.draw.rect(surface, border_color, rect, width=2, border_radius=8)
 
-    if purchased:
+    if tag is not None:
+        # A caller-chosen label in place of a price (the free reward
+        # screen's "FREE"/"TAKEN" -- see draw_reward_screen).
+        tag_text = tag
+        tag_color = settings.COLOR_GOLD if affordable and not purchased else settings.COLOR_TEXT_DIM
+    elif purchased:
         tag_text, tag_color = "SOLD", settings.COLOR_TEXT_DIM
     else:
         tag_text = str(price)
@@ -1116,9 +1121,9 @@ def _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, 
     return rect.x + PANEL_PADDING
 
 
-def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, affordable, price):
+def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, affordable, price, tag=None):
     tower_cls = TOWER_TYPES[name]
-    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price)
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag)
     # Reuses the sidebar's own class-subject header+stats rendering
     # verbatim (a shop card is exactly a build-menu selection's
     # not-yet-built display, just laid out in its own rect instead of the
@@ -1132,7 +1137,7 @@ def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, 
     _draw_panel_stats(surface, small_font, x, y, tower_cls, tower_cls, False)
 
 
-def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price):
+def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
     """Unlike _draw_draft_card's tower side (which reuses the sidebar's
     fixed-width panel header, never wrapped), a relic's own display_name
     is wrapped the same way its description already is -- some names
@@ -1142,7 +1147,7 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, a
     the rightmost card's own title past the screen edge -- confirmed via
     an actual driven screenshot, not just a card-overlap check."""
     relic = RELICS[key]
-    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price)
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag)
     y = rect.y + PANEL_PADDING
     max_width = rect.width - 2 * PANEL_PADDING
 
@@ -1213,6 +1218,44 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
     continue_label = small_font.render("Continue", True, settings.COLOR_GOLD)
     surface.blit(continue_label, continue_label.get_rect(center=continue_button_rect.center))
+
+
+# --- Post-combat reward screen ---
+
+def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, taken_tower,
+                       relic_taken, continue_button_rect, is_elite=False):
+    """The free, pick-one-tower reward after a cleared floor (see
+    rewards.py/Game._enter_reward_screen). `cards` is Game._reward_cards()'s
+    (kind, key) list, same order as `card_rects`. Reuses the Shop's own
+    card drawing with a FREE/TAKEN tag in place of a price -- once one
+    tower is taken, the other tower cards dim out (forfeited), while the
+    Elite relic stays claimable independently."""
+    surface.fill(settings.COLOR_BG)
+    _draw_dim_overlay(surface)
+
+    title_text = "Spoils of battle: choose one tower to add to your run"
+    title = font.render(title_text, True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
+    if is_elite:
+        subtitle = small_font.render("Elite bonus: a free relic", True, settings.COLOR_TEXT_DIM)
+        surface.blit(subtitle, subtitle.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 28)))
+
+    for index, (kind, key) in enumerate(cards):
+        if kind == "tower":
+            claimed = taken_tower == key
+            unavailable = taken_tower is not None
+        else:
+            claimed = relic_taken
+            unavailable = relic_taken
+        tag = "TAKEN" if claimed else ("--" if unavailable else "FREE")
+        draw_card = _draw_relic_card if kind == "relic" else _draw_draft_card
+        draw_card(surface, font, small_font, card_rects[index], key, index == hovered_index,
+                  unavailable, not unavailable, 0, tag)
+
+    anything_taken = taken_tower is not None or relic_taken
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
+    label = small_font.render("Continue" if anything_taken else "Skip", True, settings.COLOR_GOLD)
+    surface.blit(label, label.get_rect(center=continue_button_rect.center))
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
@@ -2071,7 +2114,7 @@ _RUN_GUIDE_STATUS_LINES = [
     "Knocked back: pushed backward along its route (Knockback Tower)",
 ]
 RUN_GUIDE_LINES = [
-    "Each run is a branching map of nodes -- pick your own path, floor by floor.",
+    "Each run is a branching map of nodes -- pick your path. Every won fight offers a free tower.",
     *_RUN_GUIDE_NODE_TYPE_LINES,
     *_RUN_GUIDE_STATUS_LINES,
     ("Relics: 74 across Economy/Offense/Status/Defense/Tower-exclusive categories -- "

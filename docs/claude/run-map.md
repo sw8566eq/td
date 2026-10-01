@@ -114,3 +114,17 @@ ever loaded (right after `start_new_run()`, before `self.grid`/`self.economy` ex
 there's structurally no board to freeze behind it -- the other four are reached from `MAP` and follow
 the same full-screen convention for consistency, even on a node sequence where a board technically
 still exists from an earlier floor.
+
+## Post-combat rewards
+
+`run/rewards.py` -- after a Combat/Elite floor's FLOOR_CLEARED results screen, any key goes to
+`GameState.REWARD` (`Game._enter_reward_screen`), not straight to the map: up to
+`TOWER_REWARD_COUNT` free tower cards (pick at most one, `Game._take_reward_card`; the rest are
+forfeited) plus, on an Elite node only, one free relic (claimable independently, through
+`_grant_relic` like every other relic source). Drawn from the same `card_pool.draft_offer`/
+`relics.relic_offer` helpers the Shop uses, via `_run_rng(run, "reward", node.id)`, so the same seed
+always offers the same reward. An empty reward (every tower held, no Elite relic) skips the screen
+straight to the map. The node is already marked visited by `_advance_run_floor`, so leaving the
+reward screen (`Continue`/`Skip`, or Enter) calls `_enter_map()` directly, never `_finish_node`. The
+boss node never reaches this screen (it's endless, so it never fires FLOOR_CLEARED). Quitting on this
+screen forfeits the reward, same as quitting mid-Shop forfeits the shop.

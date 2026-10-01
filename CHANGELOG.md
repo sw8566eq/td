@@ -8,6 +8,10 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
+  "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
+  also drop a free relic.
+
 - Real art for the last 2 towers (Siphon, Overload Cannon) and all 7 remaining enemy species
   (`boss`/`shielded`/`splitter`/`splitter_child`/`healer`/`final_boss`/`final_boss_shielded`) --
   tiles, towers, and enemies are now fully covered (only projectiles, at a fixed 12x12px, stay
