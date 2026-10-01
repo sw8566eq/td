@@ -309,7 +309,10 @@ class Renderer:
             # via the HUD button/R, both gated on active_run already.
             ui.draw_relics_overlay(game.screen, game.font, game.small_font, game.active_run.relics)
         elif game.state == GameState.GAME_OVER:
-            ui.draw_game_over_screen(game.screen, game.font, game.small_font, game._cached_tower_results)
+            ui.draw_game_over_screen(
+                game.screen, game.font, game.small_font, game._cached_tower_results,
+                ui.run_summary_lines(game.active_run) if game.active_run is not None else None,
+            )
         elif game.state == GameState.VICTORY:
             ui.draw_victory_screen(game.screen, game.font, game.small_font, game.has_next_level(),
                                     game._cached_tower_results)
@@ -358,6 +361,15 @@ class Renderer:
         event, and floor-clear unlocks are all queued from outside combat."""
         game = self.game
         for toast in game.achievement_toasts:
+            # A dark backing plate, so a toast stays legible over whatever
+            # screen title or map node it happens to land on.
+            if not toast.dead:
+                plate = pygame.Rect((0, 0), game.small_font.size(toast.text)).inflate(16, 6)
+                plate.center = (int(toast.pos.x), int(toast.pos.y))
+                backing = pygame.Surface(plate.size, pygame.SRCALPHA)
+                alpha = max(0, min(200, int(200 * (1 - toast.age / toast.lifetime))))
+                backing.fill((*settings.COLOR_BG, alpha))
+                game.screen.blit(backing, plate)
             toast.draw(game.screen, game.small_font)
 
     def _render_placement_preview(self):

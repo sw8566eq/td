@@ -2547,9 +2547,27 @@ def _draw_overlay_with_results(surface, font, small_font, title, subtitle, title
     draw_results_table(surface, small_font, results, bottom + 16, width=settings.PLAY_WIDTH)
 
 
-def draw_game_over_screen(surface, font, small_font, results=None):
-    _draw_overlay_with_results(surface, font, small_font, "Game Over", "Press R to restart, M for main menu",
-                                settings.COLOR_LIVES, results)
+def draw_game_over_screen(surface, font, small_font, results=None, run_summary=None):
+    """`run_summary` (run_summary_lines, below) adds a permadeath recap
+    above the key hints when a roguelike run just ended."""
+    subtitle = [*(run_summary or []), "Press R to restart, M for main menu"]
+    title = "Run Over" if run_summary else "Game Over"
+    _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_LIVES, results)
+
+
+def run_summary_lines(run):
+    """A finished run's recap for the Game Over screen -- how far it got
+    and what it was played as. Pure, like _relics_overlay_lines, so it's
+    unit-testable without a Surface."""
+    plural = "" if run.floors_cleared == 1 else "s"
+    progress = f"Act {run.act + 1}, {run.floors_cleared} floor{plural} cleared"
+    if run.boss_defeated:
+        progress += " -- final boss defeated!"
+    identity = [COMMANDERS[run.commander].display_name]
+    if run.ascension:
+        identity.append(f"Ascension {run.ascension}")
+    identity.append(f"{len(run.relics)} relic{'' if len(run.relics) == 1 else 's'}")
+    return [progress, ", ".join(identity)]
 
 
 def draw_victory_screen(surface, font, small_font, has_next_level=False, results=None):
