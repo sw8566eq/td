@@ -44,7 +44,7 @@ from entities.waves import WaveState
 from persistence import save_state
 from presentation import ui
 from progression import achievements, meta_progression, progress, run_history
-from run import card_pool, events, rewards, shop
+from run import card_pool, events, potions, rewards, shop
 from run.card_pool import STARTER_TOWERS
 from run.difficulty import DIFFICULTY_MODES
 from run.events import EVENTS
@@ -488,7 +488,7 @@ def test_taking_a_reward_tower_adds_it_and_forfeits_the_others(game, monkeypatch
 
     assert first in game.active_run.unlocked_towers
     assert second not in game.active_run.unlocked_towers
-    assert game.reward_taken_tower == first
+    assert game.reward_claimed_indices == {0}
     assert game.state == GameState.REWARD  # still free to Continue whenever
 
 
@@ -517,7 +517,7 @@ def test_reward_enter_key_skips_and_escape_quits(game):
 def test_reward_click_off_any_card_does_nothing(game):
     _clear_into_reward(game)
     game._handle_reward_click((1, 1))
-    assert game.reward_taken_tower is None
+    assert game.reward_claimed_indices == set()
     assert game.state == GameState.REWARD
 
 
@@ -531,7 +531,22 @@ def test_elite_reward_includes_a_claimable_relic(game):
     game._handle_reward_click(game.reward_rects[relic_index].center)  # a second claim is a no-op
 
     assert game.active_run.relics == [relic_key]
-    assert game.reward_relic_taken is True
+    assert relic_index in game.reward_claimed_indices
+
+
+def test_elite_reward_potion_goes_into_a_free_slot_but_not_a_full_belt(game):
+    _clear_into_reward(game, node_types=("elite", "combat"))
+    potion_index = len(game._reward_cards()) - 1
+    assert game._reward_cards()[potion_index] == ("potion", game.reward.potion)
+
+    game.active_run.potions = ["fire_bomb"] * potions.POTION_SLOTS
+    game._handle_reward_click(game.reward_rects[potion_index].center)
+    assert game.active_run.potions == ["fire_bomb"] * potions.POTION_SLOTS
+    assert not game._reward_card_available(potion_index)
+
+    game.active_run.potions = []
+    game._handle_reward_click(game.reward_rects[potion_index].center)
+    assert game.active_run.potions == [game.reward.potion]
 
 
 def test_reward_is_deterministic_per_seed_and_node(game):

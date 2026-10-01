@@ -6,8 +6,9 @@ import random
 from conftest import make_linear_run_map
 
 from entities.tower import TOWER_TYPES
-from run import card_pool, rewards
+from run import card_pool, potions, rewards
 from run.card_pool import STARTER_TOWERS
+from run.potions import POTIONS
 from run.relics import RELICS
 from run.run_state import RunState
 
@@ -49,7 +50,19 @@ def test_reward_is_empty_once_every_pool_is_exhausted(tmp_path):
     )
     assert reward.tower_choices == ()
     assert reward.relic is None
-    assert reward.is_empty
+    # Potions are never exhausted, and an Elite always drops one.
+    assert reward.potion in POTIONS
+    assert not reward.is_empty
+    assert rewards.CombatReward(()).is_empty
+
+
+def test_combat_potion_drop_follows_the_drop_chance(tmp_path, monkeypatch):
+    path = str(tmp_path / "meta.json")
+    run = _run(unlocked_towers=list(TOWER_TYPES))
+    monkeypatch.setattr(potions, "COMBAT_POTION_DROP_CHANCE", 1.0)
+    assert rewards.build_combat_reward(random.Random(1), run, is_elite=False, meta_progression_path=path).potion in POTIONS
+    monkeypatch.setattr(potions, "COMBAT_POTION_DROP_CHANCE", 0.0)
+    assert rewards.build_combat_reward(random.Random(1), run, is_elite=False, meta_progression_path=path).potion is None
 
 
 def test_same_rng_seed_gives_the_same_reward(tmp_path):

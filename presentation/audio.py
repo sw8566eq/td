@@ -152,6 +152,9 @@ SOUND_MANIFEST = {
         SynthSpec("square", frequency=660, duration=0.06, volume=0.4, release=0.02),
         SynthSpec("square", frequency=880, duration=0.08, volume=0.45, release=0.03),
     )),
+    "potion_used": ("sfx/potion_used.wav", (
+        SynthSpec("triangle", frequency=(300, 900), duration=0.14, volume=0.45, release=0.05),
+    )),
     "achievement_toast": ("sfx/achievement_toast.wav", (
         SynthSpec("sine", frequency=1046, duration=0.1, volume=0.4, release=0.05),
     )),

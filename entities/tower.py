@@ -388,6 +388,9 @@ class Tower:
         self.relic_tower_density_fire_rate_bonus_per_neighbor = 0.0
         self.relic_tower_density_fire_rate_bonus_cap = 0.0
         self.relic_tower_density_fire_rate_bonus_multiplier = 1.0
+        # An Overclock Elixir potion's live fire-rate bonus -- set every
+        # frame by Game.update() (1.0 whenever no Overclock is running).
+        self.potion_fire_rate_multiplier = 1.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -938,6 +941,7 @@ class Tower:
             * self.relic_fire_rate_bonus_multiplier
             * self.relic_last_stand_fire_rate_multiplier
             * self.relic_tower_density_fire_rate_bonus_multiplier
+            * self.potion_fire_rate_multiplier
         )
 
     def create_projectile(self, target):

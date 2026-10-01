@@ -120,6 +120,12 @@ ACHIEVEMENTS = {
     "overcharged": Achievement(
         "overcharged", "Overcharged", "Place an Overload Cannon.", "overload_cannon_built", 1,
     ),
+    "first_sip": Achievement(
+        "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
+    ),
+    "alchemist": Achievement(
+        "alchemist", "Alchemist", "Use 25 potions.", "potions_used", 25,
+    ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 

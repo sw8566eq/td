@@ -86,6 +86,17 @@ A Shop visit offers a small mix of tower cards and relic cards together; buy as 
 you like, then click Continue. Prices go up a little with every purchase made in that same visit, so
 there's a real choice in what to prioritize, not just "buy everything eventually."
 
+## Rewards and potions
+
+Every fight you win opens a **Spoils of battle** screen, Slay the Spire style: pick one of up to three
+free tower cards to add to your run (or skip them), and Elite fights also drop a free relic.
+
+Rewards can also include a **potion** -- a single-use consumable (Elites always drop one). You hold up
+to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts
+every enemy on the field, Frost Flask slows them all, Marking Dust makes them take extra damage,
+Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
+fire faster for a few seconds. Potions carry between floors until used.
+
 ## Relics
 
 A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 74 of them as of
@@ -522,7 +533,7 @@ entry, not a change to the systems that already work.
 - **New achievement**: add an `Achievement(...)` entry to `ACHIEVEMENTS` in `progression/achievements.py`,
   keyed off one of the existing cumulative counters (`kills`, `towers_built`, `towers_maxed`,
   `towers_specialized`, `levels_cleared`, `distinct_levels_cleared`, `waves_survived`,
-  `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, or a
+  `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, `potions_used`, or a
   `f"{tower_name}_built"` counter for any `TOWER_TYPES` name) or a genuinely new one -- a new
   counter just needs one `Game._record_achievement(...)` call added at whatever point in `core/game.py`
   the event actually happens.

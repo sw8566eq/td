@@ -111,6 +111,9 @@ class RunState:
     # keep showing "Boss defeated!" on the Wave line for the rest of the
     # (endless) fight, not just a one-time toast.
     boss_defeated: bool = False
+    # Potion keys currently held (potions.py) -- at most potions.
+    # POTION_SLOTS, duplicates allowed, consumed by Game.use_potion.
+    potions: list[str] = field(default_factory=list)
 
     @property
     def current_level_id(self) -> object:

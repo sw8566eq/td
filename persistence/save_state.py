@@ -29,6 +29,7 @@ from entities.waves import WaveState
 from persistence.json_io import load_json_with_fallback, module_relative_path
 from persistence.persistence import level_from_dict, level_to_dict
 from run.difficulty import DIFFICULTY_MODES
+from run.potions import POTIONS
 from run.relics import RELICS
 from run.run_map import NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
@@ -118,6 +119,7 @@ def _run_to_dict(run):
         "used_guardians_reprieve": run.used_guardians_reprieve,
         "used_emergency_reserves": run.used_emergency_reserves,
         "boss_defeated": run.boss_defeated,
+        "potions": list(run.potions),
     }
 
 
@@ -141,6 +143,7 @@ def _run_from_dict(data):
         # "old save, new optional field" precedent shop_currency's own
         # .get() above already sets.
         boss_defeated=data.get("boss_defeated", False),
+        potions=list(data.get("potions", [])),
     )
 
 
@@ -276,6 +279,9 @@ def _parse_and_validate_active_run(run_data):
     for relic_key in run_data["relics"]:
         if relic_key not in RELICS:
             raise ValueError(f"saved run's relics references an unrecognized relic {relic_key!r}")
+    for potion_key in run_data.get("potions", []):
+        if potion_key not in POTIONS:
+            raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")
     if run_data["difficulty"] not in DIFFICULTY_MODES:
         raise ValueError(f"saved run's own difficulty {run_data['difficulty']!r} is not a known difficulty mode")
     return _run_from_dict(run_data)

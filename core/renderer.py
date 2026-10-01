@@ -186,7 +186,8 @@ class Renderer:
             node = game.active_run.map.node(game.active_run.current_node_id)
             ui.draw_reward_screen(
                 game.screen, game.font, game.small_font, game._reward_cards(), game.reward_rects,
-                game._hovered_reward_card(), game.reward_taken_tower, game.reward_relic_taken,
+                game._hovered_reward_card(), game.reward_claimed_indices,
+                [game._reward_card_available(i) for i in range(len(game.reward_rects))],
                 game.shop_continue_button_rect, is_elite=node.node_type == "elite",
             )
             self._draw_toasts()
@@ -267,6 +268,11 @@ class Renderer:
             game.upgrade_button_rect, game.specialize_button_rects, game.sell_button_rect,
             game._hovered_specialize_key(panel_subject),
         )
+        if game.active_run is not None:
+            ui.draw_potion_belt(
+                game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
+                game._hovered_potion_slot(), game.overclock_timer,
+            )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
                                 game.current_level_id is None, game.can_save_run(),

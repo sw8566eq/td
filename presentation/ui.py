@@ -24,6 +24,7 @@ from progression.meta_progression import (
     SHOP_META_UNLOCKS,
 )
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
+from run.potions import POTION_SLOTS, POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
 from support import settings
@@ -1222,14 +1223,14 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
 
 # --- Post-combat reward screen ---
 
-def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, taken_tower,
-                       relic_taken, continue_button_rect, is_elite=False):
-    """The free, pick-one-tower reward after a cleared floor (see
-    rewards.py/Game._enter_reward_screen). `cards` is Game._reward_cards()'s
-    (kind, key) list, same order as `card_rects`. Reuses the Shop's own
-    card drawing with a FREE/TAKEN tag in place of a price -- once one
-    tower is taken, the other tower cards dim out (forfeited), while the
-    Elite relic stays claimable independently."""
+def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
+                       available, continue_button_rect, is_elite=False):
+    """The free post-combat reward (see rewards.py/Game._enter_reward_
+    screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
+    as `card_rects`; `available[i]` is Game._reward_card_available(i).
+    Reuses the Shop's own card drawing with a FREE/TAKEN tag in place of a
+    price -- once one tower is taken the other tower cards dim out
+    (forfeited); a potion card reads FULL while every potion slot is."""
     surface.fill(settings.COLOR_BG)
     _draw_dim_overlay(surface)
 
@@ -1237,25 +1238,119 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
     title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
     if is_elite:
-        subtitle = small_font.render("Elite bonus: a free relic", True, settings.COLOR_TEXT_DIM)
+        subtitle = small_font.render("Elite bonus: a free relic and a potion", True, settings.COLOR_TEXT_DIM)
         surface.blit(subtitle, subtitle.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 28)))
 
     for index, (kind, key) in enumerate(cards):
-        if kind == "tower":
-            claimed = taken_tower == key
-            unavailable = taken_tower is not None
+        claimed = index in claimed_indices
+        if claimed:
+            tag = "TAKEN"
+        elif available[index]:
+            tag = "FREE"
         else:
-            claimed = relic_taken
-            unavailable = relic_taken
-        tag = "TAKEN" if claimed else ("--" if unavailable else "FREE")
-        draw_card = _draw_relic_card if kind == "relic" else _draw_draft_card
+            tag = "FULL" if kind == "potion" else "--"
+        draw_card = _REWARD_CARD_DRAWERS[kind]
         draw_card(surface, font, small_font, card_rects[index], key, index == hovered_index,
-                  unavailable, not unavailable, 0, tag)
+                  not available[index], available[index], 0, tag)
 
-    anything_taken = taken_tower is not None or relic_taken
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
-    label = small_font.render("Continue" if anything_taken else "Skip", True, settings.COLOR_GOLD)
+    label = small_font.render("Continue" if claimed_indices else "Skip", True, settings.COLOR_GOLD)
     surface.blit(label, label.get_rect(center=continue_button_rect.center))
+
+
+def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
+    """Same shape as _draw_relic_card, for a potions.POTIONS entry."""
+    potion = POTIONS[key]
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag)
+    y = rect.y + PANEL_PADDING
+    max_width = rect.width - 2 * PANEL_PADDING
+    for line in _wrap_text(potion.display_name, font, max_width - 40):
+        title_line = font.render(line, True, POTION_COLORS[key])
+        surface.blit(title_line, (x, y))
+        y += title_line.get_height() + 2
+    kind_label = small_font.render("Potion (single use)", True, settings.COLOR_TEXT_DIM)
+    surface.blit(kind_label, (x, y))
+    y += PANEL_ROW_HEIGHT + 6
+    for line in _wrap_text(potion.description, small_font, max_width):
+        line_text = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+        surface.blit(line_text, (x, y))
+        y += PANEL_ROW_HEIGHT
+
+
+_REWARD_CARD_DRAWERS = {
+    "tower": _draw_draft_card,
+    "relic": _draw_relic_card,
+    "potion": _draw_potion_card,
+}
+
+
+# --- Potion belt (the sidebar's bottom section, during a run's floor) ---
+
+# One swatch color per potion, so a slot reads at a glance without art.
+POTION_COLORS = {
+    "fire_bomb": (235, 110, 60),
+    "frost_flask": (120, 200, 255),
+    "marking_dust": (230, 120, 220),
+    "liquid_gold": (255, 210, 70),
+    "mending_salve": (120, 230, 140),
+    "overclock_elixir": (250, 250, 140),
+}
+POTION_SLOT_SIZE = 56
+POTION_SLOT_GAP = 12
+POTION_BELT_TOP = settings.SCREEN_HEIGHT - POTION_SLOT_SIZE - PANEL_PADDING
+POTION_BELT_LABEL_GAP = 24
+# Hovered-potion description box, drawn above the belt's own label.
+POTION_DESCRIPTION_BOTTOM = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - 8
+
+
+def build_potion_slot_rects():
+    """One square rect per potions.POTION_SLOTS slot, centered in a row
+    along the sidebar's bottom edge -- below the Sell button (SELL_BUTTON_
+    TOP), which is the lowest thing the stats panel ever draws."""
+    total_width = POTION_SLOTS * POTION_SLOT_SIZE + (POTION_SLOTS - 1) * POTION_SLOT_GAP
+    start_x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - total_width) // 2
+    return [
+        pygame.Rect(start_x + i * (POTION_SLOT_SIZE + POTION_SLOT_GAP), POTION_BELT_TOP,
+                    POTION_SLOT_SIZE, POTION_SLOT_SIZE)
+        for i in range(POTION_SLOTS)
+    ]
+
+
+def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0):
+    """The run's potion slots -- a filled slot shows its potion's initials
+    on its own color, an empty one just an outline. Hovering a filled slot
+    shows that potion's name and description above the belt; a running
+    Overclock Elixir shows its countdown in the belt's own label."""
+    x = settings.PLAY_WIDTH + PANEL_PADDING
+    label_text = "Potions -- click to use"
+    if overclock_timer > 0:
+        label_text = f"Overclocked! {overclock_timer:.1f}s"
+    label = small_font.render(label_text, True, settings.COLOR_GOLD if overclock_timer > 0 else settings.COLOR_TEXT_DIM)
+    surface.blit(label, (x, POTION_BELT_TOP - POTION_BELT_LABEL_GAP))
+
+    for index, rect in enumerate(slot_rects):
+        if index < len(potion_keys):
+            key = potion_keys[index]
+            fill = POTION_COLORS[key]
+            if index == hovered_slot:
+                fill = tuple(min(255, channel + 30) for channel in fill)
+            pygame.draw.rect(surface, fill, rect, border_radius=10)
+            initials = "".join(word[0] for word in POTIONS[key].display_name.split())
+            text = font.render(initials, True, settings.COLOR_BG)
+            surface.blit(text, text.get_rect(center=rect.center))
+        else:
+            pygame.draw.rect(surface, settings.COLOR_BUTTON_DISABLED, rect, width=2, border_radius=10)
+
+    if hovered_slot is not None and hovered_slot < len(potion_keys):
+        potion = POTIONS[potion_keys[hovered_slot]]
+        max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+        lines = [(potion.display_name, settings.COLOR_TEXT)] + [
+            (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(potion.description, small_font, max_width)
+        ]
+        y = POTION_DESCRIPTION_BOTTOM - len(lines) * PANEL_ROW_HEIGHT
+        for text_line, color in lines:
+            surface.blit(small_font.render(text_line, True, color), (x, y))
+            y += PANEL_ROW_HEIGHT
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
@@ -2114,7 +2209,7 @@ _RUN_GUIDE_STATUS_LINES = [
     "Knocked back: pushed backward along its route (Knockback Tower)",
 ]
 RUN_GUIDE_LINES = [
-    "Each run is a branching map of nodes -- pick your path. Every won fight offers a free tower.",
+    "Branching map: pick your path. Won fights offer a free tower, and sometimes a potion.",
     *_RUN_GUIDE_NODE_TYPE_LINES,
     *_RUN_GUIDE_STATUS_LINES,
     ("Relics: 74 across Economy/Offense/Status/Defense/Tower-exclusive categories -- "

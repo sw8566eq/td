@@ -14,12 +14,17 @@ Built from the same draft helpers the Shop uses (card_pool.draft_offer/
 relics.relic_offer), so every "exclude what's already held, fewer once
 exhausted, same seed -> same offer" rule they already guarantee carries
 over unchanged.
+
+A reward can also carry one potion (potions.py) -- always on an Elite
+floor, potions.COMBAT_POTION_DROP_CHANCE of the time otherwise -- rolled
+last, after the tower/relic draws, so adding it never changed which cards
+an existing seed offers.
 """
 
 import random
 from dataclasses import dataclass
 
-from run import card_pool, relics
+from run import card_pool, potions, relics
 from run.run_state import RunState
 
 TOWER_REWARD_COUNT = 3
@@ -31,10 +36,11 @@ class CombatReward:
     # A guaranteed relic -- Elite floors only, None otherwise (or once
     # every relic is already held, relic_offer's own exhausted case).
     relic: str | None = None
+    potion: str | None = None
 
     @property
     def is_empty(self) -> bool:
-        return not self.tower_choices and self.relic is None
+        return not self.tower_choices and self.relic is None and self.potion is None
 
 
 def build_combat_reward(
@@ -50,4 +56,7 @@ def build_combat_reward(
     if is_elite:
         picks = relics.relic_offer(rng, run, count=1, meta_progression_path=meta_progression_path)
         relic = picks[0] if picks else None
-    return CombatReward(tuple(tower_choices), relic)
+    potion = None
+    if is_elite or rng.random() < potions.COMBAT_POTION_DROP_CHANCE:
+        potion = potions.random_potion(rng)
+    return CombatReward(tuple(tower_choices), relic, potion)
