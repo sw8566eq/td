@@ -166,6 +166,9 @@ class Tower:
         # refunds a fraction of, so upgrading then selling isn't a loss on
         # top of the upgrade itself. See sell_value().
         self.total_invested = self.cost
+        # Whether this tower was placed from a forged tower type (see
+        # Game._apply_forge) -- its first level came free.
+        self.forged = False
         # SPECIALIZATIONS key once chosen (see specialize()), else None.
         self.specialization = None
         # Which TARGETING_MODES strategy acquire_target() uses -- "first"

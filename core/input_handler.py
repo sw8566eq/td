@@ -85,11 +85,13 @@ class InputHandler:
                     self._handle_reward_click(event.pos)
                 elif game.state == GameState.EVENT:
                     self._handle_event_click(event.pos)
-                elif game.state in (GameState.REST, GameState.TREASURE):
-                    # Both screens promise "Press any key or click to
-                    # continue" (see ui.draw_rest_screen/draw_treasure_
-                    # screen) -- already resolved on entry, so a click
-                    # continues exactly like any non-Escape key does.
+                elif game.state == GameState.REST:
+                    self._handle_rest_click(event.pos)
+                elif game.state == GameState.TREASURE:
+                    # Promises "Press any key or click to continue" (see
+                    # ui.draw_treasure_screen) -- already resolved on
+                    # entry, so a click continues exactly like any
+                    # non-Escape key does.
                     game._finish_node(game.active_run.current_node_id)
                 else:
                     self._handle_click(event.pos)
@@ -344,13 +346,12 @@ class InputHandler:
             elif game.event_phase == "resolved" and key not in keybindings.MODIFIER_KEY_CODES:
                 game._finish_node(game.active_run.current_node_id)
         elif game.state == GameState.REST:
-            # A Rest node has nothing to choose -- it's already resolved
-            # the instant it's entered (see _enter_rest_node) -- so any key
-            # but Escape just continues, same "press any key" spirit as
-            # FLOOR_CLEARED above.
+            # Choosing Rest/Smith (and which tower to forge) is mouse-only,
+            # same as an Event's options; once resolved, any key but Escape
+            # continues, same "press any key" spirit as FLOOR_CLEARED.
             if key == pygame.K_ESCAPE:
                 game.running = False
-            elif key not in keybindings.MODIFIER_KEY_CODES:
+            elif game.rest_phase == "resolved" and key not in keybindings.MODIFIER_KEY_CODES:
                 game._finish_node(game.active_run.current_node_id)
         elif game.state == GameState.TREASURE:
             # Same "already resolved on entry, press any key to continue"
@@ -640,6 +641,23 @@ class InputHandler:
         if node_id is None or node_id not in game._available_node_ids():
             return
         game._enter_node(node_id)
+
+    def _handle_rest_click(self, pos):
+        """A click on the Rest screen, by phase: pick Rest or Smith; pick
+        which tower to forge (or Back); or, once resolved, continue."""
+        game = self.game
+        if game.rest_phase == "resolved":
+            game._finish_node(game.active_run.current_node_id)
+        elif game.rest_phase == "choose":
+            index = ui.get_clicked_draft_choice(pos, game.rest_option_rects)
+            if index is not None:
+                game._choose_rest_option(index)
+        elif game.rest_back_rect.collidepoint(pos):
+            game.rest_phase = "choose"
+        else:
+            index = ui.get_clicked_draft_choice(pos, game.rest_smith_rects)
+            if index is not None:
+                game._forge_tower(game.rest_smith_choices[index])
 
     def _handle_reward_click(self, pos):
         """A click on the post-combat reward screen -- Continue/Skip (back

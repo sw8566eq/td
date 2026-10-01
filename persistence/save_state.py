@@ -64,6 +64,7 @@ def _tower_to_dict(tower):
         "level": tower.level,
         "specialization": tower.specialization,
         "targeting_mode": tower.targeting_mode,
+        "forged": tower.forged,
         # Lifetime stats, purely for display (see CLAUDE.md's "Post-level
         # results") -- without these, every tower reconstructed on resume
         # would show 0 shots/damage/kills even after real combat history.
@@ -120,6 +121,7 @@ def _run_to_dict(run):
         "used_emergency_reserves": run.used_emergency_reserves,
         "boss_defeated": run.boss_defeated,
         "potions": list(run.potions),
+        "forged_towers": list(run.forged_towers),
     }
 
 
@@ -144,6 +146,7 @@ def _run_from_dict(data):
         # .get() above already sets.
         boss_defeated=data.get("boss_defeated", False),
         potions=list(data.get("potions", [])),
+        forged_towers=list(data.get("forged_towers", [])),
     )
 
 
@@ -279,6 +282,9 @@ def _parse_and_validate_active_run(run_data):
     for relic_key in run_data["relics"]:
         if relic_key not in RELICS:
             raise ValueError(f"saved run's relics references an unrecognized relic {relic_key!r}")
+    for tower_name in run_data.get("forged_towers", []):
+        if tower_name not in TOWER_TYPES:
+            raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")

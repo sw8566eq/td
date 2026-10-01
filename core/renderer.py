@@ -207,7 +207,9 @@ class Renderer:
 
         if game.state == GameState.REST and game.active_run is not None:
             ui.draw_rest_screen(
-                game.screen, game.font, game.small_font, game.rest_heal_amount, game.active_run.lives,
+                game.screen, game.font, game.small_font, game.rest_phase, game.rest_heal_amount,
+                game.active_run.lives, game.rest_option_rects, game.rest_smith_choices, game.rest_smith_rects,
+                game.rest_back_rect, game.rest_forged_tower, game._hovered_rest_rect_index(),
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -259,6 +261,7 @@ class Renderer:
             relic_count=len(game.active_run.relics) if game.active_run is not None else None,
             floor_label=floor_label,
             boss_defeated=game.active_run.boss_defeated if game.active_run is not None else False,
+            forged_towers=game.active_run.forged_towers if game.active_run is not None else (),
         )
         if game._show_first_placement_hint and not game.towers:
             ui.draw_first_placement_hint(game.screen, game.small_font)

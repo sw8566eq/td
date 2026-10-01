@@ -55,9 +55,14 @@ The seven node types:
   `_resolve_event_choice` apply the chosen option's effect (indexing into `event_options`, never the
   raw `current_event.options`) and show what happened; any further click/key then returns to the
   map.
-- **Rest**: `GameState.REST` -- auto-resolves the instant it's entered (`Game._enter_rest_node`), no
-  player choice, healing `run.lives` by `run_map.heal_amount_for_row(node.row)` and showing a static
-  confirmation screen.
+- **Rest**: `GameState.REST` -- Slay the Spire's campfire choice, three phases (`Game.rest_phase`):
+  "choose" Rest (heal `run.lives` by `run_map.heal_amount_for_row(node.row)`) or Smith; "smith" picks a
+  held, not-yet-forged tower (`Game._forgeable_towers`, a grid via `ui.build_smith_choice_rects`, plus
+  Back); "resolved" then any key/click continues via `_finish_node`. Forging appends to
+  `RunState.forged_towers`; `try_place_tower` then calls `Game._apply_forge` on every placement of that
+  type -- one free `upgrade()`, `total_invested` reset to the base cost so a sale doesn't refund gold
+  never spent, and `tower.forged = True`, which `save_state` serializes so `_tower_from_save_data`
+  replays the free level the same way before replaying any paid ones.
 - **Treasure**: `GameState.TREASURE` -- also auto-resolves on entry (`Game._enter_treasure_node`): a
   guaranteed shop-currency payout (`run_map.treasure_shop_currency_for_row`) plus one guaranteed relic
   pick, degrading gracefully to currency-only once every relic is already held (`relics.relic_offer`'s

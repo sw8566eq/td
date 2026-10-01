@@ -2339,24 +2339,167 @@ def test_render_event_with_an_unaffordable_option_does_not_crash(game, monkeypat
 # --- Rest nodes ---
 
 
-def test_rest_node_heals_and_auto_resolves(game):
+def test_rest_node_offers_a_choice_and_heals_only_once_rest_is_picked(game):
     _begin_run_with_map(game, ["combat", "rest"])
     game.active_run.lives = 10
 
     game._enter_node("1-0")
-
     assert game.state == GameState.REST
+    assert game.rest_phase == "choose"
+    assert game.active_run.lives == 10
+    game._handle_keydown(pygame.K_SPACE)  # nothing chosen yet -- keys don't continue
+    assert game.state == GameState.REST
+
+    game._handle_rest_click(game.rest_option_rects[0].center)
+
+    assert game.rest_phase == "resolved"
     assert game.active_run.lives == 10 + game.rest_heal_amount
 
 
 def test_finishing_a_rest_node_returns_to_the_map(game):
     _begin_run_with_map(game, ["combat", "rest"])
     game._enter_node("1-0")
+    game._choose_rest_option(0)
 
     game._handle_keydown(pygame.K_SPACE)
 
     assert game.state == GameState.MAP
     assert game.active_run.visited_node_ids == ["1-0"]
+
+
+def test_resolved_rest_click_continues_to_the_map(game):
+    _begin_run_with_map(game, ["combat", "rest"])
+    game._enter_node("1-0")
+    game._choose_rest_option(0)
+
+    game._handle_rest_click((5, 5))
+
+    assert game.state == GameState.MAP
+
+
+def test_smith_forges_a_held_tower_without_healing(game):
+    run = _begin_run_with_map(game, ["combat", "rest"])
+    run.lives = 10
+    game._enter_node("1-0")
+    assert game.rest_smith_choices == [name for name in ui.TOWER_ORDER if name in STARTER_TOWERS]
+
+    game._handle_rest_click(game.rest_option_rects[1].center)
+    assert game.rest_phase == "smith"
+    game._handle_rest_click(game.rest_back_rect.center)
+    assert game.rest_phase == "choose"
+    game._handle_rest_click(game.rest_option_rects[1].center)
+    game._handle_rest_click(game.rest_smith_rects[1].center)
+
+    forged = game.rest_smith_choices[1]
+    assert run.forged_towers == [forged]
+    assert game.rest_forged_tower == forged
+    assert game.rest_phase == "resolved"
+    assert run.lives == 10
+
+
+def test_smith_click_off_any_tower_does_nothing(game):
+    _begin_run_with_map(game, ["combat", "rest"])
+    game._enter_node("1-0")
+    game._choose_rest_option(1)
+    game._handle_rest_click((5, 5))
+    assert game.rest_phase == "smith"
+    game.rest_phase = "choose"
+    game._handle_rest_click((5, 5))
+    assert game.rest_phase == "choose"
+
+
+def test_smith_is_unavailable_once_every_held_tower_is_forged(game):
+    _begin_run_with_map(game, ["combat", "rest"], forged_towers=list(STARTER_TOWERS))
+    game._enter_node("1-0")
+    assert game.rest_smith_choices == []
+
+    game._choose_rest_option(1)
+
+    assert game.rest_phase == "choose"
+
+
+def test_a_forged_tower_is_placed_at_level_two_for_its_base_cost(game):
+    run = _begin_run_with_map(game, ["combat", "combat"], forged_towers=["basic"])
+    game._enter_node("0-0")
+    gold = game.economy.gold
+    game.selected_tower_name = "basic"
+
+    assert game.try_place_tower(*find_buildable_anchor(game))
+
+    tower = game.towers[0]
+    assert tower.level == 2 and tower.forged
+    assert game.economy.gold == gold - tower.cost
+    assert tower.total_invested == tower.cost
+    assert run.forged_towers == ["basic"]
+
+
+def test_an_unforged_tower_is_still_placed_at_level_one(game):
+    _begin_run_with_map(game, ["combat", "combat"], forged_towers=["basic"])
+    game._enter_node("0-0")
+    game.selected_tower_name = "cannon"
+    assert game.try_place_tower(*find_buildable_anchor(game))
+    assert game.towers[0].level == 1 and not game.towers[0].forged
+
+
+def test_a_forged_tower_survives_save_and_resume_with_its_refund_value(game):
+    _begin_run_with_map(game, ["combat", "combat"], forged_towers=["basic"])
+    game._enter_node("0-0")
+    game.economy.gold = 9999
+    game.selected_tower_name = "basic"
+    game.try_place_tower(*find_buildable_anchor(game))
+    game.try_upgrade_tower(game.towers[0])  # level 3, the one paid upgrade
+    expected_level, expected_invested = game.towers[0].level, game.towers[0].total_invested
+    assert expected_level == 3
+    game.save_run()
+
+    game.resume_saved_run(save_state.load_run(game.save_path))
+
+    tower = game.towers[0]
+    assert (tower.level, tower.total_invested, tower.forged) == (expected_level, expected_invested, True)
+    assert game.active_run.forged_towers == ["basic"]
+
+
+def test_a_save_with_an_unknown_forged_tower_is_not_resumable(game):
+    _begin_run_with_map(game, ["combat", "combat"], forged_towers=["not_a_tower"])
+    game._enter_node("0-0")
+    game.save_run()
+    assert save_state.load_run(game.save_path) is None
+
+
+@pytest.mark.parametrize("phase", ["choose", "smith", "resolved"])
+def test_render_rest_each_phase_does_not_crash(game, phase):
+    _begin_run_with_map(game, ["combat", "rest"], forged_towers=["basic"])
+    game._enter_node("1-0")
+    if phase != "choose":
+        game._choose_rest_option(1)
+    if phase == "resolved":
+        game._forge_tower("cannon")
+    game.render()
+    game.rest_forged_tower = None
+    game.render()
+
+
+def test_render_rest_with_nothing_left_to_forge_does_not_crash(game):
+    _begin_run_with_map(game, ["combat", "rest"], forged_towers=list(STARTER_TOWERS))
+    game._enter_node("1-0")
+    game.render()
+
+
+def test_hud_marks_forged_towers_without_crashing(game):
+    _begin_run_with_map(game, ["combat", "combat"], forged_towers=["basic"])
+    game._enter_node("0-0")
+    game.render()
+
+
+def test_smith_choice_rects_wrap_into_rows_inside_the_screen():
+    rects = ui.build_smith_choice_rects(len(TOWER_TYPES))
+    assert len(rects) == len(TOWER_TYPES)
+    back = ui.build_rest_back_rect()
+    for rect in rects:
+        assert 0 <= rect.left and rect.right <= settings.SCREEN_WIDTH
+        assert rect.bottom < back.top
+    assert len({rect.y for rect in rects}) == -(-len(TOWER_TYPES) // ui.SMITH_CHOICE_COLUMNS)
+    assert not any(a.colliderect(b) for i, a in enumerate(rects) for b in rects[i + 1:])
 
 
 # --- Treasure nodes ---
@@ -2584,6 +2727,7 @@ def test_bare_modifier_key_does_not_dismiss_a_continue_screen(game, state_name):
     game.update(dt=0.01)
     game.state = getattr(GameState, state_name)
     game.event_phase = "resolved"
+    game.rest_phase = "resolved"
 
     game._handle_keydown(pygame.K_LALT)
     assert game.state == getattr(GameState, state_name)

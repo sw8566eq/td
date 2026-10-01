@@ -50,7 +50,9 @@ node types:
 - **Shop** -- spend shop currency on towers and relics (see "The Shop and two currencies" below).
 - **Event** -- a short prompt with 2-3 honestly-described options (gain currency, lose a relic for a
   bigger reward, unlock a tower early, heal, ...) -- never a hidden-odds gamble.
-- **Rest** -- heals some lives back, no choice involved.
+- **Rest** -- a campfire choice: **Rest** to heal some lives back, or **Smith** to forge one of your
+  towers -- every copy of it you place for the rest of the run starts at level 2, for free (marked
+  with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
 
 The final row is always a single **Boss** node. It loads in Endless mode from the very start, so its
@@ -149,9 +151,10 @@ waves) saves the run to disk and returns to the menu -- see "Save & resume" belo
 Playing a level you're playtesting from the map editor adds one more option there: `E` stops the run
 and takes you straight back to the editor, paint buffer untouched.
 
-On the **Floor Cleared** screen, any key returns to the map; on the **Shop** screen, click a card to
-buy it (if you can afford it) and click Continue when you're done; on an **Event**, click one of the
-options shown, then any key moves on; **Rest** and **Treasure** resolve themselves instantly and any
+On the **Floor Cleared** screen, any key opens the reward screen (click a card to take it, then
+Continue/Skip or Enter); on the **Shop** screen, click a card to
+buy it (if you can afford it) and click Continue when you're done; on an **Event** or **Rest** site,
+click one of the options shown, then any key moves on; **Treasure** resolves itself instantly and any
 key continues from there. `Esc` quits from any of these, or from the main menu, game-over, or victory
 screens (there's no pause menu to open on any of those). `R` restarts from the game-over screen, and
 -- from the victory screen a Practice or playtested level can still reach -- advances to the next

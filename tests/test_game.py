@@ -3687,6 +3687,7 @@ def test_handle_events_left_click_continues_from_rest_and_treasure(game, state):
     node_id = game.active_run.map.start_node_ids[0]
     game.active_run.current_node_id = node_id
     game.state = state
+    game.rest_phase = "resolved"  # a Rest only continues once its choice is made
 
     _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(5, 5), button=1))
 

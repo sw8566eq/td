@@ -117,7 +117,7 @@ def test_save_and_load_run_round_trips(tmp_path):
     assert loaded["between_wave_timer"] == 1.5
     assert loaded["towers"] == [{
         "type": "basic", "anchor_col": 2, "anchor_row": 3,
-        "level": 2, "specialization": None, "targeting_mode": "strongest",
+        "level": 2, "specialization": None, "targeting_mode": "strongest", "forged": False,
         "shots_fired": 0, "shots_hit": 0, "damage_dealt": 0.0, "kills": 0,
     }]
     assert loaded["sold_towers"] == []
