@@ -1,0 +1,116 @@
+# The run's branching map
+
+## The run's branching map
+
+A run's map (`run/run_map.py`) is a Slay-the-Spire-style row-based DAG, generated once, up front (`Game.
+start_new_run`), and shown to the player in full from the start -- not fog-of-war, not revealed
+fork-by-fork. `ROW_COUNT` rows (6, unchanged from the old flat sequence's own floor count, which
+keeps `run/run_escalation.py`'s tuned growth constants meaning the same thing they always did); edges
+only ever run from one row to the next, never skip a row or point backward, which is what keeps
+"every node reachable, every node can reach the boss" provable by simple induction (see
+`_generate_edges`' own docstring) rather than needing a general graph-reachability pass after the
+fact (tests still verify it via BFS over many seeds anyway). Row 0 is a fixed-width, all-Combat
+choice (which of `START_ROW_WIDTH` same-difficulty layouts to open the run on, not a difficulty
+choice at all) -- the run's very first resolved node is always guaranteed to be a real level load,
+keeping the lives-capture special case above simple. The final row is always exactly one node of its
+own dedicated `"boss"` type (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps
+`is_final_floor`/`endless=True` trivial, no "did every path converge" check needed.
+
+Every other row is a weighted-random mix of the six ordinary `NODE_TYPES` (`NODE_TYPE_WEIGHTS`) --
+`"boss"` is a seventh registered type with no entry in that weight table at all, since it's never
+drawn by the mix, only forced onto the final row exactly like `"combat"` is forced onto row 0 -- capped
+at half the row per type (`MAX_SAME_TYPE_PER_ROW_FRACTION`) so a wide row can't degenerate into one
+repeated type. `MIN_ELITE_ROW` keeps Elite off the run's opening rows; `GUARANTEED_REST_ROW` forces
+at least one Rest node onto that one row if the weighted draw didn't already produce one, and
+`GUARANTEED_TREASURE_ROW` (a distinct row, same injection shape) does the same for Treasure -- whose
+own 4/100 weight and lack of any guarantee otherwise meant a run could plausibly see zero of them.
+Both are deliberately **not** mirrored for Shop, which stays pure chance (a run's Shop cadence is
+meant to vary, unlike Rest's "never go the whole back half with no way to recover lives" guarantee,
+or Treasure's "always at least one guaranteed relic-shopping stop"). A Combat/Elite node's own
+level id is drawn from whichever tier its row falls in (`_level_pool_for_row`, partitioned by
+structure -- single-spawn "corridor" levels for earlier rows, multi-spawn "multi-lane" ones for later
+rows -- not a hardcoded id list, so it stays self-maintaining as levels are added) rather than sampled
+freely across all of `LEVELS`, preserving the same corridor-then-multi-lane authored ramp the old
+flat, ascending `floor_sequence` used to give for free. The final row's own boss node is a further
+special case on top of that tiering, not just "whichever multi-lane level a late row would otherwise
+draw" -- see the Boss bullet below.
+
+The seven node types:
+- **Combat**: a normal floor, exactly what a run's only node type used to be.
+- **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
+  escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
+  `ELITE_INCOME_MULTIPLIER`) -- risk/reward, not "harder for its own sake."
+- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `run/shop.py` verbatim, only
+  reached via a map node now rather than automatically after every floor clear (see "Two currencies"
+  below for what this replaced).
+- **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`run/events.py`), each a fixed,
+  honestly-described delta (shop currency, lives, a relic grant, a tower unlock, or -- since the
+  gaps-and-synergies batch -- giving up a relic already held, `EventOption.relic_cost`) rather than
+  a hidden-odds gamble, same "say exactly what it does" precedent `run/relics.py`'s own registry sets.
+  `Game.event_options` (`events.available_options(event, run)`) is the actual rendered/clickable
+  subset -- may be shorter than the event's own full `options` tuple if a `relic_cost` option got
+  dropped for holding no relics; a `relic_cost` option must always be the last in its tuple, since
+  filtering only ever truncates the tail, keeping every other option's index stable regardless.
+  Two-phase (`Game.event_phase`, "choose" then "resolved") -- `_handle_event_click`/
+  `_resolve_event_choice` apply the chosen option's effect (indexing into `event_options`, never the
+  raw `current_event.options`) and show what happened; any further click/key then returns to the
+  map.
+- **Rest**: `GameState.REST` -- auto-resolves the instant it's entered (`Game._enter_rest_node`), no
+  player choice, healing `run.lives` by `run_map.heal_amount_for_row(node.row)` and showing a static
+  confirmation screen.
+- **Treasure**: `GameState.TREASURE` -- also auto-resolves on entry (`Game._enter_treasure_node`): a
+  guaranteed shop-currency payout (`run_map.treasure_shop_currency_for_row`) plus one guaranteed relic
+  pick, degrading gracefully to currency-only once every relic is already held (`relics.relic_offer`'s
+  own empty-once-exhausted precedent).
+- **Boss**: the run's climactic final-row node -- dispatched through `Game._load_combat_node` exactly
+  like Combat/Elite (`Game._enter_node`'s `("combat", "elite", "boss")` check), escalated further still
+  by `run_escalation.apply_boss_multiplier` (tuned higher than Elite's own bump), and drawn from its
+  own dedicated `run_map.BOSS_LEVEL_IDS` pool (two levels, ids 16/17) rather than the ordinary
+  multi-lane tier -- `_level_pool_for_row` excludes `BOSS_LEVEL_IDS` from that ordinary complex pool
+  entirely, so an ordinary mid-run Elite/Combat node can never draw one early. Each ends its final
+  wave in `{"final_boss": N}` (`enemy.FinalBossEnemy`, an `ENEMY_TYPES` entry reserved for these two
+  levels) rather than the ordinary `{"boss": N}` every other level's own final wave still uses.
+  `FinalBossEnemy` inherits `BossEnemy`'s Enrage/Armor mechanics unmodified and adds a one-time-per-run
+  live mechanic of its own: while still alive, it periodically summons `SUMMON_COUNT` `ScoutEnemy`
+  reinforcements at its own current position along the route, via `Enemy.pending_spawns` -- the same
+  channel `SplitterEnemy` already uses, just populated repeatedly while alive rather than once at
+  death, which is what required generalizing `Game.update()`'s own drain of that list: every enemy's
+  own `pending_spawns` is now drained into `still_alive` and cleared *before* the dead/goal/alive split
+  runs, not only inside the `if enemy.is_dead:` branch the way it worked before `FinalBossEnemy`
+  existed. That same drain also runs every child/summon through `WaveManager.apply_spawn_multipliers()`
+  (the post-construction difficulty/escalation/relic scaling `_spawn_enemy` applies to every wave
+  spawn) before Fracture Rounds/Containment Charges touch it -- these enemies are constructed by their
+  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
+  the boss, run over" screen -- `WaveManager.authored_waves_cleared` (a new flag, distinct from
+  `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
+  before/after check reads to detect the boss node's authored waves running out for the first time,
+  firing `Game._handle_boss_defeated()`: a one-shot-per-run toast, a `bosses_defeated` bump on both
+  `progression/meta_progression.py` and `progression/achievements.py` (the `"boss_slayer"` achievement), and a persistent
+  `RunState.boss_defeated` flag that appends "-- Boss defeated!" onto the HUD's existing Wave line for
+  the rest of the (still-ongoing, still-endless) fight -- piggybacked onto that line rather than a new
+  one, same headroom reasoning `shop_currency`'s own comment in `ui.draw_hud` already gives.
+  `RunState.boss_defeated` (guarded the same one-shot way `used_guardians_reprieve` is) is what stops
+  a mid-boss-fight Restart -- which rebuilds a fresh `WaveManager` whose own `authored_waves_cleared`
+  starts `False` again -- from double-counting `bosses_defeated` a second time.
+
+`Game._enter_map()` (re-)shows the map screen, rebuilding `self.map_node_rects` fresh every time
+(`ui.build_map_node_rects`) -- the same "computed fresh, not a persistent cache" spirit
+`draft_choices` already follows, though unlike a Shop visit's own offer this never needs a
+scroll-aware rebuild (the map never scrolls at `ROW_COUNT=6`). `Game._available_node_ids()` (`run.
+map.start_node_ids` if nothing's been picked yet, else the current node's own edges) is the single
+source of truth both `_handle_map_click`'s legality check and `ui.draw_map_screen`'s "available"
+visual state read from. `Game._enter_node(node_id)` sets `run.current_node_id` and dispatches to
+whichever `_enter_*_node`/`_load_combat_node` method that node type needs; `Game._finish_node
+(node_id)` is the shared terminal step every non-combat resolution (a Shop's Continue, an Event's
+chosen option, Rest/Treasure's auto-resolve) routes through -- mark the node visited, return to the
+map. A Combat/Elite node's own clear already appends its own id in `_advance_run_floor`, so it never
+goes through `_finish_node` -- there's no separate "leave the results screen" step distinct from
+pressing any key on `FLOOR_CLEARED`, which goes straight to `_enter_map()`.
+
+`GameState.MAP`/`DRAFT`/`EVENT`/`REST`/`TREASURE` are all full-screen states (like `LEVEL_SELECT`/
+`EDITOR` -- see `render()`'s early-return block), not overlays drawn atop a frozen board the way
+`PAUSED`/`GAME_OVER`/`VICTORY`/`FLOOR_CLEARED` are: `MAP` can be shown before any floor of the run has
+ever loaded (right after `start_new_run()`, before `self.grid`/`self.economy` exist at all), so
+there's structurally no board to freeze behind it -- the other four are reached from `MAP` and follow
+the same full-screen convention for consistency, even on a node sequence where a board technically
+still exists from an earlier floor.
