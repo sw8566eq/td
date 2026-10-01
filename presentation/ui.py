@@ -18,12 +18,14 @@ from entities.waves import WaveState
 from persistence.keybindings import ACTION_LABELS, ACTION_ORDER
 from progression.achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from progression.meta_progression import (
+    COMMANDER_META_UNLOCKS,
     LEVEL_META_UNLOCKS,
     META_UNLOCKS,
     RELIC_META_UNLOCKS,
     SHOP_META_UNLOCKS,
 )
 from run.ascension import ASCENSION_LEVELS
+from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from run.potions import POTION_SLOTS, POTIONS
 from run.relics import RELICS
@@ -1308,6 +1310,75 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     surface.blit(continue_label, continue_label.get_rect(center=continue_button_rect.center))
 
 
+# --- Commander select (right before a run starts) ---
+
+COMMANDER_CARD_HEIGHT = 320  # taller than a Shop card: kit lines plus two lock lines
+
+
+def build_commander_card_rects(count):
+    """Same centered row as build_draft_choice_rects, just taller cards."""
+    return [pygame.Rect(rect.x, rect.y, rect.width, COMMANDER_CARD_HEIGHT)
+            for rect in build_draft_choice_rects(count)]
+
+
+COMMANDER_LOCK_TEXT = {
+    "runs_played": "Finish {goal} run",
+    "total_floors_cleared": "Clear {goal} floors",
+    "bosses_defeated": "Defeat {goal} boss",
+}
+
+
+def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_index, unlocked_keys, counters):
+    """One card per COMMANDER_ORDER entry -- its starter towers, starting
+    relic/potions/forged towers, and, if still locked, what unlocks it
+    and how close this account is. Click an unlocked card to start the
+    run (Game._choose_commander); Esc goes back to the menu."""
+    surface.fill(settings.COLOR_BG)
+    _draw_dim_overlay(surface)
+    title = font.render("Choose your Commander", True, settings.COLOR_GOLD)
+    surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
+
+    for index, key in enumerate(COMMANDER_ORDER):
+        commander = COMMANDERS[key]
+        rect = card_rects[index]
+        unlocked = key in unlocked_keys
+        hovered = unlocked and index == hovered_index
+        fill = settings.COLOR_BUTTON_SELECTED if hovered else settings.COLOR_HUD_BG
+        pygame.draw.rect(surface, fill, rect, border_radius=8)
+        border = settings.COLOR_BUTTON if unlocked else settings.COLOR_BUTTON_DISABLED
+        pygame.draw.rect(surface, border, rect, width=2, border_radius=8)
+        x, y = rect.x + PANEL_PADDING, rect.y + PANEL_PADDING
+        max_width = rect.width - 2 * PANEL_PADDING
+        name = font.render(commander.display_name, True, settings.COLOR_TEXT if unlocked else settings.COLOR_TEXT_DIM)
+        surface.blit(name, (x, y))
+        y += name.get_height() + 6
+
+        lines = list(_wrap_text(commander.description, small_font, max_width))
+        lines.append("")
+        lines.append("Towers: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.starter_towers))
+        lines.extend(f"Relic: {RELICS[r].display_name}" for r in commander.starting_relics)
+        if commander.starting_potions:
+            lines.append("Potions: " + ", ".join(POTIONS[p].display_name for p in commander.starting_potions))
+        if commander.forged_towers:
+            lines.append("Forged: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.forged_towers))
+        for line in lines:
+            for wrapped in (_wrap_text(line, small_font, max_width) if line else [""]):
+                surface.blit(small_font.render(wrapped, True, settings.COLOR_TEXT_DIM), (x, y))
+                y += PANEL_ROW_HEIGHT - 2
+
+        if not unlocked:
+            unlock = next(u for u in COMMANDER_META_UNLOCKS.values() if u.commander_key == key)
+            requirement = COMMANDER_LOCK_TEXT.get(unlock.counter, "{goal} " + unlock.counter).format(goal=unlock.goal)
+            progress = min(counters.get(unlock.counter, 0), unlock.goal)
+            bottom = rect.bottom - PANEL_PADDING
+            for text in (f"{requirement} ({progress}/{unlock.goal})", "Locked"):
+                lock = small_font.render(text, True, settings.COLOR_GOLD)
+                surface.blit(lock, lock.get_rect(midbottom=(rect.centerx, bottom)))
+                bottom -= PANEL_ROW_HEIGHT
+
+    _draw_escape_hint(surface, small_font, "Esc -- Back to Menu")
+
+
 # --- Post-combat reward screen ---
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
@@ -2111,6 +2182,7 @@ UNLOCKS_SECTIONS = [
     ("Relics", RELIC_META_UNLOCKS, "relic_key", lambda key: RELICS[key].display_name),
     ("Levels", LEVEL_META_UNLOCKS, "level_id", lambda level_id: LEVELS[level_id].name),
     ("Shop", SHOP_META_UNLOCKS, None, lambda _content: "3rd Shop relic offer slot"),
+    ("Commanders", COMMANDER_META_UNLOCKS, "commander_key", lambda key: COMMANDERS[key].display_name),
 ]
 
 

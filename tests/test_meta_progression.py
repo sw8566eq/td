@@ -87,7 +87,7 @@ def test_bump_ignores_other_counters_thresholds(tmp_path):
     # reached yet at 10. unlock_siphon (runs_played, 4) is one of these too.
     assert set(newly_unlocked) == {
         "unlock_sniper", "unlock_support", "unlock_beacon", "unlock_siphon",
-        "unlock_breach_charges",
+        "unlock_breach_charges", "unlock_alchemist",
     }
 
 
@@ -201,7 +201,7 @@ def test_bump_across_registries_returns_keys_from_every_kind_in_one_call(tmp_pat
     path = tmp_path / "meta_progression.json"
     newly_unlocked = meta_progression.bump("bosses_defeated", amount=1, path=path)
 
-    assert newly_unlocked == ["unlock_containment_charges"]
+    assert newly_unlocked == ["unlock_containment_charges", "unlock_engineer"]
 
 
 def test_has_unlocked_third_relic_slot_is_false_with_no_progress(tmp_path):

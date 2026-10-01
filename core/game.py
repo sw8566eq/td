@@ -18,7 +18,7 @@ from presentation.assets import AssetManager
 from progression import achievements, meta_progression, progress, run_history
 from run import (
     ascension,
-    card_pool,
+    commanders,
     daily_challenge,
     difficulty,
     events,
@@ -161,6 +161,9 @@ class GameState(Enum):
     # screen) -- reached from FLOOR_CLEARED, full-screen like the other
     # run screens above, and always leads back to MAP.
     REWARD = auto()
+    # Picking a Commander (run/commanders.py) right before a run starts --
+    # reached from MENU's "any key", leads to the new run's MAP.
+    COMMANDER_SELECT = auto()
 
 
 class Game:
@@ -337,6 +340,11 @@ class Game:
         # indices which of those cards have been taken so far this visit.
         self.reward = None
         self.reward_rects = []
+        # The Commander select screen (see _enter_commander_select) --
+        # card_rects fixed, unlocked/counters re-read on every entry.
+        self.commander_rects = ui.build_commander_card_rects(len(commanders.COMMANDER_ORDER))
+        self.commander_unlocked = {commanders.DEFAULT_COMMANDER}
+        self.commander_counters = {}
         self.reward_claimed_indices = set()
         # Seconds left on an Overclock Elixir (potions.py) -- every tower
         # fires faster while this is positive. Floor-scoped: reset by
@@ -527,7 +535,31 @@ class Game:
         time)."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
-    def start_new_run(self, seed=None, is_daily=False, ascension_level=None):
+    def _enter_commander_select(self):
+        """MENU's "any key" -- show the Commander select screen (see
+        commanders.py). Re-reads which Commanders this account has
+        unlocked on every entry, same "always re-read" shape _enter_
+        unlocks() follows."""
+        self.commander_unlocked = meta_progression.unlocked_commanders(
+            commanders.DEFAULT_COMMANDER, self.meta_progression_path,
+        )
+        self.commander_counters = meta_progression.load_meta_progression(self.meta_progression_path)["counters"]
+        self.state = GameState.COMMANDER_SELECT
+
+    def _choose_commander(self, index):
+        """Start a run as COMMANDER_ORDER[index] -- a no-op for a still-
+        locked Commander."""
+        key = commanders.COMMANDER_ORDER[index]
+        if key in self.commander_unlocked:
+            self.start_new_run(commander=key)
+
+    def _handle_commander_select_click(self, pos):
+        return self.input_handler._handle_commander_select_click(pos)
+
+    def _hovered_commander(self):
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.commander_rects)
+
+    def start_new_run(self, seed=None, is_daily=False, ascension_level=None, commander=None):
         """Start a new roguelike run: a full branching map generated once
         (run_map.generate_run_map), a starter tower pool (card_pool.
         STARTER_TOWERS), and no current node yet -- the player's first act
@@ -572,11 +604,18 @@ class Game:
         # clamped to what this account has actually unlocked.
         if ascension_level is None:
             ascension_level = 0 if is_daily else min(self.selected_ascension, self.highest_ascension)
+        # A Daily Run always uses the default Commander, for the same
+        # comparable-score reason it pins difficulty and ascension.
+        if commander is None or is_daily:
+            commander = commanders.DEFAULT_COMMANDER
+        chosen = commanders.COMMANDERS[commander]
         self.active_run = RunState(
             seed=seed, map=run_map.generate_run_map(random.Random(seed), level_pool=level_pool),
             difficulty="normal" if is_daily else self.difficulty,
-            unlocked_towers=list(card_pool.STARTER_TOWERS), is_daily=is_daily,
-            ascension=ascension.clamp(ascension_level),
+            unlocked_towers=list(chosen.starter_towers), is_daily=is_daily,
+            ascension=ascension.clamp(ascension_level), commander=commander,
+            relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
+            forged_towers=list(chosen.forged_towers),
         )
         self._enter_map()
 

@@ -126,6 +126,10 @@ class RunState:
     # floors_cleared_prior_acts carries the score earned on earlier acts'
     # maps forward, since their node ids aren't kept.
     act: int = 0
+    # Which commanders.COMMANDERS entry this run started as -- read only
+    # at start_new_run (its starter towers/relics/potions are copied onto
+    # the fields above), kept for display and the run's own record.
+    commander: str = "warden"
     floors_cleared_prior_acts: int = 0
 
     @property

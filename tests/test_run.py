@@ -2752,6 +2752,8 @@ def test_m_after_permadeath_returns_to_the_menu_and_any_key_starts_a_fresh_run(g
     game._handle_keydown(pygame.K_m)
     assert game.state == GameState.MENU
     game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.COMMANDER_SELECT
+    game._choose_commander(0)
 
     assert game.state == GameState.MAP
     assert game.active_run is not old_run

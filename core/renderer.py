@@ -183,6 +183,15 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.COMMANDER_SELECT:
+            ui.draw_commander_select_screen(
+                game.screen, game.font, game.small_font, game.commander_rects, game._hovered_commander(),
+                game.commander_unlocked, game.commander_counters,
+            )
+            self._draw_toasts()
+            pygame.display.flip()
+            return
+
         if game.state == GameState.REWARD and game.active_run is not None:
             node = game.active_run.map.node(game.active_run.current_node_id)
             ui.draw_reward_screen(

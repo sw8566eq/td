@@ -131,8 +131,13 @@ def test_hard_difficulty_yields_fewer_starting_lives_and_tougher_enemies_than_ea
 # --- State machine: keydown handling ---
 
 
-def test_menu_any_key_starts_a_new_run(game):
+def test_menu_any_key_opens_commander_select_then_a_pick_starts_a_new_run(game):
     game._handle_keydown(pygame.K_SPACE)  # not one of the menu's own bound keys (E/L/S/A)
+    assert game.state == GameState.COMMANDER_SELECT
+    assert game.active_run is None
+
+    game._handle_commander_select_click(game.commander_rects[0].center)
+
     assert game.state == GameState.MAP  # shows the run's own map -- see Game.start_new_run
     assert game.active_run is not None
 
@@ -2415,10 +2420,10 @@ def test_every_special_cased_menu_key_has_an_on_screen_hint(game):
     for letter in string.ascii_lowercase:
         game.state = GameState.MENU
         game._handle_keydown(pygame.key.key_code(letter))
-        # MAP is the default "start a run" catch-all's own outcome now
-        # (see Game.start_new_run), same as PLAYING used to be alone --
+        # COMMANDER_SELECT is the default "start a run" catch-all's own
+        # outcome now (see Game._enter_commander_select) --
         # not itself something that needs its own on-screen hint.
-        if game.state not in (GameState.MENU, GameState.PLAYING, GameState.MAP):
+        if game.state not in (GameState.MENU, GameState.PLAYING, GameState.MAP, GameState.COMMANDER_SELECT):
             assert letter.upper() in hinted_letters, (
                 f"{letter.upper()} silently routes the menu to {game.state} but has no "
                 "on-screen hint in ui.menu_options() -- add one there."
@@ -2690,7 +2695,7 @@ def test_entering_unlocks_resets_scroll_to_the_top(game):
 def test_unlocks_display_rows_has_one_header_per_non_empty_section():
     rows = ui.unlocks_display_rows()
     headers = [text for is_header, text, _key, _unlock in rows if is_header]
-    assert headers == ["Towers", "Relics", "Levels", "Shop"]
+    assert headers == ["Towers", "Relics", "Levels", "Shop", "Commanders"]
 
 
 def test_unlocks_display_rows_entry_count_matches_all_unlocks():
@@ -2699,6 +2704,7 @@ def test_unlocks_display_rows_entry_count_matches_all_unlocks():
     assert len(entries) == (
         len(meta_progression.META_UNLOCKS) + len(meta_progression.RELIC_META_UNLOCKS)
         + len(meta_progression.LEVEL_META_UNLOCKS) + len(meta_progression.SHOP_META_UNLOCKS)
+        + len(meta_progression.COMMANDER_META_UNLOCKS)
     )
 
 
@@ -3064,7 +3070,7 @@ def test_s_key_while_paused_is_a_no_op_mid_wave(playing_game):
 def test_c_key_at_the_menu_is_a_no_op_without_a_saved_run(game):
     assert game.has_saved_run is False
     game._handle_keydown(pygame.K_c)
-    assert game.state == GameState.MAP  # falls through to the generic "any key" (start a run) case
+    assert game.state == GameState.COMMANDER_SELECT  # falls through to the generic "any key" (start a run) case
 
 
 def test_a_fresh_game_instance_picks_up_an_existing_save_file(tmp_path):

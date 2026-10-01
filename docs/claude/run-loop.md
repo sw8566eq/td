@@ -124,3 +124,16 @@ that scaled by `node.row` now reads `run.depth_of(node.row)` (= `act * ROW_COUNT
 relic modifiers, shop income, rest heal, treasure, Liquid Gold. The first-node lives capture is
 gated on `act == 0` so act 2's first node restores the carried lives instead of re-capturing.
 `floors_cleared` counts combat/elite/boss nodes (a visited boss is always an earlier act's).
+
+## Commanders
+
+`run/commanders.py` -- `COMMANDERS` registry (starter towers, starting relics/potions/forged towers).
+MENU's "any key" now goes to `GameState.COMMANDER_SELECT` (`Game._enter_commander_select`, which
+re-reads `meta_progression.unlocked_commanders`); clicking an unlocked card calls
+`start_new_run(commander=key)`, which copies the Commander's kit onto the new `RunState` (no
+`_grant_relic`, so starting relics don't bump `relics_collected`; a starting relic must not rely on
+`_apply_one_time_relic_bonus`, since lives are only captured on the first node -- a test enforces
+this). Gating is `meta_progression.COMMANDER_META_UNLOCKS` (a 5th class in `ALL_UNLOCKS`, so the
+Unlocks screen and unlock toasts pick it up); `unlocked_commanders` also honours a counter already
+at goal, so pre-existing accounts don't wait for the next bump. Daily Runs force
+`DEFAULT_COMMANDER`. `RunState.commander` is saved and validated.
