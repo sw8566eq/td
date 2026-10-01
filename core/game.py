@@ -64,6 +64,9 @@ _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat 
 _DEFAULT_ESCALATION = run_escalation.FloorEscalation()
 _DEFAULT_RELIC_MODIFIERS = relics.RelicModifiers()
 
+# Lives restored when a run moves on to its next act (Game._advance_act).
+ACT_HEAL_LIVES = 10
+
 # Emergency Reserves' own one-time refund (relics.py) -- see Game._spend_gold.
 EMERGENCY_RESERVES_REFUND_AMOUNT = 40
 
@@ -591,14 +594,15 @@ class Game:
         bumped further by run_escalation.apply_elite_multiplier for an
         Elite node, or apply_boss_multiplier (tuned higher than Elite's own
         bump) for the map's one boss node."""
-        escalation = run_escalation.escalation_for_floor(node.row)
+        depth = run.depth_of(node.row)
+        escalation = run_escalation.escalation_for_floor(depth)
         if node.node_type == "elite":
             escalation = run_escalation.apply_elite_multiplier(escalation)
         elif node.node_type == "boss":
             escalation = run_escalation.apply_boss_multiplier(escalation)
         escalation = ascension.apply_to_escalation(escalation, run.ascension, node.node_type)
         return (
-            relics.compose_relic_modifiers(run.relics, node.row, run.has_spent_gold),
+            relics.compose_relic_modifiers(run.relics, depth, run.has_spent_gold),
             escalation,
             self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
         )
@@ -623,6 +627,11 @@ class Game:
         # row number: two sibling nodes in the same row would otherwise
         # derive byte-identical rng, silently defeating branching (both
         # forks of a choice would route/offer identically).
+        # Every act reuses the same node ids ("0-0", ...) on its own fresh
+        # map, so a later act folds its own number in -- act 0's keys stay
+        # exactly what they always were, so existing seeds are unchanged.
+        if run.act:
+            key = f"act{run.act}:{key}"
         return random.Random(f"{run.seed}:{stream}:{key}")
 
     def _load_combat_node(self, node):
@@ -680,7 +689,7 @@ class Game:
             active_run=run, resumed_from_save=self._resumed_from_save,
         )
         self.current_level_id = node.level_id
-        if not run.visited_node_ids:
+        if run.act == 0 and not run.visited_node_ids:
             lives_multiplier = ascension.modifiers_for(run.ascension).starting_lives_multiplier
             run.lives = max(1, round(self.economy.lives * lives_multiplier))
             self.economy.lives = run.lives
@@ -715,9 +724,18 @@ class Game:
         run.lives = self.economy.lives
         run.visited_node_ids.append(node.id)
         run.shop_currency += shop.income_for_floor(
-            node.row, self.economy.gold, is_elite=node.node_type == "elite",
+            run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
         )
         self._record_meta_progress("total_floors_cleared")
+        if node.node_type == "boss":
+            # An earlier act's boss -- a finite fight (only the last act's
+            # is endless, see RunState.is_final_floor), so it clears like
+            # any floor, then the reward screen offers a boss relic and
+            # moves the run on to the next act (see _leave_reward_screen).
+            self._record_meta_progress("bosses_defeated")
+            self._record_achievement("bosses_defeated")
+            self._record_achievement("acts_cleared")
+            self.audio.play("boss_defeated")
         # A save is only ever taken mid-floor (see can_save_run), so once
         # the floor it was taken on clears, it points back at progress
         # this clear has already credited. Left on disk, quitting now and
@@ -796,10 +814,10 @@ class Game:
         tower_count = rewards.TOWER_REWARD_COUNT + ascension.modifiers_for(run.ascension).reward_tower_count_delta
         self.reward = rewards.build_combat_reward(
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
-            tower_count=tower_count,
+            tower_count=tower_count, is_boss=node.node_type == "boss",
         )
         if self.reward.is_empty:
-            self._enter_map()
+            self._leave_reward_screen()
             return
         self.reward_rects = ui.build_draft_choice_rects(len(self._reward_cards()))
         self.reward_claimed_indices = set()
@@ -807,11 +825,12 @@ class Game:
 
     def _reward_cards(self):
         """(kind, key) per reward card, in reward_rects' own order --
-        every tower choice, then the Elite relic, then the potion, each
-        only if the reward has one."""
+        every tower choice, the Elite relic, an act boss's relic choices,
+        then the potion, each only if the reward has one."""
         cards = [("tower", name) for name in self.reward.tower_choices]
         if self.reward.relic is not None:
             cards.append(("relic", self.reward.relic))
+        cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
         if self.reward.potion is not None:
             cards.append(("potion", self.reward.potion))
         return cards
@@ -827,11 +846,39 @@ class Game:
             return False
         cards = self._reward_cards()
         kind = cards[index][0]
-        if kind == "tower":
-            return not any(cards[i][0] == "tower" for i in self.reward_claimed_indices)
+        if kind in ("tower", "boss_relic"):
+            # Pick-one rows: claiming one forfeits the rest of its kind.
+            return not any(cards[i][0] == kind for i in self.reward_claimed_indices)
         if kind == "potion":
             return potions.has_free_slot(self.active_run.potions)
         return True
+
+    def _leave_reward_screen(self):
+        """Continue/Skip on the reward screen -- back to the map, or, after
+        an act boss, on to the next act's fresh map (_advance_act)."""
+        run = self.active_run
+        if run.map.node(run.current_node_id).node_type == "boss":
+            self._advance_act()
+        else:
+            self._enter_map()
+
+    def _advance_act(self):
+        """The current act's boss is beaten -- start the next act: bank
+        this act's score into floors_cleared_prior_acts, generate a fresh
+        map (seeded per act, so act 0's map is exactly what it always
+        was), heal ACT_HEAL_LIVES, and show the new map. Escalation keeps
+        climbing via RunState.depth, so the new act's first row is harder
+        than the boss just beaten."""
+        run = self.active_run
+        run.floors_cleared_prior_acts = run.floors_cleared
+        run.act += 1
+        level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
+        run.map = run_map.generate_run_map(random.Random(f"{run.seed}:act:{run.act}"), level_pool=level_pool)
+        run.visited_node_ids = []
+        run.current_node_id = None
+        run.lives += ACT_HEAL_LIVES
+        self._queue_toast(f"Act {run.act + 1} begins -- recovered {ACT_HEAL_LIVES} lives")
+        self._enter_map()
 
     def _handle_reward_click(self, pos):
         return self.input_handler._handle_reward_click(pos)
@@ -846,7 +893,7 @@ class Game:
         if kind == "tower":
             self.active_run.unlocked_towers.append(key)
             self.audio.play("tower_unlocked_shop")
-        elif kind == "relic":
+        elif kind in ("relic", "boss_relic"):
             self._grant_relic(key)
         else:
             self.active_run.potions.append(key)
@@ -1113,7 +1160,8 @@ class Game:
         one held tower type -- see _forge_tower). Nothing happens until the
         player picks one (see _choose_rest_option)."""
         heal_multiplier = ascension.modifiers_for(self.active_run.ascension).rest_heal_multiplier
-        self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(node.row) * heal_multiplier))
+        depth = self.active_run.depth_of(node.row)
+        self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(depth) * heal_multiplier))
         self.rest_forged_tower = None
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
@@ -1155,7 +1203,7 @@ class Game:
         relic_offer's own empty-once-exhausted precedent, same as a Shop
         offer can run dry -- see _enter_shop_node)."""
         run = self.active_run
-        currency = run_map.treasure_shop_currency_for_row(node.row)
+        currency = run_map.treasure_shop_currency_for_row(run.depth_of(node.row))
         run.shop_currency += currency
         self.treasure_granted_currency = currency
         rng = self._run_rng(run, _TREASURE_RNG_STREAM, node.id)
@@ -2477,10 +2525,11 @@ class Game:
             self._record_level_cleared()
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
-                # the map's boss node is always loaded endless=True (see
-                # _load_combat_node), so all_waves_complete structurally
-                # can never fire for it; this branch is only ever reached
-                # by a non-final floor clearing.
+                # the final act's boss node is always loaded endless=True
+                # (see _load_combat_node), so all_waves_complete
+                # structurally can never fire for it; this branch is only
+                # ever reached by a non-final floor (an earlier act's boss
+                # included) clearing.
                 self._advance_run_floor()
             else:
                 self.state = GameState.VICTORY

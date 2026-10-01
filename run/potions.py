@@ -66,15 +66,15 @@ def _marking_dust(game: Any) -> None:
 
 
 def liquid_gold_amount(row: int) -> int:
-    """Battle gold a Liquid Gold grants on map row `row` -- grows with depth
+    """Battle gold a Liquid Gold grants at run depth `row` (RunState.depth) -- grows
     the same way every floor's own gold economy does (run_escalation.py),
     so it stays worth a slot late in a run."""
     return LIQUID_GOLD_BASE + LIQUID_GOLD_PER_ROW * row
 
 
 def _liquid_gold(game: Any) -> None:
-    row = game.active_run.current_row if game.active_run is not None else 0
-    game.economy.add_gold(liquid_gold_amount(row))
+    depth = game.active_run.depth if game.active_run is not None else 0
+    game.economy.add_gold(liquid_gold_amount(depth))
 
 
 def _mending_salve(game: Any) -> None:

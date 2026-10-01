@@ -49,7 +49,7 @@ from run.card_pool import STARTER_TOWERS
 from run.difficulty import DIFFICULTY_MODES
 from run.events import EVENTS
 from run.relics import RELICS, Relic
-from run.run_map import MapNode, RunMap
+from run.run_map import ACT_COUNT, MapNode, RunMap
 from run.run_state import RunState
 from run.shop import ShopItem
 from support import settings
@@ -577,6 +577,8 @@ def test_floor_cleared_escape_quits(game):
 
 def test_boss_node_of_a_run_loads_endless(game):
     game.start_new_run(seed=1)
+    game.active_run.act = ACT_COUNT - 1  # only the final act's boss is endless
+    game.active_run.lives = 20
     boss_id = game.active_run.map.boss_node_id
 
     game._enter_node(boss_id)
@@ -2129,21 +2131,21 @@ def test_boss_node_escalation_is_harder_than_elite_at_the_same_row(game):
     game._enter_node("1-0")
     elite_hp_multiplier = game.wave_manager.enemy_hp_multiplier
 
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
 
     assert game.wave_manager.enemy_hp_multiplier > elite_hp_multiplier
 
 
 def test_boss_node_always_loads_endless(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     assert game.wave_manager.endless is True
     assert game.active_run.is_final_floor
 
 
 def test_boss_node_renders_with_its_own_map_color_and_label(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game.active_run.current_node_id = "0-0"  # makes "1-0" available without entering it
     game.render()
     rect = game.map_node_rects["1-0"]
@@ -2151,7 +2153,7 @@ def test_boss_node_renders_with_its_own_map_color_and_label(game):
 
 
 def test_boss_defeated_flips_once_the_boss_nodes_authored_waves_clear(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     assert game.active_run.boss_defeated is False
 
@@ -2165,7 +2167,7 @@ def test_boss_defeated_flips_once_the_boss_nodes_authored_waves_clear(game):
 
 
 def test_boss_defeated_plays_the_boss_defeated_sound(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     _clear_the_current_waves_final_authored_wave(game)
     played = spy_on_audio(game)
@@ -2184,7 +2186,7 @@ def test_boss_defeated_does_not_flip_for_an_ordinary_combat_node(game):
 
 
 def test_boss_defeated_persists_on_the_hud_wave_line(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     _clear_the_current_waves_final_authored_wave(game)
     game.update(dt=0.01)
@@ -2194,7 +2196,7 @@ def test_boss_defeated_persists_on_the_hud_wave_line(game):
 
 
 def test_boss_defeated_bumps_meta_progress_and_achievement_counters_once(game):
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     _clear_the_current_waves_final_authored_wave(game)
     game.update(dt=0.01)
@@ -2211,7 +2213,7 @@ def test_boss_defeated_does_not_double_count_across_a_mid_boss_restart(game):
     # own authored_waves_cleared starts False again -- RunState.
     # boss_defeated is what stops this from re-bumping bosses_defeated a
     # second time.
-    _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"], act=ACT_COUNT - 1, lives=20)
     game._enter_node("1-0")
     _clear_the_current_waves_final_authored_wave(game)
     game.update(dt=0.01)
@@ -2668,6 +2670,8 @@ def test_permadeath_on_a_non_final_floor_does_not_bump_runs_reached_endless(game
 
 def test_permadeath_on_the_final_floor_bumps_runs_reached_endless(game):
     game.start_new_run(seed=1)
+    game.active_run.act = ACT_COUNT - 1  # only the final act's boss is endless
+    game.active_run.lives = 20
     boss_id = game.active_run.map.boss_node_id
     game._enter_node(boss_id)
     game.economy.lives = 1

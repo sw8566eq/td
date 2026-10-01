@@ -321,7 +321,7 @@ class InputHandler:
             if key == pygame.K_ESCAPE:
                 game.running = False
             elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                game._enter_map()
+                game._leave_reward_screen()
         elif game.state == GameState.MAP:
             # No keyboard equivalent for picking a node, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
@@ -668,7 +668,7 @@ class InputHandler:
         to the map, leaving anything unclaimed) or one reward card."""
         game = self.game
         if game.shop_continue_button_rect.collidepoint(pos):
-            game._enter_map()
+            game._leave_reward_screen()
             return
         index = ui.get_clicked_draft_choice(pos, game.reward_rects)
         if index is not None:

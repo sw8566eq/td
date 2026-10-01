@@ -28,6 +28,10 @@ from run import card_pool, potions, relics
 from run.run_state import RunState
 
 TOWER_REWARD_COUNT = 3
+# An act boss's reward (every act but the last -- see run_map.ACT_COUNT):
+# pick one of this many relics instead of the usual tower cards, Slay the
+# Spire's boss-relic choice.
+BOSS_RELIC_CHOICES = 3
 
 
 @dataclass(frozen=True)
@@ -37,19 +41,27 @@ class CombatReward:
     # every relic is already held, relic_offer's own exhausted case).
     relic: str | None = None
     potion: str | None = None
+    # An act boss's pick-one relic choice -- empty for every other node.
+    boss_relic_choices: tuple[str, ...] = ()
 
     @property
     def is_empty(self) -> bool:
-        return not self.tower_choices and self.relic is None and self.potion is None
+        return (not self.tower_choices and self.relic is None and self.potion is None
+                and not self.boss_relic_choices)
 
 
 def build_combat_reward(
     rng: random.Random, run: RunState, is_elite: bool, meta_progression_path: str | None = None,
-    tower_count: int = TOWER_REWARD_COUNT,
+    tower_count: int = TOWER_REWARD_COUNT, is_boss: bool = False,
 ) -> CombatReward:
     """This floor clear's reward -- tower choices first, then the Elite
     relic, both drawn from the same `rng` in that fixed order so a given
     (seed, node) always rewards the identical cards."""
+    if is_boss:
+        # A boss reward is its relic choice plus a guaranteed potion -- no
+        # tower cards, keeping the screen to one decision that matters.
+        boss_relics = relics.relic_offer(rng, run, count=BOSS_RELIC_CHOICES, meta_progression_path=meta_progression_path)
+        return CombatReward((), potion=potions.random_potion(rng), boss_relic_choices=tuple(boss_relics))
     tower_choices = card_pool.draft_offer(
         rng, run, count=tower_count, meta_progression_path=meta_progression_path,
     )

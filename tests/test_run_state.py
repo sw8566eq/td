@@ -1,4 +1,4 @@
-from run.run_map import MapNode, RunMap
+from run.run_map import ACT_COUNT, MapNode, RunMap
 from run.run_state import RunState
 
 # A tiny, hand-built two-row map (not a real generate_run_map() output) --
@@ -68,8 +68,10 @@ def test_current_row_reads_the_current_nodes_own_row():
     assert run.current_row == 1
 
 
-def test_is_final_floor_true_only_on_the_boss_node():
-    run = _run(current_node_id="0-0")
+def test_is_final_floor_true_only_on_the_final_acts_boss_node():
+    run = _run(current_node_id="1-0")
+    assert run.is_final_floor is False  # an earlier act's boss is a normal floor
+    run = _run(current_node_id="0-0", act=ACT_COUNT - 1)
     assert run.is_final_floor is False
     run.current_node_id = "0-1"
     assert run.is_final_floor is False
@@ -79,7 +81,7 @@ def test_is_final_floor_true_only_on_the_boss_node():
 
 def test_is_final_floor_true_for_a_single_row_map():
     single_row_map = RunMap(rows=((MapNode("0-0", row=0, col=0, node_type="combat", level_id=1),),), edges={})
-    run = _run(map=single_row_map, current_node_id="0-0")
+    run = _run(map=single_row_map, current_node_id="0-0", act=ACT_COUNT - 1)
     assert run.is_final_floor is True
 
 

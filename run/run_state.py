@@ -16,15 +16,15 @@ the starter tower pool a run begins with.
 
 from dataclasses import dataclass, field
 
-from run.run_map import RunMap
+from run.run_map import ACT_COUNT, ROW_COUNT, RunMap
 
 
 @dataclass
 class RunState:
     seed: int
-    # The run's whole branching map, generated once (run_map.generate_run_
-    # map) at start_new_run() and never regenerated or mutated afterward --
-    # replaces the old flat, ascending floor_sequence tuple entirely (see
+    # The current act's whole branching map, generated once per act
+    # (run_map.generate_run_map, at start_new_run() and again by Game.
+    # _advance_act) and never mutated in between -- replaces the old flat, ascending floor_sequence tuple entirely (see
     # run_map.py's own module docstring for why a full map upfront is
     # generated once rather than re-derived per floor the way _run_rng's
     # streams are).
@@ -120,6 +120,13 @@ class RunState:
     # This run's Ascension level (run/ascension.py), snapshotted at
     # start_new_run and never changed mid-run.
     ascension: int = 0
+    # Which act (0-based, < run_map.ACT_COUNT) `map` is -- every act gets
+    # its own freshly generated map (Game._advance_act), and visited_node_
+    # ids/current_node_id only ever describe the current one.
+    # floors_cleared_prior_acts carries the score earned on earlier acts'
+    # maps forward, since their node ids aren't kept.
+    act: int = 0
+    floors_cleared_prior_acts: int = 0
 
     @property
     def current_level_id(self) -> object:
@@ -136,20 +143,39 @@ class RunState:
         assert self.current_node_id is not None
         return self.map.node(self.current_node_id).row
 
+    def depth_of(self, row: int) -> int:
+        """How deep `row` of the current act's map is across the whole run
+        -- act * ROW_COUNT + row. What every escalating formula (enemy
+        stats, shop income, rest heal, treasure, relic modifiers) reads,
+        so act 2's first row is harder than act 1's boss row rather than
+        resetting to a fresh run's opening difficulty."""
+        return self.act * ROW_COUNT + row
+
+    @property
+    def depth(self) -> int:
+        return self.depth_of(self.current_row)
+
+    @property
+    def is_final_act(self) -> bool:
+        return self.act == ACT_COUNT - 1
+
     @property
     def is_final_floor(self) -> bool:
-        return self.current_row == self.map.final_row_index
+        """The last act's boss node -- the run's one endless fight. An
+        earlier act's boss is an ordinary, finite floor."""
+        return self.is_final_act and self.current_row == self.map.final_row_index
 
     @property
     def floors_cleared(self) -> int:
-        """How many Combat/Elite nodes have been fully cleared so far --
+        """How many Combat/Elite (and earlier acts' Boss) nodes have been
+        fully cleared so far, across every act --
         deliberately excludes Shop/Event/Rest/Treasure stops, so browsing a
         handful of non-combat nodes on the way to the boss doesn't inflate
         this the way visiting more nodes overall would. This is what
         run_history.py/meta_progression.py's total_floors_cleared actually
         mean by "a floor" -- a fight genuinely fought and won, not a stop
         visited."""
-        return sum(
+        return self.floors_cleared_prior_acts + sum(
             1 for node_id in self.visited_node_ids
-            if self.map.node(node_id).node_type in ("combat", "elite")
+            if self.map.node(node_id).node_type in ("combat", "elite", "boss")
         )

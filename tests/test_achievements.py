@@ -95,6 +95,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "relics_collected", "daily_runs_played", "events_resolved",
         "siphon_built", "overload_cannon_built",
         "potions_used",  # Game.use_potion
+        "acts_cleared",  # Game._advance_run_floor, on an earlier act's boss
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key

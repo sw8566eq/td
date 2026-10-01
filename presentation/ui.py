@@ -679,7 +679,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "event": "A short encounter with a few fixed choices.",
     "rest": "Rest to heal lives, or Smith to forge a tower (placed at level 2).",
     "treasure": "A guaranteed relic, plus some Shop currency.",
-    "boss": "The run's final fight -- continues endlessly once cleared.",
+    "boss": "The act's boss -- win a boss relic and move on. Act 3's never ends.",
 }
 
 
@@ -795,7 +795,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect):
 
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
-                     first_run=False, ascension_level=0):
+                     first_run=False, ascension_level=0, act_number=1):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -813,7 +813,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     explaining what this screen even is -- every run after the first gets
     the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
-    title_text = "Choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
+    title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
     title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
 
@@ -1311,7 +1311,7 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
 # --- Post-combat reward screen ---
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
-                       available, continue_button_rect, is_elite=False):
+                       available, continue_button_rect, is_elite=False, is_boss=False):
     """The free post-combat reward (see rewards.py/Game._enter_reward_
     screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
     as `card_rects`; `available[i]` is Game._reward_card_available(i).
@@ -1321,11 +1321,16 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
     surface.fill(settings.COLOR_BG)
     _draw_dim_overlay(surface)
 
-    title_text = "Spoils of battle: choose one tower to add to your run"
+    if is_boss:
+        title_text = "Boss defeated! Choose one boss relic"
+        subtitle_text = "Then onward to the next act"
+    else:
+        title_text = "Spoils of battle: choose one tower to add to your run"
+        subtitle_text = "Elite bonus: a free relic and a potion" if is_elite else None
     title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
-    if is_elite:
-        subtitle = small_font.render("Elite bonus: a free relic and a potion", True, settings.COLOR_TEXT_DIM)
+    if subtitle_text is not None:
+        subtitle = small_font.render(subtitle_text, True, settings.COLOR_TEXT_DIM)
         surface.blit(subtitle, subtitle.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 28)))
 
     for index, (kind, key) in enumerate(cards):
@@ -1368,6 +1373,7 @@ _REWARD_CARD_DRAWERS = {
     "tower": _draw_draft_card,
     "relic": _draw_relic_card,
     "potion": _draw_potion_card,
+    "boss_relic": _draw_relic_card,
 }
 
 
@@ -1442,13 +1448,15 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
 
-def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_count, results=None):
+def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_count, results=None, act_cleared=None):
     """floor_number/floor_count are 1-based ("Floor 2/6 cleared!") -- the
     run's own equivalent of draw_victory_screen, just without "next
     level"/"play again" framing since advancing goes to the draft screen
     (see draw_draft_screen above) instead of straight back into play."""
+    title = (f"Act {act_cleared} cleared!" if act_cleared is not None
+             else f"Floor {floor_number}/{floor_count} cleared!")
     _draw_overlay_with_results(
-        surface, font, small_font, f"Floor {floor_number}/{floor_count} cleared!",
+        surface, font, small_font, title,
         "Press any key to continue", settings.COLOR_GOLD, results,
     )
 

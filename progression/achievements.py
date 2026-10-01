@@ -120,6 +120,12 @@ ACHIEVEMENTS = {
     "overcharged": Achievement(
         "overcharged", "Overcharged", "Place an Overload Cannon.", "overload_cannon_built", 1,
     ),
+    "into_the_depths": Achievement(
+        "into_the_depths", "Into the Depths", "Beat an act's boss and move on to the next act.", "acts_cleared", 1,
+    ),
+    "spire_climber": Achievement(
+        "spire_climber", "Spire Climber", "Beat 10 act bosses.", "acts_cleared", 10,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),

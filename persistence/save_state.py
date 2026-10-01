@@ -32,7 +32,7 @@ from run.ascension import MAX_ASCENSION
 from run.difficulty import DIFFICULTY_MODES
 from run.potions import POTIONS
 from run.relics import RELICS
-from run.run_map import NODE_TYPES, MapNode, RunMap
+from run.run_map import ACT_COUNT, NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
 from world.levels import LEVELS
 
@@ -124,6 +124,8 @@ def _run_to_dict(run):
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
         "ascension": run.ascension,
+        "act": run.act,
+        "floors_cleared_prior_acts": run.floors_cleared_prior_acts,
     }
 
 
@@ -150,6 +152,8 @@ def _run_from_dict(data):
         potions=list(data.get("potions", [])),
         forged_towers=list(data.get("forged_towers", [])),
         ascension=data.get("ascension", 0),
+        act=data.get("act", 0),
+        floors_cleared_prior_acts=data.get("floors_cleared_prior_acts", 0),
     )
 
 
@@ -288,6 +292,8 @@ def _parse_and_validate_active_run(run_data):
     for tower_name in run_data.get("forged_towers", []):
         if tower_name not in TOWER_TYPES:
             raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
+    if not 0 <= run_data.get("act", 0) < ACT_COUNT:
+        raise ValueError(f"saved run's act {run_data['act']!r} is out of range")
     if not 0 <= run_data.get("ascension", 0) <= MAX_ASCENSION:
         raise ValueError(f"saved run's ascension {run_data['ascension']!r} is out of range")
     for potion_key in run_data.get("potions", []):
