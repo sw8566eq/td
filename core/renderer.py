@@ -182,6 +182,17 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.REWARD and game.active_run is not None:
+            node = game.active_run.map.node(game.active_run.current_node_id)
+            ui.draw_reward_screen(
+                game.screen, game.font, game.small_font, game._reward_cards(), game.reward_rects,
+                game._hovered_reward_card(), game.reward_taken_tower, game.reward_relic_taken,
+                game.shop_continue_button_rect, is_elite=node.node_type == "elite",
+            )
+            self._draw_toasts()
+            pygame.display.flip()
+            return
+
         if game.state == GameState.EVENT and game.active_run is not None:
             ui.draw_event_screen(
                 game.screen, game.font, game.small_font, game.current_event, game.event_options,
