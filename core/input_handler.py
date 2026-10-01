@@ -704,6 +704,12 @@ class InputHandler:
             game.state = GameState.RELICS
             return
 
+        if game.active_run is not None:
+            slot = ui.get_clicked_draft_choice(pos, game.potion_slot_rects)
+            if slot is not None:
+                game.use_potion(slot)
+                return
+
         if self._handle_panel_action_click(pos):
             return
 

@@ -128,3 +128,16 @@ straight to the map. The node is already marked visited by `_advance_run_floor`,
 reward screen (`Continue`/`Skip`, or Enter) calls `_enter_map()` directly, never `_finish_node`. The
 boss node never reaches this screen (it's endless, so it never fires FLOOR_CLEARED). Quitting on this
 screen forfeits the reward, same as quitting mid-Shop forfeits the shop.
+
+## Potions
+
+`run/potions.py` -- `POTIONS` registry of single-use consumables, each entry carrying its own `use(game)`
+function (so `Game.use_potion(slot)` never branches on which potion it is). Held on
+`RunState.potions` (max `POTION_SLOTS`, duplicates allowed, serialized by `save_state` and validated
+against `POTIONS` on load). Earned from post-combat rewards (always on Elite, `COMBAT_POTION_DROP_CHANCE`
+otherwise, rolled *after* the tower/relic draws so existing seeds' cards don't change); a potion card
+on the reward screen is unclaimable while the belt is full. Used by clicking a slot in the sidebar's
+bottom-edge belt (`ui.build_potion_slot_rects`/`draw_potion_belt`, below the Sell button) -- only
+during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_timer` (reset per floor by
+`_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
+`update()`'s first tower pass, so towers placed mid-effect are overclocked too.

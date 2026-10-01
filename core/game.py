@@ -21,6 +21,7 @@ from run import (
     daily_challenge,
     difficulty,
     events,
+    potions,
     relics,
     rewards,
     run_escalation,
@@ -321,13 +322,15 @@ class Game:
         self.treasure_granted_currency = 0
         # The post-combat reward screen's own state (see _enter_reward_
         # screen) -- `reward` is a rewards.CombatReward, `reward_rects` one
-        # Rect per card (tower choices first, then the Elite relic, if
-        # any), reward_taken_tower/reward_relic_taken what's been claimed
-        # so far this visit.
+        # Rect per card (see _reward_cards for the order), reward_claimed_
+        # indices which of those cards have been taken so far this visit.
         self.reward = None
         self.reward_rects = []
-        self.reward_taken_tower = None
-        self.reward_relic_taken = False
+        self.reward_claimed_indices = set()
+        # Seconds left on an Overclock Elixir (potions.py) -- every tower
+        # fires faster while this is positive. Floor-scoped: reset by
+        # _load_level_object, ticked down on scaled time in update().
+        self.overclock_timer = 0.0
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -388,6 +391,7 @@ class Game:
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
         self.relics_button_rect = ui.build_relics_button_rect()
+        self.potion_slot_rects = ui.build_potion_slot_rects()
         self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
@@ -771,36 +775,73 @@ class Game:
             self._enter_map()
             return
         self.reward_rects = ui.build_draft_choice_rects(len(self._reward_cards()))
-        self.reward_taken_tower = None
-        self.reward_relic_taken = False
+        self.reward_claimed_indices = set()
         self.state = GameState.REWARD
 
     def _reward_cards(self):
         """(kind, key) per reward card, in reward_rects' own order --
-        every tower choice, then the Elite relic if there is one."""
+        every tower choice, then the Elite relic, then the potion, each
+        only if the reward has one."""
         cards = [("tower", name) for name in self.reward.tower_choices]
         if self.reward.relic is not None:
             cards.append(("relic", self.reward.relic))
+        if self.reward.potion is not None:
+            cards.append(("potion", self.reward.potion))
         return cards
+
+    def _reward_card_available(self, index):
+        """Whether reward card `index` can still be claimed -- not already
+        taken, not a second tower (picking one forfeits the rest of the
+        tower row, same as Slay the Spire's own pick-one-card screen), and
+        for a potion, only while a potion slot is free. Shared by
+        _take_reward_card (what's allowed) and the renderer (what's
+        dimmed), so the two can't drift."""
+        if index in self.reward_claimed_indices:
+            return False
+        cards = self._reward_cards()
+        kind = cards[index][0]
+        if kind == "tower":
+            return not any(cards[i][0] == "tower" for i in self.reward_claimed_indices)
+        if kind == "potion":
+            return potions.has_free_slot(self.active_run.potions)
+        return True
 
     def _handle_reward_click(self, pos):
         return self.input_handler._handle_reward_click(pos)
 
     def _take_reward_card(self, index):
-        """Claim reward card `index` -- at most one tower per reward (the
-        rest of the tower row is forfeited, same as Slay the Spire's own
-        pick-one-card screen), the Elite relic independently. A no-op for
-        an already-claimed card or a second tower."""
+        """Claim reward card `index` -- a silent no-op unless _reward_
+        card_available says it's still claimable."""
+        if not self._reward_card_available(index):
+            return
         kind, key = self._reward_cards()[index]
+        self.reward_claimed_indices.add(index)
         if kind == "tower":
-            if self.reward_taken_tower is not None:
-                return
-            self.reward_taken_tower = key
             self.active_run.unlocked_towers.append(key)
             self.audio.play("tower_unlocked_shop")
-        elif not self.reward_relic_taken:
-            self.reward_relic_taken = True
+        elif kind == "relic":
             self._grant_relic(key)
+        else:
+            self.active_run.potions.append(key)
+            self.audio.play("relic_acquired")
+
+    # --- Potions ---
+
+    def use_potion(self, slot):
+        """Drink the potion in `slot` of the active run's potion belt --
+        only mid-floor (PLAYING, never paused or on a run screen), and a
+        silent no-op for an empty slot. Each potion's own `use` function
+        does the work (potions.py), so this never branches on which one."""
+        run = self.active_run
+        if self.state != GameState.PLAYING or run is None or not 0 <= slot < len(run.potions):
+            return
+        key = run.potions.pop(slot)
+        potions.POTIONS[key].use(self)
+        self.audio.play("potion_used")
+        self._record_achievement("potions_used")
+
+    def _hovered_potion_slot(self):
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.potion_slot_rects)
 
     def _hovered_reward_card(self):
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.reward_rects)
@@ -1207,6 +1248,7 @@ class Game:
         self.projectiles = []
         self.damage_numbers = []
         self.impact_effects = []
+        self.overclock_timer = 0.0
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
@@ -2108,9 +2150,15 @@ class Game:
         # it's one global condition (not a per-tower proximity check like
         # the aura), so no second full iteration is needed.
         last_stand_active = self.economy.is_on_last_life
+        # An Overclock Elixir (potions.py) rides the same first pass: one
+        # global, timed condition, re-applied to every tower each frame so
+        # a tower placed mid-effect is overclocked too.
+        self.overclock_timer = max(0.0, self.overclock_timer - dt)
+        overclock = potions.OVERCLOCK_FIRE_RATE_MULTIPLIER if self.overclock_timer > 0 else 1.0
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
+            tower.potion_fire_rate_multiplier = overclock
         # Built fresh every frame, same as the position updates it buckets
         # -- see spatial_index.py for why a full per-frame rebuild, not an
         # incrementally-maintained structure, is the right shape here. This
