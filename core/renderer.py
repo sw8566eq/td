@@ -35,6 +35,7 @@ import pygame
 
 from entities.tower import TOWER_TYPES
 from presentation import ui
+from run import relics, shop
 from support import settings
 
 
@@ -180,6 +181,14 @@ class Renderer:
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
             )
+            curses = relics.held_curses(game.active_run)
+            if curses or game.shop_curse_removed:
+                ui.draw_shop_remove_curse_button(
+                    game.screen, game.small_font, game.shop_remove_curse_rect, game._curse_removal_price(),
+                    has_curse=bool(curses), used=game.shop_curse_removed,
+                    affordable=shop.can_afford(game.active_run.shop_currency, game._curse_removal_price(),
+                                               game.economy.unlimited_gold),
+                )
             self._draw_toasts()
             pygame.display.flip()
             return

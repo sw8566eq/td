@@ -133,6 +133,11 @@ specifically. Almost none of them are gated behind an account-wide unlock -- see
 full registry and "Meta-progression" below for the handful that are. Press `R` while playing a run
 floor to bring up a read-only overlay of every relic you're currently holding.
 
+**Curses** are the flip side: relics with only downsides (pricier upgrades, less starting gold,
+shorter range, slower towers, faster enemies, a worse Shop). You never draft one -- a few Events
+offer a bigger-than-usual reward with a curse attached (Forbidden Tome, Gilded Coffer). Lift one at
+a Shop ("Remove a curse", once per visit) or at the Cleansing Spring event.
+
 ## Controls
 
 From the main **menu**: press any other key to start a new run (see "Runs" above), `E` opens the

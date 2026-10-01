@@ -236,3 +236,14 @@
   `WaveManager`'s own constructor kwargs exactly like `enemy_speed_multiplier`/`enemy_gold_multiplier`
   above, applied post-construction via the same `hasattr`-gated patch-up pattern
   `WaveManager._spawn_enemy` already uses for `ShieldedEnemy`'s own `max_shield`).
+
+## Curses
+
+`Relic.is_curse` marks a relic with only downsides, using the ordinary RelicModifiers fields set "the
+wrong way round" -- so `compose_relic_modifiers` needs no special case. `_default_relic_pool` excludes
+curses, so `relic_offer` (Shop/Treasure/Elite/boss/Event grants) never offers one. They only arrive
+via an Event option's `add_curse` (`relics.curse_offer`, one not yet held), and leave via an Event's
+`remove_curse` or the Shop's once-per-visit service (`Game._try_remove_curse`, `shop.
+CURSE_REMOVAL_PRICE` times the run's shop price multiplier; not an offer card, so no
+`PRICE_ESCALATION`). Both removal paths lift the *oldest* curse (`relics.held_curses` keeps
+acquisition order). A curse can also be given up through a `relic_cost` Event option like any relic.

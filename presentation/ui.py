@@ -416,6 +416,8 @@ def _relics_overlay_lines(relic_keys):
     so its content is unit-testable without a real Surface."""
     if not relic_keys:
         return ["No relics yet."]
+    # A curse's own description already starts "Curse: " (see relics.py),
+    # so it reads as one in this same plain list without a separate style.
     return [f"{RELICS[key].display_name} -- {RELICS[key].description}" for key in relic_keys]
 
 
@@ -934,6 +936,12 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
     if resolution.get("relic_given_up"):
         lines.append(f"Gave up relic: {RELICS[resolution['relic_given_up']].display_name}")
+    if resolution.get("curse"):
+        lines.append(f"Cursed: {RELICS[resolution['curse']].display_name}")
+    if resolution.get("curse_removed"):
+        lines.append(f"Curse lifted: {RELICS[resolution['curse_removed']].display_name}")
+    if resolution.get("potion"):
+        lines.append(f"Gained potion: {POTIONS[resolution['potion']].display_name}")
     return lines or ["Nothing else happened."]
 
 
@@ -1154,6 +1162,27 @@ def build_shop_continue_button_rect():
     x = (settings.SCREEN_WIDTH - SHOP_CONTINUE_BUTTON_WIDTH) // 2
     y = DRAFT_CARDS_TOP + DRAFT_CARD_HEIGHT + 30
     return pygame.Rect(x, y, SHOP_CONTINUE_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
+
+SHOP_REMOVE_CURSE_BUTTON_WIDTH = 260
+
+
+def build_shop_remove_curse_rect():
+    """The Shop's remove-a-curse button, right under Continue."""
+    continue_rect = build_shop_continue_button_rect()
+    return pygame.Rect((settings.SCREEN_WIDTH - SHOP_REMOVE_CURSE_BUTTON_WIDTH) // 2, continue_rect.bottom + 16,
+                       SHOP_REMOVE_CURSE_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
+
+def draw_shop_remove_curse_button(surface, small_font, rect, price, has_curse, used, affordable):
+    """Only drawn while the run carries a curse (or just lifted one this
+    visit) -- see Game._try_remove_curse."""
+    enabled = has_curse and not used and affordable
+    pygame.draw.rect(surface, settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED, rect,
+                     border_radius=6)
+    text = "Curse lifted" if used else f"Remove a curse ({price})"
+    label = small_font.render(text, True, settings.COLOR_LIVES if enabled else settings.COLOR_TEXT_DIM)
+    surface.blit(label, label.get_rect(center=rect.center))
 
 
 def build_draft_choice_rects(count):

@@ -20,7 +20,7 @@ including why the given-up relic must be drawn before it's removed.
 import random
 from dataclasses import dataclass
 
-from run import card_pool, relics
+from run import card_pool, potions, relics
 from run.run_state import RunState
 
 _EVENT_ORDER = (
@@ -28,6 +28,7 @@ _EVENT_ORDER = (
     "traveling_healer", "cursed_idol", "old_battlefield", "collapsed_vault",
     "traveling_smith", "omen_of_ruin", "quartermasters_cache", "unclaimed_cache",
     "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
+    "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
 )
 
 
@@ -58,6 +59,15 @@ class EventOption:
     # rule fails at import time instead of only under the narrow runtime
     # conditions that would actually surface the desync.
     relic_cost: bool = False
+    # Force a random curse (relics.CURSES) onto the run -- the price tag on
+    # a few options' bigger-than-usual rewards. Nothing happens once the
+    # run already carries every curse.
+    add_curse: bool = False
+    # Remove the run's oldest curse, if it carries one.
+    remove_curse: bool = False
+    # One random potion (potions.py) into a free slot -- nothing if the
+    # belt is full (the option's description says so up front).
+    grant_potion: bool = False
 
 
 @dataclass(frozen=True)
@@ -311,6 +321,67 @@ EVENTS = {
             EventOption("wish_her_well", "Wish her well and let her go", "You let her continue on her way."),
         ),
     ),
+    "wandering_alchemist": Event(
+        "wandering_alchemist", "Wandering Alchemist",
+        "An alchemist rattles a satchel of bubbling flasks at you.",
+        options=(
+            EventOption(
+                "buy", "Buy a potion (-6 shop currency)",
+                "You take a flask, if you have room to carry it.",
+                shop_currency_delta=-6, grant_potion=True,
+            ),
+            EventOption(
+                "sample", "Sample one on the spot (+2 lives)",
+                "It burns going down, but you feel better.",
+                lives_delta=2,
+            ),
+            EventOption("decline", "Decline", "You keep walking."),
+        ),
+    ),
+    "forbidden_tome": Event(
+        "forbidden_tome", "Forbidden Tome",
+        "A heavy tome bound in chains whispers of power -- and of a price.",
+        options=(
+            EventOption(
+                "read", "Read it (gain a relic and a curse)",
+                "Knowledge floods in, and something else creeps in with it.",
+                grant_relic=True, add_curse=True,
+            ),
+            EventOption("leave", "Leave it closed", "Some things are better left unread."),
+        ),
+    ),
+    "gilded_coffer": Event(
+        "gilded_coffer", "Gilded Coffer",
+        "A coffer overflowing with coin, its lid etched with warding runes.",
+        options=(
+            EventOption(
+                "pry_open", "Pry it open (+30 shop currency, gain a curse)",
+                "The runes flare as the lid gives way.",
+                shop_currency_delta=30, add_curse=True,
+            ),
+            EventOption(
+                "loose_coins", "Take only the loose coins (+8 shop currency)",
+                "You pocket what's scattered around it.",
+                shop_currency_delta=8,
+            ),
+        ),
+    ),
+    "cleansing_spring": Event(
+        "cleansing_spring", "Cleansing Spring",
+        "Clear water bubbles up from the rock, faintly glowing.",
+        options=(
+            EventOption(
+                "bathe", "Bathe (remove a curse, if you carry one)",
+                "The water washes something dark away.",
+                remove_curse=True,
+            ),
+            EventOption(
+                "drink", "Drink deeply (+3 lives)",
+                "You feel restored.",
+                lives_delta=3,
+            ),
+        ),
+    ),
 }
 
 # Registry insertion order isn't guaranteed stable input for rng.choice the
@@ -412,6 +483,20 @@ def resolve_event_option(
         if picks:
             run.unlocked_towers.append(picks[0])
             granted["tower"] = picks[0]
+    if option.add_curse:
+        curse = relics.curse_offer(item_rng, run)
+        if curse is not None:
+            run.relics.append(curse)
+            granted["curse"] = curse
+    if option.remove_curse:
+        held = relics.held_curses(run)
+        if held:
+            run.relics.remove(held[0])
+            granted["curse_removed"] = held[0]
+    if option.grant_potion and potions.has_free_slot(run.potions):
+        potion = potions.random_potion(item_rng)
+        run.potions.append(potion)
+        granted["potion"] = potion
     if given_up_relic is not None:
         run.relics.remove(given_up_relic)
         granted["relic_given_up"] = given_up_relic
