@@ -45,12 +45,13 @@ class CombatReward:
 
 def build_combat_reward(
     rng: random.Random, run: RunState, is_elite: bool, meta_progression_path: str | None = None,
+    tower_count: int = TOWER_REWARD_COUNT,
 ) -> CombatReward:
     """This floor clear's reward -- tower choices first, then the Elite
     relic, both drawn from the same `rng` in that fixed order so a given
     (seed, node) always rewards the identical cards."""
     tower_choices = card_pool.draft_offer(
-        rng, run, count=TOWER_REWARD_COUNT, meta_progression_path=meta_progression_path,
+        rng, run, count=tower_count, meta_progression_path=meta_progression_path,
     )
     relic = None
     if is_elite:

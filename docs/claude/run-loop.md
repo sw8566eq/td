@@ -91,3 +91,18 @@ snapshots `"normal"` instead of the player's sticky difficulty preference, so sc
 `progression/run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
 needs no special handling anywhere. The whole map is generated from that same date-derived seed, so
 every player sees the identical branching map (and Shop/Event offers) on a given day too.
+
+## Ascension
+
+`run/ascension.py` -- `ASCENSION_LEVELS[i]` is the one rule Ascension i+1 adds; `modifiers_for(level)`
+folds levels 1..level into one `AscensionModifiers` (multiplicative fields multiply, the one additive
+field `reward_tower_count_delta` adds). Snapshotted once onto `RunState.ascension` at
+`start_new_run` (Daily Runs force 0), serialized and range-checked by `save_state`. Application points:
+`_floor_load_context` (`apply_to_escalation`: enemy HP/speed, starting gold, plus elite/boss HP by
+node type), `_load_combat_node`'s first-node lives capture, `_enter_rest_node`'s heal,
+`_shop_price_multiplier`, and `_enter_reward_screen`'s tower count. The account's highest unlocked
+level is meta_progression's `highest_ascension` counter (raised via `threshold_unlocks.set_counter`'s
+max semantics, never a threshold registry entry), cached on `Game.highest_ascension` so the menu never
+re-reads the file per frame; `_handle_boss_defeated` -> `_unlock_next_ascension` raises it (never for
+Daily/Sandbox) and auto-advances `selected_ascension` if the player was at the top. The menu's
+Left/Right (`change_selected_ascension`) is caught before the "any key starts a run" catch-all.

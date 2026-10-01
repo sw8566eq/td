@@ -18,6 +18,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- **Ascension**: beat the boss to unlock Ascension 1, then keep climbing to 10. Each level stacks
+  one more rule on top of the last (tougher elites, fewer starting lives, pricier shops, weaker
+  rests, ...). Pick your level on the main menu with Left/Right; Daily Runs are always Ascension 0.
 
 - Real art for the last 2 towers (Siphon, Overload Cannon) and all 7 remaining enemy species
   (`boss`/`shielded`/`splitter`/`splitter_child`/`healer`/`final_boss`/`final_boss_shielded`) --

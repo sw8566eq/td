@@ -49,7 +49,8 @@ class Renderer:
         game.screen.fill(settings.COLOR_BG)
 
         if game.state == GameState.MENU:
-            ui.draw_menu_screen(game.screen, game.font, game.small_font, game.has_saved_run)
+            ui.draw_menu_screen(game.screen, game.font, game.small_font, game.has_saved_run,
+                                game.selected_ascension, game.highest_ascension)
             pygame.display.flip()
             return
 
@@ -164,7 +165,7 @@ class Renderer:
                 game._hovered_map_node(),
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
-                first_run=game._map_is_first_run,
+                first_run=game._map_is_first_run, ascension_level=run.ascension,
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -250,6 +251,8 @@ class Renderer:
             f"Floor {game.active_run.current_row + 1}/{game.active_run.map.final_row_index + 1}"
             if game.active_run is not None else None
         )
+        if game.active_run is not None and game.active_run.ascension:
+            floor_label += f"  A{game.active_run.ascension}"
         ui.draw_hud(
             game.screen, game.assets, game.font, game.small_font,
             game.economy, game.wave_manager, game.button_rects,

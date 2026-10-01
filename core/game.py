@@ -17,6 +17,7 @@ from presentation import audio, ui
 from presentation.assets import AssetManager
 from progression import achievements, meta_progression, progress, run_history
 from run import (
+    ascension,
     card_pool,
     daily_challenge,
     difficulty,
@@ -338,6 +339,13 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
+        # The highest Ascension this account has unlocked (run/ascension.py)
+        # -- read once here and kept in step by _unlock_next_ascension, the
+        # only thing that raises it, so the menu never re-reads the file
+        # every frame -- and the menu's chosen level for the next run
+        # (change_selected_ascension), which starts at that highest.
+        self.highest_ascension = meta_progression.highest_unlocked_ascension(self.meta_progression_path)
+        self.selected_ascension = self.highest_ascension
         # Cached rather than re-stat()'d on every render() frame while
         # sitting on the menu -- refreshed only at the 3 points that
         # actually change it: save_run(), resume_saved_run() (no change --
@@ -516,7 +524,7 @@ class Game:
         time)."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
-    def start_new_run(self, seed=None, is_daily=False):
+    def start_new_run(self, seed=None, is_daily=False, ascension_level=None):
         """Start a new roguelike run: a full branching map generated once
         (run_map.generate_run_map), a starter tower pool (card_pool.
         STARTER_TOWERS), and no current node yet -- the player's first act
@@ -556,10 +564,16 @@ class Game:
         self._resumed_from_save = False
         seed = seed if seed is not None else random.Random().getrandbits(32)
         level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
+        # A Daily Run is always Ascension 0, for the same comparable-score
+        # reason it pins difficulty; otherwise the menu's own selection,
+        # clamped to what this account has actually unlocked.
+        if ascension_level is None:
+            ascension_level = 0 if is_daily else min(self.selected_ascension, self.highest_ascension)
         self.active_run = RunState(
             seed=seed, map=run_map.generate_run_map(random.Random(seed), level_pool=level_pool),
             difficulty="normal" if is_daily else self.difficulty,
             unlocked_towers=list(card_pool.STARTER_TOWERS), is_daily=is_daily,
+            ascension=ascension.clamp(ascension_level),
         )
         self._enter_map()
 
@@ -582,6 +596,7 @@ class Game:
             escalation = run_escalation.apply_elite_multiplier(escalation)
         elif node.node_type == "boss":
             escalation = run_escalation.apply_boss_multiplier(escalation)
+        escalation = ascension.apply_to_escalation(escalation, run.ascension, node.node_type)
         return (
             relics.compose_relic_modifiers(run.relics, node.row, run.has_spent_gold),
             escalation,
@@ -666,7 +681,9 @@ class Game:
         )
         self.current_level_id = node.level_id
         if not run.visited_node_ids:
-            run.lives = self.economy.lives
+            lives_multiplier = ascension.modifiers_for(run.ascension).starting_lives_multiplier
+            run.lives = max(1, round(self.economy.lives * lives_multiplier))
+            self.economy.lives = run.lives
         else:
             self.economy.lives = run.lives
         # gold_per_floor_bonus is meant to apply on top of every floor's
@@ -759,6 +776,7 @@ class Game:
             return
         self.active_run.boss_defeated = True
         self._record_meta_progress("bosses_defeated")
+        self._unlock_next_ascension()
         self._record_achievement("bosses_defeated")
         self.audio.play("boss_defeated")
         self._queue_toast("Boss defeated! Fighting on for score...")
@@ -775,8 +793,10 @@ class Game:
         run = self.active_run
         node = run.map.node(run.current_node_id)
         rng = self._run_rng(run, _REWARD_RNG_STREAM, node.id)
+        tower_count = rewards.TOWER_REWARD_COUNT + ascension.modifiers_for(run.ascension).reward_tower_count_delta
         self.reward = rewards.build_combat_reward(
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
+            tower_count=tower_count,
         )
         if self.reward.is_empty:
             self._enter_map()
@@ -852,6 +872,30 @@ class Game:
 
     def _hovered_reward_card(self):
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.reward_rects)
+
+    # --- Ascension ---
+
+    def change_selected_ascension(self, delta):
+        """The menu's Left/Right -- step the next run's ascension, clamped
+        to 0..highest unlocked."""
+        self.selected_ascension = max(0, min(self.highest_ascension, self.selected_ascension + delta))
+
+    def _unlock_next_ascension(self):
+        """A boss just fell (see _handle_boss_defeated) -- unlock the next
+        ascension above this run's own, unless that's already unlocked or
+        past MAX_ASCENSION. Never from a Daily Run (always Ascension 0, so
+        it can't climb the ladder) or Sandbox (earns nothing)."""
+        run = self.active_run
+        next_level = run.ascension + 1
+        if self.sandbox or run.is_daily or next_level > ascension.MAX_ASCENSION:
+            return
+        if next_level <= self.highest_ascension:
+            return
+        meta_progression.unlock_ascension(next_level, self.meta_progression_path)
+        self.highest_ascension = next_level
+        if self.selected_ascension == run.ascension:
+            self.selected_ascension = next_level  # climb by default, the way Slay the Spire does
+        self._queue_toast(f"Ascension {next_level} unlocked!")
 
     # --- The run's own branching map ---
 
@@ -986,7 +1030,11 @@ class Game:
         (what's charged) and the renderer (what's shown) so the two can't
         drift. shop_price_multiplier doesn't depend on floor_index/
         has_spent_gold, so their defaults are fine here."""
-        return relics.compose_relic_modifiers(self.active_run.relics).shop_price_multiplier
+        run = self.active_run
+        return (
+            relics.compose_relic_modifiers(run.relics).shop_price_multiplier
+            * ascension.modifiers_for(run.ascension).shop_price_multiplier
+        )
 
     def _grant_relic(self, relic_key):
         """Add `relic_key` to the active run's relics and apply its
@@ -1064,7 +1112,8 @@ class Game:
         run.lives by run_map.heal_amount_for_row(node.row)) or Smith (forge
         one held tower type -- see _forge_tower). Nothing happens until the
         player picks one (see _choose_rest_option)."""
-        self.rest_heal_amount = run_map.heal_amount_for_row(node.row)
+        heal_multiplier = ascension.modifiers_for(self.active_run.ascension).rest_heal_multiplier
+        self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(node.row) * heal_multiplier))
         self.rest_forged_tower = None
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()

@@ -28,6 +28,7 @@ from entities.tower import TOWER_TYPES, Tower
 from entities.waves import WaveState
 from persistence.json_io import load_json_with_fallback, module_relative_path
 from persistence.persistence import level_from_dict, level_to_dict
+from run.ascension import MAX_ASCENSION
 from run.difficulty import DIFFICULTY_MODES
 from run.potions import POTIONS
 from run.relics import RELICS
@@ -122,6 +123,7 @@ def _run_to_dict(run):
         "boss_defeated": run.boss_defeated,
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
+        "ascension": run.ascension,
     }
 
 
@@ -147,6 +149,7 @@ def _run_from_dict(data):
         boss_defeated=data.get("boss_defeated", False),
         potions=list(data.get("potions", [])),
         forged_towers=list(data.get("forged_towers", [])),
+        ascension=data.get("ascension", 0),
     )
 
 
@@ -285,6 +288,8 @@ def _parse_and_validate_active_run(run_data):
     for tower_name in run_data.get("forged_towers", []):
         if tower_name not in TOWER_TYPES:
             raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
+    if not 0 <= run_data.get("ascension", 0) <= MAX_ASCENSION:
+        raise ValueError(f"saved run's ascension {run_data['ascension']!r} is out of range")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")

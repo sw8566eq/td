@@ -99,6 +99,15 @@ every enemy on the field, Frost Flask slows them all, Marking Dust makes them ta
 Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
 fire faster for a few seconds. Potions carry between floors until used.
 
+## Ascension
+
+Defeating a run's boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks
+the next one, up to 10. Each level keeps every rule below it and adds one more: tougher Elites, more
+enemy HP, less starting gold per floor, tougher bosses, weaker Rest sites, fewer starting lives,
+faster enemies, pricier Shops, one fewer tower on each reward screen, and finally even more enemy HP.
+Once you've unlocked one, the main menu shows an Ascension selector -- Left/Right to choose. Daily
+Runs are always played at Ascension 0 so scores stay comparable.
+
 ## Relics
 
 A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 74 of them as of

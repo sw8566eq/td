@@ -23,6 +23,7 @@ from progression.meta_progression import (
     RELIC_META_UNLOCKS,
     SHOP_META_UNLOCKS,
 )
+from run.ascension import ASCENSION_LEVELS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from run.potions import POTION_SLOTS, POTIONS
 from run.relics import RELICS
@@ -794,7 +795,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect):
 
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
-                     first_run=False):
+                     first_run=False, ascension_level=0):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -812,7 +813,8 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     explaining what this screen even is -- every run after the first gets
     the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
-    title = font.render("Choose your path", True, settings.COLOR_TEXT)
+    title_text = "Choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
+    title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
 
     if lives is not None and shop_currency is not None:
@@ -1573,16 +1575,38 @@ def menu_options(has_saved_run=False):
     return options
 
 
-def draw_menu_screen(surface, font, small_font, has_saved_run=False):
+def draw_menu_screen(surface, font, small_font, has_saved_run=False, selected_ascension=0, highest_ascension=0):
     surface.fill(settings.COLOR_BG)
     options = menu_options(has_saved_run)
     _draw_centered_overlay(surface, font, small_font, "Tower Defense", options, settings.COLOR_TEXT)
+    if highest_ascension > 0:
+        _draw_ascension_selector(surface, small_font, selected_ascension, highest_ascension)
     # Escape already quits from here (see Game._handle_keydown's MENU
     # branch) -- same "Esc -- Quit" wording MAP/DRAFT/EVENT/REST already
     # use for their own quit-the-game Escape, not SETTINGS/ACHIEVEMENTS/
     # HELP/CREDITS' own "Esc -- Back to Menu" (there's no "back" from the
     # menu itself).
     _draw_escape_hint(surface, small_font, "Esc -- Quit")
+
+
+ASCENSION_SELECTOR_Y = 250
+
+
+def _draw_ascension_selector(surface, small_font, selected, highest):
+    """The menu's "< Ascension N >" line plus what level N adds -- only
+    drawn once at least Ascension 1 is unlocked (see run/ascension.py)."""
+    center_x = settings.SCREEN_WIDTH // 2
+    left = "<  " if selected > 0 else "   "
+    right = "  >" if selected < highest else "   "
+    color = settings.COLOR_GOLD if selected > 0 else settings.COLOR_TEXT_DIM
+    label = small_font.render(f"{left}Ascension {selected}{right}", True, color)
+    surface.blit(label, label.get_rect(center=(center_x, ASCENSION_SELECTOR_Y)))
+    if selected > 0:
+        detail = f"Adds: {ASCENSION_LEVELS[selected - 1].description} (plus every level below)"
+    else:
+        detail = f"Left/Right to choose -- up to Ascension {highest} unlocked"
+    detail_text = small_font.render(detail, True, settings.COLOR_TEXT_DIM)
+    surface.blit(detail_text, detail_text.get_rect(center=(center_x, ASCENSION_SELECTOR_Y + 24)))
 
 
 # --- Settings screen ---
