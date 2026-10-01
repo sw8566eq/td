@@ -146,3 +146,15 @@ bottom-edge belt (`ui.build_potion_slot_rects`/`draw_potion_belt`, below the Sel
 during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_timer` (reset per floor by
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
+
+## Elite affixes
+
+`run/elite_affixes.py` -- `AFFIXES` registry of plain multipliers (hp/speed/gold, plus
+`count_multiplier`). `Game._elite_affix(run, node)` rolls one per Elite node from
+`_run_rng(run, "affix", node.id)` -- never stored, so the map tooltip (`Game.map_node_affixes`, built
+in `_enter_map`), the floor load and a resumed save always agree. `_floor_load_context` folds it into
+the escalation (after Elite's own bump and Ascension); `_level_for_node` swaps in a private Level copy
+with scaled non-boss counts for Swarming (the copy is what `save_state` stores, so resume keeps it
+without re-deriving). Shown in the sidebar above the potion belt (`Renderer._run_modifiers_text`,
+together with the run's Ascension) rather than on the HUD's Wave line, which has no width left with a
+12-tower build menu (`test_hud_gold_lives_wave_text_fits_before_the_play_area_edge`).

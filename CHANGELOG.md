@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- **Elite affixes**: every Elite node rolls a named modifier -- Swift, Hulking, Swarming, or Gilded --
+  shown in the map tooltip before you commit and in the sidebar during the fight.
 - **Commanders**: pick one before every run -- The Warden, The Alchemist, The Marksman, The Engineer
   -- each with its own three starter towers and signature starting relic (plus starting potions or a
   pre-forged tower for some). Three unlock through play, shown on the Unlocks screen.

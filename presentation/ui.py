@@ -752,7 +752,7 @@ MAP_TOOLTIP_MAX_WIDTH = 220
 MAP_TOOLTIP_GAP = 6  # clearance between the node's own circle and the box
 
 
-def _draw_map_node_tooltip(surface, small_font, node, node_rect):
+def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None):
     """The hovered node's own type name, the specific level name for a
     Combat/Elite/Boss node (LEVELS[node.level_id] -- naming it ahead of
     time reveals nothing a player couldn't already infer from the node's
@@ -772,8 +772,13 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect):
     if node.level_id is not None:
         body_lines.append(LEVELS[node.level_id].name)
     body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if affix is not None:
+        # An Elite's own affix (elite_affixes.py) -- shown up front, same
+        # "nothing hidden" reasoning as the level name above.
+        body_lines.extend(_wrap_text(f"{affix.display_name}: {affix.description}", small_font, MAP_TOOLTIP_MAX_WIDTH))
 
-    title_surface = small_font.render(MAP_NODE_TYPE_NAMES[node.node_type], True, settings.COLOR_TEXT)
+    title_text = MAP_NODE_TYPE_NAMES[node.node_type] + (f" ({affix.display_name})" if affix is not None else "")
+    title_surface = small_font.render(title_text, True, settings.COLOR_TEXT)
     body_surfaces = [small_font.render(line, True, settings.COLOR_TEXT_DIM) for line in body_lines]
     all_surfaces = [title_surface] + body_surfaces
 
@@ -797,7 +802,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect):
 
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
-                     first_run=False, ascension_level=0, act_number=1):
+                     first_run=False, ascension_level=0, act_number=1, node_affixes=None):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -877,7 +882,8 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     # never be occluded by a node circle or an edge line it happens to sit
     # near.
     if hovered_node_id is not None:
-        _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id])
+        _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id],
+                               (node_affixes or {}).get(hovered_node_id))
 
 
 # --- Random Event / Rest / Treasure screens (the run map's other three
@@ -1463,8 +1469,10 @@ POTION_SLOT_SIZE = 56
 POTION_SLOT_GAP = 12
 POTION_BELT_TOP = settings.SCREEN_HEIGHT - POTION_SLOT_SIZE - PANEL_PADDING
 POTION_BELT_LABEL_GAP = 24
-# Hovered-potion description box, drawn above the belt's own label.
-POTION_DESCRIPTION_BOTTOM = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - 8
+# The floor's run modifiers (ascension, elite affix), one line above the
+# belt's own label; the hovered-potion description box sits above that.
+RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
+POTION_DESCRIPTION_BOTTOM = RUN_MODIFIERS_Y - 8
 
 
 def build_potion_slot_rects():
@@ -1480,7 +1488,8 @@ def build_potion_slot_rects():
     ]
 
 
-def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0):
+def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
+                     run_modifiers_text=None):
     """The run's potion slots -- a filled slot shows its potion's initials
     on its own color, an empty one just an outline. Hovering a filled slot
     shows that potion's name and description above the belt; a running
@@ -1491,6 +1500,8 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         label_text = f"Overclocked! {overclock_timer:.1f}s"
     label = small_font.render(label_text, True, settings.COLOR_GOLD if overclock_timer > 0 else settings.COLOR_TEXT_DIM)
     surface.blit(label, (x, POTION_BELT_TOP - POTION_BELT_LABEL_GAP))
+    if run_modifiers_text is not None:
+        surface.blit(small_font.render(run_modifiers_text, True, settings.COLOR_LIVES), (x, RUN_MODIFIERS_Y))
 
     for index, rect in enumerate(slot_rects):
         if index < len(potion_keys):
