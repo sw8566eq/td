@@ -694,6 +694,9 @@ class InputHandler:
         if game.shop_continue_button_rect.collidepoint(pos):
             game._finish_node(game.active_run.current_node_id)
             return
+        if game.shop_remove_curse_rect.collidepoint(pos):
+            game._try_remove_curse()
+            return
         index = ui.get_clicked_draft_choice(pos, game.draft_choice_rects)
         if index is None or index in game.shop_purchased_indices:
             return

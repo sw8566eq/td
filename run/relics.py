@@ -512,6 +512,12 @@ class Relic:
     # healing), same plain-multiply shape as splitter_child_hp_multiplier
     # immediately above.
     healer_heal_rate_multiplier: float = 1.0
+    # A Curse (Slay the Spire's own term): a relic with only downsides,
+    # never offered by relic_offer's default pool -- it's only ever forced
+    # onto a run by an Event option's add_curse (events.py), and the Shop
+    # sells its removal (Game._try_remove_curse). Composed exactly like any
+    # other relic: its fields are just set the "wrong" way round.
+    is_curse: bool = False
 
 
 RELICS = {
@@ -1031,7 +1037,34 @@ RELICS = {
         "+60% damage to enemies that are Marked, Slowed, and Poisoned all at once.",
         damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
     ),
+    # --- Curses (is_curse=True) -- see Relic.is_curse. ---
+    "rusted_gears": Relic(
+        "rusted_gears", "Rusted Gears", "Curse: tower upgrades and specializations cost 25% more gold.",
+        tower_upgrade_cost_multiplier=1.25, is_curse=True,
+    ),
+    "leaky_coffers": Relic(
+        "leaky_coffers", "Leaky Coffers", "Curse: start every floor with 15% less gold.",
+        starting_gold_multiplier=0.85, is_curse=True,
+    ),
+    "warped_lenses": Relic(
+        "warped_lenses", "Warped Lenses", "Curse: -10% range for every tower.",
+        tower_range_multiplier=0.9, is_curse=True,
+    ),
+    "sluggish_servos": Relic(
+        "sluggish_servos", "Sluggish Servos", "Curse: -8% fire rate for every tower.",
+        tower_fire_rate_multiplier=0.92, is_curse=True,
+    ),
+    "emboldened_foes": Relic(
+        "emboldened_foes", "Emboldened Foes", "Curse: enemies move 8% faster.",
+        enemy_speed_multiplier=1.08, is_curse=True,
+    ),
+    "bad_reputation": Relic(
+        "bad_reputation", "Bad Reputation", "Curse: Shop prices are 20% higher.",
+        shop_price_multiplier=1.2, is_curse=True,
+    ),
 }
+
+CURSES = [key for key, relic in RELICS.items() if relic.is_curse]
 
 DEFAULT_RELIC_OFFER_COUNT = 3
 
@@ -1044,7 +1077,18 @@ def _default_relic_pool(meta_progression_path: str) -> list[str]:
     for towers."""
     gated = {unlock.relic_key for unlock in meta_progression.RELIC_META_UNLOCKS.values()}
     unlocked_gated = meta_progression.unlocked_relic_pool(meta_progression_path)
-    return [key for key in RELICS if key not in gated or key in unlocked_gated]
+    return [key for key in RELICS if (key not in gated or key in unlocked_gated) and not RELICS[key].is_curse]
+
+
+def curse_offer(rng: random.Random, run: RunState) -> str | None:
+    """One curse `run` doesn't already carry, or None once it carries all
+    of them -- what an Event's add_curse forces onto the run."""
+    picks = sample_up_to(rng, [key for key in CURSES if key not in run.relics], 1)
+    return picks[0] if picks else None
+
+
+def held_curses(run: RunState) -> list[str]:
+    return [key for key in run.relics if RELICS[key].is_curse]
 
 
 def relic_offer(

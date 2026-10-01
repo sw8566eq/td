@@ -34,6 +34,12 @@ RELIC_OFFER_COUNT = 2
 TOWER_PRICE = 8
 RELIC_PRICE = 10
 
+# The Shop's one service (Game._try_remove_curse): lift the run's oldest
+# curse (relics.Relic.is_curse), once per visit. Not an offer card, so it
+# never escalates with PRICE_ESCALATION -- only the run's own shop price
+# multiplier (relics/ascension) applies.
+CURSE_REMOVAL_PRICE = 12
+
 # Each purchase within the same shop visit costs 50% more than the last --
 # price_for() applies this against however many items this visit has
 # already bought, so pricing stays a pure function of that count rather

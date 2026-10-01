@@ -291,6 +291,10 @@ class Game:
         self.draft_choice_rects = []
         self.shop_purchased_indices = set()
         self.shop_continue_button_rect = ui.build_shop_continue_button_rect()
+        # The Shop's remove-a-curse service (see _try_remove_curse) -- one
+        # use per visit, reset by _enter_shop_node.
+        self.shop_remove_curse_rect = ui.build_shop_remove_curse_rect()
+        self.shop_curse_removed = False
 
         # The run's own branching map screen (see run_map.py/_enter_map) --
         # rebuilt fresh every time that screen is (re-)entered, same
@@ -1109,6 +1113,7 @@ class Game:
             return
         self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
         self.shop_purchased_indices = set()
+        self.shop_curse_removed = False
         self.state = GameState.DRAFT
 
     def _handle_draft_click(self, pos):
@@ -1142,6 +1147,26 @@ class Game:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
         self.shop_purchased_indices.add(index)
+
+    def _curse_removal_price(self):
+        return round(shop.CURSE_REMOVAL_PRICE * self._shop_price_multiplier())
+
+    def _try_remove_curse(self):
+        """The Shop's curse-removal service: lift the run's oldest curse
+        for _curse_removal_price(), once per visit -- a silent no-op with
+        no curse to lift, after one use, or unaffordable (same as an
+        unaffordable card)."""
+        run = self.active_run
+        held = relics.held_curses(run)
+        price = self._curse_removal_price()
+        unlimited = self.economy.unlimited_gold
+        if not held or self.shop_curse_removed or not shop.can_afford(run.shop_currency, price, unlimited):
+            return
+        if not unlimited:
+            run.shop_currency -= price
+        run.relics.remove(held[0])
+        self.shop_curse_removed = True
+        self.audio.play("relic_acquired")
 
     def _shop_price_multiplier(self):
         """A Haggling Permit-style relic's shop discount, composed fresh
