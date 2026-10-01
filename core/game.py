@@ -10,6 +10,7 @@ import pygame
 from core import input_handler, progress_tracker, renderer, settings_manager
 from core.editor import Editor
 from entities import effects
+from entities.enemy import ENEMY_TYPES
 from entities.tower import TOWER_TYPES
 from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
@@ -21,6 +22,7 @@ from run import (
     commanders,
     daily_challenge,
     difficulty,
+    elite_affixes,
     events,
     potions,
     relics,
@@ -53,6 +55,7 @@ _DRAFT_RNG_STREAM = "draft"
 _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's own id
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
+_AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -296,6 +299,9 @@ class Game:
         # layout comment -- so there's no separate _rebuild_map_rects
         # needed for a scroll event, just the one rebuild on entry).
         self.map_node_rects = {}
+        # Each Elite node's EliteAffix, for the map tooltip -- rebuilt with
+        # map_node_rects by _enter_map.
+        self.map_node_affixes = {}
         # A Random Event node's own two-phase state (see _enter_event_node/
         # _handle_event_click): "choose" while the options are still on
         # offer, "resolved" once one's been picked -- current_event/
@@ -640,10 +646,36 @@ class Game:
         elif node.node_type == "boss":
             escalation = run_escalation.apply_boss_multiplier(escalation)
         escalation = ascension.apply_to_escalation(escalation, run.ascension, node.node_type)
+        affix = self._elite_affix(run, node)
+        if affix is not None:
+            escalation = elite_affixes.apply_to_escalation(escalation, affix)
         return (
             relics.compose_relic_modifiers(run.relics, depth, run.has_spent_gold),
             escalation,
             self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
+        )
+
+    def _elite_affix(self, run, node):
+        """`node`'s EliteAffix (elite_affixes.py) if it's an Elite node,
+        else None -- re-derived from the node id every time, never stored,
+        so the map tooltip, the floor load, and a resumed save all agree."""
+        if node.node_type != "elite":
+            return None
+        return elite_affixes.AFFIXES[elite_affixes.roll_affix(self._run_rng(run, _AFFIX_RNG_STREAM, node.id))]
+
+    def _level_for_node(self, run, node):
+        """The Level `node` loads -- LEVELS' own entry, or a private copy
+        with every non-boss count scaled for a Swarming-style affix. The
+        copy is what gets saved mid-floor (save_state stores game.level
+        itself), so a resumed floor keeps the scaled waves without
+        re-deriving them."""
+        level = LEVELS[node.level_id]
+        affix = self._elite_affix(run, node)
+        if affix is None or affix.count_multiplier == 1.0:
+            return level
+        boss_species = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.IS_BOSS)
+        return dataclasses.replace(
+            level, wave_specs=elite_affixes.scale_wave_counts(level.wave_specs, affix.count_multiplier, boss_species),
         )
 
     def _run_rng(self, run, stream, key):
@@ -723,7 +755,7 @@ class Game:
         run = self.active_run
         relic_modifiers, escalation, rng = self._floor_load_context(run, node)
         self._load_level_object(
-            LEVELS[node.level_id], endless=run.is_final_floor,
+            self._level_for_node(run, node), endless=run.is_final_floor,
             difficulty_override=run.difficulty, rng=rng, escalation=escalation, relic_modifiers=relic_modifiers,
             active_run=run, resumed_from_save=self._resumed_from_save,
         )
@@ -1004,6 +1036,11 @@ class Game:
         (_record_run_permadeath), so this stays True for every node visit
         across a player's entire first run, not just their first click."""
         self.map_node_rects = ui.build_map_node_rects(self.active_run.map)
+        run = self.active_run
+        self.map_node_affixes = {
+            node.id: self._elite_affix(run, node)
+            for row in run.map.rows for node in row if node.node_type == "elite"
+        }
         self._map_is_first_run = (
             meta_progression.load_meta_progression(self.meta_progression_path)["counters"].get("runs_played", 0) == 0
         )

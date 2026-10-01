@@ -1,0 +1,83 @@
+"""Elite affixes -- every Elite map node rolls one named modifier, so an
+Elite is a distinct threat to plan around rather than just "the same
+fight, harder" (Slay the Spire's Gremlin Nob vs. Lagavulin, in spirit).
+
+The roll is re-derived on demand from the node's own id (Game._elite_
+affix, via _run_rng), never stored on the map -- the same "no RNG state
+serialized" rule every other per-node pick follows -- and it's shown on
+the map tooltip before the player commits, matching this game's "nothing
+hidden" map (see ui._draw_map_node_tooltip).
+
+Registry shape as usual: AFFIXES is a {key: EliteAffix} dict of plain
+multipliers, folded into the floor's FloorEscalation (apply_to_escalation)
+and, for count_multiplier, into a private copy of the level's own
+wave_specs (scale_wave_counts) -- Game never branches on which affix it is.
+"""
+
+import dataclasses
+import math
+import random
+from dataclasses import dataclass
+
+from run.run_escalation import FloorEscalation
+
+
+@dataclass(frozen=True)
+class EliteAffix:
+    key: str
+    display_name: str
+    description: str
+    hp_multiplier: float = 1.0
+    speed_multiplier: float = 1.0
+    gold_multiplier: float = 1.0
+    # Every non-boss enemy count in every wave, rounded up.
+    count_multiplier: float = 1.0
+
+
+AFFIXES = {
+    "swift": EliteAffix("swift", "Swift", "Enemies move 25% faster.", speed_multiplier=1.25),
+    "hulking": EliteAffix(
+        "hulking", "Hulking", "Enemies have 35% more HP but move 10% slower.",
+        hp_multiplier=1.35, speed_multiplier=0.9,
+    ),
+    "swarming": EliteAffix(
+        "swarming", "Swarming", "50% more enemies per wave, each with 20% less HP.",
+        hp_multiplier=0.8, count_multiplier=1.5,
+    ),
+    "gilded": EliteAffix(
+        "gilded", "Gilded", "Enemies have 25% more HP but drop 60% more gold.",
+        hp_multiplier=1.25, gold_multiplier=1.6,
+    ),
+}
+AFFIX_ORDER = list(AFFIXES)
+
+
+def roll_affix(rng: random.Random) -> str:
+    return AFFIX_ORDER[rng.randrange(len(AFFIX_ORDER))]
+
+
+def apply_to_escalation(escalation: FloorEscalation, affix: EliteAffix) -> FloorEscalation:
+    return dataclasses.replace(
+        escalation,
+        enemy_hp_multiplier=escalation.enemy_hp_multiplier * affix.hp_multiplier,
+        enemy_speed_multiplier=escalation.enemy_speed_multiplier * affix.speed_multiplier,
+        enemy_gold_multiplier=escalation.enemy_gold_multiplier * affix.gold_multiplier,
+    )
+
+
+def scale_wave_counts(
+    wave_specs: list[dict[object, dict[str, int]]], multiplier: float, unscaled_species: frozenset[str],
+) -> list[dict[object, dict[str, int]]]:
+    """A new wave_specs list with every count multiplied (rounded up) --
+    except `unscaled_species` (the boss tiers: a Swarming elite still has
+    one boss, not two)."""
+    return [
+        {
+            cell: {
+                name: count if name in unscaled_species else math.ceil(count * multiplier)
+                for name, count in composition.items()
+            }
+            for cell, composition in wave.items()
+        }
+        for wave in wave_specs
+    ]

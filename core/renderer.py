@@ -166,6 +166,7 @@ class Renderer:
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
                 first_run=game._map_is_first_run, ascension_level=run.ascension, act_number=run.act + 1,
+                node_affixes=game.map_node_affixes,
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -260,8 +261,7 @@ class Renderer:
             f"Act {game.active_run.act + 1}  Floor {game.active_run.current_row + 1}/{game.active_run.map.final_row_index + 1}"
             if game.active_run is not None else None
         )
-        if game.active_run is not None and game.active_run.ascension:
-            floor_label += f"  A{game.active_run.ascension}"
+
         ui.draw_hud(
             game.screen, game.assets, game.font, game.small_font,
             game.economy, game.wave_manager, game.button_rects,
@@ -286,7 +286,7 @@ class Renderer:
         if game.active_run is not None:
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
-                game._hovered_potion_slot(), game.overclock_timer,
+                game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
             )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
@@ -328,6 +328,20 @@ class Renderer:
         # clear's meta-unlock, a permadeath's runs_played unlock).
         self._draw_toasts()
         pygame.display.flip()
+
+    def _run_modifiers_text(self):
+        """"Ascension N, <Affix> elite" for the sidebar -- whichever of the
+        two apply to this floor, or None. Kept off the HUD's Wave line,
+        which has no room left with a full 12-tower build menu."""
+        run = self.game.active_run
+        parts = []
+        if run.ascension:
+            parts.append(f"Ascension {run.ascension}")
+        if run.current_node_id is not None:
+            affix = self.game._elite_affix(run, run.map.node(run.current_node_id))
+            if affix is not None:
+                parts.append(f"{affix.display_name} elite")
+        return ", ".join(parts) or None
 
     def _draw_toasts(self):
         """Achievement/unlock toasts -- shared by the board and by every
