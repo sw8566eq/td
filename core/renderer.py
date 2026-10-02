@@ -177,7 +177,7 @@ class Renderer:
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
                 first_run=game._map_is_first_run, ascension_level=run.ascension, act_number=run.act + 1,
-                node_affixes=game.map_node_affixes, relic_count=len(run.relics),
+                node_affixes=game.map_node_affixes, relic_count=len(run.relics), node_threats=game.map_node_threats,
                 potion_names=[potions.POTIONS[key].display_name for key in run.potions],
             )
             if relics_over_map:

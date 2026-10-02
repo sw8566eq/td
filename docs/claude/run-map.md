@@ -147,6 +147,13 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
 
+## Map threat readout
+
+`Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
+Elite/Boss bump, Ascension, affix); `_floor_load_context` uses it for the real load and `_node_threat`
+(times the run's difficulty mode) for `Game.map_node_threats`, shown in the map tooltip -- so the
+readout is exactly what the fight applies on top of per-wave scaling.
+
 ## Elite affixes
 
 `run/elite_affixes.py` -- `AFFIXES` registry of plain multipliers (hp/speed/gold, plus

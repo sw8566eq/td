@@ -318,6 +318,9 @@ class Game:
         # Each Elite node's EliteAffix, for the map tooltip -- rebuilt with
         # map_node_rects by _enter_map.
         self.map_node_affixes = {}
+        # Each fight node's (enemy HP, speed) multipliers, for the map
+        # tooltip (see _node_threat) -- rebuilt by _enter_map.
+        self.map_node_threats = {}
         # A Random Event node's own two-phase state (see _enter_event_node/
         # _handle_event_click): "choose" while the options are still on
         # offer, "resolved" once one's been picked -- current_event/
@@ -681,7 +684,18 @@ class Game:
         Elite node, or apply_boss_multiplier (tuned higher than Elite's own
         bump) for the map's one boss node."""
         depth = run.depth_of(node.row)
-        escalation = run_escalation.escalation_for_floor(depth)
+        return (
+            relics.compose_relic_modifiers(run.relics, depth, run.has_spent_gold),
+            self._node_escalation(run, node),
+            self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
+        )
+
+    def _node_escalation(self, run, node):
+        """`node`'s full FloorEscalation: its run depth, Elite/Boss bump,
+        Ascension and Elite affix, composed in that order. Shared by the
+        floor load (_floor_load_context) and the map's threat readout
+        (_node_threat), so the two can't disagree."""
+        escalation = run_escalation.escalation_for_floor(run.depth_of(node.row))
         if node.node_type == "elite":
             escalation = run_escalation.apply_elite_multiplier(escalation)
         elif node.node_type == "boss":
@@ -690,11 +704,19 @@ class Game:
         affix = self._elite_affix(run, node)
         if affix is not None:
             escalation = elite_affixes.apply_to_escalation(escalation, affix)
-        return (
-            relics.compose_relic_modifiers(run.relics, depth, run.has_spent_gold),
-            escalation,
-            self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
-        )
+        return escalation
+
+    def _node_threat(self, run, node):
+        """(enemy HP, enemy speed) multipliers a fight node's enemies will
+        get on top of their own per-wave scaling -- escalation times the
+        run's difficulty mode -- for the map tooltip. None for a node
+        that isn't a fight."""
+        if node.node_type not in ("combat", "elite", "boss"):
+            return None
+        escalation = self._node_escalation(run, node)
+        mode = difficulty.DIFFICULTY_MODES[run.difficulty]
+        return (escalation.enemy_hp_multiplier * mode.enemy_hp_multiplier,
+                escalation.enemy_speed_multiplier * mode.enemy_speed_multiplier)
 
     def _elite_affix(self, run, node):
         """`node`'s EliteAffix (elite_affixes.py) if it's an Elite node,
@@ -1130,6 +1152,10 @@ class Game:
         self.map_node_affixes = {
             node.id: self._elite_affix(run, node)
             for row in run.map.rows for node in row if node.node_type == "elite"
+        }
+        self.map_node_threats = {
+            node.id: self._node_threat(run, node)
+            for row in run.map.rows for node in row if node.node_type in ("combat", "elite", "boss")
         }
         self._map_is_first_run = (
             meta_progression.load_meta_progression(self.meta_progression_path)["counters"].get("runs_played", 0) == 0

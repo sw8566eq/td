@@ -167,3 +167,22 @@ def test_ordinary_floors_have_no_enemy_traits(game):
     game._enter_node("0-0")
     assert game.wave_manager.enemy_regen_fraction_per_second == 0.0
     assert game.wave_manager.enemy_damage_taken_multiplier == 1.0
+
+
+def test_map_threat_matches_the_floor_load_and_grows_with_depth(game):
+    run = _run_on(game, ["combat", "combat", "rest"])
+    assert set(game.map_node_threats) == {"0-0", "1-0"}
+    shallow, deep = game.map_node_threats["0-0"], game.map_node_threats["1-0"]
+    assert deep[0] > shallow[0]
+    game._enter_node("1-0")
+    assert game.wave_manager.enemy_hp_multiplier == pytest.approx(deep[0])
+    assert game._node_threat(run, run.map.node("2-0")) is None
+
+
+def test_map_threat_tooltip_renders(game):
+    _run_on(game, ["combat", "combat"])
+    mock_mouse_pos(game.map_node_rects["1-0"].center)
+    try:
+        game.render()
+    finally:
+        clear_mouse_mock()
