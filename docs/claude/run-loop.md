@@ -111,8 +111,6 @@ max semantics, never a threshold registry entry), cached on `Game.highest_ascens
 re-reads the file per frame; `_handle_boss_defeated` -> `_unlock_next_ascension` raises it (never for
 Daily/Sandbox) and auto-advances `selected_ascension` if the player was at the top. The menu's
 Left/Right (`change_selected_ascension`) is caught before the "any key starts a run" catch-all.
-Ascension 10 is Ascender's Bane: `starting_doubt_cards` (an additive field) puts Doubt curse cards
-(spells.py) into the deck at `start_new_run`.
 
 ## Acts
 

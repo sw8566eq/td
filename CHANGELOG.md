@@ -8,31 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
-- **Spell deck**: every run now carries a deck of spell cards. Each fight deals a hand of 4 with 3
-  energy in the sidebar; clearing a wave discards the hand, refills energy and draws anew. Cast with a
-  click or `A`/`S`/`D`/`F`/`G`. 16 spells (Zap, Rally, Prospect, Shove, Chain Lightning, Blizzard,
-  Expose, Plague, Bounty, Insight, Surge, Patch the Gate, Execute, Empower, Requisition, Focus Fire),
-  some that Exhaust. Every won fight's reward adds a pick-one row of three spells.
-- **Shops sell spells and remove cards**: a row of three spell cards per visit, plus a "Remove a card"
-  service (once per visit, pricier each time) that opens your deck to pick the card to lose. `D` on the
-  run map shows your deck; the Compendium lists every spell.
-- **Spell upgrades**: Rest sites gain a fourth option, **Study**, which upgrades one spell (`Zap+`) for
-  the rest of the run; deeper rewards sometimes offer pre-upgraded spells. Three new achievements:
-  Spark, Spellslinger, Scholar.
-- **Spell relics and signature spells**: four relics (Arcane Tithe, Runic Resonance, Prepared Grimoire,
-  Echo Chamber) and two boss relics (Mana Crystal: +1 energy; Grand Grimoire: +1 card per hand) build
-  around the deck, and every Commander starts with one signature spell on top of the starter deck.
 - **Named bosses**: every act boss is now one of five -- The Juggernaut, The Broodmother, The Warlord,
-  The Lich, The Golden Tyrant -- each with its own twist, named in the map title ("The Warlord awaits")
-  and its tooltip, and listed in the Compendium. The map's info line shows your deck size.
-- **Ascender's Bane**: Ascension 10 now starts every run with a Doubt curse card (replacing its second
-  +10% enemy HP rule), as in Slay the Spire. A one-time sidebar hint teaches casting until your first
-  spell.
-- **Curse cards**: unplayable Doubt (clogs a hand slot) and Regret (drains 1 energy when drawn). A new
-  Haunted Grove Event trades a Doubt for currency (or a life for an upgrade), and a new **Hexing** Elite
-  affix shuffles two Regrets into that fight's deck.
-- Four spell **Events**: Ancient Library, Hermit Mage, Purifying Flame, Wild Surge. The Event screen's
-  status line shows your deck size.
+  The Lich, The Golden Tyrant -- each with its own twist, named in the map title and its tooltip, and
+  listed in the Compendium.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.

@@ -37,8 +37,6 @@ class EliteAffix:
     # and scale every hit taken.
     regen_fraction_per_second: float = 0.0
     damage_taken_multiplier: float = 1.0
-    # Curse cards (spells.py) shuffled into the fight's deck -- this fight only.
-    hex_cards: tuple[str, ...] = ()
 
 
 AFFIXES = {
@@ -63,10 +61,6 @@ AFFIXES = {
         "armored", "Armored", "Enemies take 25% less damage from every hit.",
         damage_taken_multiplier=0.75,
     ),
-    "hexing": EliteAffix(
-        "hexing", "Hexing", "Two Regret curse cards join your spell deck for this fight.",
-        hex_cards=("regret", "regret"),
-    ),
 }
 AFFIX_ORDER = list(AFFIXES)
 
@@ -84,8 +78,8 @@ BOSS_AFFIXES = {
     ),
     "warlord": EliteAffix("warlord", "The Warlord", "Enemies move 15% faster.", speed_multiplier=1.15),
     "lich": EliteAffix(
-        "lich", "The Lich", "Enemies heal 3% of their max HP every second, and a Regret haunts your deck.",
-        regen_fraction_per_second=0.03, hex_cards=("regret",),
+        "lich", "The Lich", "Enemies heal 3% of their max HP every second and move 5% faster.",
+        regen_fraction_per_second=0.03, speed_multiplier=1.05,
     ),
     "golden_tyrant": EliteAffix(
         "golden_tyrant", "The Golden Tyrant", "Enemies have 20% more HP but drop double gold.",

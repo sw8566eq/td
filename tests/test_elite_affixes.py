@@ -217,17 +217,14 @@ def test_every_boss_shows_up_across_seeds_and_reads_well():
         assert affix.key == key and affix.display_name.startswith("The ") and affix.description
 
 
-def test_a_lich_boss_haunts_the_fight_deck_and_the_sidebar_names_it(game, monkeypatch):
+def test_a_lich_boss_regenerates_and_the_sidebar_names_it(game, monkeypatch):
     from test_run import _begin_run_with_map
 
     from run import elite_affixes
 
-    run = _begin_run_with_map(game, ["combat", "boss"])
+    _begin_run_with_map(game, ["combat", "boss"])
     monkeypatch.setattr(game, "_elite_affix", lambda _run, node: elite_affixes.BOSS_AFFIXES["lich"]
                         if node.node_type == "boss" else None)
     game._enter_node("1-0")
-    deck = game.combat_deck
-    assert (deck.hand + deck.draw_pile).count("regret") == 1
     assert game.wave_manager.enemy_regen_fraction_per_second == elite_affixes.BOSS_AFFIXES["lich"].regen_fraction_per_second
     assert "The Lich" in game.renderer._run_modifiers_text()
-    assert "regret" not in run.deck

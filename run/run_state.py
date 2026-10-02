@@ -17,7 +17,6 @@ the starter tower pool a run begins with.
 from dataclasses import dataclass, field
 
 from run.run_map import ACT_COUNT, ROW_COUNT, RunMap
-from run.spells import STARTER_DECK
 
 
 @dataclass
@@ -118,12 +117,6 @@ class RunState:
     # Tower types forged at a Rest node's Smith (Game._forge_tower) --
     # every copy placed afterward starts one level up, for free.
     forged_towers: list[str] = field(default_factory=list)
-    # The run's spell deck (spells.py) -- card keys, duplicates allowed.
-    # Shuffled into a fresh spells.CombatDeck at every fight's load.
-    deck: list[str] = field(default_factory=lambda: list(STARTER_DECK))
-    # Cards removed at Shops so far -- each one raises the next removal's
-    # price (shop.card_removal_price).
-    cards_removed: int = 0
     # This run's Ascension level (run/ascension.py), snapshotted at
     # start_new_run and never changed mid-run.
     ascension: int = 0

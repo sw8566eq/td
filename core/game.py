@@ -30,7 +30,6 @@ from run import (
     run_escalation,
     run_map,
     shop,
-    spells,
 )
 from run.run_state import RunState
 from support import settings
@@ -58,7 +57,6 @@ _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
-_SPELL_RNG_STREAM = "spells"  # a fight's spell-deck shuffle -- keyed on the node's own id
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -118,9 +116,6 @@ class GameState(Enum):
     # returns to HELP, not MENU, same "back to whichever screen this was
     # entered from" precedent KEYBINDS' own Esc (back to SETTINGS) sets.
     RUN_GUIDE = auto()
-    # The run's spell deck (spells.py) -- a read-only view from the map
-    # (D), or the Shop's remove-a-card picker (Game.open_deck_view's mode).
-    DECK = auto()
     # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
     # curated subset of actions (see that module's own docstring for why
     # it's a subset, not every input_handler.py keydown check). Not folded
@@ -310,14 +305,6 @@ class Game:
         # The Shop's potion stand (see _try_buy_shop_potion) -- this visit's
         # one potion, rolled by _enter_shop_node.
         self.shop_potion_rect = ui.build_shop_potion_rect()
-        self.shop_exit_rect = ui.build_shop_exit_button_rect()
-        self.shop_remove_card_rect = ui.build_shop_remove_card_rect()
-        self.shop_card_removed = False
-        # GameState.DECK (open_deck_view) -- what it's for and where it returns.
-        self.deck_view_mode = "view"
-        self.deck_return_state = GameState.MAP
-        self.deck_entry_rects = []
-        self.deck_back_rect = ui.build_deck_back_rect()
         self.shop_potion = None
         self.shop_potion_bought = False
 
@@ -367,9 +354,7 @@ class Game:
         self.rest_heal_amount = 0
         self.rest_heal_blocked = False
         self.rest_forged_tower = None
-        self.rest_option_rects = ui.build_event_option_rects(4)
-        # Study's pick once made (a base card key), for the resolved text.
-        self.rest_upgraded_card = None
+        self.rest_option_rects = ui.build_event_option_rects(3)
         # True once "Move on" (option 2) was picked -- the resolved screen's
         # own text for it.
         self.rest_moved_on = False
@@ -390,7 +375,6 @@ class Game:
         # indices which of those cards have been taken so far this visit.
         self.reward = None
         self.reward_rects = []
-        self.reward_continue_rect = ui.build_reward_continue_button_rect(False)
         # The Commander select screen (see _enter_commander_select) --
         # card_rects fixed, unlocked/counters re-read on every entry.
         self.commander_rects = ui.build_commander_card_rects(len(commanders.COMMANDER_ORDER))
@@ -401,7 +385,6 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
-        self._reset_spell_state()
         # The highest Ascension this account has unlocked (run/ascension.py)
         # -- read once here and kept in step by _unlock_next_ascension, the
         # only thing that raises it, so the menu never re-reads the file
@@ -683,10 +666,7 @@ class Game:
             ascension=ascension.clamp(ascension_level), commander=commander,
             relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
             forged_towers=list(chosen.forged_towers),
-            deck=list(spells.STARTER_DECK) + ([chosen.signature_spell] if chosen.signature_spell else []),
         )
-        # Ascender's Bane (Ascension 10): curse cards from the very start.
-        self.active_run.deck += ["doubt"] * ascension.modifiers_for(self.active_run.ascension).starting_doubt_cards
         if is_daily:
             self._apply_daily_modifiers()
         self._enter_map()
@@ -900,19 +880,6 @@ class Game:
         # carries forward -- every floor gets this bonus exactly once, the
         # instant it loads.
         self.economy.add_gold(relic_modifiers.gold_per_floor_bonus)
-        # The fight's spell deck, shuffled from the node's own rng so a
-        # restart (or Continue) deals the very same hands.
-        held = [relics.RELICS[key] for key in run.relics]
-        affix = self._elite_affix(run, node)
-        self.combat_deck = spells.CombatDeck.from_deck(
-            run.deck + list(affix.hex_cards if affix is not None else ()),
-            self._run_rng(run, _SPELL_RNG_STREAM, node.id),
-            max_energy=spells.MAX_ENERGY + sum(relic.max_energy_bonus for relic in held),
-            hand_size=spells.HAND_SIZE + sum(relic.hand_size_bonus for relic in held),
-        )
-        self.combat_deck.new_turn()
-        self.combat_deck.draw(sum(relic.opening_draw_bonus for relic in held))
-        self.combat_deck.energy += sum(relic.opening_energy_bonus for relic in held)
         self.state = GameState.PLAYING
 
     def _advance_run_floor(self):
@@ -1044,10 +1011,7 @@ class Game:
         if self.reward.is_empty:
             self._leave_reward_screen()
             return
-        spell_count = len(self.reward.spell_choices)
-        self.reward_rects = (ui.build_draft_choice_rects(len(self._reward_cards()) - spell_count)
-                             + ui.build_spell_reward_rects(spell_count))
-        self.reward_continue_rect = ui.build_reward_continue_button_rect(spell_count > 0)
+        self.reward_rects = ui.build_draft_choice_rects(len(self._reward_cards()))
         self.reward_claimed_indices = set()
         run.reward_pending = True
         self._autosave_run()
@@ -1064,8 +1028,6 @@ class Game:
         cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
         if self.reward.potion is not None:
             cards.append(("potion", self.reward.potion))
-        # Last: the spell row sits below the main one (ui.build_spell_reward_rects).
-        cards.extend(("spell", key) for key in self.reward.spell_choices)
         return cards
 
     def _reward_card_available(self, index):
@@ -1079,7 +1041,7 @@ class Game:
             return False
         cards = self._reward_cards()
         kind = cards[index][0]
-        if kind in ("tower", "forge", "boss_relic", "spell"):
+        if kind in ("tower", "forge", "boss_relic"):
             # Pick-one rows: claiming one forfeits the rest of its row --
             # new towers and forge cards share one row.
             row = ("tower", "forge") if kind in ("tower", "forge") else (kind,)
@@ -1138,9 +1100,6 @@ class Game:
             self.audio.play("tower_upgraded")
         elif kind in ("relic", "boss_relic"):
             self._grant_relic(key)
-        elif kind == "spell":
-            self.active_run.deck.append(key)
-            self.audio.play("tower_unlocked_shop")
         else:
             self.active_run.potions.append(key)
             self.audio.play("relic_acquired")
@@ -1163,53 +1122,6 @@ class Game:
         self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)
         self.audio.play("potion_used")
         self._record_achievement("potions_used")
-
-    def _reset_spell_state(self):
-        """Clear every fight-scoped spell effect (spells.py) -- on every
-        level load; _load_combat_node then deals a run's fresh deck."""
-        self.combat_deck = None
-        self.spell_fire_rate_timer = 0.0
-        self.spell_fire_rate_multiplier = 1.0
-        self.spell_damage_timer = 0.0
-        self.spell_damage_bonus = 0.0
-        self.bounty_timer = 0.0
-        self.free_tower_charges = 0
-        # A Runic Resonance-style relic's fight-long tower damage bonus.
-        self.spell_resonance_bonus = 0.0
-
-    def play_card(self, index):
-        """Play the card at `index` of the fight's hand -- refused (card
-        kept) when there's no such card, not enough energy, or it only
-        affects enemies and the field is empty. Each spell's own `cast`
-        function does the work, so this never branches on which one."""
-        deck = self.combat_deck
-        if self.state != GameState.PLAYING or deck is None or not deck.can_play(index):
-            return False
-        if spells.spell_of(deck.hand[index]).needs_enemies and not self.enemies:
-            return False
-        card = deck.play(index)
-        held = [relics.RELICS[key] for key in self.active_run.relics]
-        casts = 2 if deck.played_this_turn == 1 and any(relic.spell_echo for relic in held) else 1
-        for _ in range(casts):
-            if spells.spell_of(card).needs_enemies and not self.enemies:
-                break  # the first cast cleared the field -- nothing left to echo onto
-            spells.spell_of(card).cast(self, spells.card_level(card))
-        self.economy.add_gold(sum(relic.gold_per_spell for relic in held))
-        for relic in held:
-            if relic.spell_resonance_per_cast:
-                self.spell_resonance_bonus = min(relic.spell_resonance_cap,
-                                                 self.spell_resonance_bonus + relic.spell_resonance_per_cast)
-        self.audio.play("potion_used")
-        self._record_achievement("spells_cast")
-        self._show_first_spell_hint = False
-        return True
-
-    def card_rects(self):
-        """One rect per card in the fight's hand (ui.build_card_rects)."""
-        return ui.build_card_rects(len(self.combat_deck.hand) if self.combat_deck is not None else 0)
-
-    def _hovered_card(self):
-        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.card_rects())
 
     @property
     def potion_slot_rects(self):
@@ -1357,17 +1269,12 @@ class Game:
         self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
         self.shop_potion = potions.random_potion(rng)
         self.shop_potion_bought = False
-        # Spells are drawn last, after the potion, so existing seeds' offers stay put.
-        self.draft_choices += shop.spell_items(rng)
-        self.shop_card_removed = False
         # Skipped only when nothing at all is on offer: no cards, no curse
         # to lift, and no room for the potion stand's potion.
         if not self.draft_choices and not relics.held_curses(run) and not potions.has_free_slot(run):
             self._finish_node(node.id)
             return
-        spell_count = sum(1 for item in self.draft_choices if item.kind == "spell")
-        self.draft_choice_rects = (ui.build_draft_choice_rects(len(self.draft_choices) - spell_count)
-                                   + ui.build_spell_reward_rects(spell_count))
+        self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
         self.shop_purchased_indices = set()
         self.shop_curse_removed = False
         self.state = GameState.DRAFT
@@ -1399,9 +1306,6 @@ class Game:
             run.shop_currency -= price
         if item.kind == "relic":
             self._grant_relic(item.key)
-        elif item.kind == "spell":
-            run.deck.append(item.key)
-            self.audio.play("tower_unlocked_shop")
         else:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
@@ -1426,55 +1330,6 @@ class Game:
         self.active_run.potions.append(self.shop_potion)
         self.shop_potion_bought = True
         self.audio.play("relic_acquired")
-
-    def _card_removal_price(self):
-        return round(shop.card_removal_price(self.active_run.cards_removed) * self._shop_price_multiplier())
-
-    def _can_remove_card(self):
-        """Shared by the Shop's remove-a-card button (enabled look), opening
-        the picker, and _remove_card itself: once per visit, a card to
-        remove, and enough shop currency."""
-        run = self.active_run
-        return (not self.shop_card_removed and bool(run.deck)
-                and shop.can_afford(run.shop_currency, self._card_removal_price(), self.economy.unlimited_gold))
-
-    def _open_card_removal(self):
-        if self._can_remove_card():
-            self.open_deck_view("remove", GameState.DRAFT)
-
-    def _remove_card(self, key):
-        """Remove one copy of `key` from the deck for _card_removal_price(),
-        then return to the Shop -- a silent no-op if not allowed."""
-        run = self.active_run
-        if not self._can_remove_card() or key not in run.deck:
-            return
-        if not self.economy.unlimited_gold:
-            run.shop_currency -= self._card_removal_price()
-        run.deck.remove(key)
-        run.cards_removed += 1
-        self.shop_card_removed = True
-        self.audio.play("tower_sold")
-        self.state = GameState.DRAFT
-
-    def open_deck_view(self, mode="view", return_state=GameState.MAP):
-        """Show the run's deck (GameState.DECK) -- `mode` "view" (read-only)
-        or "remove" (the Shop's picker); Back returns to `return_state`."""
-        self.deck_view_mode = mode
-        self.deck_return_state = return_state
-        self.deck_entry_rects = ui.build_deck_entry_rects(len(self.deck_view_entries()))
-        self.state = GameState.DECK
-
-    def deck_view_entries(self):
-        """The deck screen's (card, count) grid -- only cards not yet
-        upgraded while Studying."""
-        entries = ui.deck_entries(self.active_run.deck)
-        if self.deck_view_mode == "upgrade":
-            upgradeable = spells.upgradeable_cards(self.active_run.deck)
-            return [(card, count) for card, count in entries if card in upgradeable]
-        return entries
-
-    def _hovered_deck_entry(self):
-        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.deck_entry_rects)
 
     def _curse_removal_price(self):
         return round(shop.CURSE_REMOVAL_PRICE * self._shop_price_multiplier())
@@ -1629,7 +1484,6 @@ class Game:
         self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(depth) * heal_multiplier))
         self.rest_heal_blocked = any(relics.RELICS[key].blocks_rest_heal for key in self.active_run.relics)
         self.rest_forged_tower = None
-        self.rest_upgraded_card = None
         self.rest_moved_on = False
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
@@ -1647,10 +1501,8 @@ class Game:
 
     def _choose_rest_option(self, index):
         """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
-        tower), 2 = Study (upgrade a spell, on the deck screen), 3 = Move on
-        (nothing) -- Rest is a no-op under a blocks_rest_heal boss relic,
-        Smith once there's nothing left to forge, Study once every card is
-        upgraded."""
+        tower), 2 = Move on (nothing) -- Rest is a no-op under a blocks_
+        rest_heal boss relic, Smith once there's nothing left to forge."""
         if index == 0:
             if self.rest_heal_blocked:
                 return  # an Overcharged Core-style boss relic forbids it
@@ -1659,29 +1511,13 @@ class Game:
             self._commit_node(self.active_run.current_node_id)
         elif index == 1 and self.rest_smith_choices:
             self.rest_phase = "smith"
-        elif index == 2 and spells.upgradeable_cards(self.active_run.deck):
-            self.open_deck_view("upgrade", GameState.REST)
-        elif index == 3:
+        elif index == 2:
             # Always available -- without it, a run that can't heal here
             # (Overcharged Core) with every held tower already forged had no
             # way off this screen at all.
             self.rest_moved_on = True
             self.rest_phase = "resolved"
             self._commit_node(self.active_run.current_node_id)
-
-    def _upgrade_card(self, card):
-        """Study: upgrade one copy of `card` (a base card the deck holds)
-        for the rest of the run, resolving the Rest site."""
-        run = self.active_run
-        if card not in spells.upgradeable_cards(run.deck):
-            return
-        run.deck[run.deck.index(card)] = spells.upgraded(card)
-        self._record_achievement("spells_upgraded")
-        self.rest_upgraded_card = card
-        self.rest_phase = "resolved"
-        self._commit_node(run.current_node_id)
-        self.audio.play("tower_upgraded")
-        self.state = GameState.REST
 
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from
@@ -1863,11 +1699,6 @@ class Game:
             active_run is not None and not sandbox
             and achievements.load_achievements(self.achievements_path)["counters"].get("towers_built", 0) == 0
         )
-        # The same idea for the spell hand -- until this account's first cast.
-        self._show_first_spell_hint = (
-            active_run is not None and not sandbox
-            and achievements.load_achievements(self.achievements_path)["counters"].get("spells_cast", 0) == 0
-        )
         # A tower sold mid-level is removed from self.towers (see
         # try_sell_tower) but its lifetime stats still belong in this
         # level's post-level results table -- kept here purely so
@@ -1887,7 +1718,6 @@ class Game:
         self.damage_numbers = []
         self.impact_effects = []
         self.overclock_timer = 0.0
-        self._reset_spell_state()
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         # Whatever the stats panel showed as of the last render() -- see
@@ -2571,21 +2401,13 @@ class Game:
             return False
 
         tower_cls = TOWER_TYPES[self.selected_tower_name]
-        # A Requisition (spells.py) makes the next placement free.
-        free = self.free_tower_charges > 0
-        if not free and not self.economy.can_afford(tower_cls.cost):
+        if not self.economy.can_afford(tower_cls.cost):
             return False
 
-        if free:
-            self.free_tower_charges -= 1
-        else:
-            self._spend_gold(tower_cls.cost)
+        self._spend_gold(tower_cls.cost)
         tower = self._construct_tower(tower_cls, anchor_col, anchor_row)
         if self.active_run is not None and self.selected_tower_name in self.active_run.forged_towers:
             self._apply_forge(tower)
-        if free:
-            # Never paid for, so selling it refunds nothing for the base cost.
-            tower.total_invested = 0
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
@@ -2890,23 +2712,10 @@ class Game:
         # a tower placed mid-effect is overclocked too.
         self.overclock_timer = max(0.0, self.overclock_timer - dt)
         overclock = potions.OVERCLOCK_FIRE_RATE_MULTIPLIER if self.overclock_timer > 0 else 1.0
-        # Rally/Empower/Bounty (spells.py) -- the same timed, global shape.
-        self.spell_fire_rate_timer = max(0.0, self.spell_fire_rate_timer - dt)
-        self.spell_damage_timer = max(0.0, self.spell_damage_timer - dt)
-        self.bounty_timer = max(0.0, self.bounty_timer - dt)
-        # Each effect's strength lasts only as long as its timer (an
-        # upgraded cast raises it -- see spells._rally/_empower).
-        if self.spell_fire_rate_timer <= 0:
-            self.spell_fire_rate_multiplier = 1.0
-        if self.spell_damage_timer <= 0:
-            self.spell_damage_bonus = 0.0
-        overclock *= self.spell_fire_rate_multiplier
-        spell_damage_bonus = self.spell_damage_bonus + self.spell_resonance_bonus
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
             tower.potion_fire_rate_multiplier = overclock
-            tower.spell_damage_bonus = spell_damage_bonus
         # Built fresh every frame, same as the position updates it buckets
         # -- see spatial_index.py for why a full per-frame rebuild, not an
         # incrementally-maintained structure, is the right shape here. This
@@ -3039,8 +2848,7 @@ class Game:
                 still_alive.extend(enemy.pending_spawns)
                 enemy.pending_spawns = []
             if enemy.is_dead:
-                bounty = spells.BOUNTY_GOLD_MULTIPLIER if self.bounty_timer > 0 else 1
-                self.economy.add_gold(enemy.gold_reward * bounty)
+                self.economy.add_gold(enemy.gold_reward)
                 kills_this_frame += 1
                 # A small death poof, same spot the killing blow's own
                 # damage number is spawned from -- reads enemy.pos before
@@ -3104,9 +2912,6 @@ class Game:
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
             self._update_endless_score()
-            # A wave is a Slay the Spire turn: discard, refill energy, draw.
-            if self.combat_deck is not None:
-                self.combat_deck.new_turn()
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
                 and self.active_run is not None and self.active_run.is_final_floor):
             self._handle_boss_defeated()

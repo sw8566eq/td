@@ -31,16 +31,6 @@ from run.elite_affixes import AFFIXES, BOSS_AFFIXES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
-from run.spells import (
-    SPELLS,
-    card_cost,
-    card_description,
-    card_level,
-    card_name,
-    spell_of,
-)
-from run.spells import initials as spell_initials
-from run.spells import upgraded as upgraded_card
 from support import settings
 from world.levels import LEVELS
 
@@ -838,7 +828,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R", deck_size=None):
+                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R"):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -858,8 +848,8 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     surface.fill(settings.COLOR_BG)
     title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
     boss = (node_affixes or {}).get(game_map.boss_node_id)
-    if boss is not None:  # Slay the Spire shows the act's boss up front, too
-        title_text += f"  --  {boss.display_name} awaits"
+    if boss is not None:  # plan the whole act around who's waiting at the top
+        title_text += f"  --  Boss: {boss.display_name}"
     title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 14)))
 
@@ -871,7 +861,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
         potion_text = ", ".join(potion_names) if potion_names else "none"
         info = small_font.render(
             f"Lives: {lives}   Shop currency: {round(shop_currency)}   Relics: {relic_count} ({relics_key_label} to view)"
-            f"   Potions: {potion_text}" + (f"   Spells: {deck_size} (D)" if deck_size is not None else ""),
+            f"   Potions: {potion_text}",
             True, settings.COLOR_GOLD,
         )
         surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 44)))
@@ -989,14 +979,6 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Forged: {TOWER_TYPES[resolution['forged']].display_name} (now placed at level 2)")
     if resolution.get("potion"):
         lines.append(f"Gained potion: {POTIONS[resolution['potion']].display_name}")
-    if resolution.get("spells"):
-        lines.append("Gained spells: " + ", ".join(card_name(card) for card in resolution["spells"]))
-    if resolution.get("spells_upgraded"):
-        lines.append("Upgraded: " + ", ".join(card_name(card) for card in resolution["spells_upgraded"]))
-    if resolution.get("spell_cards"):
-        lines.append("Added to your deck: " + ", ".join(card_name(card) for card in resolution["spell_cards"]))
-    if resolution.get("spells_removed"):
-        lines.append("Burned: " + ", ".join(card_name(card) for card in resolution["spells_removed"]))
     return lines or ["Nothing else happened."]
 
 
@@ -1113,8 +1095,7 @@ def _draw_option_box(surface, small_font, rect, label, description, enabled, hov
 
 
 def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, option_rects, smith_choices,
-                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False, moved_on=False,
-                     can_study=False, studied_card=None):
+                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False, moved_on=False):
     """A Rest node's campfire (see Game._enter_rest_node), by `phase`:
     "choose" shows Rest and Smith as two Event-style options; "smith" a
     grid of `smith_choices` tower names to forge, plus Back; "resolved"
@@ -1134,11 +1115,8 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
         smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
                       if can_smith else "Every tower you hold is already forged.")
         _draw_option_box(surface, small_font, option_rects[1], "Smith", smith_text, can_smith, hovered_index == 1)
-        study_text = ("Upgrade one of your spell cards for the rest of the run." if can_study
-                      else "Every spell in your deck is already upgraded.")
-        _draw_option_box(surface, small_font, option_rects[2], "Study", study_text, can_study, hovered_index == 2)
-        _draw_option_box(surface, small_font, option_rects[3], "Move on", "Leave the campfire as it is.", True,
-                         hovered_index == 3)
+        _draw_option_box(surface, small_font, option_rects[2], "Move on", "Leave the campfire as it is.", True,
+                         hovered_index == 2)
     elif phase == "smith":
         prompt = small_font.render("Choose a tower to forge", True, settings.COLOR_TEXT)
         surface.blit(prompt, prompt.get_rect(midtop=(center_x, SMITH_CHOICES_TOP - 50)))
@@ -1155,8 +1133,6 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
     else:
         if moved_on:
             text = "You move on without stopping."
-        elif studied_card is not None:
-            text = f"You study {spell_of(studied_card).display_name}: it is now {card_name(upgraded_card(studied_card))}."
         elif forged_tower is None:
             text = f"You rest and recover {heal_amount} lives."
         else:
@@ -1222,29 +1198,6 @@ SHOP_CONTINUE_BUTTON_WIDTH = 220
 SHOP_CONTINUE_BUTTON_HEIGHT = 48
 
 
-SPELL_REWARD_CARD_WIDTH = 300
-SPELL_REWARD_CARD_HEIGHT = 112
-SPELL_REWARD_ROW_TOP = DRAFT_CARDS_TOP + DRAFT_CARD_HEIGHT + 44
-
-
-def build_spell_reward_rects(count):
-    """The reward screen's second, shorter row: `count` spell cards
-    centered under the main card row."""
-    total_width = count * SPELL_REWARD_CARD_WIDTH + (count - 1) * DRAFT_CARD_GAP
-    start_x = (settings.SCREEN_WIDTH - total_width) // 2
-    return [pygame.Rect(start_x + i * (SPELL_REWARD_CARD_WIDTH + DRAFT_CARD_GAP), SPELL_REWARD_ROW_TOP,
-                        SPELL_REWARD_CARD_WIDTH, SPELL_REWARD_CARD_HEIGHT) for i in range(count)]
-
-
-def build_reward_continue_button_rect(has_spell_row):
-    """The reward screen's Continue/Skip -- the Shop's own spot, pushed
-    below the spell row when there is one."""
-    rect = build_shop_continue_button_rect()
-    if has_spell_row:
-        rect.y = SPELL_REWARD_ROW_TOP + SPELL_REWARD_CARD_HEIGHT + 24
-    return rect
-
-
 def build_shop_continue_button_rect():
     """Rect for the Shop screen's 'Continue' button (see Game._handle_
     draft_click) -- leaves the shop and loads the next floor without
@@ -1259,44 +1212,21 @@ def build_shop_continue_button_rect():
 SHOP_REMOVE_CURSE_BUTTON_WIDTH = 260
 
 
+def build_shop_remove_curse_rect():
+    """The Shop's remove-a-curse button, right under Continue."""
+    continue_rect = build_shop_continue_button_rect()
+    return pygame.Rect((settings.SCREEN_WIDTH - SHOP_REMOVE_CURSE_BUTTON_WIDTH) // 2, continue_rect.bottom + 16,
+                       SHOP_REMOVE_CURSE_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
+
 SHOP_POTION_BUTTON_WIDTH = 280
-SHOP_REMOVE_CARD_BUTTON_WIDTH = 230
-SHOP_BUTTON_GAP = 16
-# The Shop's service row, under its spell row: potion stand, Continue,
-# remove a card, remove a curse.
-SHOP_BUTTON_ROW_Y = SPELL_REWARD_ROW_TOP + SPELL_REWARD_CARD_HEIGHT + 20
-
-
-def _shop_button_row():
-    widths = (SHOP_POTION_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_WIDTH, SHOP_REMOVE_CARD_BUTTON_WIDTH,
-              SHOP_REMOVE_CURSE_BUTTON_WIDTH)
-    x = (settings.SCREEN_WIDTH - sum(widths) - SHOP_BUTTON_GAP * (len(widths) - 1)) // 2
-    rects = []
-    for width in widths:
-        rects.append(pygame.Rect(x, SHOP_BUTTON_ROW_Y, width, SHOP_CONTINUE_BUTTON_HEIGHT))
-        x += width + SHOP_BUTTON_GAP
-    return rects
 
 
 def build_shop_potion_rect():
-    """The Shop's potion stand, first in its service row."""
-    return _shop_button_row()[0]
-
-
-def build_shop_exit_button_rect():
-    """The Shop's own Continue, in its service row (the reward screen and
-    others keep build_shop_continue_button_rect's spot)."""
-    return _shop_button_row()[1]
-
-
-def build_shop_remove_card_rect():
-    """The Shop's remove-a-card service (opens the deck screen)."""
-    return _shop_button_row()[2]
-
-
-def build_shop_remove_curse_rect():
-    """The Shop's remove-a-curse button, last in its service row."""
-    return _shop_button_row()[3]
+    """The Shop's potion stand, left of Continue on the same row."""
+    continue_rect = build_shop_continue_button_rect()
+    return pygame.Rect(continue_rect.left - 24 - SHOP_POTION_BUTTON_WIDTH, continue_rect.y,
+                       SHOP_POTION_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
 
 
 def draw_shop_potion_button(surface, small_font, rect, potion_key, price, bought, can_buy, hovered=False):
@@ -1310,26 +1240,11 @@ def draw_shop_potion_button(surface, small_font, rect, potion_key, price, bought
     label = small_font.render(text, True, POTION_COLORS[potion_key] if can_buy else settings.COLOR_TEXT_DIM)
     surface.blit(label, label.get_rect(center=rect.center))
     if hovered:
-        lines = _wrap_text(potion.description, small_font, rect.width)
-        plate = pygame.Rect(rect.x, rect.y - 12 - len(lines) * PANEL_ROW_HEIGHT, rect.width,
-                            len(lines) * PANEL_ROW_HEIGHT + 8)
-        pygame.draw.rect(surface, settings.COLOR_HUD_BG, plate, border_radius=6)
-        pygame.draw.rect(surface, POTION_COLORS[potion_key], plate, width=1, border_radius=6)
-        y = plate.y + 4
-        for line in lines:
+        y = rect.bottom + 8
+        for line in _wrap_text(potion.description, small_font, rect.width):
             line_surface = small_font.render(line, True, settings.COLOR_TEXT_DIM)
-            surface.blit(line_surface, line_surface.get_rect(midtop=(plate.centerx, y)))
+            surface.blit(line_surface, line_surface.get_rect(midtop=(rect.centerx, y)))
             y += PANEL_ROW_HEIGHT
-
-
-def draw_shop_remove_card_button(surface, small_font, rect, price, has_cards, used, affordable):
-    """The Shop's remove-a-card service -- see Game._open_card_removal."""
-    enabled = has_cards and not used and affordable
-    pygame.draw.rect(surface, settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED, rect,
-                     border_radius=6)
-    text = "Card removed" if used else f"Remove a card ({price})"
-    label = small_font.render(text, True, settings.COLOR_TEXT if enabled else settings.COLOR_TEXT_DIM)
-    surface.blit(label, label.get_rect(center=rect.center))
 
 
 def draw_shop_remove_curse_button(surface, small_font, rect, price, has_curse, used, affordable):
@@ -1434,8 +1349,7 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, a
     y = rect.y + PANEL_PADDING
     max_width = rect.width - 2 * PANEL_PADDING
 
-    # Leaves room for the price tag in the top-right corner.
-    for line in _wrap_text(relic.display_name, font, max_width - 40):
+    for line in _wrap_text(relic.display_name, font, max_width):
         title_line = font.render(line, True, settings.COLOR_TEXT)
         surface.blit(title_line, (x, y))
         y += title_line.get_height() + 2
@@ -1478,7 +1392,7 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     surface.fill(settings.COLOR_BG)
     _draw_dim_overlay(surface)
 
-    title = font.render("Shop: spend shop currency on towers, relics and spells", True, settings.COLOR_GOLD)
+    title = font.render("Shop: spend shop currency on towers and relics", True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 40)))
 
     for index, item in enumerate(choices):
@@ -1490,17 +1404,14 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
         # the moment of an actual purchase).
         price = price_for(item, len(purchased_indices), discount_multiplier)
         affordable = can_afford(shop_currency, price, unlimited_gold)
-        draw_card = _SHOP_CARD_DRAWERS[item.kind]
+        draw_card = _draw_relic_card if item.kind == "relic" else _draw_draft_card
         draw_card(surface, font, small_font, draft_choice_rects[index], item.key,
                   index == hovered_index, purchased, affordable, price)
-    spell_rects = [draft_choice_rects[i] for i, item in enumerate(choices) if item.kind == "spell"]
-    if spell_rects:
-        label = small_font.render("Spells for your deck", True, settings.COLOR_GOLD)
-        surface.blit(label, label.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, spell_rects[0].y - 6)))
 
     currency_display = _format_currency(shop_currency, unlimited_gold)
     currency_text = small_font.render(f"Shop currency: {currency_display}", True, settings.COLOR_GOLD)
-    surface.blit(currency_text, currency_text.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 70)))
+    surface.blit(currency_text, currency_text.get_rect(
+        midbottom=(settings.SCREEN_WIDTH // 2, continue_button_rect.y - 12)))
 
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
     continue_label = small_font.render("Continue", True, settings.COLOR_GOLD)
@@ -1559,8 +1470,6 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
             lines.append("Potions: " + ", ".join(POTIONS[p].display_name for p in commander.starting_potions))
         if commander.forged_towers:
             lines.append("Forged: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.forged_towers))
-        if commander.signature_spell is not None:
-            lines.append(f"Spell: {SPELLS[commander.signature_spell].display_name}")
         for line in lines:
             for wrapped in (_wrap_text(line, small_font, max_width) if line else [""]):
                 surface.blit(small_font.render(wrapped, True, settings.COLOR_TEXT_DIM), (x, y))
@@ -1621,16 +1530,10 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
         draw_card(surface, font, small_font, card_rects[index], key, index == hovered_index,
                   not available[index], available[index], 0, tag)
 
-    spell_rows = [card_rects[i] for i, (kind, _key) in enumerate(cards) if kind == "spell"]
-    if spell_rows:
-        label = small_font.render("...and choose one spell for your deck", True, settings.COLOR_GOLD)
-        surface.blit(label, label.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, spell_rows[0].y - 6)))
     if any(kind == "forge" or (kind == "tower" and key in forged_names) for kind, key in cards):
         note = small_font.render("+ / FORGE: that tower is always placed at level 2, for free",
                                  True, settings.COLOR_TEXT_DIM)
-        # Under the main row (the spell row's label sits just above the spell row instead).
-        note_bottom = (spell_rows[0].y - 26) if spell_rows else continue_button_rect.y - 8
-        surface.blit(note, note.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, note_bottom)))
+        surface.blit(note, note.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, continue_button_rect.y - 8)))
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
     label = small_font.render("Continue" if claimed_indices else "Skip", True, settings.COLOR_GOLD)
     surface.blit(label, label.get_rect(center=continue_button_rect.center))
@@ -1655,41 +1558,7 @@ def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, 
         y += PANEL_ROW_HEIGHT
 
 
-def _draw_spell_reward_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None,
-                            max_description_lines=3):
-    """A wide, short card for the reward/Shop spell rows: a mini card
-    face on the left, name, cost and description to its right. `key` is a
-    deck card (an upgraded "+" card's name reads green)."""
-    spell = spell_of(key)
-    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag)
-    face = pygame.Rect(x, rect.y + 12, 46, rect.height - 24)
-    draw_spell_card(surface, font, small_font, key, face, playable=not purchased)
-    text_x = face.right + 12
-    max_width = rect.right - PANEL_PADDING - text_x
-    name_color = SPELL_UPGRADED_COLOR if card_level(key) else settings.COLOR_TEXT
-    title = font.render(card_name(key), True, name_color)
-    if title.get_width() > max_width - 36:  # leave the corner tag room
-        title = small_font.render(card_name(key), True, name_color)
-    surface.blit(title, (text_x, rect.y + 8))
-    y = rect.y + 8 + title.get_height()
-    # Rarity also shows as the face color, so Exhaust takes its place when it applies.
-    detail = "Exhaust" if spell.exhaust else spell.rarity
-    cost_line = f"{card_cost(key)} energy, {detail}" if spell.playable else "Unplayable curse"
-    surface.blit(small_font.render(cost_line, True, settings.COLOR_GOLD), (text_x, y))
-    y += PANEL_ROW_HEIGHT
-    for line in _wrap_text(card_description(key), small_font, max_width)[:max_description_lines]:
-        surface.blit(small_font.render(line, True, settings.COLOR_TEXT_DIM), (text_x, y))
-        y += PANEL_ROW_HEIGHT - 5
-
-
-_SHOP_CARD_DRAWERS = {
-    "tower": _draw_draft_card,
-    "relic": _draw_relic_card,
-    "spell": _draw_spell_reward_card,
-}
-
 _REWARD_CARD_DRAWERS = {
-    "spell": _draw_spell_reward_card,
     "tower": _draw_draft_card,
     "forge": _draw_draft_card,
     "relic": _draw_relic_card,
@@ -1768,181 +1637,11 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         lines = [(potion.display_name, settings.COLOR_TEXT)] + [
             (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(potion.description, small_font, max_width)
         ]
-        # On a plate -- it can overlap the spell hand just above the belt.
-        _draw_tooltip_lines(surface, small_font, lines, POTION_DESCRIPTION_BOTTOM)
-
-
-# --- Spell hand (spells.py) -- between the stats panel's Sell button and
-# the potion belt. ---
-
-HAND_LABEL_Y = SELL_BUTTON_TOP + ACTION_BUTTON_HEIGHT + 12
-CARD_TOP = HAND_LABEL_Y + 22
-CARD_WIDTH = 38
-CARD_HEIGHT = 58
-CARD_GAP = 4
-CARD_HOTKEY_LABELS = ("A", "S", "D", "F", "G")
-SPELL_UPGRADED_COLOR = (120, 220, 120)
-SPELL_RARITY_COLORS = {
-    "common": (70, 90, 120),
-    "uncommon": (60, 120, 110),
-    "rare": (150, 110, 50),
-    "curse": (90, 40, 90),
-}
-
-
-FIRST_SPELL_HINT_TEXT = "Cast: click a card or press A-G"
-
-
-def build_card_rects(count):
-    """`count` card rects in one row, left-aligned under the hand label."""
-    x = settings.PLAY_WIDTH + PANEL_PADDING
-    return [pygame.Rect(x + i * (CARD_WIDTH + CARD_GAP), CARD_TOP, CARD_WIDTH, CARD_HEIGHT) for i in range(count)]
-
-
-def draw_spell_card(surface, font, small_font, key, rect, playable=True, hovered=False):
-    """One small card: rarity-colored body, its initials, and an energy
-    cost pip in the top-left corner. Unplayable cards are drawn dimmed."""
-    spell = spell_of(key)
-    fill = SPELL_RARITY_COLORS[spell.rarity] if playable else settings.COLOR_BUTTON_DISABLED
-    if hovered:
-        fill = tuple(min(255, channel + 30) for channel in fill)
-    pygame.draw.rect(surface, fill, rect, border_radius=6)
-    border = settings.COLOR_GOLD if hovered and playable else settings.COLOR_TEXT_DIM
-    if card_level(key):
-        border = SPELL_UPGRADED_COLOR
-    pygame.draw.rect(surface, border, rect, width=2 if card_level(key) else 1, border_radius=6)
-    if rect.height >= 40:  # a compact deck-grid face is just its color and cost pip
-        text = font.render(spell_initials(key), True, settings.COLOR_TEXT if playable else settings.COLOR_TEXT_DIM)
-        surface.blit(text, text.get_rect(center=rect.center))
-    pip_center = (rect.left + 9, rect.top + 9)
-    pygame.draw.circle(surface, (40, 60, 140), pip_center, 8)
-    cost = small_font.render(str(card_cost(key)) if spell.playable else "-", True, settings.COLOR_TEXT)
-    surface.blit(cost, cost.get_rect(center=pip_center))
-
-
-def _draw_tooltip_lines(surface, small_font, lines, bottom):
-    """Name/description lines on a dark plate, bottom-aligned at `bottom`
-    -- legible over whatever part of the stats panel they cover."""
-    x = settings.PLAY_WIDTH + PANEL_PADDING
-    y = bottom - len(lines) * PANEL_ROW_HEIGHT
-    plate = pygame.Rect(x - 6, y - 4, settings.PANEL_WIDTH - 2 * PANEL_PADDING + 12, len(lines) * PANEL_ROW_HEIGHT + 8)
-    pygame.draw.rect(surface, settings.COLOR_HUD_BG, plate, border_radius=6)
-    pygame.draw.rect(surface, settings.COLOR_BUTTON, plate, width=1, border_radius=6)
-    for text_line, color in lines:
-        surface.blit(small_font.render(text_line, True, color), (x, y))
-        y += PANEL_ROW_HEIGHT
-
-
-def spell_tooltip_lines(key, small_font):
-    max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
-    return [(f"{card_name(key)} ({card_cost(key)} energy)", settings.COLOR_TEXT)] + [
-        (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(card_description(key), small_font, max_width)
-    ]
-
-
-def draw_hand(surface, font, small_font, deck, card_rects, hovered_card, status_text=None):
-    """The fight's hand of spell cards with an energy/pile label above and
-    any running spell effects below; hovering a card shows its name, cost
-    and description on a plate above the hand."""
-    x = settings.PLAY_WIDTH + PANEL_PADDING
-    label = (f"Energy {deck.energy}/{deck.max_energy}   "
-             f"Draw {len(deck.draw_pile)}  Disc {len(deck.discard_pile)}")
-    surface.blit(small_font.render(label, True, settings.COLOR_TEXT_DIM), (x, HAND_LABEL_Y))
-    for index, (key, rect) in enumerate(zip(deck.hand, card_rects)):
-        draw_spell_card(surface, font, small_font, key, rect, playable=deck.can_play(index),
-                        hovered=index == hovered_card)
-        hotkey = small_font.render(CARD_HOTKEY_LABELS[index], True, settings.COLOR_TEXT_DIM)
-        surface.blit(hotkey, hotkey.get_rect(midbottom=(rect.centerx, rect.bottom - 2)))
-    if not deck.hand:
-        surface.blit(small_font.render("No cards -- next hand next wave", True, settings.COLOR_TEXT_DIM),
-                     (x, CARD_TOP + CARD_HEIGHT // 2 - 8))
-    if status_text is not None:
-        surface.blit(small_font.render(status_text, True, settings.COLOR_GOLD), (x, CARD_TOP + CARD_HEIGHT + 4))
-    if hovered_card is not None and hovered_card < len(deck.hand):
-        _draw_tooltip_lines(surface, small_font, spell_tooltip_lines(deck.hand[hovered_card], small_font),
-                            HAND_LABEL_Y - 6)
-
-# --- Deck screen (GameState.DECK) -- the run's spell deck, one card per
-# distinct spell with its copy count; also how the Shop's remove-a-card
-# service picks which card goes. ---
-
-DECK_ENTRY_WIDTH = 270
-DECK_ENTRY_HEIGHT = 100
-DECK_ENTRY_GAP = 14
-DECK_COLUMNS = 4
-DECK_TOP = 110
-DECK_BACK_BUTTON_WIDTH = 220
-DECK_BACK_BUTTON_HEIGHT = 44
-
-
-def deck_entries(deck):
-    """[(card, count), ...] -- each distinct card once, in registry order,
-    an upgraded card right after its base card."""
-    cards = [card for key in SPELLS for card in (key, upgraded_card(key))]
-    return [(card, deck.count(card)) for card in cards if card in deck]
-
-
-# Past this many distinct entries the deck grid switches to short,
-# name-only cards so 9 rows still fit above Back.
-DECK_COMPACT_THRESHOLD = 16
-DECK_ENTRY_HEIGHT_COMPACT = 52
-
-
-def build_deck_entry_rects(count):
-    height, gap = ((DECK_ENTRY_HEIGHT, DECK_ENTRY_GAP) if count <= DECK_COMPACT_THRESHOLD
-                   else (DECK_ENTRY_HEIGHT_COMPACT, 5))
-    total_width = DECK_COLUMNS * DECK_ENTRY_WIDTH + (DECK_COLUMNS - 1) * DECK_ENTRY_GAP
-    left = (settings.SCREEN_WIDTH - total_width) // 2
-    return [pygame.Rect(left + (i % DECK_COLUMNS) * (DECK_ENTRY_WIDTH + DECK_ENTRY_GAP),
-                        DECK_TOP + (i // DECK_COLUMNS) * (height + gap),
-                        DECK_ENTRY_WIDTH, height) for i in range(count)]
-
-
-def build_deck_back_rect():
-    return pygame.Rect((settings.SCREEN_WIDTH - DECK_BACK_BUTTON_WIDTH) // 2,
-                       settings.SCREEN_HEIGHT - DECK_BACK_BUTTON_HEIGHT - 24,
-                       DECK_BACK_BUTTON_WIDTH, DECK_BACK_BUTTON_HEIGHT)
-
-
-DECK_MODE_TITLES = {
-    "view": "Your deck",
-    "remove": "Remove a card: click the card to remove one copy",
-    "upgrade": "Study: click a card to upgrade one copy",
-}
-DECK_MODE_HINTS = {
-    "view": "Each fight deals 4 of these per wave, with 3 energy to cast them",
-    "remove": "Thinner decks draw your best cards more often",
-    "upgrade": "An upgraded + card is stronger for the rest of the run",
-}
-
-
-def draw_deck_screen(surface, font, small_font, deck, entries, entry_rects, hovered_index, back_rect, mode="view",
-                     back_label="Back"):
-    """`entries` is what the grid shows ((card, count) pairs -- see
-    deck_entries; Study shows only cards not yet upgraded)."""
-    surface.fill(settings.COLOR_BG)
-    title = font.render(f"{DECK_MODE_TITLES[mode]} ({len(deck)} cards)", True, settings.COLOR_GOLD)
-    surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, 50)))
-    hint_text = small_font.render(DECK_MODE_HINTS[mode], True, settings.COLOR_TEXT_DIM)
-    surface.blit(hint_text, hint_text.get_rect(center=(settings.SCREEN_WIDTH // 2, 80)))
-    compact = len(entries) > DECK_COMPACT_THRESHOLD
-    if not entries:
-        empty = small_font.render("No spell cards", True, settings.COLOR_TEXT_DIM)
-        surface.blit(empty, empty.get_rect(center=(settings.SCREEN_WIDTH // 2, DECK_TOP + 40)))
-    for index, ((key, count), rect) in enumerate(zip(entries, entry_rects)):
-        _draw_spell_reward_card(surface, font, small_font, rect, key, index == hovered_index, False, True, 0,
-                                tag=f"x{count}", max_description_lines=0 if compact else 2)
-    if hovered_index is not None and hovered_index < len(entries):
-        card = entries[hovered_index][0]
-        text = (f"{card_name(upgraded_card(card))}: {card_description(upgraded_card(card))}" if mode == "upgrade"
-                else card_description(card))
-        lines = _wrap_text(text, small_font, settings.SCREEN_WIDTH - 200)
-        y = back_rect.y - 12 - len(lines) * PANEL_ROW_HEIGHT
-        for line in lines:
-            text = small_font.render(line, True, settings.COLOR_TEXT)
-            surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
+        y = POTION_DESCRIPTION_BOTTOM - len(lines) * PANEL_ROW_HEIGHT
+        for text_line, color in lines:
+            surface.blit(small_font.render(text_line, True, color), (x, y))
             y += PANEL_ROW_HEIGHT
-    _draw_back_to_menu_button(surface, small_font, back_rect, back_label)
+
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
 
@@ -2737,7 +2436,6 @@ def compendium_rows(small_font):
         ("Boss relics", [(r.display_name, r.description) for r in RELICS.values() if r.is_boss_relic]),
         ("Curses", [(r.display_name, r.description) for r in RELICS.values() if r.is_curse]),
         ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
-        ("Spells", [(f"{s.display_name} ({s.cost})", s.description) for s in SPELLS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
         ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
@@ -2839,7 +2537,6 @@ HELP_LINES = [
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
     "Q / W / E (or click a sidebar slot) drink potion 1 / 2 / 3 during a run's fight",
-    "A / S / D / F / G (or click a card) cast your hand's spells -- new hand each wave",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]

@@ -108,10 +108,6 @@ A Shop visit offers a small mix of tower cards and relic cards together; buy as 
 you like, then click Continue. Prices go up a little with every purchase made in that same visit, so
 there's a real choice in what to prioritize, not just "buy everything eventually."
 
-Every Shop also has a row of three **spell cards** for your deck, and a **Remove a card** service
-(once per visit): it opens your deck, and the card you click is gone for good -- a thinner deck draws
-its best cards more often. Each removal costs a little more than the last.
-
 ## Rewards and potions
 
 Every fight you win opens a **Spoils of battle** screen, Slay the Spire style: pick one of up to three
@@ -128,45 +124,12 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Potion Belt (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
-## Spells: your deck
+## Bosses
 
-Every run also carries a **deck of spell cards**, Slay the Spire style. Each fight shuffles it into a
-draw pile and deals you a **hand of 4** in the sidebar, with **3 energy**; every time a wave is
-cleared, your unplayed cards are discarded, energy refills, and a fresh hand is drawn (the discard
-pile is reshuffled when the draw pile runs out). Click a card -- or press `A` / `S` / `D` / `F` / `G`
--- to cast it; its cost is the number in its corner. Cards that hit enemies wait in your hand while
-the field is empty.
-
-You start with Zap x3 (hit the three enemies furthest along), Rally x2 (towers fire faster for a few
-seconds), Prospect (battle gold) and Shove (push everything back). Every won fight's reward screen
-offers a second pick-one row of three spells to add to your deck -- among them Chain Lightning,
-Blizzard, Expose, Plague, Execute, Focus Fire, Bounty (double kill gold), Empower (tower damage),
-Requisition (your next tower is free), Patch the Gate (+1 life), and the draw/energy cards Insight and
-Surge. Cards marked **Exhaust** are used up for the rest of that fight. Rarer cards show up less often.
-
-Each Commander adds a **signature spell** to that starter deck (The Warden's Blizzard, The Alchemist's
-Plague, The Marksman's Focus Fire, The Engineer's Requisition, The Stormcaller's Chain Lightning), and
-six relics build around spells: Arcane Tithe (gold per cast), Runic Resonance (each cast permanently
-buffs tower damage for the fight), Prepared Grimoire (a bigger, better-fuelled opening hand), Echo
-Chamber (the first spell each wave casts twice), and the boss relics Mana Crystal (+1 energy) and
-Grand Grimoire (+1 card per hand).
-
-Four Events deal in spells too: the Ancient Library (upgrade two random spells, or take a new one),
-the Hermit Mage (buy an upgraded spell), the Purifying Flame (burn two random cards for lives), and
-the Wild Surge (two spells and a curse).
-
-Every act's boss is one of five named bosses with its own twist (The Juggernaut's tougher enemies, The
-Broodmother's swarms, The Warlord's speed, The Lich's regeneration and a Regret in your deck, The Golden
-Tyrant's rich but sturdy hordes); the map title tells you which one awaits.
-
-Beware **curse cards**: unplayable cards that just clog your hand. The Haunted Grove Event pays well
-for taking a **Doubt**, and a **Hexing** Elite shuffles two **Regrets** (each drains 1 energy when
-drawn) into your deck for that fight. A Shop's Remove a card is how you get rid of a Doubt for good.
-
-Cards can be **upgraded** (`Zap+`, shown with a green border): a Rest site's new **Study** option
-upgrades one card of your choice for the rest of the run, and deeper fights sometimes offer a spell
-already upgraded. Upgrades raise a card's numbers (damage, duration, draw, energy...) and make a few
-cheaper (Execute+, Requisition+).
+Every act's boss is one of five named bosses with its own twist: The Juggernaut (tougher enemies), The
+Broodmother (bigger swarms), The Warlord (faster enemies), The Lich (regenerating, slightly faster
+enemies) and The Golden Tyrant (sturdier enemies that drop double gold). The map title tells you which
+one is waiting at the top of the act, so you can draft toward it.
 
 ## Ascension
 
@@ -209,10 +172,9 @@ the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Co
 relic, boss relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
 when one exists) continues a saved in-progress run.
 
-On the run map, `R` shows the relics you're holding (as it does mid-fight), and `D` shows your spell
-deck. During a run's fight,
+On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
 `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
-sidebar), and `A` / `S` / `D` / `F` / `G` cast the spell cards in your hand (or click a card).
+sidebar).
 
 On the **map** screen, click any highlighted node to enter it; a legend explains what each node
 color means, and hovering a node shows a tooltip with its specific details (which level, how much a

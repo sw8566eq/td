@@ -147,74 +147,6 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
 
-## Spell deck
-
-`run/spells.py` -- `SPELLS` registry (cost, rarity, `exhaust`, `needs_enemies`, and its own
-`cast(game)` function, so `Game.play_card(index)` never branches on which spell it is) plus
-`CombatDeck`, the pure draw/hand/discard/exhaust/energy state machine. `RunState.deck` (starts as
-`STARTER_DECK`; saved, validated against `SPELLS`, and an old save without it gets the starter deck)
-is the persistent part. Nothing about a `CombatDeck` is ever saved: `_load_combat_node` builds a fresh
-one from `run.deck` with `_run_rng(run, "spells", node.id)` and deals the opening hand, so a restart
-or Continue deals the identical hands. `_load_level_object` calls `Game._reset_spell_state` (deck
-`None`, timers zeroed), so Practice/sandbox floors never have a hand. **A turn is a wave**: `update()`
-calls `combat_deck.new_turn()` (discard hand, refill `MAX_ENERGY`, draw `HAND_SIZE`, capped at
-`HAND_LIMIT`) at the same `current_wave_number` bump that records `waves_survived`.
-
-Timed spells ride the Overclock shape: `spell_fire_rate_timer` multiplies into each tower's
-`potion_fire_rate_multiplier`, `spell_damage_timer` sets `Tower.spell_damage_bonus` (one more additive
-`effective_damage()` source), `bounty_timer` multiplies kill gold in the death drain, and
-`free_tower_charges` makes `try_place_tower` skip the cost (that tower's `total_invested` is 0, so it
-refunds nothing). The hand is drawn in the sidebar between Sell and the potion belt
-(`ui.build_card_rects`/`draw_hand`; tooltips sit on a plate, as do potion descriptions, which can now
-overlap the hand). Hotkeys `A`-`G` (`input_handler.CARD_HOTKEYS`) are fixed, checked after the potion
-keys. Rewards: `CombatReward.spell_choices` (`spells.spell_offer`, rarity-weighted, drawn *last* from the
-reward rng so existing seeds' towers/relics/potions don't change) is a second pick-one row
-(`ui.build_spell_reward_rects`, below the main row; `Game.reward_continue_rect` moves Continue under
-it). Boss rewards have no spells.
-
-The Shop: `shop.spell_items(rng)` appends `ShopItem("spell", ...)` entries to `draft_choices`, drawn
-after the potion stand's roll; `_enter_shop_node` lays them out as the same second row
-(`build_spell_reward_rects`), and the Shop's buttons moved into one service row under it
-(`ui._shop_button_row`: potion stand, `shop_exit_rect` Continue, `shop_remove_card_rect`,
-`shop_remove_curse_rect`) -- `build_shop_continue_button_rect` is still the reward screen's spot.
-Remove a card (`Game._open_card_removal` -> `open_deck_view("remove", GameState.DRAFT)` ->
-`_remove_card(key)`) is once per visit (`shop_card_removed`) and priced by
-`shop.card_removal_price(run.cards_removed)` (saved) times the shop multiplier. `GameState.DECK`
-(`ui.draw_deck_screen`, one card per distinct spell with its count, `ui.deck_entries`) is also the
-map's read-only `D` view; any key or Back returns to `deck_return_state`.
-
-Upgrades: a deck card is a `SPELLS` key or that key + `spells.UPGRADE_SUFFIX` (`"zap+"`). Every spell
-number is a `(base, upgraded)` tuple and `Spell.costs`/`describe(level)`/`cast(game, level)` take the
-level, so **always go through `spells.spell_of`/`card_level`/`card_cost`/`card_name`/
-`card_description`** on a deck card, never `SPELLS[card]` (saves validate with `is_valid_card`).
-Rally/Empower store their strength on Game (`spell_fire_rate_multiplier`/`spell_damage_bonus`, raised
-with `max`) and `update()` resets it once the timer runs out. The Rest site has four options now (Rest,
-Smith, **Study**, Move on -- Move on is index 3): Study opens `open_deck_view("upgrade", GameState.REST)`
-whose grid (`Game.deck_view_entries`) shows only not-yet-upgraded cards; `_upgrade_card` swaps one copy,
-commits the node and returns to the resolved Rest screen. Rewards roll each spell card for an upgrade
-with the same depth chance as pre-forged towers, after the spell picks themselves.
-
-Spell relics are Relic-only fields (like the potion relics), read off `run.relics` directly:
-`max_energy_bonus`/`hand_size_bonus` size each fight's `CombatDeck` in `_load_combat_node`, which then
-applies `opening_draw_bonus`/`opening_energy_bonus` once; `Game.play_card` applies `spell_echo` (via
-`CombatDeck.played_this_turn == 1`, never echoing onto an emptied field), `gold_per_spell`, and
-`spell_resonance_per_cast` (into `Game.spell_resonance_bonus`, capped, fight-scoped, added to every
-tower's `spell_damage_bonus`). `Commander.signature_spell` is appended to `STARTER_DECK` by
-`start_new_run` (Daily Runs therefore get The Warden's).
-
-Events touch the deck through four `EventOption` fields, resolved by `events.resolve_event_option`
-after every older effect (so existing options' rng draws are unchanged): `grant_spells` (N
-`spells.random_spell` picks, `upgrade_granted_spells` makes them `+`), `upgrade_random_spells`
-(samples indices of not-yet-upgraded cards), `remove_random_spells` (samples indices to burn). The
-resolution dict reports `spells`/`spells_upgraded`/`spells_removed` for `ui._describe_event_outcome`.
-
-Curse cards are `SPELLS` entries with `playable=False` (and `offerable=False`, rarity `"curse"`):
-`CombatDeck.can_play` refuses them, `upgradeable_cards`/`is_valid_card` exclude their `+` form, and
-random upgrades skip them. `Spell.drain_energy_on_draw` is applied inside `CombatDeck.draw` (clamped at
-0; `new_turn` refills energy *before* drawing so a Regret drawn there drains the new turn's energy).
-Sources: `EventOption.add_spell_cards` (Haunted Grove) and `EliteAffix.hex_cards` (Hexing), which
-`_load_combat_node` adds to that fight's `CombatDeck` only -- never to `run.deck`.
-
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
@@ -248,8 +180,8 @@ unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price mult
 **Named bosses**: `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
 returns one for a Boss node (`roll_boss_affix` on the same `"affix"` rng stream, keyed by the node id),
 so every affix consumer -- escalation, regen/damage-taken traits, Swarming-style count scaling (boss
-species excluded), `hex_cards`, the map tooltip and `map_node_affixes`, the sidebar text -- handles
-bosses with no extra branches. The map title names the act's boss.
+species excluded), the map tooltip and `map_node_affixes`, the sidebar text -- handles
+bosses with no extra branches. The map title names the act's boss (`Boss: The Warlord`).
 
 ## Starting blessing
 

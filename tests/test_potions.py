@@ -272,8 +272,8 @@ def test_shop_potion_stand_does_not_overlap_continue_or_the_cards():
 
     potion_rect = ui.build_shop_potion_rect()
     assert potion_rect.left >= 0
-    assert not potion_rect.colliderect(ui.build_shop_exit_button_rect())
-    for rect in ui.build_draft_choice_rects(5) + ui.build_spell_reward_rects(3):
+    assert not potion_rect.colliderect(ui.build_shop_continue_button_rect())
+    for rect in ui.build_draft_choice_rects(5):
         assert not potion_rect.colliderect(rect)
     assert potion_rect.right <= settings.SCREEN_WIDTH
 

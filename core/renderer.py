@@ -35,7 +35,7 @@ import pygame
 
 from entities.tower import TOWER_TYPES
 from presentation import ui
-from run import potions, relics, shop, spells
+from run import potions, relics, shop
 from support import settings
 
 
@@ -180,23 +180,10 @@ class Renderer:
                 node_affixes=game.map_node_affixes, relic_count=len(run.relics), node_threats=game.map_node_threats,
                 relics_key_label=ui.binding_display_string(game.keybindings["open_relics"]),
                 potion_names=[potions.POTIONS[key].display_name for key in run.potions],
-                deck_size=len(run.deck),
             )
             if relics_over_map:
                 ui.draw_relics_overlay(game.screen, game.font, game.small_font, run.relics,
                                        width=settings.SCREEN_WIDTH)
-            self._draw_toasts()
-            pygame.display.flip()
-            return
-
-        if game.state == GameState.DECK and game.active_run is not None:
-            back_label = {GameState.DRAFT: "Back to Shop", GameState.REST: "Back"}.get(
-                game.deck_return_state, "Back to Map")
-            ui.draw_deck_screen(
-                game.screen, game.font, game.small_font, game.active_run.deck, game.deck_view_entries(),
-                game.deck_entry_rects,
-                game._hovered_deck_entry(), game.deck_back_rect, game.deck_view_mode, back_label,
-            )
             self._draw_toasts()
             pygame.display.flip()
             return
@@ -206,14 +193,8 @@ class Renderer:
                 game.screen, game.font, game.small_font,
                 game.draft_choices, game.draft_choice_rects, game._hovered_draft_choice(),
                 game.shop_purchased_indices, game.active_run.shop_currency,
-                game.shop_exit_rect, game.economy.unlimited_gold,
+                game.shop_continue_button_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
-            )
-            ui.draw_shop_remove_card_button(
-                game.screen, game.small_font, game.shop_remove_card_rect, game._card_removal_price(),
-                has_cards=bool(game.active_run.deck), used=game.shop_card_removed,
-                affordable=shop.can_afford(game.active_run.shop_currency, game._card_removal_price(),
-                                           game.economy.unlimited_gold),
             )
             if game.shop_potion is not None:
                 ui.draw_shop_potion_button(
@@ -248,7 +229,7 @@ class Renderer:
                 game.screen, game.font, game.small_font, game._reward_cards(), game.reward_rects,
                 game._hovered_reward_card(), game.reward_claimed_indices,
                 [game._reward_card_available(i) for i in range(len(game.reward_rects))],
-                game.reward_continue_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
+                game.shop_continue_button_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
                 forged_names=game.reward.forged_tower_choices,
                 # Sealed Cask blocks new potions outright -- "FULL" would be a lie.
                 potion_unavailable_tag="SEALED" if potions.potions_blocked(game.active_run) else "FULL",
@@ -275,8 +256,6 @@ class Renderer:
                 game.active_run.lives, game.rest_option_rects, game.rest_smith_choices, game.rest_smith_rects,
                 game.rest_back_rect, game.rest_forged_tower, game._hovered_rest_rect_index(),
                 heal_blocked=game.rest_heal_blocked, moved_on=game.rest_moved_on,
-                can_study=bool(spells.upgradeable_cards(game.active_run.deck)),
-                studied_card=game.rest_upgraded_card,
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -341,12 +320,6 @@ class Renderer:
             game._hovered_specialize_key(panel_subject),
         )
         if game.active_run is not None:
-            if game.combat_deck is not None:
-                status = self._spell_status_text()
-                if status is None and game._show_first_spell_hint:
-                    status = ui.FIRST_SPELL_HINT_TEXT
-                ui.draw_hand(game.screen, game.font, game.small_font, game.combat_deck, game.card_rects(),
-                             game._hovered_card(), status)
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
@@ -400,23 +373,7 @@ class Renderer:
         options cost exactly those -- the same readout the map shows."""
         run = self.game.active_run
         return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
-                f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}   "
-                f"Spells: {len(run.deck)}")
-
-    def _spell_status_text(self):
-        """The hand's label tail: whichever timed spells are running, or a
-        pending free tower -- None when nothing is active."""
-        game = self.game
-        parts = []
-        if game.spell_fire_rate_timer > 0:
-            parts.append(f"Rally {game.spell_fire_rate_timer:.0f}s")
-        if game.spell_damage_timer > 0:
-            parts.append(f"Empower {game.spell_damage_timer:.0f}s")
-        if game.bounty_timer > 0:
-            parts.append(f"Bounty {game.bounty_timer:.0f}s")
-        if game.free_tower_charges:
-            parts.append("Free tower")
-        return "  ".join(parts) or None
+                f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
 
     def _run_modifiers_text(self):
         """"Ascension N, <Affix> elite" for the sidebar -- whichever of the

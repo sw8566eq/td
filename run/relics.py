@@ -535,22 +535,6 @@ class Relic:
     # _advance_run_floor (blocks_shop_income), potions.has_free_slot
     # (blocks_potions -- no new potion from any source; ones already held
     # still work).
-    # Spell relics -- also Relic-only, read straight off RELICS by Game/
-    # spells.CombatDeck (spells live on RunState, not on a floor's towers):
-    # max_energy_bonus/hand_size_bonus at every fight's CombatDeck build
-    # (Game._load_combat_node), opening_draw_bonus once there, gold_per_
-    # spell/spell_echo/resonance in Game.play_card.
-    max_energy_bonus: int = 0
-    hand_size_bonus: int = 0
-    opening_draw_bonus: int = 0
-    opening_energy_bonus: int = 0
-    gold_per_spell: int = 0
-    # The first spell cast each wave is cast a second time, free.
-    spell_echo: bool = False
-    # Every spell cast this fight adds this much tower damage (additive,
-    # like Empower), up to spell_resonance_cap.
-    spell_resonance_per_cast: float = 0.0
-    spell_resonance_cap: float = 0.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1084,34 +1068,7 @@ RELICS = {
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
     ),
-    # --- Spell relics -- see Relic.max_energy_bonus and friends. ---
-    "arcane_tithe": Relic(
-        "arcane_tithe", "Arcane Tithe", "+6 battle gold every time you cast a spell.", gold_per_spell=6,
-    ),
-    "runic_resonance": Relic(
-        "runic_resonance", "Runic Resonance",
-        "Every spell you cast gives your towers +3% damage for the rest of the fight (up to +30%).",
-        spell_resonance_per_cast=0.03, spell_resonance_cap=0.30,
-    ),
-    "prepared_grimoire": Relic(
-        "prepared_grimoire", "Prepared Grimoire",
-        "Every fight's opening hand has 1 extra card and 1 extra energy.",
-        opening_draw_bonus=1, opening_energy_bonus=1,
-    ),
-    "echo_chamber": Relic(
-        "echo_chamber", "Echo Chamber", "The first spell you cast each wave is cast twice.", spell_echo=True,
-    ),
     # --- Boss relics (is_boss_relic=True) -- see Relic.is_boss_relic. ---
-    "mana_crystal": Relic(
-        "mana_crystal", "Mana Crystal",
-        "Boss relic: +1 energy every wave, but start every floor with 20% less gold.",
-        max_energy_bonus=1, starting_gold_multiplier=0.8, is_boss_relic=True,
-    ),
-    "grand_grimoire": Relic(
-        "grand_grimoire", "Grand Grimoire",
-        "Boss relic: draw 1 more card every wave, but enemies move 8% faster.",
-        hand_size_bonus=1, enemy_speed_multiplier=1.08, is_boss_relic=True,
-    ),
     "overcharged_core": Relic(
         "overcharged_core", "Overcharged Core",
         "Boss relic: +30% damage for every tower, but Rest sites can no longer heal you.",

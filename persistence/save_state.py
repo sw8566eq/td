@@ -35,7 +35,6 @@ from run.potions import POTIONS
 from run.relics import RELICS
 from run.run_map import ACT_COUNT, COLS, NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
-from run.spells import STARTER_DECK, is_valid_card
 from support import settings
 from world.levels import LEVELS
 
@@ -126,8 +125,6 @@ def _run_to_dict(run):
         "boss_defeated": run.boss_defeated,
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
-        "deck": list(run.deck),
-        "cards_removed": run.cards_removed,
         "ascension": run.ascension,
         "act": run.act,
         "commander": run.commander,
@@ -161,9 +158,6 @@ def _run_from_dict(data):
         boss_defeated=data.get("boss_defeated", False),
         potions=list(data.get("potions", [])),
         forged_towers=list(data.get("forged_towers", [])),
-        # A save from before the spell deck existed starts with the starter deck.
-        deck=list(data.get("deck", STARTER_DECK)),
-        cards_removed=data.get("cards_removed", 0),
         ascension=data.get("ascension", 0),
         act=data.get("act", 0),
         commander=data.get("commander", DEFAULT_COMMANDER),
@@ -354,7 +348,6 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     _require_int(run_data.get("act", 0), "run act", 0, ACT_COUNT - 1)
     _require_int(run_data.get("floors_cleared_prior_acts", 0), "run floors_cleared_prior_acts", 0, _SANE_MAX)
     _require_int(run_data.get("endless_waves_cleared", 0), "run endless_waves_cleared", 0, _SANE_MAX)
-    _require_int(run_data.get("cards_removed", 0), "run cards_removed", 0, _SANE_MAX)
     for flag in ("is_daily", "has_spent_gold", "used_guardians_reprieve", "used_emergency_reserves"):
         _require_bool(run_data[flag], f"run {flag}")
     for flag in ("boss_defeated", "reward_pending", "blessing_pending"):
@@ -363,7 +356,7 @@ def _parse_and_validate_active_run(run_data, at_map=False):
         _require_bool(run_data["lives_captured"], "run lives_captured")
     for field_name in ("unlocked_towers", "relics", "visited_node_ids"):
         _require_str_list(run_data[field_name], f"run {field_name}")
-    for field_name in ("potions", "forged_towers", "deck"):
+    for field_name in ("potions", "forged_towers"):
         _require_str_list(run_data.get(field_name, []), f"run {field_name}")
     if run_data["current_node_id"] is not None and not isinstance(run_data["current_node_id"], str):
         raise TypeError("saved run's current_node_id is not a string")
@@ -430,9 +423,6 @@ def _parse_and_validate_active_run(run_data, at_map=False):
             raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
     if run_data.get("commander", DEFAULT_COMMANDER) not in COMMANDERS:
         raise ValueError(f"saved run's commander {run_data['commander']!r} is not a known commander")
-    for spell_key in run_data.get("deck", []):
-        if not is_valid_card(spell_key):
-            raise ValueError(f"saved run's deck references an unrecognized spell {spell_key!r}")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")

@@ -46,7 +46,7 @@ from entities.waves import WaveState
 from persistence import save_state
 from presentation import ui
 from progression import achievements, meta_progression, progress, run_history
-from run import card_pool, events, potions, rewards, shop, spells
+from run import card_pool, events, potions, rewards, shop
 from run.card_pool import STARTER_TOWERS
 from run.difficulty import DIFFICULTY_MODES
 from run.events import EVENTS
@@ -460,8 +460,7 @@ def test_floor_cleared_any_key_opens_the_reward_screen(game):
     assert game.reward.relic is None  # an ordinary Combat floor -- no Elite relic
 
 
-def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game, monkeypatch):
-    monkeypatch.setattr(spells, "spell_offer", lambda _rng, count=3: [])  # no spell row either
+def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game):
     start_first_floor(game, seed=1)
     game.active_run.unlocked_towers = list(TOWER_TYPES)
     game.active_run.forged_towers = list(TOWER_TYPES)  # nothing left to forge either
@@ -501,7 +500,7 @@ def test_reward_continue_returns_to_the_map_without_marking_a_second_visit(game)
     _clear_into_reward(game)
     visited_before = list(game.active_run.visited_node_ids)
 
-    game._handle_reward_click(game.reward_continue_rect.center)
+    game._handle_reward_click(game.shop_continue_button_rect.center)
 
     assert game.state == GameState.MAP
     assert game.active_run.visited_node_ids == visited_before
@@ -541,7 +540,7 @@ def test_elite_reward_includes_a_claimable_relic(game):
 
 def test_elite_reward_potion_goes_into_a_free_slot_but_not_a_full_belt(game):
     _clear_into_reward(game, node_types=("elite", "combat"))
-    potion_index = [kind for kind, _key in game._reward_cards()].index("potion")
+    potion_index = len(game._reward_cards()) - 1
     assert game._reward_cards()[potion_index] == ("potion", game.reward.potion)
 
     game.active_run.potions = ["fire_bomb"] * potions.POTION_SLOTS
@@ -790,7 +789,7 @@ def test_buying_a_shop_item_then_continuing_returns_to_the_map(game):
     else:
         assert picked.key in game.active_run.unlocked_towers
 
-    game._handle_draft_click(game.shop_exit_rect.center)  # leave the shop
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # leave the shop
 
     assert game.state == GameState.MAP
     assert game.active_run.visited_node_ids == ["0-0", "1-0"]
@@ -918,7 +917,7 @@ def test_continue_button_returns_to_the_map_without_buying_anything(game):
     unlocked_before = list(game.active_run.unlocked_towers)
     relics_before = list(game.active_run.relics)
 
-    game._handle_draft_click(game.shop_exit_rect.center)
+    game._handle_draft_click(game.shop_continue_button_rect.center)
 
     assert game.state == GameState.MAP
     assert game.active_run.unlocked_towers == unlocked_before
@@ -934,8 +933,7 @@ def test_draft_escape_quits(game):
     assert game.running is False
 
 
-def test_enter_shop_node_skips_the_shop_screen_once_nothing_is_on_offer(game, monkeypatch):
-    monkeypatch.setattr(spells, "spell_offer", lambda _rng, count=3: [])  # no spell row either
+def test_enter_shop_node_skips_the_shop_screen_once_nothing_is_on_offer(game):
     _begin_run_with_map(game, ["combat", "shop", "combat"])
     game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
     game.active_run.relics = [key for key, relic in RELICS.items() if not relic.is_curse]  # every relic, no curse
@@ -952,8 +950,7 @@ def test_enter_shop_node_skips_the_shop_screen_once_nothing_is_on_offer(game, mo
 
 
 @pytest.mark.parametrize("leftover", ["curse", "potion_room"])
-def test_a_card_less_shop_still_opens_for_its_services(game, leftover, monkeypatch):
-    monkeypatch.setattr(spells, "spell_offer", lambda _rng, count=3: [])
+def test_a_card_less_shop_still_opens_for_its_services(game, leftover):
     _begin_run_with_map(game, ["combat", "shop", "combat"])
     run = game.active_run
     run.unlocked_towers = list(TOWER_TYPES.keys())
@@ -990,8 +987,7 @@ def test_enter_shop_node_still_shows_up_with_only_relics_left_to_offer(game):
     game._enter_node("1-0")
 
     assert game.state == GameState.DRAFT
-    assert all(item.kind in ("relic", "spell") for item in game.draft_choices)
-    assert any(item.kind == "relic" for item in game.draft_choices)
+    assert all(item.kind == "relic" for item in game.draft_choices)
 
 
 def test_run_seed_reproduces_the_same_shop_offer(game):
@@ -1113,7 +1109,7 @@ def test_war_chest_multiplies_starting_gold_on_every_floor_not_just_once(game):
     game._enter_node("1-0")  # the shop node
     _force_relic_draft(game, "war_chest")
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
-    game._handle_draft_click(game.shop_exit_rect.center)  # -> back to the map
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map
 
     game._enter_node("2-0")
     gold_floor_2 = game.economy.gold
@@ -1184,7 +1180,7 @@ def test_spyglass_array_range_bonus_reaches_a_freshly_placed_tower(game):
     _enter_run_shop(game)
     _force_relic_draft(game, "spyglass_array")
     game._handle_draft_click(game.draft_choice_rects[0].center)  # buy it
-    game._handle_draft_click(game.shop_exit_rect.center)  # -> back to the map
+    game._handle_draft_click(game.shop_continue_button_rect.center)  # -> back to the map
 
     game._enter_node("2-0")  # the next combat node, relic_modifiers re-derived
 
