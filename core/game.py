@@ -995,9 +995,11 @@ class Game:
             self.active_run.unlocked_towers.append(key)
             if key in self.reward.forged_tower_choices:
                 self.active_run.forged_towers.append(key)
+                self._record_achievement("towers_forged")
             self.audio.play("tower_unlocked_shop")
         elif kind == "forge":
             self.active_run.forged_towers.append(key)
+            self._record_achievement("towers_forged")
             self.audio.play("tower_upgraded")
         elif kind in ("relic", "boss_relic"):
             self._grant_relic(key)
@@ -1054,6 +1056,7 @@ class Game:
         if next_level <= self.highest_ascension:
             return
         meta_progression.unlock_ascension(next_level, self.meta_progression_path)
+        self._record_achievement_max("ascension_reached", next_level)
         self.highest_ascension = next_level
         if self.selected_ascension == run.ascension:
             self.selected_ascension = next_level  # climb by default, the way Slay the Spire does
@@ -1341,6 +1344,10 @@ class Game:
         elif "tower" in self.event_resolution:
             self.audio.play("tower_unlocked_shop")
         self._record_achievement("events_resolved")
+        if "forged" in self.event_resolution:
+            self._record_achievement("towers_forged")
+        if "curse" in self.event_resolution:
+            self._record_achievement_max("curses_held_at_once", len(relics.held_curses(run)))
         self.event_chosen_option = option
         self.event_phase = "resolved"
 
@@ -1384,6 +1391,7 @@ class Game:
         now on starts at level 2 for free (see try_place_tower) -- the
         tower defense take on Slay the Spire's upgraded cards."""
         self.active_run.forged_towers.append(name)
+        self._record_achievement("towers_forged")
         self.rest_forged_tower = name
         self.rest_phase = "resolved"
         self.audio.play("tower_upgraded")
@@ -2163,6 +2171,9 @@ class Game:
 
     def _record_level_cleared(self):
         return self.progress_tracker._record_level_cleared()
+
+    def _record_achievement_max(self, counter_name, value):
+        return self.progress_tracker._record_achievement_max(counter_name, value)
 
     def _record_achievement(self, counter_name, amount=1):
         return self.progress_tracker._record_achievement(counter_name, amount)

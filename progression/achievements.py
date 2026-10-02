@@ -126,6 +126,21 @@ ACHIEVEMENTS = {
     "spire_climber": Achievement(
         "spire_climber", "Spire Climber", "Beat 10 act bosses.", "acts_cleared", 10,
     ),
+    "apprentice_smith": Achievement(
+        "apprentice_smith", "Apprentice Smith", "Forge a tower.", "towers_forged", 1,
+    ),
+    "master_smith": Achievement(
+        "master_smith", "Master Smith", "Forge 15 towers.", "towers_forged", 15,
+    ),
+    "ascendant": Achievement(
+        "ascendant", "Ascendant", "Unlock Ascension 5.", "ascension_reached", 5,
+    ),
+    "pinnacle": Achievement(
+        "pinnacle", "Pinnacle", "Unlock Ascension 10.", "ascension_reached", 10,
+    ),
+    "cursebearer": Achievement(
+        "cursebearer", "Cursebearer", "Carry 3 curses at once.", "curses_held_at_once", 3,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),
