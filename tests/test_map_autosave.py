@@ -127,3 +127,17 @@ def test_quitting_on_the_blessing_reopens_it(game, tmp_path):
     fresh._leave_event()
     assert fresh.state == GameState.MAP
     assert save_state.load_run(fresh.save_path)["run"].blessing_pending is False
+
+
+def test_a_run_started_or_resumed_after_practice_is_not_sandboxed(game, tmp_path):
+    game.load_level(1, sandbox=True)  # a Practice session first
+    game.state = GameState.MENU
+    game.start_new_run(seed=1)
+    assert game.sandbox is False
+    assert save_state.has_saved_run(game.save_path)  # the map autosaved
+
+    fresh = _new_game(tmp_path)
+    fresh.load_level(1, sandbox=True)
+    fresh.state = GameState.MENU
+    fresh._continue_saved_run()
+    assert fresh.sandbox is False
