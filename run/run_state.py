@@ -135,6 +135,12 @@ class RunState:
     # its authored ones (Game._update_endless_score) -- a max, not a sum,
     # so restarting the fight can't farm it.
     endless_waves_cleared: int = 0
+    # Screens a map checkpoint (save_state.save_map_checkpoint) must reopen
+    # on Continue rather than forfeit: the current node's post-combat
+    # reward, and the run's opening blessing. Each is re-derived
+    # identically from its own rng key, so reopening offers the same cards.
+    reward_pending: bool = False
+    blessing_pending: bool = False
 
     @property
     def current_level_id(self) -> object:

@@ -129,6 +129,8 @@ def _run_to_dict(run):
         "commander": run.commander,
         "floors_cleared_prior_acts": run.floors_cleared_prior_acts,
         "endless_waves_cleared": run.endless_waves_cleared,
+        "reward_pending": run.reward_pending,
+        "blessing_pending": run.blessing_pending,
     }
 
 
@@ -159,6 +161,8 @@ def _run_from_dict(data):
         commander=data.get("commander", DEFAULT_COMMANDER),
         floors_cleared_prior_acts=data.get("floors_cleared_prior_acts", 0),
         endless_waves_cleared=data.get("endless_waves_cleared", 0),
+        reward_pending=data.get("reward_pending", False),
+        blessing_pending=data.get("blessing_pending", False),
     )
 
 
