@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Trap relics**: Serrated Spikes, Clinging Tar, Hair Trigger.
 - **Path traps**: two new towers built on the path itself -- the **Spike Trap** (cheap splash damage)
   and the **Tar Pit** (a heavy slow) -- snapped to a whole path tile, ground enemies only. Build
   buttons shrank slightly so all 14 towers still fit the HUD.

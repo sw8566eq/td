@@ -110,3 +110,54 @@ def test_a_saved_trap_resumes_on_its_tile(game):
     game.resume_saved_run(save_state.load_run(game.save_path))
     trap = game.towers[0]
     assert isinstance(trap, SpikeTrapTower) and trap.pos == _tile_center(game, tile)
+
+
+# --- Trap relics ---
+
+
+def _run_with(game, relic_keys):
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["combat", "combat"], relics=list(relic_keys))
+    game._enter_node("0-0")
+
+
+def _place_trap(game, name):
+    _select(game, name)
+    tiles = sorted(game.grid.path_cells)
+    for tile in tiles:
+        if game.try_place_tower(*game.placement_anchor_at(*_tile_center(game, tile), TOWER_TYPES[name])):
+            return game.towers[-1]
+    raise AssertionError("no free path tile")
+
+
+def test_serrated_spikes_boosts_only_the_spike_trap(game):
+    start_first_floor(game, seed=1)
+    plain = _place_trap(game, "spike_trap").effective_damage()
+    _run_with(game, ["serrated_spikes"])
+    assert _place_trap(game, "spike_trap").effective_damage() == pytest.approx(plain * 1.4)
+    tar = _place_trap(game, "tar_pit")
+    assert tar.effective_damage() == pytest.approx(TarPitTower.damage)
+
+
+def test_clinging_tar_makes_tar_pit_hits_mark(game):
+    route = [pygame.Vector2(0, 0), pygame.Vector2(500, 0)]
+    grunt = GruntEnemy(route, wave_number=1)
+    _run_with(game, ["clinging_tar"])
+    tar = _place_trap(game, "tar_pit")
+    assert tar.create_projectile(grunt).mark_effect == TarPitTower.RELIC_MARK_EFFECT
+    start_first_floor(game, seed=1)
+    assert _place_trap(game, "tar_pit").create_projectile(grunt).mark_effect is None
+
+
+def test_hair_trigger_speeds_up_traps_but_not_towers(game):
+    start_first_floor(game, seed=1)
+    plain = _place_trap(game, "spike_trap").effective_fire_rate()
+    _run_with(game, ["hair_trigger"])
+    assert _place_trap(game, "tar_pit").effective_fire_rate() == pytest.approx(TarPitTower.fire_rate * 1.35)
+    assert _place_trap(game, "spike_trap").effective_fire_rate() == pytest.approx(plain * 1.35)
+    _select(game, "basic")
+    from conftest import find_buildable_anchor
+
+    assert game.try_place_tower(*find_buildable_anchor(game))
+    assert game.towers[-1].effective_fire_rate() == pytest.approx(TOWER_TYPES["basic"].fire_rate)

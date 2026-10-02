@@ -130,7 +130,9 @@ Two towers are **traps**, built *on* the path instead of beside it -- click any 
 snaps to it. They have a short reach and only catch ground enemies (flyers pass over), but they're cheap
 and sit exactly where enemies must walk: the **Spike Trap** (splash damage to whatever is on top of it)
 and the **Tar Pit** (barely hurts, but bogs everything in its splash down). Both unlock through play
-(4 and 7 floors cleared). They level, specialize, sell and earn veterancy like any tower.
+(4 and 7 floors cleared). They level, specialize, sell and earn veterancy like any tower. Three relics
+build around them: Serrated Spikes (+40% Spike Trap damage), Clinging Tar (Tar Pit hits also Mark) and
+Hair Trigger (traps strike 35% more often).
 
 ## Tower veterancy
 
@@ -320,8 +322,8 @@ path renders as one unbroken tile -- no seams -- since it's never buildable anyw
 
 ## Towers
 
-Twelve so far. In a run you start with three of them and unlock the rest (see "Runs" and
-"Meta-progression"); Practice mode and editor playtests always offer all twelve.
+Fourteen so far. In a run you start with three of them and unlock the rest (see "Runs" and
+"Meta-progression"); Practice mode and editor playtests always offer all fourteen.
 
 - **Basic** -- cheap, single-target, no special mechanic; its damage scales especially steeply with
   level so it stays worth building late-game, and it has a native chance to land a bigger crit.
@@ -357,6 +359,7 @@ Twelve so far. In a run you start with three of them and unlock the rest (see "R
   seconds, then unleashes one massive burst -- high ceiling, but a real risk: if the target dies or
   leaves range mid-charge, the whole charge is lost with no partial credit, and it starts over from
   nothing.
+- **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.
 

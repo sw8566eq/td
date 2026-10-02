@@ -266,6 +266,10 @@ class Tower:
         # multiply), just for the Cannon/Knockback pair instead of
         # Lightning alone.
         self.relic_cannon_knockback_damage_bonus_multiplier = 1.0
+        # Trap relics -- read only by SpikeTrapTower/TarPitTower (see
+        # Relic.spike_trap_damage_multiplier).
+        self.relic_spike_trap_damage_bonus_multiplier = 1.0
+        self.relic_tar_pit_marks = False
         # Aerial Targeting Array-style relic -- Cannon's first fully
         # exclusive relic (heavy_ordnance immediately above is shared
         # 50/50 with Knockback), boolean OR-composed the same shape as
@@ -1638,6 +1642,10 @@ class SpikeTrapTower(Tower):
     sprite_name = "tower_spike_trap"
     display_name = "Spike Trap"
     EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
+
+    def _relic_family_damage_bonus(self):
+        return self.relic_spike_trap_damage_bonus_multiplier - 1.0
+
     SPECIALIZATIONS = {
         "barbed": {
             "display_name": "Barbed Spikes",
@@ -1672,6 +1680,8 @@ class TarPitTower(Tower):
     splash_radius = 40
     slow_factor = 0.45
     slow_duration = 1.2
+    # A Clinging Tar relic's mark (multiplier, seconds) -- see create_projectile.
+    RELIC_MARK_EFFECT = (1.2, 2.0)
     can_target_flying = False
     sprite_name = "tower_tar_pit"
     display_name = "Tar Pit"
@@ -1699,6 +1709,7 @@ class TarPitTower(Tower):
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             slow_effect=(self.slow_factor, self.slow_duration),
+            mark_effect=self.RELIC_MARK_EFFECT if self.relic_tar_pit_marks else None,
             sprite_name="projectile_tar", source=self,
         )
 
