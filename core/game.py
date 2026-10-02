@@ -1350,7 +1350,7 @@ class Game:
         # can't call back into Game) -- so, unlike those two, it needs its
         # own explicit sound here rather than inheriting one from a shared
         # call site. Same two cues either way.
-        if "relic" in self.event_resolution:
+        if "relic" in self.event_resolution or "boss_relic" in self.event_resolution:
             self.audio.play("relic_acquired")
             self._record_achievement("relics_collected")
         elif "tower" in self.event_resolution:

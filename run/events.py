@@ -29,7 +29,8 @@ _EVENT_ORDER = (
     "traveling_smith", "omen_of_ruin", "quartermasters_cache", "unclaimed_cache",
     "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
     "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
-    "ancient_forge",
+    "ancient_forge", "potion_peddler", "fallen_champion", "field_hospital", "weapons_cache",
+    "brewing_contest",
 )
 
 
@@ -74,6 +75,12 @@ class EventOption:
     forge_random_tower: bool = False
     # A second relic on top of grant_relic's (the blessing's dark bargain).
     extra_relic: bool = False
+    # Give up the run's oldest potion -- unaffordable (greyed out, see
+    # can_afford_option) while holding none.
+    potion_cost: bool = False
+    # One boss relic (relics.boss_relic_offer) -- the strongest grant an
+    # Event can make, so it always comes with a cost attached.
+    grant_boss_relic: bool = False
 
 
 @dataclass(frozen=True)
@@ -388,6 +395,75 @@ EVENTS = {
             ),
         ),
     ),
+    "potion_peddler": Event(
+        "potion_peddler", "Potion Peddler",
+        "A peddler with an empty cart eyes your potion belt hungrily.",
+        options=(
+            EventOption(
+                "trade_relic", "Trade a potion for a relic",
+                "She takes your oldest flask and hands over a trinket.",
+                potion_cost=True, grant_relic=True,
+            ),
+            EventOption(
+                "trade_coin", "Sell a potion (+15 shop currency)",
+                "She pays well for a full flask.",
+                potion_cost=True, shop_currency_delta=15,
+            ),
+            EventOption("decline", "Decline", "You keep your potions."),
+        ),
+    ),
+    "fallen_champion": Event(
+        "fallen_champion", "Fallen Champion's Tomb",
+        "A champion's tomb, their legendary gear still resting on the slab -- and a warning carved above it.",
+        options=(
+            EventOption(
+                "claim", "Claim the champion's relic (a boss relic and a curse)",
+                "Power fit for a boss-slayer, and the champion's curse with it.",
+                grant_boss_relic=True, add_curse=True,
+            ),
+            EventOption("pay_respects", "Pay your respects (+2 lives)", "You leave feeling steadier.", lives_delta=2),
+        ),
+    ),
+    "field_hospital": Event(
+        "field_hospital", "Field Hospital",
+        "A field hospital's surgeons offer their services -- for a fee.",
+        options=(
+            EventOption(
+                "full_treatment", "Full treatment (-10 shop currency, remove a curse, +2 lives)",
+                "They patch you up and burn away something dark.",
+                shop_currency_delta=-10, remove_curse=True, lives_delta=2,
+            ),
+            EventOption("rest", "Rest a moment (+1 life)", "A short rest does some good.", lives_delta=1),
+        ),
+    ),
+    "weapons_cache": Event(
+        "weapons_cache", "Abandoned Weapons Cache",
+        "A sealed cache of experimental designs, marked with a skull.",
+        options=(
+            EventOption(
+                "prototype", "Take the prototype (unlock a tower, gain a curse)",
+                "The design is brilliant. The skull meant something too.",
+                unlock_random_tower=True, add_curse=True,
+            ),
+            EventOption(
+                "parts", "Take the spare parts (+10 shop currency)",
+                "Safe, sellable salvage.", shop_currency_delta=10,
+            ),
+        ),
+    ),
+    "brewing_contest": Event(
+        "brewing_contest", "Brewing Contest",
+        "A rowdy brewing contest -- every contestant must taste their rivals' work.",
+        options=(
+            EventOption(
+                "enter", "Enter (-1 life, gain a potion and +10 shop currency)",
+                "You survive the tasting round and win a prize.",
+                lives_delta=-1, grant_potion=True, shop_currency_delta=10,
+            ),
+            EventOption("watch", "Watch from the sidelines (+3 shop currency)", "You win a small side bet.",
+                        shop_currency_delta=3),
+        ),
+    ),
     "ancient_forge": Event(
         "ancient_forge", "Ancient Forge",
         "A forge still burns in the ruins, hungry for fuel.",
@@ -490,6 +566,8 @@ def can_afford_option(option: EventOption, run: RunState, unlimited_currency: bo
     the currency half only -- lives are never waived."""
     if option.shop_currency_delta < 0 and not unlimited_currency and run.shop_currency + option.shop_currency_delta < 0:
         return False
+    if option.potion_cost and not run.potions:
+        return False
     return not (option.lives_delta < 0 and run.lives + option.lives_delta < 1)
 
 
@@ -554,6 +632,14 @@ def resolve_event_option(
         potion = potions.random_potion(item_rng)
         run.potions.append(potion)
         granted["potion"] = potion
+    if option.potion_cost and run.potions:
+        granted["potion_given_up"] = run.potions.pop(0)
+    if option.grant_boss_relic:
+        picks = relics.boss_relic_offer(item_rng, run, 1, meta_progression_path=meta_progression_path)
+        if picks:
+            run.relics.append(picks[0])
+            run.lives = max(1, run.lives + relics.RELICS[picks[0]].starting_lives_bonus)
+            granted["boss_relic"] = picks[0]
     if option.forge_random_tower:
         candidates = [name for name in run.unlocked_towers if name not in run.forged_towers]
         if candidates:
