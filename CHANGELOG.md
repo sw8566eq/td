@@ -8,51 +8,55 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Original names** for the run's systems: the opt-in difficulty ladder is now the **Gauntlet**, act-boss
+  relics are **trophy relics**, the Rest node is an **Outpost** (Rest / **Forge** / Move on), the opening
+  choice is **Orders from Command**, the content browser is the **Field Manual**, and a few relics,
+  potions and achievements were renamed (Bandolier, Smoke Screen, Warbreaker, Forgehand, Gauntlet
+  achievements). Save files and internal keys are unchanged.
 - **Named bosses**: every act boss is now one of five -- The Juggernaut, The Broodmother, The Warlord,
   The Lich, The Golden Tyrant -- each with its own twist, named in the map title and its tooltip, and
-  listed in the Compendium.
-- **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
+  listed in the Field Manual.
+- **Post-combat rewards**: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.
 - **Potions**: single-use consumables, held in 3 slots shown at the bottom of the sidebar during a
   run's fights -- click one to use it. Six to start: Fire Bomb, Frost Flask, Marking Dust, Liquid
   Gold, Mending Salve, Overclock Elixir. Elite floors always drop one; ordinary fights sometimes do.
   Two new achievements (First Sip, Alchemist) track potion use.
-- **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
-  every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
-  cards; forged towers show a `+` on their build button).
+- **Outposts are a choice now**: Rest (heal, as before) or **Forge** one of your towers so
+  every copy you place for the rest of the run starts at level 2 for free.
 - The map tooltip shows each fight's **threat** (enemy HP and speed multipliers from depth, Elite/Boss,
-  Ascension, difficulty and affix) -- the same numbers the fight will use.
+  Gauntlet, difficulty and affix) -- the same numbers the fight will use.
 - **Run autosave**: the run saves itself on every map visit and node entry; Continue resumes on the
   map, or back at the start of a fight you quit mid-way. Starting a new run replaces the saved one.
 - Test suite runs ~15x faster (fixture teardown no longer waits on the dummy audio mixer).
 - A fifth Commander, **The Stormcaller** (Basic, Lightning, Frost; Lightning starts forged, Storm
   Core), unlocked by reaching the final boss.
-- **Daily modifiers**: every Daily Run starts with the same seed-chosen boss relic and curse for
+- **Daily modifiers**: every Daily Run starts with the same seed-chosen trophy relic and curse for
   everyone, so each day plays differently.
 - Two new Elite affixes: **Regenerating** (enemies heal 4% of max HP per second) and **Armored**
   (enemies take 25% less damage).
 - Five more Events: Potion Peddler (trade a potion for a relic or currency), Fallen Champion's Tomb (a
-  boss relic, with a curse), Field Hospital (pay to lift a curse and heal), Abandoned Weapons Cache (a
+  trophy relic, with a curse), Field Hospital (pay to lift a curse and heal), Abandoned Weapons Cache (a
   tower, with a curse), and Brewing Contest (a potion and currency for a life).
 - The final boss's endless fight is now a real **score chase**: endless waves survived past the boss
   are tracked (best per run, restart-proof), shown on the Run Over recap, and saved in Run History.
-- Five new achievements: Apprentice Smith / Master Smith (forge 1 / 15 towers), Ascendant / Pinnacle
-  (unlock Ascension 5 / 10), and Cursebearer (carry 3 curses at once).
+- Five new achievements: Apprentice Forgehand / Master Forgehand (forge 1 / 15 towers), Running the Gauntlet / Iron Gauntlet
+  (unlock Gauntlet 5 / 10), and Cursebearer (carry 3 curses at once).
 - Reward screens offer **forge cards** for towers you already hold once there aren't enough new towers
   left, and deeper fights sometimes offer a new tower pre-forged (`FREE +`) -- up to a 50% chance per
   card by Act 3.
 - The run map now shows your relic count and held potions, and `R` opens the relics list from the map;
   the relics list switches to a compact names-only layout once a deep run holds more than 12.
-- **Starting blessing**: every run (Daily included) opens with a choice of one gift -- a relic,
+- **Orders from Command**: every run (Daily included) opens with a choice of one gift -- a relic,
   supplies, a forged tower + potion, or a dark bargain (two relics and a curse).
-- **Compendium** (`K` from the menu): a browsable list of every relic, boss relic, curse, potion,
+- **Field Manual** (`K` from the menu): a browsable list of every relic, trophy relic, curse, potion,
   commander, and elite affix, built live from the registries.
 - **Run History** now lists every run individually (newest first) with its commander, ascension, act
   reached, floors cleared, and Daily/final-boss markers; older history files still show per-seed bests.
-- **Boss relics**: five powerful relics with real downsides (Overcharged Core, Gilded Ledger, Sealed
+- **Trophy relics**: five powerful relics with real downsides (Overcharged Core, Gilded Ledger, Sealed
   Cask, Siege Engine, Reckless Arsenal), offered only by act-boss rewards.
-- Two new potions (Smoke Bomb, Venom Vial), three potion relics (Potion Belt, Field Medic Kit,
+- Two new potions (Smoke Screen, Venom Vial), three potion relics (Bandolier, Field Medic Kit,
   Brewmaster's Kit), and an **Ancient Forge** Event that forges a random tower for lives or currency.
 - Potion hotkeys (`Q`/`W`/`E`) and a **potion stand** in every Shop (one potion per visit).
 - A **Run Over** recap on permadeath (act reached, floors cleared, commander, ascension, relic count),
@@ -67,12 +71,12 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   -- each with its own three starter towers and signature starting relic (plus starting potions or a
   pre-forged tower for some). Three unlock through play, shown on the Unlocks screen.
 - **Three acts per run**: beating Act 1's and Act 2's boss now clears it like a floor, offers a
-  pick-one-of-three **boss relic** plus a potion, heals 10 lives, and moves the run onto a fresh,
+  pick-one-of-three **trophy relic** plus a potion, heals 10 lives, and moves the run onto a fresh,
   harder map. Only Act 3's boss is the endless score chase. Two new achievements (Into the Depths,
-  Spire Climber) track act bosses beaten.
-- **Ascension**: beat the final boss to unlock Ascension 1, then keep climbing to 10. Each level stacks
+  Warbreaker) track act bosses beaten.
+- **Gauntlet**: beat the final boss to unlock Gauntlet 1, then keep climbing to 10. Each level stacks
   one more rule on top of the last (tougher elites, fewer starting lives, pricier shops, weaker
-  rests, ...). Pick your level on the main menu with Left/Right; Daily Runs are always Ascension 0.
+  rests, ...). Pick your level on the main menu with Left/Right; Daily Runs are always Gauntlet 0.
 
 - Real art for the last 2 towers (Siphon, Overload Cannon) and all 7 remaining enemy species
   (`boss`/`shielded`/`splitter`/`splitter_child`/`healer`/`final_boss`/`final_boss_shielded`) --
@@ -102,10 +106,10 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Fixed
 
-- The opening blessing's lives (Supplies, or a Sturdy Gate taken there) were lost at the first fight.
+- The opening Orders' lives (Supplies, or a Sturdy Gate taken there) were lost at the first fight.
 - A Practice session leaked into the next run: no map autosave before the first fight, and a run
   Continued inside a Shop let you take everything for free.
-- A card-less Shop skipped its potion stand and curse removal; a Rest site could softlock (no heal under
+- A card-less Shop skipped its potion stand and curse removal; an Outpost could softlock (no heal under
   Overcharged Core, nothing left to forge) -- it now always offers "Move on".
 - Quit + Continue could reopen an already-resolved Event or Rest choice for a second pick.
 - Enemy-targeting potions were wasted when drunk on an empty field; the reward screen said FULL instead

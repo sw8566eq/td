@@ -1059,7 +1059,7 @@ RELICS = {
         damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
     ),
     "potion_belt": Relic(
-        "potion_belt", "Potion Belt", "+1 potion slot.", potion_slot_bonus=1,
+        "potion_belt", "Bandolier", "+1 potion slot.", potion_slot_bonus=1,
     ),
     "field_medic_kit": Relic(
         "field_medic_kit", "Field Medic Kit", "Restore 1 life every time you drink a potion.", lives_per_potion=1,
@@ -1071,27 +1071,27 @@ RELICS = {
     # --- Boss relics (is_boss_relic=True) -- see Relic.is_boss_relic. ---
     "overcharged_core": Relic(
         "overcharged_core", "Overcharged Core",
-        "Boss relic: +30% damage for every tower, but Rest sites can no longer heal you.",
+        "Trophy: +30% damage for every tower, but Outposts can no longer heal you.",
         tower_damage_multiplier=1.3, is_boss_relic=True, blocks_rest_heal=True,
     ),
     "gilded_ledger": Relic(
         "gilded_ledger", "Gilded Ledger",
-        "Boss relic: +60 gold at the start of every floor, but clearing a floor earns no shop currency.",
+        "Trophy: +60 gold at the start of every floor, but clearing a floor earns no shop currency.",
         gold_per_floor_bonus=60, is_boss_relic=True, blocks_shop_income=True,
     ),
     "sealed_cask": Relic(
         "sealed_cask", "Sealed Cask",
-        "Boss relic: +20% fire rate for every tower, but you can't obtain new potions.",
+        "Trophy: +20% fire rate for every tower, but you can't obtain new potions.",
         tower_fire_rate_multiplier=1.2, is_boss_relic=True, blocks_potions=True,
     ),
     "siege_engine": Relic(
         "siege_engine", "Siege Engine",
-        "Boss relic: +25% range for every tower, but enemies move 10% faster.",
+        "Trophy: +25% range for every tower, but enemies move 10% faster.",
         tower_range_multiplier=1.25, enemy_speed_multiplier=1.1, is_boss_relic=True,
     ),
     "reckless_arsenal": Relic(
         "reckless_arsenal", "Reckless Arsenal",
-        "Boss relic: +20% damage and +10% fire rate for every tower, but lose 5 lives now.",
+        "Trophy: +20% damage and +10% fire rate for every tower, but lose 5 lives now.",
         tower_damage_multiplier=1.2, tower_fire_rate_multiplier=1.1, starting_lives_bonus=-5,
         is_boss_relic=True,
     ),

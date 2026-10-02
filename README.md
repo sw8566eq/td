@@ -34,16 +34,16 @@ moving just the `td` binary out on its own would leave those behind.
 
 ## Runs
 
-Press any unbound key at the main menu, then pick a **Commander** -- Slay the Spire's characters. Each
+Press any unbound key at the main menu, then pick a **Commander**. Each
 one sets your three starter towers and a signature starting relic: **The Warden** (Basic, Cannon,
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
 **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) and **The
 Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) unlock as you play.
-The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one boss relic and
+The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic and
 one curse, the same pair for everyone.
 
-Before the map, an old spirit offers a **starting blessing** (Slay the Spire's Neow) -- pick one: a
+Before the map, **Orders from Command** offer one requisition -- pick one: a
 relic, supplies (+15 shop currency, +3 lives), a forged tower plus a potion, or a dark bargain (two
 relics and a curse).
 
@@ -65,14 +65,14 @@ node types:
 - **Shop** -- spend shop currency on towers and relics (see "The Shop and two currencies" below).
 - **Event** -- a short prompt with 2-3 honestly-described options (gain currency, lose a relic for a
   bigger reward, unlock a tower early, heal, ...) -- never a hidden-odds gamble.
-- **Rest** -- a campfire choice: **Rest** to heal some lives back, **Move on**, or **Smith** to forge one of your
+- **Outpost** -- a choice: **Rest** to heal some lives back, **Move on**, or **Forge** one of your
   towers -- every copy of it you place for the rest of the run starts at level 2, for free (marked
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
 
 The final row is always a single **Boss** node, and a run is **three acts** -- three maps back to
-back, Slay the Spire style. Beating Act 1's or Act 2's boss clears it like any floor, then lets you
-pick one of three boss relics (plus a potion) and moves you on to the next act's fresh map, healing
+back. Beating Act 1's or Act 2's boss clears it like any floor, then lets you
+pick one of three trophy relics (plus a potion) and moves you on to the next act's fresh map, healing
 10 lives on the way. Every act is harder than the last: escalation keeps counting rows across acts,
 so Act 2's first fight is tougher than Act 1's boss. **Act 3's boss** loads in Endless mode from the
 very start, so its waves never run out and there's no "you won the run" screen -- while the boss
@@ -110,7 +110,7 @@ there's a real choice in what to prioritize, not just "buy everything eventually
 
 ## Rewards and potions
 
-Every fight you win opens a **Spoils of battle** screen, Slay the Spire style: pick one of up to three
+Every fight you win opens a **Spoils of battle** screen: pick one of up to three
 free tower cards to add to your run (or skip them), and Elite fights also drop a free relic. Deeper
 fights sometimes offer a tower already **forged** (`FREE +`), and once you've collected every tower
 you can, the row offers **forge cards** for towers you hold instead.
@@ -119,9 +119,9 @@ Rewards can also include a **potion** -- a single-use consumable (Elites always 
 to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts
 every enemy on the field, Frost Flask slows them all, Marking Dust makes them take extra damage,
 Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
-fire faster for a few seconds, Smoke Bomb shoves every enemy back, and Venom Vial poisons them all.
+fire faster for a few seconds, Smoke Screen shoves every enemy back, and Venom Vial poisons them all.
 Potions carry between floors until used. Every Shop also has a potion stand selling one potion per
-visit, and three relics build around them: Potion Belt (+1 slot), Field Medic Kit (+1 life per
+visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
 ## Bosses
@@ -131,14 +131,14 @@ Broodmother (bigger swarms), The Warlord (faster enemies), The Lich (regeneratin
 enemies) and The Golden Tyrant (sturdier enemies that drop double gold). The map title tells you which
 one is waiting at the top of the act, so you can draft toward it.
 
-## Ascension
+## Gauntlet
 
-Defeating a run's final (Act 3) boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks
+Defeating a run's final (Act 3) boss unlocks **Gauntlet 1**; defeating it again at your highest Gauntlet unlocks
 the next one, up to 10. Each level keeps every rule below it and adds one more: tougher Elites, more
-enemy HP, less starting gold per floor, tougher bosses, weaker Rest sites, fewer starting lives,
+enemy HP, less starting gold per floor, tougher bosses, weaker Outposts, fewer starting lives,
 faster enemies, pricier Shops, one fewer tower on each reward screen, and finally even more enemy HP.
-Once you've unlocked one, the main menu shows an Ascension selector -- Left/Right to choose. Daily
-Runs are always played at Ascension 0 so scores stay comparable.
+Once you've unlocked one, the main menu shows an Gauntlet selector -- Left/Right to choose. Daily
+Runs are always played at Gauntlet 0 so scores stay comparable.
 
 ## Relics
 
@@ -152,8 +152,8 @@ specifically. Almost none of them are gated behind an account-wide unlock -- see
 full registry and "Meta-progression" below for the handful that are. Press `R` while playing a run
 floor to bring up a read-only overlay of every relic you're currently holding.
 
-**Boss relics** are their own tier, only ever offered when you beat an act's boss: big upsides with a
-real cost attached -- Overcharged Core (+30% damage, but Rest sites can't heal), Gilded Ledger (+60
+**Trophy relics** are their own tier, only ever offered when you beat an act's boss: big upsides with a
+real cost attached -- Overcharged Core (+30% damage, but Outposts can't heal), Gilded Ledger (+60
 gold every floor, but no shop currency from clears), Sealed Cask (+20% fire rate, but no new potions),
 Siege Engine (+25% range, but faster enemies), and Reckless Arsenal (more damage and fire rate, but
 lose 5 lives).
@@ -168,8 +168,8 @@ a Shop ("Remove a curse", once per visit) or at the Cleansing Spring event.
 From the main **menu**: press any other key to start a new run (see "Runs" above), `E` opens the
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen, `D` starts today's Daily Run, `B` opens
-the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Compendium** (every
-relic, boss relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
+the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Field Manual** (every
+relic, trophy relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
 when one exists) continues a saved in-progress run.
 
 On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
@@ -211,7 +211,7 @@ and takes you straight back to the editor, paint buffer untouched.
 
 On the **Floor Cleared** screen, any key opens the reward screen (click a card to take it, then
 Continue/Skip or Enter); on the **Shop** screen, click a card to
-buy it (if you can afford it) and click Continue when you're done; on an **Event** or **Rest** site,
+buy it (if you can afford it) and click Continue when you're done; on an **Event** or **Outpost**,
 click one of the options shown, then any key moves on; **Treasure** resolves itself instantly and any
 key continues from there. `Esc` quits from any of these, or from the main menu, game-over, or victory
 screens (there's no pause menu to open on any of those). `R` restarts from the game-over screen, and

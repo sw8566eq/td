@@ -169,7 +169,7 @@ def test_beating_the_boss_unlocks_the_next_ascension_once(game):
     assert game.highest_ascension == 3
     assert game.selected_ascension == 3
     assert meta_progression.highest_unlocked_ascension(game.meta_progression_path) == 3
-    assert any("Ascension 3 unlocked" in toast.text for toast in game.achievement_toasts)
+    assert any("Gauntlet 3 unlocked" in toast.text for toast in game.achievement_toasts)
 
 
 def test_beating_the_boss_below_your_highest_unlocks_nothing_new(game):

@@ -124,19 +124,19 @@ ACHIEVEMENTS = {
         "into_the_depths", "Into the Depths", "Beat an act's boss and move on to the next act.", "acts_cleared", 1,
     ),
     "spire_climber": Achievement(
-        "spire_climber", "Spire Climber", "Beat 10 act bosses.", "acts_cleared", 10,
+        "spire_climber", "Warbreaker", "Beat 10 act bosses.", "acts_cleared", 10,
     ),
     "apprentice_smith": Achievement(
-        "apprentice_smith", "Apprentice Smith", "Forge a tower.", "towers_forged", 1,
+        "apprentice_smith", "Apprentice Forgehand", "Forge a tower.", "towers_forged", 1,
     ),
     "master_smith": Achievement(
-        "master_smith", "Master Smith", "Forge 15 towers.", "towers_forged", 15,
+        "master_smith", "Master Forgehand", "Forge 15 towers.", "towers_forged", 15,
     ),
     "ascendant": Achievement(
-        "ascendant", "Ascendant", "Unlock Ascension 5.", "ascension_reached", 5,
+        "ascendant", "Running the Gauntlet", "Unlock Gauntlet 5.", "ascension_reached", 5,
     ),
     "pinnacle": Achievement(
-        "pinnacle", "Pinnacle", "Unlock Ascension 10.", "ascension_reached", 10,
+        "pinnacle", "Iron Gauntlet", "Unlock Gauntlet 10.", "ascension_reached", 10,
     ),
     "cursebearer": Achievement(
         "cursebearer", "Cursebearer", "Carry 3 curses at once.", "curses_held_at_once", 3,

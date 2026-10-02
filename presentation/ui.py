@@ -433,7 +433,7 @@ def _relics_overlay_lines(relic_keys):
         names = [RELICS[key].display_name for key in relic_keys]
         step = RELICS_OVERLAY_NAMES_PER_LINE
         return ["   ".join(names[i:i + step]) for i in range(0, len(names), step)] + [
-            "", "(K at the main menu opens the Compendium for every relic's full text)",
+            "", "(K at the main menu opens the Field Manual for every relic's full text)",
         ]
     # A curse's own description already starts "Curse: " (see relics.py),
     # so it reads as one in this same plain list without a separate style.
@@ -687,7 +687,7 @@ MAP_NODE_TYPE_COLORS = {
 # what the player reads without a matching, deliberate edit here too.
 MAP_NODE_TYPE_NAMES = {
     "combat": "Combat", "elite": "Elite", "shop": "Shop", "event": "Event",
-    "rest": "Rest", "treasure": "Treasure", "boss": "Boss",
+    "rest": "Outpost", "treasure": "Treasure", "boss": "Boss",
 }
 # One honest, local sentence per node type -- what a hovered node's own
 # tooltip shows below its name (see _draw_map_node_tooltip). Describes only
@@ -700,9 +700,9 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "elite": "A harder floor -- pays more Shop currency on clear.",
     "shop": "Spend Shop currency on new towers and relics.",
     "event": "A short encounter with a few fixed choices.",
-    "rest": "Rest to heal lives, or Smith to forge a tower (placed at level 2).",
+    "rest": "Rest to heal lives, or Forge a tower (placed at level 2).",
     "treasure": "A guaranteed relic, plus some Shop currency.",
-    "boss": "The act's boss -- win a boss relic and move on. Act 3's never ends.",
+    "boss": "The act's boss -- win a trophy relic and move on. Act 3's never ends.",
 }
 
 
@@ -846,7 +846,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     explaining what this screen even is -- every run after the first gets
     the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
-    title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
+    title_text = f"Act {act_number}: choose your path" + (f"  --  Gauntlet {ascension_level}" if ascension_level else "")
     boss = (node_affixes or {}).get(game_map.boss_node_id)
     if boss is not None:  # plan the whole act around who's waiting at the top
         title_text += f"  --  Boss: {boss.display_name}"
@@ -964,7 +964,7 @@ def _describe_event_outcome(option, resolution):
     if resolution.get("tower"):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
     if resolution.get("boss_relic"):
-        lines.append(f"Gained boss relic: {RELICS[resolution['boss_relic']].display_name}")
+        lines.append(f"Gained trophy: {RELICS[resolution['boss_relic']].display_name}")
     if resolution.get("potion_given_up"):
         lines.append(f"Gave up potion: {POTIONS[resolution['potion_given_up']].display_name}")
     if resolution.get("extra_relic"):
@@ -1102,20 +1102,20 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
     what happened (`forged_tower` set for Smith, None for Rest)."""
     surface.fill(settings.COLOR_BG)
     center_x = settings.SCREEN_WIDTH // 2
-    title = font.render("Rest Site", True, settings.COLOR_GOLD)
+    title = font.render("Outpost", True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(midtop=(center_x, 70)))
     lives_line = small_font.render(f"Lives: {lives}", True, settings.COLOR_LIVES)
     surface.blit(lives_line, lives_line.get_rect(midtop=(center_x, 120)))
 
     if phase == "choose":
         can_smith = bool(smith_choices)
-        rest_text = "A boss relic forbids resting." if heal_blocked else f"Recover {heal_amount} lives."
+        rest_text = "A trophy relic forbids resting." if heal_blocked else f"Recover {heal_amount} lives."
         _draw_option_box(surface, small_font, option_rects[0], "Rest", rest_text, not heal_blocked,
                          hovered_index == 0)
         smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
                       if can_smith else "Every tower you hold is already forged.")
-        _draw_option_box(surface, small_font, option_rects[1], "Smith", smith_text, can_smith, hovered_index == 1)
-        _draw_option_box(surface, small_font, option_rects[2], "Move on", "Leave the campfire as it is.", True,
+        _draw_option_box(surface, small_font, option_rects[1], "Forge", smith_text, can_smith, hovered_index == 1)
+        _draw_option_box(surface, small_font, option_rects[2], "Move on", "Leave the outpost as it is.", True,
                          hovered_index == 2)
     elif phase == "smith":
         prompt = small_font.render("Choose a tower to forge", True, settings.COLOR_TEXT)
@@ -1503,7 +1503,7 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
     _draw_dim_overlay(surface)
 
     if is_boss:
-        title_text = "Boss defeated! Choose one boss relic"
+        title_text = "Boss defeated! Choose one trophy relic"
         subtitle_text = "Then onward to the next act"
     else:
         title_text = "Spoils of battle: choose one tower to add to your run"
@@ -1763,7 +1763,7 @@ MENU_KEY_HINTS = [
     ("b", "Credits"),
     ("r", "Run History"),
     ("u", "Unlocks"),
-    ("k", "Compendium"),
+    ("k", "Field Manual"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -1805,12 +1805,12 @@ def _draw_ascension_selector(surface, small_font, selected, highest):
     left = "<  " if selected > 0 else "   "
     right = "  >" if selected < highest else "   "
     color = settings.COLOR_GOLD if selected > 0 else settings.COLOR_TEXT_DIM
-    label = small_font.render(f"{left}Ascension {selected}{right}", True, color)
+    label = small_font.render(f"{left}Gauntlet {selected}{right}", True, color)
     surface.blit(label, label.get_rect(center=(center_x, ASCENSION_SELECTOR_Y)))
     if selected > 0:
         detail = f"Adds: {ASCENSION_LEVELS[selected - 1].description} (plus every level below)"
     else:
-        detail = f"Left/Right to choose -- up to Ascension {highest} unlocked"
+        detail = f"Left/Right to choose -- up to Gauntlet {highest} unlocked"
     detail_text = small_font.render(detail, True, settings.COLOR_TEXT_DIM)
     surface.blit(detail_text, detail_text.get_rect(center=(center_x, ASCENSION_SELECTOR_Y + 24)))
 
@@ -2433,7 +2433,7 @@ def compendium_rows(small_font):
     sections = [
         ("Relics", [(r.display_name, r.description) for r in RELICS.values()
                     if not r.is_curse and not r.is_boss_relic]),
-        ("Boss relics", [(r.display_name, r.description) for r in RELICS.values() if r.is_boss_relic]),
+        ("Trophy relics", [(r.display_name, r.description) for r in RELICS.values() if r.is_boss_relic]),
         ("Curses", [(r.display_name, r.description) for r in RELICS.values() if r.is_curse]),
         ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
@@ -2451,7 +2451,7 @@ def compendium_rows(small_font):
 
 def draw_compendium_screen(surface, font, small_font, rows, scroll_offset, back_rect):
     surface.fill(settings.COLOR_BG)
-    title = font.render("Compendium", True, settings.COLOR_TEXT)
+    title = font.render("Field Manual", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
 
     viewport = pygame.Rect(0, UNLOCKS_ROWS_TOP, settings.SCREEN_WIDTH, UNLOCKS_ROWS_BOTTOM - UNLOCKS_ROWS_TOP)
@@ -2773,7 +2773,7 @@ def run_summary_lines(run):
         progress += f" +{run.endless_waves_cleared} endless wave{'' if run.endless_waves_cleared == 1 else 's'}"
     identity = [COMMANDERS[run.commander].display_name]
     if run.ascension:
-        identity.append(f"Ascension {run.ascension}")
+        identity.append(f"Gauntlet {run.ascension}")
     identity.append(f"{len(run.relics)} relic{'' if len(run.relics) == 1 else 's'}")
     return [progress, ", ".join(identity)]
 

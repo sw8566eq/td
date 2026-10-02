@@ -1160,7 +1160,7 @@ class Game:
         self.highest_ascension = next_level
         if self.selected_ascension == run.ascension:
             self.selected_ascension = next_level  # climb by default, the way Slay the Spire does
-        self._queue_toast(f"Ascension {next_level} unlocked!")
+        self._queue_toast(f"Gauntlet {next_level} unlocked!")
 
     # --- The run's own branching map ---
 
