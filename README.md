@@ -213,7 +213,7 @@ From the main **menu**: press any other key to start a new run (see "Runs" above
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen, `D` starts today's Daily Run, `B` opens
 the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Field Manual** (every
-relic, trophy relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
+relic, trophy relic, curse, potion, commander, elite affix, boss, tower module and veterancy rank with what it does), and `C` (shown only
 when one exists) continues a saved in-progress run.
 
 On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
