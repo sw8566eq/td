@@ -99,6 +99,23 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Fixed
 
+- The opening blessing's lives (Supplies, or a Sturdy Gate taken there) were lost at the first fight.
+- A Practice session leaked into the next run: no map autosave before the first fight, and a run
+  Continued inside a Shop let you take everything for free.
+- A card-less Shop skipped its potion stand and curse removal; a Rest site could softlock (no heal under
+  Overcharged Core, nothing left to forge) -- it now always offers "Move on".
+- Quit + Continue could reopen an already-resolved Event or Rest choice for a second pick.
+- Enemy-targeting potions were wasted when drunk on an empty field; the reward screen said FULL instead
+  of SEALED under Sealed Cask.
+- Daily Runs differed between accounts (offers followed each player's own unlocks); they now use the
+  full pools so every player really gets the same run.
+- Veteran's Momentum scaled with map depth instead of floors actually cleared.
+- Crash-proofing found by fuzzing: damaged/hand-edited saves, progress/achievement/run-history/keybinding
+  files, and custom levels no longer crash the game; the editor's Import no longer crashes without Tk;
+  absurd window sizes are clamped.
+- The map's relics key and the Help screen now follow remapped keybindings; the Run Over screen says R
+  replays the floor as Practice.
+
 - Endless mode's final-boss species (`FinalBossEnemy`/`FinalBossShieldedEnemy`) no longer multiplies
   without limit deep in a boss floor's endless tail -- both mechanics (periodic reinforcement
   summons, a self-shield pulse) are live and recurring, not a one-time stat bump, so an unbounded
