@@ -131,6 +131,10 @@ class RunState:
     # the fields above), kept for display and the run's own record.
     commander: str = "warden"
     floors_cleared_prior_acts: int = 0
+    # The final boss's endless score chase: the most waves cleared past
+    # its authored ones (Game._update_endless_score) -- a max, not a sum,
+    # so restarting the fight can't farm it.
+    endless_waves_cleared: int = 0
 
     @property
     def current_level_id(self) -> object:

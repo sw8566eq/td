@@ -124,6 +124,10 @@ that scaled by `node.row` now reads `run.depth_of(node.row)` (= `act * ROW_COUNT
 relic modifiers, shop income, rest heal, treasure, Liquid Gold. The first-node lives capture is
 gated on `act == 0` so act 2's first node restores the carried lives instead of re-capturing.
 `floors_cleared` counts combat/elite/boss nodes (a visited boss is always an earlier act's).
+`RunState.endless_waves_cleared` is the final boss's score chase: `Game._update_endless_score` (on
+every wave clear) sets it to the max of itself and `wave_manager.wave_index - len(LEVELS[...].
+wave_specs)` -- the registry entry, since `game.level` has endless waves appended -- so restarting
+the fight can't farm it. Saved, shown by `ui.run_summary_lines`, recorded as `endless_waves`.
 
 ## Commanders
 

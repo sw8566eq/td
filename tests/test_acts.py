@@ -168,3 +168,49 @@ def test_an_ordinary_floor_reward_still_returns_to_the_map(game):
     game._leave_reward_screen()
     assert game.state == GameState.MAP
     assert game.active_run.act == 0
+
+
+def _final_boss(game):
+    run = _run_on(game, ["combat", "boss"], act=ACT_COUNT - 1)
+    game._enter_node("1-0")
+    return run
+
+
+def test_endless_score_counts_waves_past_the_authored_ones(game):
+    from world.levels import LEVELS
+
+    run = _final_boss(game)
+    authored = len(LEVELS[run.current_level_id].wave_specs)
+    game.wave_manager.wave_index = authored - 1
+    game._update_endless_score()
+    assert run.endless_waves_cleared == 0
+    game.wave_manager.wave_index = authored + 3
+    game._update_endless_score()
+    assert run.endless_waves_cleared == 3
+    game.wave_manager.wave_index = authored + 1  # a restart can't lower (or farm) it
+    game._update_endless_score()
+    assert run.endless_waves_cleared == 3
+
+
+def test_endless_score_ignores_ordinary_floors(game):
+    run = _run_on(game, ["combat", "combat"])
+    game._enter_node("0-0")
+    game.wave_manager.wave_index = 99
+    game._update_endless_score()
+    assert run.endless_waves_cleared == 0
+
+
+def test_endless_score_is_saved_shown_and_recorded(game):
+    from presentation import ui
+    from progression import run_history
+
+    run = _final_boss(game)
+    run.endless_waves_cleared = 4
+    game.save_run()
+    game.resume_saved_run(save_state.load_run(game.save_path))
+    assert game.active_run.endless_waves_cleared == 4
+    assert "+4 endless waves" in ui.run_summary_lines(game.active_run)[0]
+    game.economy.lives = 0
+    game.update(dt=0.01)
+    assert run_history.load_run_records(game.run_history_path)[0]["endless_waves"] == 4
+    assert "+4 endless" in ui.run_history_lines({}, run_history.load_run_records(game.run_history_path))[0]

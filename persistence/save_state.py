@@ -128,6 +128,7 @@ def _run_to_dict(run):
         "act": run.act,
         "commander": run.commander,
         "floors_cleared_prior_acts": run.floors_cleared_prior_acts,
+        "endless_waves_cleared": run.endless_waves_cleared,
     }
 
 
@@ -157,6 +158,7 @@ def _run_from_dict(data):
         act=data.get("act", 0),
         commander=data.get("commander", DEFAULT_COMMANDER),
         floors_cleared_prior_acts=data.get("floors_cleared_prior_acts", 0),
+        endless_waves_cleared=data.get("endless_waves_cleared", 0),
     )
 
 
