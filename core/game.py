@@ -637,6 +637,7 @@ class Game:
         # through this run's whole pre-fight phase (no autosave, blessing/
         # Daily progress unrecorded).
         self.sandbox = False
+        self._clear_practice_economy_flags()
         seed = seed if seed is not None else random.Random().getrandbits(32)
         level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
         # A Daily Run is always Ascension 0, for the same comparable-score
@@ -1981,6 +1982,14 @@ class Game:
         else:
             self.resume_saved_run(save_data)
 
+    def _clear_practice_economy_flags(self):
+        """self.economy outlives the floor that built it -- until a run's
+        first fight loads, the Shop/Event screens read its unlimited_gold
+        (free purchases) and the previous Practice floor's would still be
+        set. Reset both cheat flags to what this launch actually allows."""
+        self.economy.unlimited_gold = self.unlimited_gold
+        self.economy.invulnerable = False
+
     def _autosave_run(self):
         """Write a map checkpoint (save_state.save_map_checkpoint) for the
         active run -- called on every map visit and node entry, so quitting
@@ -2001,6 +2010,7 @@ class Game:
         self.active_run = run
         self._resumed_from_save = True
         self.sandbox = False  # see start_new_run's own reset
+        self._clear_practice_economy_flags()
         node_id = run.current_node_id
         if run.blessing_pending:
             self._enter_blessing()

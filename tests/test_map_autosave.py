@@ -173,3 +173,26 @@ def test_quitting_after_a_rest_choice_cannot_reopen_it(game, tmp_path):
     assert fresh.active_run.lives == 4 + game.rest_heal_amount
     game._handle_keydown(pygame.K_SPACE)
     assert game.active_run.visited_node_ids == ["1-0"]
+
+
+def test_practice_unlimited_gold_does_not_make_a_resumed_shop_free(game, tmp_path):
+    from conftest import finish_all_waves
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._enter_node("1-0")  # quit inside the shop
+
+    fresh = _new_game(tmp_path)
+    fresh.load_level(1, sandbox=True)  # a Practice session first
+    fresh.state = GameState.MENU
+    fresh._continue_saved_run()
+    run = fresh.active_run
+    run.shop_currency = 0
+    owned = list(run.unlocked_towers) + list(run.relics)
+    fresh._try_buy_shop_item(0)
+    assert list(run.unlocked_towers) + list(run.relics) == owned  # nothing bought for free
+    assert fresh.economy.unlimited_gold is False and fresh.economy.invulnerable is False
