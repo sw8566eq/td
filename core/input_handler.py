@@ -90,8 +90,6 @@ class InputHandler:
                     self._handle_map_click(event.pos)
                 elif game.state == GameState.REWARD:
                     self._handle_reward_click(event.pos)
-                elif game.state == GameState.DECK:
-                    self._handle_deck_click(event.pos)
                 elif game.state == GameState.COMMANDER_SELECT:
                     self._handle_commander_select_click(event.pos)
                 elif game.state == GameState.EVENT:
@@ -270,9 +268,6 @@ class InputHandler:
                 game.use_potion(POTION_HOTKEYS.index(key))
             elif key in CARD_HOTKEYS:
                 game.play_card(CARD_HOTKEYS.index(key))
-        elif game.state == GameState.DECK:
-            # Like RELICS: nothing to confirm or lose, so any key goes back.
-            game.state = game.deck_return_state
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
             # any key dismisses it, Escape included. That's PAUSED's own
@@ -368,8 +363,6 @@ class InputHandler:
                 # The same remappable binding PLAYING's own relics key uses.
                 game.relics_return_state = GameState.MAP
                 game.state = GameState.RELICS
-            elif key == pygame.K_d:
-                game.open_deck_view("view", GameState.MAP)
         elif game.state == GameState.DRAFT:
             # No keyboard equivalent for picking a card, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
@@ -706,17 +699,6 @@ class InputHandler:
         if index is not None:
             self.game._choose_commander(index)
 
-    def _handle_deck_click(self, pos):
-        """The deck screen: Back, or -- in the Shop's "remove" mode -- the
-        card to remove."""
-        game = self.game
-        if game.deck_back_rect.collidepoint(pos):
-            game.state = game.deck_return_state
-            return
-        index = ui.get_clicked_draft_choice(pos, game.deck_entry_rects)
-        if index is not None and game.deck_view_mode == "remove":
-            game._remove_card(ui.deck_entries(game.active_run.deck)[index][0])
-
     def _handle_reward_click(self, pos):
         """A click on the post-combat reward screen -- Continue/Skip (back
         to the map, leaving anything unclaimed) or one reward card."""
@@ -733,11 +715,8 @@ class InputHandler:
         button (leave the shop and return to the map, buying nothing else)
         or one of this visit's item cards (attempt to buy it)."""
         game = self.game
-        if game.shop_exit_rect.collidepoint(pos):
+        if game.shop_continue_button_rect.collidepoint(pos):
             game._finish_node(game.active_run.current_node_id)
-            return
-        if game.shop_remove_card_rect.collidepoint(pos):
-            game._open_card_removal()
             return
         if game.shop_remove_curse_rect.collidepoint(pos):
             game._try_remove_curse()

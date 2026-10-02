@@ -127,7 +127,6 @@ def _run_to_dict(run):
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
         "deck": list(run.deck),
-        "cards_removed": run.cards_removed,
         "ascension": run.ascension,
         "act": run.act,
         "commander": run.commander,
@@ -163,7 +162,6 @@ def _run_from_dict(data):
         forged_towers=list(data.get("forged_towers", [])),
         # A save from before the spell deck existed starts with the starter deck.
         deck=list(data.get("deck", STARTER_DECK)),
-        cards_removed=data.get("cards_removed", 0),
         ascension=data.get("ascension", 0),
         act=data.get("act", 0),
         commander=data.get("commander", DEFAULT_COMMANDER),
@@ -354,7 +352,6 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     _require_int(run_data.get("act", 0), "run act", 0, ACT_COUNT - 1)
     _require_int(run_data.get("floors_cleared_prior_acts", 0), "run floors_cleared_prior_acts", 0, _SANE_MAX)
     _require_int(run_data.get("endless_waves_cleared", 0), "run endless_waves_cleared", 0, _SANE_MAX)
-    _require_int(run_data.get("cards_removed", 0), "run cards_removed", 0, _SANE_MAX)
     for flag in ("is_daily", "has_spent_gold", "used_guardians_reprieve", "used_emergency_reserves"):
         _require_bool(run_data[flag], f"run {flag}")
     for flag in ("boss_defeated", "reward_pending", "blessing_pending"):

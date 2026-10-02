@@ -13,9 +13,6 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   click or `A`/`S`/`D`/`F`/`G`. 16 spells (Zap, Rally, Prospect, Shove, Chain Lightning, Blizzard,
   Expose, Plague, Bounty, Insight, Surge, Patch the Gate, Execute, Empower, Requisition, Focus Fire),
   some that Exhaust. Every won fight's reward adds a pick-one row of three spells.
-- **Shops sell spells and remove cards**: a row of three spell cards per visit, plus a "Remove a card"
-  service (once per visit, pricier each time) that opens your deck to pick the card to lose. `D` on the
-  run map shows your deck; the Compendium lists every spell.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.
