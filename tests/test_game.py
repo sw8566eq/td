@@ -3723,3 +3723,38 @@ def test_permadeath_records_run_details(game):
     assert records[0]["seed"] == 5 and records[0]["commander"] == "warden" and records[0]["act"] == 1
     game._enter_run_history()
     game.render()
+
+
+def test_k_opens_the_compendium_and_it_lists_every_content_kind(game):
+    from run.potions import POTIONS
+    from run.relics import RELICS
+
+    game._handle_keydown(pygame.K_k)
+    assert game.state == GameState.COMPENDIUM
+    headers = [name for kind, name, _detail in game.compendium_rows if kind == "header"]
+    assert [h.split(" (")[0] for h in headers] == [
+        "Relics", "Boss relics", "Curses", "Potions", "Commanders", "Elite affixes",
+    ]
+    entries = {name for kind, name, _detail in game.compendium_rows if kind == "entry"}
+    assert {r.display_name for r in RELICS.values()} <= entries
+    assert {p.display_name for p in POTIONS.values()} <= entries
+    for _kind, name, detail in game.compendium_rows:
+        assert game.small_font.size(detail)[0] <= ui.COMPENDIUM_TEXT_WIDTH
+        assert ui.COMPENDIUM_NAME_X + game.small_font.size(name)[0] < ui.COMPENDIUM_DETAIL_X
+    game.render()
+
+
+def test_compendium_scrolls_within_bounds_and_escape_returns_to_menu(game):
+    game._enter_compendium()
+    game._scroll_compendium(1)
+    assert game.compendium_scroll_offset == 0
+    for _ in range(1000):
+        game._scroll_compendium(-1)
+    assert game.compendium_scroll_offset == ui.unlocks_max_scroll(len(game.compendium_rows)) > 0
+    game.render()
+    _fire_event(game, pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1))
+    _fire_event(game, pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=game.unlocks_back_rect.center, button=1))
+    assert game.state == GameState.MENU
+    game._enter_compendium()
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.MENU

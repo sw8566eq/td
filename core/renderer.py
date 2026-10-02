@@ -91,6 +91,14 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.COMPENDIUM:
+            ui.draw_compendium_screen(
+                game.screen, game.font, game.small_font, game.compendium_rows,
+                game.compendium_scroll_offset, game.unlocks_back_rect,
+            )
+            pygame.display.flip()
+            return
+
         if game.state == GameState.UNLOCKS:
             ui.draw_unlocks_screen(
                 game.screen, game.font, game.small_font,

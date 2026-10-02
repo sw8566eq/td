@@ -104,3 +104,11 @@ regression test for the actual constraint this fixes, checked against `TOWER_ORD
 distinct from the older, narrower `test_skip_button_does_not_overlap_the_tower_build_buttons`, which
 only ever checked the skip button's own `Rect` against the button row's `Rect`s and would never have
 caught text silently overflowing past both of them.
+
+## Compendium
+
+`GameState.COMPENDIUM` (`K` from MENU) lists every relic/boss relic/curse/potion/commander/elite affix.
+`ui.compendium_rows(small_font)` builds `(kind, name, detail)` rows straight from the registries
+(wrapping needs the live font, so `Game._enter_compendium` builds them on entry); it borrows the
+Unlocks screen's layout constants, back button and `unlocks_max_scroll`, since it's the same shape
+of scrolling list.
