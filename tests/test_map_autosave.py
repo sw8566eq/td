@@ -141,3 +141,35 @@ def test_a_run_started_or_resumed_after_practice_is_not_sandboxed(game, tmp_path
     fresh.state = GameState.MENU
     fresh._continue_saved_run()
     assert fresh.sandbox is False
+
+
+def test_quitting_after_resolving_an_event_cannot_reopen_the_choice(game, tmp_path):
+    from test_run import _begin_run_with_map
+
+    run = _begin_run_with_map(game, ["combat", "event"], lives=10, shop_currency=30)
+    game._enter_node("1-0")
+    game._resolve_event_choice(0)
+    assert run.visited_node_ids == ["1-0"]
+    resolved_relics = list(run.relics)
+
+    fresh = _new_game(tmp_path)
+    fresh._continue_saved_run()
+    assert fresh.state == GameState.MAP
+    assert fresh.active_run.relics == resolved_relics
+
+    game._leave_event()  # leaving afterwards doesn't double-mark the node
+    assert run.visited_node_ids == ["1-0"]
+
+
+def test_quitting_after_a_rest_choice_cannot_reopen_it(game, tmp_path):
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["combat", "rest"], lives=4)
+    game._enter_node("1-0")
+    game._choose_rest_option(0)
+    fresh = _new_game(tmp_path)
+    fresh._continue_saved_run()
+    assert fresh.state == GameState.MAP
+    assert fresh.active_run.lives == 4 + game.rest_heal_amount
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.active_run.visited_node_ids == ["1-0"]
