@@ -967,3 +967,14 @@ def test_a_curse_card_can_be_removed_at_the_shop(game):
     cards = [card for card, _count in game.deck_view_entries()]
     game.input_handler._handle_deck_click(game.deck_entry_rects[cards.index("doubt")].center)
     assert "doubt" not in run.deck
+
+
+def test_the_first_spell_hint_shows_until_the_first_cast(game):
+    _floor_with_hand(game, ["prospect"])
+    assert game._show_first_spell_hint
+    game.render()
+    game.play_card(0)
+    assert not game._show_first_spell_hint
+    game.state = GameState.PAUSED
+    game.reset()
+    assert not game._show_first_spell_hint  # the account has cast one now

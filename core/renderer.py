@@ -341,8 +341,11 @@ class Renderer:
         )
         if game.active_run is not None:
             if game.combat_deck is not None:
+                status = self._spell_status_text()
+                if status is None and game._show_first_spell_hint:
+                    status = ui.FIRST_SPELL_HINT_TEXT
                 ui.draw_hand(game.screen, game.font, game.small_font, game.combat_deck, game.card_rects(),
-                             game._hovered_card(), self._spell_status_text())
+                             game._hovered_card(), status)
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),

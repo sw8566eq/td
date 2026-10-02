@@ -685,6 +685,8 @@ class Game:
             forged_towers=list(chosen.forged_towers),
             deck=list(spells.STARTER_DECK) + ([chosen.signature_spell] if chosen.signature_spell else []),
         )
+        # Ascender's Bane (Ascension 10): curse cards from the very start.
+        self.active_run.deck += ["doubt"] * ascension.modifiers_for(self.active_run.ascension).starting_doubt_cards
         if is_daily:
             self._apply_daily_modifiers()
         self._enter_map()
@@ -1194,6 +1196,7 @@ class Game:
                                                  self.spell_resonance_bonus + relic.spell_resonance_per_cast)
         self.audio.play("potion_used")
         self._record_achievement("spells_cast")
+        self._show_first_spell_hint = False
         return True
 
     def card_rects(self):
@@ -1854,6 +1857,11 @@ class Game:
         self._show_first_placement_hint = (
             active_run is not None and not sandbox
             and achievements.load_achievements(self.achievements_path)["counters"].get("towers_built", 0) == 0
+        )
+        # The same idea for the spell hand -- until this account's first cast.
+        self._show_first_spell_hint = (
+            active_run is not None and not sandbox
+            and achievements.load_achievements(self.achievements_path)["counters"].get("spells_cast", 0) == 0
         )
         # A tower sold mid-level is removed from self.towers (see
         # try_sell_tower) but its lifetime stats still belong in this
