@@ -584,7 +584,8 @@ entry, not a change to the systems that already work.
 - **New achievement**: add an `Achievement(...)` entry to `ACHIEVEMENTS` in `progression/achievements.py`,
   keyed off one of the existing cumulative counters (`kills`, `towers_built`, `towers_maxed`,
   `towers_specialized`, `levels_cleared`, `distinct_levels_cleared`, `waves_survived`,
-  `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, `potions_used`, or a
+  `bosses_defeated`, `relics_collected`, `daily_runs_played`, `events_resolved`, `potions_used`,
+`acts_cleared`, `towers_forged`, the max-only `ascension_reached`/`curses_held_at_once`, or a
   `f"{tower_name}_built"` counter for any `TOWER_TYPES` name) or a genuinely new one -- a new
   counter just needs one `Game._record_achievement(...)` call added at whatever point in `core/game.py`
   the event actually happens.

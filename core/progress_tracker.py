@@ -93,6 +93,15 @@ class ProgressTracker:
             achievements.bump, game.achievements_path, self._queue_achievement_toasts, counter_name, amount,
         )
 
+    def _record_achievement_max(self, counter_name, value):
+        """achievements.set_counter's max-only shape (a "highest ever" or
+        "most at once" counter, not a tally), sandbox-gated like every
+        other recorder here."""
+        game = self.game
+        if game.sandbox:
+            return
+        self._queue_achievement_toasts(achievements.set_counter(counter_name, value, game.achievements_path))
+
     def _queue_achievement_toasts(self, newly_unlocked_keys):
         """Queue one rising/fading toast per achievement key in
         `newly_unlocked_keys` (the return value of achievements.bump()/

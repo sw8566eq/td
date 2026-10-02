@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- Five new achievements: Apprentice Smith / Master Smith (forge 1 / 15 towers), Ascendant / Pinnacle
+  (unlock Ascension 5 / 10), and Cursebearer (carry 3 curses at once).
 - Reward screens offer **forge cards** for towers you already hold once there aren't enough new towers
   left, and deeper fights sometimes offer a new tower pre-forged (`FREE +`) -- up to a 50% chance per
   card by Act 3.
