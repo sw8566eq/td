@@ -267,3 +267,7 @@ bonus` clamps lives at 1) and three Relic-only switches otherwise, each read in 
 `blocks_rest_heal` (`Game._enter_rest_node` -> `rest_heal_blocked`, Rest option disabled, Smith still
 works), `blocks_shop_income` (`_advance_run_floor`), `blocks_potions` (`potions.has_free_slot`, so
 rewards/Shop stand/Events all refuse new potions while held ones stay usable).
+
+`compose_relic_modifiers`' `floor_index` is fed `run.floors_cleared` (fights actually won so far, across
+every act), not the node's row/depth -- Veteran's Momentum, its only reader, promises "+2% per floor
+cleared", and depth also counts Shop/Event/Rest rows and every row of earlier acts.

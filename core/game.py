@@ -701,9 +701,11 @@ class Game:
         bumped further by run_escalation.apply_elite_multiplier for an
         Elite node, or apply_boss_multiplier (tuned higher than Elite's own
         bump) for the map's one boss node."""
-        depth = run.depth_of(node.row)
         return (
-            relics.compose_relic_modifiers(run.relics, depth, run.has_spent_gold),
+            # floors_cleared, not depth: Veteran's Momentum (the one relic
+            # that reads it) promises "+2% per floor cleared", and depth also
+            # counts Shop/Event/Rest rows and every row of earlier acts.
+            relics.compose_relic_modifiers(run.relics, run.floors_cleared, run.has_spent_gold),
             self._node_escalation(run, node),
             self._run_rng(run, _FLOOR_RNG_STREAM, node.id),
         )
