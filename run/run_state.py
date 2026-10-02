@@ -117,6 +117,9 @@ class RunState:
     # Tower types forged at a Rest node's Smith (Game._forge_tower) --
     # every copy placed afterward starts one level up, for free.
     forged_towers: list[str] = field(default_factory=list)
+    # Veterancy experience per tower type (run/veterancy.py) -- earned at
+    # every floor clear, read at every tower construction.
+    tower_xp: dict[str, float] = field(default_factory=dict)
     # This run's Ascension level (run/ascension.py), snapshotted at
     # start_new_run and never changed mid-run.
     ascension: int = 0

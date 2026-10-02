@@ -125,6 +125,7 @@ def _run_to_dict(run):
         "boss_defeated": run.boss_defeated,
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
+        "tower_xp": dict(run.tower_xp),
         "ascension": run.ascension,
         "act": run.act,
         "commander": run.commander,
@@ -158,6 +159,7 @@ def _run_from_dict(data):
         boss_defeated=data.get("boss_defeated", False),
         potions=list(data.get("potions", [])),
         forged_towers=list(data.get("forged_towers", [])),
+        tower_xp=dict(data.get("tower_xp", {})),
         ascension=data.get("ascension", 0),
         act=data.get("act", 0),
         commander=data.get("commander", DEFAULT_COMMANDER),
@@ -423,6 +425,14 @@ def _parse_and_validate_active_run(run_data, at_map=False):
             raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
     if run_data.get("commander", DEFAULT_COMMANDER) not in COMMANDERS:
         raise ValueError(f"saved run's commander {run_data['commander']!r} is not a known commander")
+    tower_xp = run_data.get("tower_xp", {})
+    if not isinstance(tower_xp, dict):
+        raise TypeError("saved run's tower_xp is not a mapping")
+    for tower_name, xp in tower_xp.items():
+        if tower_name not in TOWER_TYPES:
+            raise ValueError(f"saved run's tower_xp references an unrecognized tower type {tower_name!r}")
+        if isinstance(xp, bool) or not isinstance(xp, (int, float)) or not 0 <= xp <= _SANE_MAX:
+            raise ValueError(f"saved run's tower_xp for {tower_name!r} is not a sane number")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")

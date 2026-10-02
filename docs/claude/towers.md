@@ -148,3 +148,18 @@ off, which is *every* `SupportTower`, so the table shows `"--"` rather than a mi
 `Tower.total_invested` (base `cost` + every upgrade/specialization cost actually paid) is what
 `sell_value()` refunds a fraction of (`settings.SELL_REFUND_FRACTION`) -- selling isn't just base
 `cost` * fraction.
+
+## Veterancy
+
+`run/veterancy.py` (pure, strict-mypy): `RANKS` thresholds, `rank_for`, `floor_xp`. `RunState.tower_xp`
+(`{tower type: xp}`, saved and validated) grows only in `Game._award_veterancy`, called from
+`_advance_run_floor` -- a restart or loss earns nothing. Every tower of a type (sold ones included, via
+`sold_towers`) contributes its `kills`; a class's `VETERANCY_ASSIST_FRACTION` adds that share of the
+floor's total kills (Support/Beacon). `Game.veterancy_rank(name)` adds `Relic.veterancy_rank_bonus` and
+clamps to `MAX_RANK`; `_construct_tower` calls `_apply_veterancy`, which calls the tower's own
+`apply_veterancy(rank)` -- base `Tower` adds `veterancy_damage_bonus` (one more additive
+`effective_damage()` source), `SupportTower` scales its aura's bonus portion, `BeaconTower` scales
+`relic_beacon_mark_bonus_multiplier` -- plus `Relic.veteran_fire_rate_bonus` at `VETERAN_RANK`. The
+panel text comes from each class's `VETERANCY_BONUS_LABEL`/`VETERANCY_BONUS_PER_RANK`, so a new tower
+type that overrides `apply_veterancy` describes itself. `TOWER_TYPE_NAMES` is the class->key reverse
+lookup.

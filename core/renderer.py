@@ -31,11 +31,13 @@ Deferred until render() actually runs, well after both modules have
 finished loading, there's nothing left to cycle on.
 """
 
+import inspect
+
 import pygame
 
-from entities.tower import TOWER_TYPES
+from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES
 from presentation import ui
-from run import potions, relics, shop
+from run import potions, relics, shop, veterancy
 from support import settings
 
 
@@ -309,6 +311,8 @@ class Renderer:
             floor_label=floor_label,
             boss_defeated=game.active_run.boss_defeated if game.active_run is not None else False,
             forged_towers=game.active_run.forged_towers if game.active_run is not None else (),
+            veterancy_ranks=({name: game.veterancy_rank(name) for name in game.active_run.unlocked_towers}
+                             if game.active_run is not None else None),
             endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
         )
         if game._show_first_placement_hint and not game.towers:
@@ -318,6 +322,7 @@ class Renderer:
             game.targeting_button_rect,
             game.upgrade_button_rect, game.specialize_button_rects, game.sell_button_rect,
             game._hovered_specialize_key(panel_subject),
+            veterancy_line=self._veterancy_line(panel_subject),
         )
         if game.active_run is not None:
             ui.draw_potion_belt(
@@ -374,6 +379,24 @@ class Renderer:
         run = self.game.active_run
         return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
                 f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
+
+    def _veterancy_line(self, subject):
+        """The stats panel's veterancy readout for `subject` (a tower class
+        or a placed tower) during a run -- its type's rank, what that rank
+        is worth, and experience toward the next one. None outside a run."""
+        game = self.game
+        if game.active_run is None or subject is None:
+            return None
+        tower_cls = subject if inspect.isclass(subject) else type(subject)
+        name = TOWER_TYPE_NAMES[tower_cls]
+        rank = subject.veterancy_rank if not inspect.isclass(subject) else game.veterancy_rank(name)
+        xp = game.active_run.tower_xp.get(name, 0.0)
+        target = veterancy.next_rank_xp(xp)
+        progress = f"{round(xp)}/{target}" if target is not None else "max rank"
+        if rank == 0:
+            return f"{veterancy.rank_name(0)}  {progress} xp"
+        bonus = round(tower_cls.VETERANCY_BONUS_PER_RANK * rank * 100)
+        return f"{veterancy.rank_name(rank)} +{bonus}% {tower_cls.VETERANCY_BONUS_LABEL}  {progress}"
 
     def _run_modifiers_text(self):
         """"Ascension N, <Affix> elite" for the sidebar -- whichever of the

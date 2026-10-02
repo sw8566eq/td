@@ -141,6 +141,12 @@ ACHIEVEMENTS = {
     "cursebearer": Achievement(
         "cursebearer", "Cursebearer", "Carry 3 curses at once.", "curses_held_at_once", 3,
     ),
+    "battle_hardened": Achievement(
+        "battle_hardened", "Battle-Hardened", "Promote a tower type to Veteran in one run.", "veterancy_rank_reached", 3,
+    ),
+    "living_legend": Achievement(
+        "living_legend", "Living Legend", "Promote a tower type to Legendary in one run.", "veterancy_rank_reached", 4,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),

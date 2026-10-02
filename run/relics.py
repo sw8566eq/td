@@ -535,6 +535,13 @@ class Relic:
     # _advance_run_floor (blocks_shop_income), potions.has_free_slot
     # (blocks_potions -- no new potion from any source; ones already held
     # still work).
+    # Veterancy relics (run/veterancy.py) -- Relic-only, read straight off
+    # RELICS by Game: veterancy_xp_multiplier at every floor clear,
+    # veterancy_rank_bonus/veteran_fire_rate_bonus at tower construction.
+    veterancy_xp_multiplier: float = 1.0
+    veterancy_rank_bonus: int = 0
+    # Extra fire rate for a tower type at VETERAN_RANK or better.
+    veteran_fire_rate_bonus: float = 0.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1067,6 +1074,19 @@ RELICS = {
     "brewmasters_kit": Relic(
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
+    ),
+    # --- Veterancy relics -- see Relic.veterancy_xp_multiplier. ---
+    "drill_sergeant": Relic(
+        "drill_sergeant", "Drill Sergeant", "Your towers earn 50% more veterancy experience.",
+        veterancy_xp_multiplier=1.5,
+    ),
+    "battlefield_commission": Relic(
+        "battlefield_commission", "Battlefield Commission", "Every tower type counts as one veterancy rank higher.",
+        veterancy_rank_bonus=1,
+    ),
+    "old_guard": Relic(
+        "old_guard", "Old Guard", "Tower types at Veteran rank or better fire 15% faster.",
+        veteran_fire_rate_bonus=0.15,
     ),
     # --- Boss relics (is_boss_relic=True) -- see Relic.is_boss_relic. ---
     "overcharged_core": Relic(

@@ -11,6 +11,7 @@ iterate/index the registry rather than naming concrete classes.
 import pygame
 
 from entities.projectile import Projectile
+from run import veterancy
 from support import settings
 
 
@@ -70,6 +71,13 @@ class Tower:
     # otherwise show a meaningless "Damage: 0.0" and a clickable targeting
     # mode a support tower never reads.
     IS_SUPPORT = False
+    # Share of every kill on a cleared floor this type earns as veterancy
+    # experience on top of its own kills (run/veterancy.py) -- for towers
+    # whose job is helping others kill, not killing.
+    VETERANCY_ASSIST_FRACTION = 0.0
+    # What a veterancy rank improves, for the stats panel ("+12% dmg").
+    VETERANCY_BONUS_LABEL = "dmg"
+    VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
 
     # Whether this tower can hit an enemy with is_flying = True (see
     # enemy.py) -- default True. A tower whose mechanic is a ground-impact
@@ -394,6 +402,10 @@ class Tower:
         # An Overclock Elixir potion's live fire-rate bonus -- set every
         # frame by Game.update() (1.0 whenever no Overclock is running).
         self.potion_fire_rate_multiplier = 1.0
+        # This tower type's run veterancy (run/veterancy.py) -- set once at
+        # construction by Game._construct_tower via apply_veterancy().
+        self.veterancy_rank = 0
+        self.veterancy_damage_bonus = 0.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -612,6 +624,12 @@ class Tower:
         """Preview of `damage` one level up -- see range_after_next_upgrade
         for the same idea applied to damage."""
         return self._stat_after_next_upgrade("damage")
+
+    def apply_veterancy(self, rank):
+        """Turn this tower type's run veterancy rank into its bonus --
+        damage, by default; subclasses whose job isn't damage override it."""
+        self.veterancy_rank = rank
+        self.veterancy_damage_bonus = veterancy.DAMAGE_BONUS_PER_RANK * rank
 
     def reset_aura(self):
         """Called on every tower, every frame, before any tower's own
@@ -834,6 +852,7 @@ class Tower:
             + (self.relic_last_stand_multiplier - 1.0)
             + (self.relic_tower_density_bonus_multiplier - 1.0)
             + self._relic_family_damage_bonus()
+            + self.veterancy_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):
@@ -1559,6 +1578,9 @@ class BeaconTower(Tower):
     mark_splash_radius = 50
     mark_damage_multiplier = 1.20
     mark_duration = 3.0
+    VETERANCY_ASSIST_FRACTION = 0.25
+    VETERANCY_BONUS_LABEL = "mark"
+    VETERANCY_BONUS_PER_RANK = veterancy.MARK_BONUS_PER_RANK
     sprite_name = "tower_beacon"
     display_name = "Beacon"
     EXTRA_STATS = (
@@ -1580,6 +1602,11 @@ class BeaconTower(Tower):
             "stat_multipliers": {"mark_damage_multiplier": 1.5, "mark_duration": 1.4},
         },
     }
+
+    def apply_veterancy(self, rank):
+        """A seasoned Beacon's marks bite harder."""
+        super().apply_veterancy(rank)
+        self.relic_beacon_mark_bonus_multiplier *= 1 + veterancy.MARK_BONUS_PER_RANK * rank
 
     def create_projectile(self, target):
         return Projectile(
@@ -1609,6 +1636,12 @@ class SupportTower(Tower):
     sprite_name = "tower_support"
     display_name = "Support"
     IS_SUPPORT = True
+    VETERANCY_ASSIST_FRACTION = 0.25
+    VETERANCY_BONUS_LABEL = "aura"
+    VETERANCY_BONUS_PER_RANK = veterancy.AURA_BONUS_PER_RANK
+    # Veterancy (run/veterancy.py) strengthens the aura's bonus rather
+    # than this tower's own (nonexistent) damage -- see apply_veterancy.
+    veterancy_aura_bonus = 0.0
     FIRE_SOUND = None  # never fires -- see the class docstring above
 
     buff_damage_multiplier = 1.25
@@ -1634,6 +1667,10 @@ class SupportTower(Tower):
         },
     }
 
+    def apply_veterancy(self, rank):
+        super().apply_veterancy(rank)
+        self.veterancy_aura_bonus = veterancy.AURA_BONUS_PER_RANK * rank
+
     def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
         # enemy_index accepted, unused: Game.update() calls every tower's
         # update() with the same signature regardless of type, but a
@@ -1657,8 +1694,10 @@ class SupportTower(Tower):
         # relic_adjusted_range(); Resonant Field scales specifically the
         # aura math on top of that, not instead of it.
         broadcast_range = self.relic_adjusted_range() * self.relic_aura_range_bonus_multiplier
-        buffed_damage_multiplier = self.buff_damage_multiplier * self.relic_aura_strength_bonus_multiplier
-        buffed_range_multiplier = self.buff_range_multiplier * self.relic_aura_strength_bonus_multiplier
+        # Veterancy scales the buff's bonus portion (1.25 -> 1 + 0.25 * (1 + bonus)).
+        scale = 1 + self.veterancy_aura_bonus
+        buffed_damage_multiplier = 1 + (self.buff_damage_multiplier * self.relic_aura_strength_bonus_multiplier - 1) * scale
+        buffed_range_multiplier = 1 + (self.buff_range_multiplier * self.relic_aura_strength_bonus_multiplier - 1) * scale
         for other in (towers or ()):
             if other is self:
                 continue
@@ -1868,3 +1907,5 @@ TOWER_TYPES = {
     "beacon": BeaconTower,
     "overload_cannon": OverloadCannonTower,
 }
+# The reverse lookup -- a tower class's registry key.
+TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}

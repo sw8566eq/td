@@ -97,7 +97,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "potions_used",  # Game.use_potion
         "acts_cleared",  # Game._advance_run_floor, on an earlier act's boss
         "towers_forged",  # every forging path: Rest Smith, reward forge/pre-forged cards, Events
-        "ascension_reached", "curses_held_at_once",  # max-only, via Game._record_achievement_max
+        "ascension_reached", "curses_held_at_once", "veterancy_rank_reached",  # max-only, via Game._record_achievement_max
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key
