@@ -1097,6 +1097,9 @@ class Game:
         run = self.active_run
         if self.state != GameState.PLAYING or run is None or not 0 <= slot < len(run.potions):
             return
+        if potions.POTIONS[run.potions[slot]].needs_enemies and not self.enemies:
+            self._queue_toast("No enemies to use that on yet")
+            return
         key = run.potions.pop(slot)
         potions.POTIONS[key].use(self)
         self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)

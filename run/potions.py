@@ -54,6 +54,9 @@ class Potion:
     display_name: str
     description: str
     use: Callable[[Any], None]
+    # Only affects enemies on the field -- Game.use_potion refuses it (and
+    # keeps the potion) while there are none, rather than wasting it.
+    needs_enemies: bool = True
 
 
 def _fire_bomb(game: Any) -> None:
@@ -125,18 +128,18 @@ POTIONS = {
     "liquid_gold": Potion(
         "liquid_gold", "Liquid Gold",
         f"Gain {LIQUID_GOLD_BASE} battle gold, +{LIQUID_GOLD_PER_ROW} per floor deep.",
-        _liquid_gold,
+        _liquid_gold, needs_enemies=False,
     ),
     "mending_salve": Potion(
         "mending_salve", "Mending Salve",
         f"Restore {MENDING_SALVE_LIVES} lives.",
-        _mending_salve,
+        _mending_salve, needs_enemies=False,
     ),
     "overclock_elixir": Potion(
         "overclock_elixir", "Overclock Elixir",
         f"Every tower fires {round((OVERCLOCK_FIRE_RATE_MULTIPLIER - 1) * 100)}% faster "
         f"for {OVERCLOCK_DURATION:g}s.",
-        _overclock,
+        _overclock, needs_enemies=False,
     ),
     "smoke_bomb": Potion(
         "smoke_bomb", "Smoke Bomb",
