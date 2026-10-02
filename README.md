@@ -155,6 +155,10 @@ Four Events deal in spells too: the Ancient Library (upgrade two random spells, 
 the Hermit Mage (buy an upgraded spell), the Purifying Flame (burn two random cards for lives), and
 the Wild Surge (two spells and a curse).
 
+Beware **curse cards**: unplayable cards that just clog your hand. The Haunted Grove Event pays well
+for taking a **Doubt**, and a **Hexing** Elite shuffles two **Regrets** (each drains 1 energy when
+drawn) into your deck for that fight. A Shop's Remove a card is how you get rid of a Doubt for good.
+
 Cards can be **upgraded** (`Zap+`, shown with a green border): a Rest site's new **Study** option
 upgrades one card of your choice for the rest of the run, and deeper fights sometimes offer a spell
 already upgraded. Upgrades raise a card's numbers (damage, duration, draw, energy...) and make a few

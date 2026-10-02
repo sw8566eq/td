@@ -208,6 +208,13 @@ after every older effect (so existing options' rng draws are unchanged): `grant_
 (samples indices of not-yet-upgraded cards), `remove_random_spells` (samples indices to burn). The
 resolution dict reports `spells`/`spells_upgraded`/`spells_removed` for `ui._describe_event_outcome`.
 
+Curse cards are `SPELLS` entries with `playable=False` (and `offerable=False`, rarity `"curse"`):
+`CombatDeck.can_play` refuses them, `upgradeable_cards`/`is_valid_card` exclude their `+` form, and
+random upgrades skip them. `Spell.drain_energy_on_draw` is applied inside `CombatDeck.draw` (clamped at
+0; `new_turn` refills energy *before* drawing so a Regret drawn there drains the new turn's energy).
+Sources: `EventOption.add_spell_cards` (Haunted Grove) and `EliteAffix.hex_cards` (Hexing), which
+`_load_combat_node` adds to that fight's `CombatDeck` only -- never to `run.deck`.
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,

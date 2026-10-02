@@ -98,9 +98,14 @@ class Spell:
     exhaust: bool = False
     # "common"/"uncommon"/"rare" -- weights reward offers (REWARD_RARITY_WEIGHTS).
     rarity: str = "common"
-    # Never offered by rewards or the Shop (the starter cards still are --
-    # only a flag for a future card that should stay starter-only).
+    # Never offered by rewards or the Shop (curse cards).
     offerable: bool = True
+    # A curse card (Slay the Spire's Doubt/Regret): can't be played, so it
+    # just takes up a hand slot -- and can't be upgraded. Only Events and a
+    # Hexing Elite put one in a deck; the Shop's card removal takes it out.
+    playable: bool = True
+    # Energy lost the moment this card is drawn (CombatDeck.draw).
+    drain_energy_on_draw: int = 0
 
     @property
     def cost(self) -> int:
@@ -200,6 +205,11 @@ def _focus_fire(game: Any, level: int) -> None:
     target.take_damage(_boss_scaled(target, FOCUS_FIRE_HP_FRACTION, FOCUS_FIRE_BOSS_HP_FRACTION, level))
 
 
+def _unplayable(game: Any, level: int) -> None:
+    """A curse card's cast -- never actually called (CombatDeck.can_play
+    refuses an unplayable card)."""
+
+
 def _pct(fraction: float) -> int:
     return round(fraction * 100)
 
@@ -291,6 +301,15 @@ SPELLS = {
                    f"({_pct(FOCUS_FIRE_BOSS_HP_FRACTION[lv])}% vs bosses).",
         _focus_fire,
     ),
+    # --- Curse cards (playable=False) ---
+    "doubt": Spell(
+        "doubt", "Doubt", (0, 0), lambda lv: "Unplayable. Takes up a slot in your hand.", _unplayable,
+        needs_enemies=False, rarity="curse", offerable=False, playable=False,
+    ),
+    "regret": Spell(
+        "regret", "Regret", (0, 0), lambda lv: "Unplayable. Lose 1 energy when you draw it.", _unplayable,
+        needs_enemies=False, rarity="curse", offerable=False, playable=False, drain_energy_on_draw=1,
+    ),
 }
 
 SPELL_ORDER = list(SPELLS)
@@ -316,7 +335,9 @@ def upgraded(card: str) -> str:
 def is_valid_card(card: str) -> bool:
     """Whether `card` is a registered spell, upgraded or not -- what a save's
     deck is validated against."""
-    return base_key(card) in SPELLS and card in (base_key(card), upgraded(card))
+    if base_key(card) not in SPELLS:
+        return False
+    return card == base_key(card) or (card == upgraded(card) and SPELLS[base_key(card)].playable)
 
 
 def spell_of(card: str) -> Spell:
@@ -345,7 +366,7 @@ def initials(card: str) -> str:
 def upgradeable_cards(deck: list[str]) -> list[str]:
     """Each distinct not-yet-upgraded card in `deck`, in registry order --
     what a Rest site's Study can pick from."""
-    return [key for key in SPELL_ORDER if key in deck]
+    return [key for key in SPELL_ORDER if key in deck and SPELLS[key].playable]
 
 
 def spell_offer(rng: random.Random, count: int = REWARD_SPELL_COUNT) -> list[str]:
@@ -404,7 +425,9 @@ class CombatDeck:
                 self.draw_pile = self.discard_pile
                 self.discard_pile = []
                 self.rng.shuffle(self.draw_pile)
-            self.hand.append(self.draw_pile.pop())
+            card = self.draw_pile.pop()
+            self.hand.append(card)
+            self.energy = max(0, self.energy - spell_of(card).drain_energy_on_draw)
             drawn += 1
         return drawn
 
@@ -412,12 +435,13 @@ class CombatDeck:
         """Discard the hand, refill energy, draw a fresh hand."""
         self.discard_pile.extend(self.hand)
         self.hand = []
-        self.energy = self.max_energy
+        self.energy = self.max_energy  # set before drawing, so a Regret drawn now drains it
         self.played_this_turn = 0
         self.draw(self.hand_size)
 
     def can_play(self, index: int) -> bool:
-        return 0 <= index < len(self.hand) and card_cost(self.hand[index]) <= self.energy
+        return (0 <= index < len(self.hand) and spell_of(self.hand[index]).playable
+                and card_cost(self.hand[index]) <= self.energy)
 
     def play(self, index: int) -> str:
         """Remove the card at `index` from the hand, pay its energy and

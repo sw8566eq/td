@@ -64,7 +64,7 @@ def test_every_spell_is_well_formed():
         assert spell.key == key
         assert spell.display_name and spell.description
         assert 0 <= spell.cost <= MAX_ENERGY
-        assert spell.rarity in spells.REWARD_RARITY_WEIGHTS
+        assert spell.rarity in spells.REWARD_RARITY_WEIGHTS or not spell.offerable
         assert spells.initials(key)
         if spell.exhaust:
             assert "Exhaust" in spell.description
@@ -81,7 +81,8 @@ def test_spell_offer_is_deterministic_distinct_and_weighted():
         offer = spells.spell_offer(random.Random(seed))
         assert len(offer) == spells.REWARD_SPELL_COUNT
         assert len(set(offer)) == len(offer)
-    assert len(spells.spell_offer(random.Random(1), count=len(SPELLS) + 5)) == len(SPELLS)
+    offerable = [key for key, spell in SPELLS.items() if spell.offerable]
+    assert len(spells.spell_offer(random.Random(1), count=len(SPELLS) + 5)) == len(offerable)
     counts = {"common": 0, "rare": 0}
     for seed in range(300):
         for key in spells.spell_offer(random.Random(seed), count=1):
@@ -395,7 +396,7 @@ def test_spell_timers_reset_on_a_fresh_floor_load(game):
 
 def test_needs_enemies_flags_match_what_each_spell_touches(game):
     for key, spell in SPELLS.items():
-        if spell.needs_enemies:
+        if spell.needs_enemies or not spell.playable:
             continue
         _floor_with_hand(game, [key])
         game.enemies = []
@@ -616,6 +617,8 @@ def test_card_helpers():
 
 def test_every_upgrade_is_described_differently_or_cheaper():
     for key, spell in SPELLS.items():
+        if not spell.playable:
+            continue
         assert spell.describe(1) != spell.describe(0) or spell.costs[1] < spell.costs[0], key
         assert spell.costs[1] <= spell.costs[0]
 
@@ -662,10 +665,11 @@ def test_upgraded_cards_render_in_hand_and_deck(game):
 
 def test_a_big_deck_switches_to_the_compact_grid(game):
     run = start_first_floor(game, seed=1)
-    run.deck = list(SPELLS) + [spells.upgraded(key) for key in SPELLS]
+    playable = [key for key, spell in SPELLS.items() if spell.playable]
+    run.deck = list(SPELLS) + [spells.upgraded(key) for key in playable]
     game.open_deck_view()
     rects = game.deck_entry_rects
-    assert len(rects) == 2 * len(SPELLS)
+    assert len(rects) == len(SPELLS) + len(playable)
     assert all(rect.bottom < game.deck_back_rect.top for rect in rects)
     game.render()
 
@@ -890,3 +894,76 @@ def test_spell_event_outcomes_render(game):
     lines = ui._describe_event_outcome(events.EVENTS["ancient_library"].options[0],
                                        {"spells_upgraded": ["zap+"], "spells_removed": ["rally"]})
     assert "Upgraded: Zap+" in lines and "Burned: Rally" in lines
+
+
+# --- Curse cards ---
+
+
+def test_curse_cards_are_unplayable_unofferable_and_unupgradeable():
+    for key in ("doubt", "regret"):
+        assert not SPELLS[key].playable and not SPELLS[key].offerable
+        assert not spells.is_valid_card(key + "+")
+        assert spells.is_valid_card(key)
+    assert spells.upgradeable_cards(["doubt", "zap"]) == ["zap"]
+    deck = CombatDeck(rng=random.Random(1), draw_pile=[], hand=["doubt"], energy=MAX_ENERGY)
+    assert not deck.can_play(0)
+
+
+def test_drawing_a_regret_drains_energy_but_never_below_zero():
+    deck = CombatDeck(rng=random.Random(1), draw_pile=["regret", "regret", "regret", "regret"])
+    deck.new_turn()
+    assert deck.energy == 0
+    deck = CombatDeck(rng=random.Random(1), draw_pile=["zap", "regret"])
+    deck.new_turn()
+    assert deck.energy == MAX_ENERGY - 1
+
+
+def test_a_hand_with_curse_cards_renders(game):
+    _floor_with_hand(game, ["doubt", "regret", "zap"])
+    try:
+        mock_mouse_pos(game.card_rects()[0].center)
+        game.render()
+    finally:
+        clear_mouse_mock()
+    assert not game.play_card(0)
+
+
+def test_haunted_grove_adds_a_doubt_and_its_outcome_reads(game):
+    run = start_first_floor(game, seed=1)
+    result = _resolve("haunted_grove", "take", run)
+    assert run.deck[-1] == "doubt" and result["spell_cards"] == ["doubt"]
+    from run import events
+
+    lines = ui._describe_event_outcome(events.EVENTS["haunted_grove"].options[0], result)
+    assert "Added to your deck: Doubt" in lines
+
+
+def test_random_upgrades_never_pick_a_curse_card(game):
+    run = start_first_floor(game, seed=1)
+    run.deck = ["doubt", "regret", "zap"]
+    _resolve("haunted_grove", "listen", run)
+    assert run.deck == ["doubt", "regret", "zap+"]
+
+
+def test_a_hexing_elite_shuffles_regrets_into_that_fight_only(game, monkeypatch):
+    from test_run import _begin_run_with_map
+
+    from run import elite_affixes
+
+    run = _begin_run_with_map(game, ["elite", "combat"])
+    monkeypatch.setattr(game, "_elite_affix", lambda _run, node: elite_affixes.AFFIXES["hexing"]
+                        if node.node_type == "elite" else None)
+    game._enter_node("0-0")
+    deck = game.combat_deck
+    everything = deck.hand + deck.draw_pile
+    assert everything.count("regret") == 2
+    assert "regret" not in run.deck
+
+
+def test_a_curse_card_can_be_removed_at_the_shop(game):
+    run = _shop(game)
+    run.deck.append("doubt")
+    game._open_card_removal()
+    cards = [card for card, _count in game.deck_view_entries()]
+    game.input_handler._handle_deck_click(game.deck_entry_rects[cards.index("doubt")].center)
+    assert "doubt" not in run.deck
