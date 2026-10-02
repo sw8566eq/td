@@ -214,3 +214,10 @@ def test_endless_score_is_saved_shown_and_recorded(game):
     game.update(dt=0.01)
     assert run_history.load_run_records(game.run_history_path)[0]["endless_waves"] == 4
     assert "+4 endless" in ui.run_history_lines({}, run_history.load_run_records(game.run_history_path))[0]
+
+
+def test_hud_shows_the_live_endless_score(game):
+    run = _final_boss(game)
+    run.boss_defeated = True
+    run.endless_waves_cleared = 2
+    game.render()

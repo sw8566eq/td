@@ -248,7 +248,7 @@ def _format_currency(value, unlimited):
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
-             floor_label=None, boss_defeated=False, forged_towers=()):
+             floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -319,7 +319,13 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     # is shown on every other floor instead.
     wave_label = _format_wave_label(wave_manager)
     if boss_defeated:
-        wave_label += " -- Boss defeated!"
+        # The endless score chase (RunState.endless_waves_cleared), live.
+        # Compact once it's counting -- the Wave line has no width to spare
+        # beside a 12-tower build menu.
+        if endless_waves:
+            wave_label = f"Wave {wave_manager.current_wave_number} -- Endless +{endless_waves}"
+        else:
+            wave_label += " -- Boss defeated!"
     elif floor_label is not None:
         wave_label += f"   {floor_label}"
     wave_text = font.render(wave_label, True, settings.COLOR_TEXT)
