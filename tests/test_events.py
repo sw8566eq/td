@@ -58,6 +58,7 @@ def test_every_event_has_at_least_one_option_with_a_real_effect():
         assert any(
             option.shop_currency_delta != 0 or option.lives_delta != 0
             or option.grant_relic or option.unlock_random_tower or option.relic_cost
+            or option.grant_spells or option.upgrade_random_spells or option.remove_random_spells
             for option in event.options
         ), f"{event.key} has no option that does anything"
 

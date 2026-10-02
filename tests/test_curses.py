@@ -224,5 +224,5 @@ def test_event_screen_status_line_shows_what_options_cost(game):
 
     _begin_run_with_map(game, ["combat", "event"], lives=7, shop_currency=12, potions=["fire_bomb"])
     game._enter_node("1-0")
-    assert game.renderer._run_status_line() == "Lives: 7   Shop currency: 12   Potions: 1/3   Relics: 0"
+    assert game.renderer._run_status_line() == "Lives: 7   Shop currency: 12   Potions: 1/3   Relics: 0   Spells: 7"
     game.render()
