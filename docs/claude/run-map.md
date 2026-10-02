@@ -194,6 +194,14 @@ whose grid (`Game.deck_view_entries`) shows only not-yet-upgraded cards; `_upgra
 commits the node and returns to the resolved Rest screen. Rewards roll each spell card for an upgrade
 with the same depth chance as pre-forged towers, after the spell picks themselves.
 
+Spell relics are Relic-only fields (like the potion relics), read off `run.relics` directly:
+`max_energy_bonus`/`hand_size_bonus` size each fight's `CombatDeck` in `_load_combat_node`, which then
+applies `opening_draw_bonus`/`opening_energy_bonus` once; `Game.play_card` applies `spell_echo` (via
+`CombatDeck.played_this_turn == 1`, never echoing onto an emptied field), `gold_per_spell`, and
+`spell_resonance_per_cast` (into `Game.spell_resonance_bonus`, capped, fight-scoped, added to every
+tower's `spell_damage_bonus`). `Commander.signature_spell` is appended to `STARTER_DECK` by
+`start_new_run` (Daily Runs therefore get The Warden's).
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,

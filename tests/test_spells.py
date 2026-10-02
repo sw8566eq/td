@@ -24,6 +24,8 @@ from persistence import save_state
 from presentation import ui
 from progression import achievements
 from run import shop, spells
+from run.commanders import COMMANDERS, DEFAULT_COMMANDER
+from run.relics import RELICS as RELICS_BY_KEY
 from run.spells import (
     HAND_LIMIT,
     HAND_SIZE,
@@ -38,6 +40,12 @@ def _enemy(cls=GruntEnemy, x=0):
     enemy = cls([pygame.Vector2(0, 0), pygame.Vector2(900, 0)], wave_number=1)
     enemy.distance_traveled = x
     return enemy
+
+
+def _warden_deck():
+    """What a run started with the default commander holds: the starter
+    deck plus The Warden's signature spell."""
+    return list(STARTER_DECK) + [COMMANDERS[DEFAULT_COMMANDER].signature_spell]
 
 
 def _floor_with_hand(game, hand, energy=MAX_ENERGY):
@@ -148,7 +156,7 @@ def test_new_turn_discards_the_unplayed_hand():
 
 def test_a_run_starts_with_the_starter_deck_and_its_first_fight_deals_a_hand(game):
     run = start_first_floor(game, seed=1)
-    assert run.deck == list(STARTER_DECK)
+    assert run.deck == _warden_deck()
     assert len(game.combat_deck.hand) == HAND_SIZE
     assert game.combat_deck.energy == MAX_ENERGY
 
@@ -443,7 +451,7 @@ def test_the_deck_survives_a_save_and_resume(game):
 
     game.resume_saved_run(save_state.load_run(game.save_path))
 
-    assert game.active_run.deck == list(STARTER_DECK) + ["chain_lightning"]
+    assert game.active_run.deck == _warden_deck() + ["chain_lightning"]
 
 
 def test_an_old_save_without_a_deck_gets_the_starter_deck(game):
@@ -559,7 +567,7 @@ def test_view_mode_clicks_never_remove(game):
     game._handle_keydown(pygame.K_d)
     assert game.state == GameState.DECK and game.deck_view_mode == "view"
     game.input_handler._handle_deck_click(game.deck_entry_rects[0].center)
-    assert run.deck == list(STARTER_DECK)
+    assert run.deck == _warden_deck()
     try:
         mock_mouse_pos(game.deck_entry_rects[0].center)
         game.render()
@@ -726,3 +734,93 @@ def test_upgraded_cards_survive_a_save_and_bad_ones_are_rejected(game):
     game.active_run.deck.append("zap++")
     game.save_run()
     assert save_state.load_run(game.save_path) is None
+
+
+# --- Spell relics ---
+
+
+def _floor_with_relics(game, held, seed=1):
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["combat", "combat"], seed=seed, relics=list(held))
+    game._enter_node("0-0")
+    return game.combat_deck
+
+
+def test_mana_crystal_and_grand_grimoire_raise_energy_and_hand_size(game):
+    deck = _floor_with_relics(game, ["mana_crystal", "grand_grimoire"])
+    assert deck.max_energy == deck.energy == MAX_ENERGY + 1
+    assert deck.hand_size == HAND_SIZE + 1
+    assert len(deck.hand) == HAND_SIZE + 1
+
+
+def test_prepared_grimoire_draws_extra_cards_only_in_the_opening_hand(game):
+    deck = _floor_with_relics(game, ["prepared_grimoire"])
+    assert len(deck.hand) == HAND_SIZE + 1
+    assert deck.energy == MAX_ENERGY + 1
+    deck.new_turn()
+    assert len(deck.hand) == HAND_SIZE and deck.energy == MAX_ENERGY
+
+
+def test_arcane_tithe_pays_gold_per_spell(game):
+    deck = _floor_with_relics(game, ["arcane_tithe"])
+    deck.hand = ["rally"]
+    gold = game.economy.gold
+    game.play_card(0)
+    assert game.economy.gold == gold + RELICS_BY_KEY["arcane_tithe"].gold_per_spell
+
+
+def test_echo_chamber_casts_the_first_spell_each_wave_twice(game):
+    deck = _floor_with_relics(game, ["echo_chamber"])
+    deck.hand = ["prospect", "prospect"]
+    deck.energy = MAX_ENERGY
+    gold = game.economy.gold
+    one = spells.prospect_gold(game.active_run.depth)
+    game.play_card(0)
+    assert game.economy.gold == gold + 2 * one
+    game.play_card(0)
+    assert game.economy.gold == gold + 3 * one
+    deck.new_turn()
+    assert deck.played_this_turn == 0
+
+
+def test_echo_chamber_does_not_echo_onto_an_empty_field(game):
+    deck = _floor_with_relics(game, ["echo_chamber"])
+    deck.hand = ["chain_lightning"]
+    enemy = _enemy()
+    enemy.hp = 1
+    game.enemies = [enemy]
+    game.play_card(0)  # first cast kills it; the echo must not crash or hit anything
+    assert enemy.is_dead
+
+
+def test_runic_resonance_stacks_tower_damage_up_to_its_cap(game):
+    deck = _floor_with_relics(game, ["runic_resonance"])
+    relic = RELICS_BY_KEY["runic_resonance"]
+    game.selected_tower_name = "basic"
+    assert game.try_place_tower(*find_buildable_anchor(game))
+    tower = game.towers[0]
+    damage = tower.effective_damage()
+    for _ in range(20):
+        deck.hand = ["prospect"]
+        deck.energy = MAX_ENERGY
+        game.play_card(0)
+    game.update(dt=0.01)
+    assert game.spell_resonance_bonus == pytest.approx(relic.spell_resonance_cap)
+    assert tower.effective_damage() == pytest.approx(damage * (1 + relic.spell_resonance_cap))
+    game.state = GameState.PAUSED
+    game.reset()
+    assert game.spell_resonance_bonus == 0.0
+
+
+def test_spell_boss_relics_are_boss_relics():
+    assert RELICS_BY_KEY["mana_crystal"].is_boss_relic and RELICS_BY_KEY["grand_grimoire"].is_boss_relic
+
+
+def test_every_commander_signature_spell_is_real_and_joins_the_starting_deck(game):
+    for key, commander in COMMANDERS.items():
+        assert commander.signature_spell in SPELLS, key
+    game.start_new_run(seed=1, commander="stormcaller")
+    assert game.active_run.deck == list(STARTER_DECK) + ["chain_lightning"]
+    game._enter_commander_select()
+    game.render()
