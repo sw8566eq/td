@@ -655,6 +655,10 @@ class Tower:
         for the same idea applied to damage."""
         return self._stat_after_next_upgrade("damage")
 
+    def scale_structure_hp(self, multiplier):
+        """An Earthworks-style relic's hit point bonus -- a no-op for a tower
+        with no hit points; BarricadeTower overrides it."""
+
     def apply_veterancy(self, rank):
         """Turn this tower type's run veterancy rank into its bonus --
         damage, by default; subclasses whose job isn't damage override it."""
@@ -1834,6 +1838,11 @@ class BarricadeTower(Tower):
 
     def __init__(self, anchor_col, anchor_row, pixel_pos):
         super().__init__(anchor_col, anchor_row, pixel_pos)
+        self.hp = self.max_hp
+
+    def scale_structure_hp(self, multiplier):
+        self.max_hp *= multiplier
+        self._base_stats["max_hp"] *= multiplier
         self.hp = self.max_hp
 
     def apply_veterancy(self, rank):

@@ -280,3 +280,10 @@ resolved in `Tower.set_nearby_tower_bonus` (so only when the board changes) into
 `Tower.placement_damage_bonus`, one more additive `effective_damage()` source. Radii and the variety
 cap are module constants in `entities/tower.py` (`VARIETY_RADIUS`, `VARIETY_BONUS_CAP`,
 `ISOLATION_RADIUS`). "Different type" means a different tower class.
+
+## Construction relics
+
+`structure_hp_multiplier`, `dead_zone_multiplier` and `module_fire_rate_bonus` are Relic-only fields
+read by `Game._apply_construction_relics` at the end of `_construct_tower` (after modules): it calls
+`Tower.scale_structure_hp` (a no-op except on `BarricadeTower`), shrinks an instance's `MIN_RANGE`
+(never the class's), and boosts fire rate for a type that has a module fitted.

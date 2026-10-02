@@ -2568,7 +2568,25 @@ class Game:
             module_key = self.active_run.tower_modules.get(TOWER_TYPE_NAMES[tower_cls])
             if module_key is not None:
                 modules.apply_module(tower, modules.MODULES[module_key])
+            self._apply_construction_relics(tower, module_key is not None)
         return tower
+
+    def _apply_construction_relics(self, tower, has_module):
+        """Earthworks / Forward Observer / Quick-Release Mounts -- Relic-only
+        fields applied to every tower a run builds; each is a no-op on a
+        tower it doesn't concern."""
+        held = [relics.RELICS[key] for key in self.active_run.relics]
+        hp_multiplier = 1.0
+        dead_zone_multiplier = 1.0
+        for relic in held:
+            hp_multiplier *= relic.structure_hp_multiplier
+            dead_zone_multiplier *= relic.dead_zone_multiplier
+        if hp_multiplier != 1.0:
+            tower.scale_structure_hp(hp_multiplier)
+        if dead_zone_multiplier != 1.0 and tower.MIN_RANGE:
+            tower.MIN_RANGE = type(tower).MIN_RANGE * dead_zone_multiplier
+        if has_module:
+            tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
 
     def veterancy_rank(self, tower_name):
         """`tower_name`'s veterancy rank this run (run/veterancy.py),

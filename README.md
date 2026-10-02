@@ -124,6 +124,11 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Construction relics
+
+**Earthworks** (Barricades get 50% more hit points), **Forward Observer** (the Mortar's dead zone is
+half as wide) and **Quick-Release Mounts** (towers whose type has a module fire 10% faster).
+
 ## Placement relics
 
 Two relics reward opposite ways of building: **Combined Arms** (+5% damage for each *different* tower

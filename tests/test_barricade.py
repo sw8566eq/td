@@ -105,3 +105,53 @@ def test_barricade_never_fires_and_draws_its_bar(game):
     game.selected_tower = barricade
     game.render()
     assert not TOWER_TYPES["barricade"].ATTACKS
+
+
+# --- Construction relics ---
+
+
+def _run_with(game, relic_keys):
+    from test_run import _begin_run_with_map
+
+    run = _begin_run_with_map(game, ["combat", "combat"], relics=list(relic_keys))
+    game._enter_node("0-0")
+    run.unlocked_towers += ["barricade", "mortar"]
+    game._rebuild_button_rects()
+    game.economy.gold = 5000
+    return run
+
+
+def _build(game, name):
+    from conftest import find_buildable_anchor
+
+    game.selected_tower_name = name
+    cls = TOWER_TYPES[name]
+    if cls.PLACEMENT == "path":
+        for tile in sorted(game.grid.path_cells):
+            if game.try_place_tower(*game.placement_anchor_at(*game.grid.tile_to_pixel_center(*tile), cls)):
+                return game.towers[-1]
+    assert game.try_place_tower(*find_buildable_anchor(game))
+    return game.towers[-1]
+
+
+def test_earthworks_toughens_barricades(game):
+    _run_with(game, ["earthworks"])
+    barricade = _build(game, "barricade")
+    assert barricade.max_hp == pytest.approx(BarricadeTower.max_hp * 1.5) and barricade.hp == barricade.max_hp
+    assert barricade.upgrade() and barricade.max_hp == pytest.approx(BarricadeTower.max_hp * 1.5 * 1.6)
+
+
+def test_forward_observer_halves_the_dead_zone_only(game):
+    from entities.tower import MortarTower
+
+    _run_with(game, ["forward_observer"])
+    assert _build(game, "mortar").MIN_RANGE == pytest.approx(MortarTower.MIN_RANGE / 2)
+    assert _build(game, "basic").MIN_RANGE == 0
+    assert MortarTower.MIN_RANGE == 80  # the class itself is untouched
+
+
+def test_quick_release_mounts_needs_a_module(game):
+    run = _run_with(game, ["quick_release_mounts"])
+    plain = _build(game, "basic").effective_fire_rate()
+    run.tower_modules["basic"] = "long_barrel"
+    assert _build(game, "basic").effective_fire_rate() == pytest.approx(plain * 1.10)
