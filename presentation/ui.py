@@ -2568,11 +2568,33 @@ def get_clicked_run_guide_entry_button(pos, run_guide_entry_button_rect):
     return run_guide_entry_button_rect.collidepoint(pos)
 
 
-def draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect, back_to_map=False):
+def help_lines(bindings=None):
+    """HELP_LINES with the remappable keys (skip wave, speed, pause, relics)
+    shown as the player's own current bindings -- the same live-label
+    treatment the pause menu's own hint already gets. `bindings` None (or
+    a binding still at its default) leaves the default text as written."""
+    if bindings is None:
+        return list(HELP_LINES)
+    label = {action: binding_display_string(binding) for action, binding in bindings.items()}
+    replacements = {
+        "Space (or the HUD button)": f"{label['skip_wave']} (or the HUD button)",
+        "1 / 2 / 3 change": f"{label['time_scale_1']} / {label['time_scale_2']} / {label['time_scale_3']} change",
+        "P or Esc pauses": f"{label['pause']} or Esc pauses",
+    }
+    lines = []
+    for line in HELP_LINES:
+        for old, new in replacements.items():
+            line = line.replace(old, new)
+        lines.append(line)
+    return lines
+
+
+def draw_help_screen(surface, font, small_font, back_rect, run_guide_entry_button_rect, back_to_map=False,
+                     bindings=None):
     # back_to_map: opened from the run map's own H (see Game.help_return_
     # state), so Back/Esc return there -- label them honestly.
     destination = "Map" if back_to_map else "Menu"
-    _draw_static_list_screen(surface, font, small_font, "How to Play", HELP_LINES,
+    _draw_static_list_screen(surface, font, small_font, "How to Play", help_lines(bindings),
                               back_rect, HELP_TOP, HELP_LINE_HEIGHT,
                               back_label=f"Back to {destination}", escape_text=f"Esc -- Back to {destination}")
     _draw_back_to_menu_button(surface, small_font, run_guide_entry_button_rect, "Run Guide...")

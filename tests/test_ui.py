@@ -1375,3 +1375,20 @@ def test_node_type_descriptions_fit_the_tooltip_width():
         for word in description.split(" "):
             width = small_font.size(word)[0]
             assert width <= MAP_TOOLTIP_MAX_WIDTH, f"{node_type}: {word!r} alone is {width}px"
+
+
+def test_help_lines_show_remapped_keys():
+    import pygame
+
+    from persistence import keybindings
+    from presentation.ui import HELP_LINES, help_lines
+
+    assert help_lines() == HELP_LINES
+    assert help_lines(dict(keybindings.DEFAULT_BINDINGS)) == HELP_LINES  # defaults read exactly as written
+    remapped = dict(keybindings.DEFAULT_BINDINGS)
+    remapped["skip_wave"] = (pygame.K_g, 0)
+    remapped["pause"] = (pygame.K_o, 0)
+    lines = help_lines(remapped)
+    assert any(line.startswith("G (or the HUD button)") for line in lines)
+    assert any(line.startswith("O or Esc pauses") for line in lines)
+    assert len(lines) == len(HELP_LINES)
