@@ -1092,7 +1092,7 @@ def _draw_option_box(surface, small_font, rect, label, description, enabled, hov
 
 
 def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, option_rects, smith_choices,
-                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False):
+                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False, moved_on=False):
     """A Rest node's campfire (see Game._enter_rest_node), by `phase`:
     "choose" shows Rest and Smith as two Event-style options; "smith" a
     grid of `smith_choices` tower names to forge, plus Back; "resolved"
@@ -1112,6 +1112,8 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
         smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
                       if can_smith else "Every tower you hold is already forged.")
         _draw_option_box(surface, small_font, option_rects[1], "Smith", smith_text, can_smith, hovered_index == 1)
+        _draw_option_box(surface, small_font, option_rects[2], "Move on", "Leave the campfire as it is.", True,
+                         hovered_index == 2)
     elif phase == "smith":
         prompt = small_font.render("Choose a tower to forge", True, settings.COLOR_TEXT)
         surface.blit(prompt, prompt.get_rect(midtop=(center_x, SMITH_CHOICES_TOP - 50)))
@@ -1126,7 +1128,9 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
         back_label = small_font.render("Back", True, settings.COLOR_TEXT)
         surface.blit(back_label, back_label.get_rect(center=back_rect.center))
     else:
-        if forged_tower is None:
+        if moved_on:
+            text = "You move on without stopping."
+        elif forged_tower is None:
             text = f"You rest and recover {heal_amount} lives."
         else:
             text = f"{TOWER_TYPES[forged_tower].display_name} forged: it is now placed at level 2, for free."
