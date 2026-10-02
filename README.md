@@ -389,6 +389,8 @@ menu holds more than nine, it wraps into two rows.
 - **Barricade** -- a wall built on the path. Ground enemies that reach it stop and batter it until it
   breaks (no refund), taking a little thorns damage while they do; bosses smash it far faster and
   flyers pass over. Upgrading raises its hit points and fully repairs it. Unlocks after 12 floors.
+  From Act 2 on, every run wave brings **Sappers** -- demolition troops that batter a Barricade five
+  times as hard -- so a wall alone won't hold a deep run.
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.

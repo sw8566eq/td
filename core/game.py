@@ -59,10 +59,9 @@ _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
-# A Barricade's damage taken per second from each enemy battering it
-# (bosses hit far harder) -- see Game._hold_enemies_at_barricades.
+# A Barricade's damage taken per second from each enemy battering it, times
+# that enemy's own Enemy.BREACH_MULTIPLIER -- see _hold_enemies_at_barricades.
 BARRICADE_BREACH_DPS = 2.5
-BARRICADE_BOSS_BREACH_MULTIPLIER = 6.0
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -780,13 +779,18 @@ class Game:
         itself), so a resumed floor keeps the scaled waves without
         re-deriving them."""
         level = LEVELS[node.level_id]
+        wave_specs = level.wave_specs
         affix = self._elite_affix(run, node)
-        if affix is None or affix.count_multiplier == 1.0:
+        if affix is not None and affix.count_multiplier != 1.0:
+            boss_species = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.IS_BOSS)
+            wave_specs = elite_affixes.scale_wave_counts(wave_specs, affix.count_multiplier, boss_species)
+        # Sappers join from Act 2 on -- the answer to a Barricade-heavy defense.
+        sappers = run_escalation.sapper_count_for_depth(run.depth_of(node.row))
+        if sappers:
+            wave_specs = run_escalation.add_species(wave_specs, "sapper", sappers)
+        if wave_specs is level.wave_specs:
             return level
-        boss_species = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.IS_BOSS)
-        return dataclasses.replace(
-            level, wave_specs=elite_affixes.scale_wave_counts(level.wave_specs, affix.count_multiplier, boss_species),
-        )
+        return dataclasses.replace(level, wave_specs=wave_specs)
 
     def _run_rng(self, run, stream, key):
         # A node's own routing rng, that node's own shop offer, an Event's
@@ -2675,8 +2679,7 @@ class Game:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:
                     enemy.held = True
                     enemy.held_damage_multiplier = ambush
-                    multiplier = BARRICADE_BOSS_BREACH_MULTIPLIER if enemy.IS_BOSS else 1.0
-                    barricade.hp -= BARRICADE_BREACH_DPS * multiplier * dt
+                    barricade.hp -= BARRICADE_BREACH_DPS * enemy.BREACH_MULTIPLIER * dt
                     enemy.take_damage(barricade.thorns_dps * dt)
                     break
         for barricade in barricades:

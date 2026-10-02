@@ -264,3 +264,32 @@ def apply_boss_multiplier(escalation: FloorEscalation) -> FloorEscalation:
         enemy_gold_multiplier=escalation.enemy_gold_multiplier * BOSS_GOLD_MULTIPLIER,
         starting_gold_multiplier=escalation.starting_gold_multiplier,
     )
+
+
+# Sappers (entities.enemy.SapperEnemy) join every run wave from this map
+# depth on (Act 2's first row), one more every SAPPER_DEPTH_STEP rows.
+SAPPER_MIN_DEPTH = 6
+SAPPER_DEPTH_STEP = 4
+
+
+def sapper_count_for_depth(depth: int) -> int:
+    """How many Sappers each wave of a run floor at `depth` gains -- 0 before
+    SAPPER_MIN_DEPTH."""
+    if depth < SAPPER_MIN_DEPTH:
+        return 0
+    return 1 + (depth - SAPPER_MIN_DEPTH) // SAPPER_DEPTH_STEP
+
+
+def add_species(
+    wave_specs: list[dict[object, dict[str, int]]], species: str, count: int,
+) -> list[dict[object, dict[str, int]]]:
+    """A new wave_specs list with `count` more `species` in every wave, added
+    to each wave's first spawn cell (never mutating the authored specs)."""
+    result = []
+    for wave in wave_specs:
+        new_wave = {cell: dict(composition) for cell, composition in wave.items()}
+        if new_wave:
+            first = next(iter(new_wave))
+            new_wave[first][species] = new_wave[first].get(species, 0) + count
+        result.append(new_wave)
+    return result
