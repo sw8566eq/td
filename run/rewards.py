@@ -98,10 +98,8 @@ def build_combat_reward(
     forged_tower_choices = tuple(name for name in tower_choices if rng.random() < forged_chance)
     forgeable = [name for name in run.unlocked_towers if name not in run.forged_towers]
     forge_choices = sample_up_to(rng, forgeable, tower_count - len(tower_choices)) if tower_count > 0 else []
-    # Drawn after everything above, for the same reason -- and, like tower
-    # cards, deeper fights sometimes offer a spell already upgraded.
-    spell_choices = [spells.upgraded(key) if rng.random() < forged_chance else key
-                     for key in spells.spell_offer(rng)]
+    # Drawn after everything above, for the same reason.
+    spell_choices = spells.spell_offer(rng)
     return CombatReward(
         tuple(tower_choices), relic, potion,
         forged_tower_choices=forged_tower_choices, forge_choices=tuple(forge_choices),

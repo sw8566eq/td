@@ -96,7 +96,7 @@ def test_rest_is_never_a_softlock_when_neither_rest_nor_smith_is_possible(game):
                               forged_towers=list(STARTER_TOWERS), lives=5)
     game._enter_node("1-0")
     game.render()
-    game._handle_rest_click(game.rest_option_rects[3].center)  # Move on
+    game._handle_rest_click(game.rest_option_rects[2].center)  # Move on
     assert game.rest_phase == "resolved" and game.rest_moved_on
     game.render()
     game._handle_keydown(pygame.K_SPACE)

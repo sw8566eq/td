@@ -144,11 +144,6 @@ Blizzard, Expose, Plague, Execute, Focus Fire, Bounty (double kill gold), Empowe
 Requisition (your next tower is free), Patch the Gate (+1 life), and the draw/energy cards Insight and
 Surge. Cards marked **Exhaust** are used up for the rest of that fight. Rarer cards show up less often.
 
-Cards can be **upgraded** (`Zap+`, shown with a green border): a Rest site's new **Study** option
-upgrades one card of your choice for the rest of the run, and deeper fights sometimes offer a spell
-already upgraded. Upgrades raise a card's numbers (damage, duration, draw, energy...) and make a few
-cheaper (Execute+, Requisition+).
-
 ## Ascension
 
 Defeating a run's final (Act 3) boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks

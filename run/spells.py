@@ -12,16 +12,10 @@ Same registry shape as potions.py: `SPELLS` is a `{key: Spell}` dict and
 each entry carries its own `cast` function, so adding a spell is one
 function plus one registry line -- Game.play_card never branches on which
 spell it is. A `cast` function receives the live Game (typed Any here,
-since this module stays pygame-free and strictly typed) and the card's
-level, and only touches board-level state: enemies, towers, economy, the
-combat deck and the fight-scoped spell state Game owns (spell_fire_rate_
-timer/multiplier, spell_damage_timer/bonus, bounty_timer,
-free_tower_charges).
-
-Upgrades (Slay the Spire's "+" cards): a deck card is a SPELLS key, or that
-key plus UPGRADE_SUFFIX ("zap+"). Every spell number is a (base, upgraded)
-pair, so a card's level just indexes it -- see card_level/card_cost/
-card_description. A Rest site's Study upgrades one card.
+since this module stays pygame-free and strictly typed) and only touches
+board-level state: enemies, towers, economy, the combat deck and the
+fight-scoped spell timers Game owns (spell_fire_rate_timer,
+spell_damage_timer, bounty_timer, free_tower_charges).
 
 Nothing about a CombatDeck is ever saved: Continue always restarts a fight
 from its beginning, and the shuffle is re-derived from Game._run_rng keyed
@@ -46,50 +40,42 @@ STARTER_DECK = ("zap", "zap", "zap", "rally", "rally", "prospect", "shove")
 # How many spell cards a post-combat reward offers to pick from.
 REWARD_SPELL_COUNT = 3
 
-# Every spell number is a (base, upgraded) pair, indexed by a card's level
-# (0, or 1 for an upgraded "+" card -- see card_level).
 ZAP_TARGETS = 3
-ZAP_HP_FRACTION = (0.22, 0.30)
-ZAP_BOSS_HP_FRACTION = (0.06, 0.08)
-RALLY_FIRE_RATE_MULTIPLIER = (1.3, 1.4)
-RALLY_DURATION = (8.0, 10.0)
-PROSPECT_BASE_GOLD = (25, 40)
-PROSPECT_GOLD_PER_DEPTH = (6, 8)
-SHOVE_DISTANCE = (70.0, 110.0)
-CHAIN_LIGHTNING_HP_FRACTION = (0.15, 0.22)
-CHAIN_LIGHTNING_BOSS_HP_FRACTION = (0.04, 0.06)
-BLIZZARD_SLOW_FACTOR = (0.5, 0.4)
-BLIZZARD_DURATION = (5.0, 7.0)
-EXPOSE_MULTIPLIER = (1.3, 1.45)
-EXPOSE_DURATION = (6.0, 8.0)
-PLAGUE_HP_FRACTION_PER_TICK = (0.03, 0.04)
-PLAGUE_BOSS_HP_FRACTION_PER_TICK = (0.008, 0.011)
-PLAGUE_DURATION = (5.0, 6.0)
+ZAP_HP_FRACTION = 0.22
+ZAP_BOSS_HP_FRACTION = 0.06
+RALLY_FIRE_RATE_MULTIPLIER = 1.3
+RALLY_DURATION = 8.0
+PROSPECT_BASE_GOLD = 25
+PROSPECT_GOLD_PER_DEPTH = 6
+SHOVE_DISTANCE = 70.0
+CHAIN_LIGHTNING_HP_FRACTION = 0.15
+CHAIN_LIGHTNING_BOSS_HP_FRACTION = 0.04
+BLIZZARD_SLOW_FACTOR = 0.5
+BLIZZARD_DURATION = 5.0
+EXPOSE_MULTIPLIER = 1.3
+EXPOSE_DURATION = 6.0
+PLAGUE_HP_FRACTION_PER_TICK = 0.03
+PLAGUE_BOSS_HP_FRACTION_PER_TICK = 0.008
+PLAGUE_DURATION = 5.0
 BOUNTY_GOLD_MULTIPLIER = 2
-BOUNTY_DURATION = (10.0, 15.0)
-INSIGHT_DRAW = (2, 3)
-SURGE_ENERGY = (2, 3)
-PATCH_GATE_LIVES = (1, 2)
-EXECUTE_HP_FRACTION = (0.25, 0.35)
-EMPOWER_DAMAGE_BONUS = (0.4, 0.6)
-EMPOWER_DURATION = (6.0, 8.0)
-FOCUS_FIRE_HP_FRACTION = (0.35, 0.50)
-FOCUS_FIRE_BOSS_HP_FRACTION = (0.10, 0.14)
-
-# An upgraded card's key is its base key plus this suffix ("zap+").
-UPGRADE_SUFFIX = "+"
+BOUNTY_DURATION = 10.0
+INSIGHT_DRAW = 2
+SURGE_ENERGY = 2
+PATCH_GATE_LIVES = 1
+EXECUTE_HP_FRACTION = 0.25
+EMPOWER_DAMAGE_BONUS = 0.4
+EMPOWER_DURATION = 6.0
+FOCUS_FIRE_HP_FRACTION = 0.35
+FOCUS_FIRE_BOSS_HP_FRACTION = 0.10
 
 
 @dataclass(frozen=True)
 class Spell:
     key: str
     display_name: str
-    # Energy cost per level -- (base, upgraded); most upgrades keep the cost.
-    costs: tuple[int, int]
-    # The card text for a level -- the same numbers its cast reads.
-    describe: Callable[[int], str]
-    # cast(game, level) -- see this module's docstring.
-    cast: Callable[[Any, int], None]
+    cost: int
+    description: str
+    cast: Callable[[Any], None]
     # Only affects enemies on the field -- Game.play_card refuses it (and
     # keeps the card in hand) while there are none, rather than wasting it.
     needs_enemies: bool = True
@@ -102,102 +88,91 @@ class Spell:
     # only a flag for a future card that should stay starter-only).
     offerable: bool = True
 
-    @property
-    def cost(self) -> int:
-        return self.costs[0]
 
-    @property
-    def description(self) -> str:
-        return self.describe(0)
+def _boss_scaled(enemy: Any, fraction: float, boss_fraction: float) -> float:
+    return float(enemy.max_hp * (boss_fraction if enemy.IS_BOSS else fraction))
 
 
-def _boss_scaled(enemy: Any, fraction: tuple[float, float], boss_fraction: tuple[float, float],
-                 level: int) -> float:
-    return float(enemy.max_hp * (boss_fraction[level] if enemy.IS_BOSS else fraction[level]))
-
-
-def _zap(game: Any, level: int) -> None:
+def _zap(game: Any) -> None:
     leaders = sorted(game.enemies, key=lambda enemy: enemy.distance_traveled, reverse=True)
     for enemy in leaders[:ZAP_TARGETS]:
-        enemy.take_damage(_boss_scaled(enemy, ZAP_HP_FRACTION, ZAP_BOSS_HP_FRACTION, level))
+        enemy.take_damage(_boss_scaled(enemy, ZAP_HP_FRACTION, ZAP_BOSS_HP_FRACTION))
 
 
-def _rally(game: Any, level: int) -> None:
-    game.spell_fire_rate_timer = max(game.spell_fire_rate_timer, RALLY_DURATION[level])
-    game.spell_fire_rate_multiplier = max(game.spell_fire_rate_multiplier, RALLY_FIRE_RATE_MULTIPLIER[level])
+def _rally(game: Any) -> None:
+    game.spell_fire_rate_timer = max(game.spell_fire_rate_timer, RALLY_DURATION)
 
 
-def prospect_gold(depth: int, level: int = 0) -> int:
+def prospect_gold(depth: int) -> int:
     """Battle gold a Prospect grants at run depth `depth` -- grows with the
     run the same way every floor's own gold economy does."""
-    return PROSPECT_BASE_GOLD[level] + PROSPECT_GOLD_PER_DEPTH[level] * depth
+    return PROSPECT_BASE_GOLD + PROSPECT_GOLD_PER_DEPTH * depth
 
 
-def _prospect(game: Any, level: int) -> None:
+def _prospect(game: Any) -> None:
     depth = game.active_run.depth if game.active_run is not None else 0
-    game.economy.add_gold(prospect_gold(depth, level))
+    game.economy.add_gold(prospect_gold(depth))
 
 
-def _shove(game: Any, level: int) -> None:
+def _shove(game: Any) -> None:
     for enemy in game.enemies:
-        enemy.apply_knockback(SHOVE_DISTANCE[level])
+        enemy.apply_knockback(SHOVE_DISTANCE)
 
 
-def _chain_lightning(game: Any, level: int) -> None:
+def _chain_lightning(game: Any) -> None:
     for enemy in game.enemies:
-        enemy.take_damage(_boss_scaled(enemy, CHAIN_LIGHTNING_HP_FRACTION, CHAIN_LIGHTNING_BOSS_HP_FRACTION, level))
+        enemy.take_damage(_boss_scaled(enemy, CHAIN_LIGHTNING_HP_FRACTION, CHAIN_LIGHTNING_BOSS_HP_FRACTION))
 
 
-def _blizzard(game: Any, level: int) -> None:
+def _blizzard(game: Any) -> None:
     for enemy in game.enemies:
-        enemy.apply_slow(BLIZZARD_SLOW_FACTOR[level], BLIZZARD_DURATION[level])
+        enemy.apply_slow(BLIZZARD_SLOW_FACTOR, BLIZZARD_DURATION)
 
 
-def _expose(game: Any, level: int) -> None:
+def _expose(game: Any) -> None:
     for enemy in game.enemies:
-        enemy.apply_mark(EXPOSE_MULTIPLIER[level], EXPOSE_DURATION[level])
+        enemy.apply_mark(EXPOSE_MULTIPLIER, EXPOSE_DURATION)
 
 
-def _plague(game: Any, level: int) -> None:
+def _plague(game: Any) -> None:
     for enemy in game.enemies:
-        tick = _boss_scaled(enemy, PLAGUE_HP_FRACTION_PER_TICK, PLAGUE_BOSS_HP_FRACTION_PER_TICK, level)
-        enemy.apply_poison(tick, 1.0, PLAGUE_DURATION[level])
+        tick = _boss_scaled(enemy, PLAGUE_HP_FRACTION_PER_TICK, PLAGUE_BOSS_HP_FRACTION_PER_TICK)
+        enemy.apply_poison(tick, 1.0, PLAGUE_DURATION)
 
 
-def _bounty(game: Any, level: int) -> None:
-    game.bounty_timer = max(game.bounty_timer, BOUNTY_DURATION[level])
+def _bounty(game: Any) -> None:
+    game.bounty_timer = max(game.bounty_timer, BOUNTY_DURATION)
 
 
-def _insight(game: Any, level: int) -> None:
-    game.combat_deck.draw(INSIGHT_DRAW[level])
+def _insight(game: Any) -> None:
+    game.combat_deck.draw(INSIGHT_DRAW)
 
 
-def _surge(game: Any, level: int) -> None:
-    game.combat_deck.energy += SURGE_ENERGY[level]
+def _surge(game: Any) -> None:
+    game.combat_deck.energy += SURGE_ENERGY
 
 
-def _patch_gate(game: Any, level: int) -> None:
-    game.economy.lives += PATCH_GATE_LIVES[level]
+def _patch_gate(game: Any) -> None:
+    game.economy.lives += PATCH_GATE_LIVES
 
 
-def _execute(game: Any, level: int) -> None:
+def _execute(game: Any) -> None:
     for enemy in game.enemies:
-        if not enemy.IS_BOSS and enemy.hp <= enemy.max_hp * EXECUTE_HP_FRACTION[level]:
+        if not enemy.IS_BOSS and enemy.hp <= enemy.max_hp * EXECUTE_HP_FRACTION:
             enemy.take_damage(enemy.hp)
 
 
-def _empower(game: Any, level: int) -> None:
-    game.spell_damage_timer = max(game.spell_damage_timer, EMPOWER_DURATION[level])
-    game.spell_damage_bonus = max(game.spell_damage_bonus, EMPOWER_DAMAGE_BONUS[level])
+def _empower(game: Any) -> None:
+    game.spell_damage_timer = max(game.spell_damage_timer, EMPOWER_DURATION)
 
 
-def _requisition(game: Any, level: int) -> None:
+def _requisition(game: Any) -> None:
     game.free_tower_charges += 1
 
 
-def _focus_fire(game: Any, level: int) -> None:
+def _focus_fire(game: Any) -> None:
     target = max(game.enemies, key=lambda enemy: enemy.hp)
-    target.take_damage(_boss_scaled(target, FOCUS_FIRE_HP_FRACTION, FOCUS_FIRE_BOSS_HP_FRACTION, level))
+    target.take_damage(_boss_scaled(target, FOCUS_FIRE_HP_FRACTION, FOCUS_FIRE_BOSS_HP_FRACTION))
 
 
 def _pct(fraction: float) -> int:
@@ -206,89 +181,87 @@ def _pct(fraction: float) -> int:
 
 SPELLS = {
     "zap": Spell(
-        "zap", "Zap", (1, 1),
-        lambda lv: f"Hit the {ZAP_TARGETS} enemies furthest along for {_pct(ZAP_HP_FRACTION[lv])}% of their "
-                   f"max HP ({_pct(ZAP_BOSS_HP_FRACTION[lv])}% vs bosses).",
+        "zap", "Zap", 1,
+        f"Hit the {ZAP_TARGETS} enemies furthest along for {_pct(ZAP_HP_FRACTION)}% of their max HP "
+        f"({_pct(ZAP_BOSS_HP_FRACTION)}% vs bosses).",
         _zap,
     ),
     "rally": Spell(
-        "rally", "Rally", (1, 1),
-        lambda lv: f"Every tower fires {_pct(RALLY_FIRE_RATE_MULTIPLIER[lv] - 1)}% faster for "
-                   f"{RALLY_DURATION[lv]:g}s.",
+        "rally", "Rally", 1,
+        f"Every tower fires {_pct(RALLY_FIRE_RATE_MULTIPLIER - 1)}% faster for {RALLY_DURATION:g}s.",
         _rally, needs_enemies=False,
     ),
     "prospect": Spell(
-        "prospect", "Prospect", (1, 1),
-        lambda lv: f"Gain {PROSPECT_BASE_GOLD[lv]} battle gold, +{PROSPECT_GOLD_PER_DEPTH[lv]} per floor deep.",
+        "prospect", "Prospect", 1,
+        f"Gain {PROSPECT_BASE_GOLD} battle gold, +{PROSPECT_GOLD_PER_DEPTH} per floor deep.",
         _prospect, needs_enemies=False,
     ),
     "shove": Spell(
-        "shove", "Shove", (1, 1),
-        lambda lv: f"Push every enemy {SHOVE_DISTANCE[lv]:g}px back along its route.",
+        "shove", "Shove", 1,
+        f"Push every enemy {SHOVE_DISTANCE:g}px back along its route.",
         _shove,
     ),
     "chain_lightning": Spell(
-        "chain_lightning", "Chain Lightning", (2, 2),
-        lambda lv: f"Hit every enemy for {_pct(CHAIN_LIGHTNING_HP_FRACTION[lv])}% of its max HP "
-                   f"({_pct(CHAIN_LIGHTNING_BOSS_HP_FRACTION[lv])}% vs bosses).",
+        "chain_lightning", "Chain Lightning", 2,
+        f"Hit every enemy for {_pct(CHAIN_LIGHTNING_HP_FRACTION)}% of its max HP "
+        f"({_pct(CHAIN_LIGHTNING_BOSS_HP_FRACTION)}% vs bosses).",
         _chain_lightning, rarity="uncommon",
     ),
     "blizzard": Spell(
-        "blizzard", "Blizzard", (2, 2),
-        lambda lv: f"Slow every enemy to {_pct(BLIZZARD_SLOW_FACTOR[lv])}% speed for {BLIZZARD_DURATION[lv]:g}s.",
+        "blizzard", "Blizzard", 2,
+        f"Slow every enemy to {_pct(BLIZZARD_SLOW_FACTOR)}% speed for {BLIZZARD_DURATION:g}s.",
         _blizzard,
     ),
     "expose": Spell(
-        "expose", "Expose", (1, 1),
-        lambda lv: f"Mark every enemy: +{_pct(EXPOSE_MULTIPLIER[lv] - 1)}% damage taken for "
-                   f"{EXPOSE_DURATION[lv]:g}s.",
+        "expose", "Expose", 1,
+        f"Mark every enemy: +{_pct(EXPOSE_MULTIPLIER - 1)}% damage taken for {EXPOSE_DURATION:g}s.",
         _expose,
     ),
     "plague": Spell(
-        "plague", "Plague", (1, 1),
-        lambda lv: f"Poison every enemy for {_pct(PLAGUE_HP_FRACTION_PER_TICK[lv])}% of its max HP per second "
-                   f"for {PLAGUE_DURATION[lv]:g}s.",
+        "plague", "Plague", 1,
+        f"Poison every enemy for {_pct(PLAGUE_HP_FRACTION_PER_TICK)}% of its max HP per second "
+        f"for {PLAGUE_DURATION:g}s.",
         _plague,
     ),
     "bounty": Spell(
-        "bounty", "Bounty", (1, 1),
-        lambda lv: f"Enemies killed in the next {BOUNTY_DURATION[lv]:g}s drop {BOUNTY_GOLD_MULTIPLIER}x gold.",
+        "bounty", "Bounty", 1,
+        f"Enemies killed in the next {BOUNTY_DURATION:g}s drop {BOUNTY_GOLD_MULTIPLIER}x gold.",
         _bounty, needs_enemies=False, rarity="uncommon",
     ),
     "insight": Spell(
-        "insight", "Insight", (0, 0),
-        lambda lv: f"Draw {INSIGHT_DRAW[lv]} cards. Exhaust.",
+        "insight", "Insight", 0,
+        f"Draw {INSIGHT_DRAW} cards. Exhaust.",
         _insight, needs_enemies=False, exhaust=True, rarity="uncommon",
     ),
     "surge": Spell(
-        "surge", "Surge", (0, 0),
-        lambda lv: f"Gain {SURGE_ENERGY[lv]} energy. Exhaust.",
+        "surge", "Surge", 0,
+        f"Gain {SURGE_ENERGY} energy. Exhaust.",
         _surge, needs_enemies=False, exhaust=True, rarity="rare",
     ),
     "patch_gate": Spell(
-        "patch_gate", "Patch the Gate", (2, 2),
-        lambda lv: f"Restore {PATCH_GATE_LIVES[lv]} {'life' if PATCH_GATE_LIVES[lv] == 1 else 'lives'}. Exhaust.",
+        "patch_gate", "Patch the Gate", 2,
+        f"Restore {PATCH_GATE_LIVES} life. Exhaust.",
         _patch_gate, needs_enemies=False, exhaust=True, rarity="uncommon",
     ),
     "execute": Spell(
-        "execute", "Execute", (2, 1),
-        lambda lv: f"Finish off every non-boss enemy below {_pct(EXECUTE_HP_FRACTION[lv])}% HP.",
+        "execute", "Execute", 2,
+        f"Finish off every non-boss enemy below {_pct(EXECUTE_HP_FRACTION)}% HP.",
         _execute, rarity="uncommon",
     ),
     "empower": Spell(
-        "empower", "Empower", (2, 2),
-        lambda lv: f"Every tower deals +{_pct(EMPOWER_DAMAGE_BONUS[lv])}% damage for {EMPOWER_DURATION[lv]:g}s.",
+        "empower", "Empower", 2,
+        f"Every tower deals +{_pct(EMPOWER_DAMAGE_BONUS)}% damage for {EMPOWER_DURATION:g}s.",
         _empower, needs_enemies=False, rarity="rare",
     ),
     "requisition": Spell(
-        "requisition", "Requisition", (1, 0),
-        lambda lv: "Your next tower placed this fight is free. Exhaust.",
+        "requisition", "Requisition", 1,
+        "Your next tower placed this fight is free. Exhaust.",
         _requisition, needs_enemies=False, exhaust=True, rarity="rare",
     ),
     "focus_fire": Spell(
-        "focus_fire", "Focus Fire", (1, 1),
-        lambda lv: f"Hit the toughest enemy for {_pct(FOCUS_FIRE_HP_FRACTION[lv])}% of its max HP "
-                   f"({_pct(FOCUS_FIRE_BOSS_HP_FRACTION[lv])}% vs bosses).",
+        "focus_fire", "Focus Fire", 1,
+        f"Hit the toughest enemy for {_pct(FOCUS_FIRE_HP_FRACTION)}% of its max HP "
+        f"({_pct(FOCUS_FIRE_BOSS_HP_FRACTION)}% vs bosses).",
         _focus_fire,
     ),
 }
@@ -298,54 +271,9 @@ SPELL_ORDER = list(SPELLS)
 REWARD_RARITY_WEIGHTS = {"common": 6, "uncommon": 3, "rare": 1}
 
 
-def base_key(card: str) -> str:
-    """The SPELLS key behind a deck card ("zap+" -> "zap")."""
-    return card.removesuffix(UPGRADE_SUFFIX)
-
-
-def card_level(card: str) -> int:
-    """0 for a base card, 1 for an upgraded one."""
-    return 1 if card.endswith(UPGRADE_SUFFIX) else 0
-
-
-def upgraded(card: str) -> str:
-    """The upgraded version of `card` (already-upgraded cards stay as they are)."""
-    return base_key(card) + UPGRADE_SUFFIX
-
-
-def is_valid_card(card: str) -> bool:
-    """Whether `card` is a registered spell, upgraded or not -- what a save's
-    deck is validated against."""
-    return base_key(card) in SPELLS and card in (base_key(card), upgraded(card))
-
-
-def spell_of(card: str) -> Spell:
-    return SPELLS[base_key(card)]
-
-
-def card_cost(card: str) -> int:
-    return spell_of(card).costs[card_level(card)]
-
-
-def card_name(card: str) -> str:
-    """"Zap", or "Zap+" for an upgraded card."""
-    return spell_of(card).display_name + (UPGRADE_SUFFIX if card_level(card) else "")
-
-
-def card_description(card: str) -> str:
-    return spell_of(card).describe(card_level(card))
-
-
-def initials(card: str) -> str:
-    """A card's short label -- the first letter of each word, plus "+" when upgraded."""
-    letters = "".join(word[0] for word in spell_of(card).display_name.split())
-    return letters + (UPGRADE_SUFFIX if card_level(card) else "")
-
-
-def upgradeable_cards(deck: list[str]) -> list[str]:
-    """Each distinct not-yet-upgraded card in `deck`, in registry order --
-    what a Rest site's Study can pick from."""
-    return [key for key in SPELL_ORDER if key in deck]
+def initials(key: str) -> str:
+    """A spell's short card label -- the first letter of each word."""
+    return "".join(word[0] for word in SPELLS[key].display_name.split())
 
 
 def spell_offer(rng: random.Random, count: int = REWARD_SPELL_COUNT) -> list[str]:
@@ -413,13 +341,14 @@ class CombatDeck:
         self.draw(self.hand_size)
 
     def can_play(self, index: int) -> bool:
-        return 0 <= index < len(self.hand) and card_cost(self.hand[index]) <= self.energy
+        return 0 <= index < len(self.hand) and SPELLS[self.hand[index]].cost <= self.energy
 
     def play(self, index: int) -> str:
         """Remove the card at `index` from the hand, pay its energy and
         move it to the discard (or exhaust) pile. The caller casts it --
         after this, so a draw effect never re-draws the card just played."""
-        card = self.hand.pop(index)
-        self.energy -= card_cost(card)
-        (self.exhaust_pile if spell_of(card).exhaust else self.discard_pile).append(card)
-        return card
+        key = self.hand.pop(index)
+        spell = SPELLS[key]
+        self.energy -= spell.cost
+        (self.exhaust_pile if spell.exhaust else self.discard_pile).append(key)
+        return key

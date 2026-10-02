@@ -714,13 +714,8 @@ class InputHandler:
             game.state = game.deck_return_state
             return
         index = ui.get_clicked_draft_choice(pos, game.deck_entry_rects)
-        if index is None:
-            return
-        card = game.deck_view_entries()[index][0]
-        if game.deck_view_mode == "remove":
-            game._remove_card(card)
-        elif game.deck_view_mode == "upgrade":
-            game._upgrade_card(card)
+        if index is not None and game.deck_view_mode == "remove":
+            game._remove_card(ui.deck_entries(game.active_run.deck)[index][0])
 
     def _handle_reward_click(self, pos):
         """A click on the post-combat reward screen -- Continue/Skip (back

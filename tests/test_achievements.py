@@ -95,7 +95,6 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "relics_collected", "daily_runs_played", "events_resolved",
         "siphon_built", "overload_cannon_built",
         "potions_used",  # Game.use_potion
-        "spells_cast", "spells_upgraded",  # Game.play_card / Game._upgrade_card
         "acts_cleared",  # Game._advance_run_floor, on an earlier act's boss
         "towers_forged",  # every forging path: Rest Smith, reward forge/pre-forged cards, Events
         "ascension_reached", "curses_held_at_once",  # max-only, via Game._record_achievement_max
