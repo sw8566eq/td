@@ -23,7 +23,7 @@ from entities.enemy import BossEnemy, GruntEnemy
 from persistence import save_state
 from presentation import ui
 from progression import achievements
-from run import spells
+from run import shop, spells
 from run.spells import (
     HAND_LIMIT,
     HAND_SIZE,
@@ -463,3 +463,130 @@ def test_a_save_with_an_unknown_spell_is_not_resumable(game):
     game.active_run.deck.append("not_a_spell")
     game.save_run()
     assert save_state.load_run(game.save_path) is None
+
+
+# --- The Shop's spell row, card removal, and the deck screen ---
+
+
+def _shop(game, currency=100):
+    from test_run import _enter_run_shop
+
+    run = _enter_run_shop(game)
+    run.shop_currency = currency
+    assert game.state == GameState.DRAFT
+    return run
+
+
+def _spell_indices(game):
+    return [i for i, item in enumerate(game.draft_choices) if item.kind == "spell"]
+
+
+def test_the_shop_sells_spells_into_the_deck(game):
+    run = _shop(game)
+    indices = _spell_indices(game)
+    assert len(indices) == spells.REWARD_SPELL_COUNT
+    key = game.draft_choices[indices[0]].key
+
+    game._handle_draft_click(game.draft_choice_rects[indices[0]].center)
+
+    assert run.deck == list(STARTER_DECK) + [key]
+    assert run.shop_currency == 100 - shop.SPELL_PRICE
+
+
+def test_shop_spell_row_and_service_buttons_do_not_overlap(game):
+    _shop(game)
+    buttons = [game.shop_potion_rect, game.shop_exit_rect, game.shop_remove_card_rect, game.shop_remove_curse_rect]
+    for rect in game.draft_choice_rects + buttons:
+        assert 0 <= rect.left and rect.right <= ui.settings.SCREEN_WIDTH
+        assert rect.bottom <= ui.settings.SCREEN_HEIGHT
+    everything = game.draft_choice_rects + buttons
+    for i, a in enumerate(everything):
+        for b in everything[i + 1:]:
+            assert not a.colliderect(b)
+    game.render()
+
+
+def test_remove_a_card_opens_the_picker_and_removes_one_copy(game):
+    run = _shop(game)
+    price = game._card_removal_price()
+    game._handle_draft_click(game.shop_remove_card_rect.center)
+    assert game.state == GameState.DECK and game.deck_view_mode == "remove"
+    game.render()
+
+    zap_index = [key for key, _count in ui.deck_entries(run.deck)].index("zap")
+    game.input_handler._handle_deck_click(game.deck_entry_rects[zap_index].center)
+
+    assert game.state == GameState.DRAFT
+    assert run.deck.count("zap") == STARTER_DECK.count("zap") - 1
+    assert run.shop_currency == 100 - price
+    assert run.cards_removed == 1
+    assert not game._can_remove_card()  # once per visit
+    game._handle_draft_click(game.shop_remove_card_rect.center)
+    assert game.state == GameState.DRAFT
+    game.render()
+
+
+def test_card_removal_gets_pricier_each_time():
+    assert shop.card_removal_price(1) > shop.card_removal_price(0)
+
+
+def test_backing_out_of_the_picker_costs_nothing(game):
+    run = _shop(game)
+    game._open_card_removal()
+    game.input_handler._handle_deck_click(game.deck_back_rect.center)
+    assert game.state == GameState.DRAFT
+    assert run.shop_currency == 100 and run.deck == list(STARTER_DECK)
+    game._open_card_removal()
+    game._handle_keydown(pygame.K_ESCAPE)
+    assert game.state == GameState.DRAFT
+
+
+def test_card_removal_needs_currency_and_a_card(game):
+    run = _shop(game, currency=0)
+    game._open_card_removal()
+    assert game.state == GameState.DRAFT
+    run.shop_currency = 100
+    run.deck = []
+    game._open_card_removal()
+    assert game.state == GameState.DRAFT
+    game._remove_card("zap")
+    assert run.cards_removed == 0
+
+
+def test_view_mode_clicks_never_remove(game):
+    run = start_first_floor(game, seed=1)
+    game._enter_map()
+    game._handle_keydown(pygame.K_d)
+    assert game.state == GameState.DECK and game.deck_view_mode == "view"
+    game.input_handler._handle_deck_click(game.deck_entry_rects[0].center)
+    assert run.deck == list(STARTER_DECK)
+    try:
+        mock_mouse_pos(game.deck_entry_rects[0].center)
+        game.render()
+    finally:
+        clear_mouse_mock()
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.MAP
+
+
+def test_an_empty_deck_renders(game):
+    run = start_first_floor(game, seed=1)
+    run.deck = []
+    game.open_deck_view()
+    game.render()
+
+
+def test_cards_removed_survives_a_save_and_resume(game):
+    run = start_first_floor(game, seed=1)
+    run.cards_removed = 2
+    game.save_run()
+    game.resume_saved_run(save_state.load_run(game.save_path))
+    assert game.active_run.cards_removed == 2
+
+
+def test_the_compendium_lists_every_spell():
+    pygame.font.init()
+    rows = ui.compendium_rows(pygame.font.SysFont(None, 22))
+    names = {name for kind, name, _detail in rows if kind == "entry" and name}
+    for spell in SPELLS.values():
+        assert f"{spell.display_name} ({spell.cost})" in names

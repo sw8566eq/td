@@ -118,6 +118,9 @@ class GameState(Enum):
     # returns to HELP, not MENU, same "back to whichever screen this was
     # entered from" precedent KEYBINDS' own Esc (back to SETTINGS) sets.
     RUN_GUIDE = auto()
+    # The run's spell deck (spells.py) -- a read-only view from the map
+    # (D), or the Shop's remove-a-card picker (Game.open_deck_view's mode).
+    DECK = auto()
     # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
     # curated subset of actions (see that module's own docstring for why
     # it's a subset, not every input_handler.py keydown check). Not folded
@@ -307,6 +310,14 @@ class Game:
         # The Shop's potion stand (see _try_buy_shop_potion) -- this visit's
         # one potion, rolled by _enter_shop_node.
         self.shop_potion_rect = ui.build_shop_potion_rect()
+        self.shop_exit_rect = ui.build_shop_exit_button_rect()
+        self.shop_remove_card_rect = ui.build_shop_remove_card_rect()
+        self.shop_card_removed = False
+        # GameState.DECK (open_deck_view) -- what it's for and where it returns.
+        self.deck_view_mode = "view"
+        self.deck_return_state = GameState.MAP
+        self.deck_entry_rects = []
+        self.deck_back_rect = ui.build_deck_back_rect()
         self.shop_potion = None
         self.shop_potion_bought = False
 
@@ -1312,12 +1323,17 @@ class Game:
         self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
         self.shop_potion = potions.random_potion(rng)
         self.shop_potion_bought = False
+        # Spells are drawn last, after the potion, so existing seeds' offers stay put.
+        self.draft_choices += shop.spell_items(rng)
+        self.shop_card_removed = False
         # Skipped only when nothing at all is on offer: no cards, no curse
         # to lift, and no room for the potion stand's potion.
         if not self.draft_choices and not relics.held_curses(run) and not potions.has_free_slot(run):
             self._finish_node(node.id)
             return
-        self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
+        spell_count = sum(1 for item in self.draft_choices if item.kind == "spell")
+        self.draft_choice_rects = (ui.build_draft_choice_rects(len(self.draft_choices) - spell_count)
+                                   + ui.build_spell_reward_rects(spell_count))
         self.shop_purchased_indices = set()
         self.shop_curse_removed = False
         self.state = GameState.DRAFT
@@ -1349,6 +1365,9 @@ class Game:
             run.shop_currency -= price
         if item.kind == "relic":
             self._grant_relic(item.key)
+        elif item.kind == "spell":
+            run.deck.append(item.key)
+            self.audio.play("tower_unlocked_shop")
         else:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
@@ -1373,6 +1392,46 @@ class Game:
         self.active_run.potions.append(self.shop_potion)
         self.shop_potion_bought = True
         self.audio.play("relic_acquired")
+
+    def _card_removal_price(self):
+        return round(shop.card_removal_price(self.active_run.cards_removed) * self._shop_price_multiplier())
+
+    def _can_remove_card(self):
+        """Shared by the Shop's remove-a-card button (enabled look), opening
+        the picker, and _remove_card itself: once per visit, a card to
+        remove, and enough shop currency."""
+        run = self.active_run
+        return (not self.shop_card_removed and bool(run.deck)
+                and shop.can_afford(run.shop_currency, self._card_removal_price(), self.economy.unlimited_gold))
+
+    def _open_card_removal(self):
+        if self._can_remove_card():
+            self.open_deck_view("remove", GameState.DRAFT)
+
+    def _remove_card(self, key):
+        """Remove one copy of `key` from the deck for _card_removal_price(),
+        then return to the Shop -- a silent no-op if not allowed."""
+        run = self.active_run
+        if not self._can_remove_card() or key not in run.deck:
+            return
+        if not self.economy.unlimited_gold:
+            run.shop_currency -= self._card_removal_price()
+        run.deck.remove(key)
+        run.cards_removed += 1
+        self.shop_card_removed = True
+        self.audio.play("tower_sold")
+        self.state = GameState.DRAFT
+
+    def open_deck_view(self, mode="view", return_state=GameState.MAP):
+        """Show the run's deck (GameState.DECK) -- `mode` "view" (read-only)
+        or "remove" (the Shop's picker); Back returns to `return_state`."""
+        self.deck_view_mode = mode
+        self.deck_return_state = return_state
+        self.deck_entry_rects = ui.build_deck_entry_rects(len(ui.deck_entries(self.active_run.deck)))
+        self.state = GameState.DECK
+
+    def _hovered_deck_entry(self):
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.deck_entry_rects)
 
     def _curse_removal_price(self):
         return round(shop.CURSE_REMOVAL_PRICE * self._shop_price_multiplier())

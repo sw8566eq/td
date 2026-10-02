@@ -19,7 +19,7 @@ import random
 from dataclasses import dataclass
 
 from progression import meta_progression
-from run import card_pool, relics
+from run import card_pool, relics, spells
 from run.run_state import RunState
 
 # Fewer of each than the old single-type draft offered (3) -- a shop visit
@@ -44,6 +44,14 @@ CURSE_REMOVAL_PRICE = 12
 # cards are unchanged. Like curse removal it sits outside the card row, so
 # it never escalates with PRICE_ESCALATION.
 POTION_PRICE = 6
+# Spell cards (spells.py) -- a third, cheaper row of offer cards; they do
+# share PRICE_ESCALATION with the towers/relics.
+SPELL_PRICE = 5
+# The Shop's remove-a-card service (Game._remove_card): once per visit,
+# and every card removed this run makes the next removal pricier --
+# Slay the Spire's own escalating removal cost.
+CARD_REMOVAL_BASE_PRICE = 6
+CARD_REMOVAL_PRICE_STEP = 3
 
 # Each purchase within the same shop visit costs 50% more than the last --
 # price_for() applies this against however many items this visit has
@@ -77,7 +85,7 @@ ELITE_INCOME_MULTIPLIER = 1.5
 
 @dataclass(frozen=True)
 class ShopItem:
-    kind: str  # "tower" (a TOWER_TYPES name) or "relic" (a RELICS key)
+    kind: str  # "tower" (a TOWER_TYPES name), "relic" (a RELICS key) or "spell" (a SPELLS key)
     key: str
     base_price: int
 
@@ -112,6 +120,19 @@ def build_offer(rng: random.Random, run: RunState, meta_progression_path: str | 
         [ShopItem("tower", name, TOWER_PRICE) for name in tower_choices]
         + [ShopItem("relic", key, RELIC_PRICE) for key in relic_choices]
     )
+
+
+def spell_items(rng: random.Random) -> list[ShopItem]:
+    """This visit's spell cards -- drawn by Game._enter_shop_node after the
+    potion stand's roll, so every existing seed's towers/relics/potion
+    stay what they always were."""
+    return [ShopItem("spell", key, SPELL_PRICE) for key in spells.spell_offer(rng)]
+
+
+def card_removal_price(cards_removed: int) -> int:
+    """The base price of the next card removal, before the run's shop
+    price multiplier -- grows with every card already removed this run."""
+    return CARD_REMOVAL_BASE_PRICE + CARD_REMOVAL_PRICE_STEP * cards_removed
 
 
 def price_for(item: ShopItem, purchases_this_visit: int, discount_multiplier: float = 1.0) -> int:

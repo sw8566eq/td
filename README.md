@@ -108,6 +108,10 @@ A Shop visit offers a small mix of tower cards and relic cards together; buy as 
 you like, then click Continue. Prices go up a little with every purchase made in that same visit, so
 there's a real choice in what to prioritize, not just "buy everything eventually."
 
+Every Shop also has a row of three **spell cards** for your deck, and a **Remove a card** service
+(once per visit): it opens your deck, and the card you click is gone for good -- a thinner deck draws
+its best cards more often. Each removal costs a little more than the last.
+
 ## Rewards and potions
 
 Every fight you win opens a **Spoils of battle** screen, Slay the Spire style: pick one of up to three
@@ -181,7 +185,8 @@ the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Co
 relic, boss relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
 when one exists) continues a saved in-progress run.
 
-On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
+On the run map, `R` shows the relics you're holding (as it does mid-fight), and `D` shows your spell
+deck. During a run's fight,
 `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
 sidebar), and `A` / `S` / `D` / `F` / `G` cast the spell cards in your hand (or click a card).
 

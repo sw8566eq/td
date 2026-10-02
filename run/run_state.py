@@ -121,6 +121,9 @@ class RunState:
     # The run's spell deck (spells.py) -- card keys, duplicates allowed.
     # Shuffled into a fresh spells.CombatDeck at every fight's load.
     deck: list[str] = field(default_factory=lambda: list(STARTER_DECK))
+    # Cards removed at Shops so far -- each one raises the next removal's
+    # price (shop.card_removal_price).
+    cards_removed: int = 0
     # This run's Ascension level (run/ascension.py), snapshotted at
     # start_new_run and never changed mid-run.
     ascension: int = 0
