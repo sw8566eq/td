@@ -167,3 +167,53 @@ def test_forge_outcome_is_described():
     from presentation import ui
 
     assert ui._describe_event_outcome(EventOption("x", "x", "x"), {"forged": "cannon"})[0].startswith("Forged: ")
+
+
+# --- Events built on potions / boss relics ---
+
+
+def test_potion_cost_needs_a_potion_and_takes_the_oldest():
+    sell = EVENTS["potion_peddler"].options[1]
+    assert not events.can_afford_option(sell, _run())
+    run = _run(potions=["fire_bomb", "frost_flask"])
+    assert events.can_afford_option(sell, run)
+    resolution = events.resolve_event_option(run, sell, random.Random(1))
+    assert resolution["potion_given_up"] == "fire_bomb"
+    assert run.potions == ["frost_flask"] and run.shop_currency == 15
+
+
+def test_fallen_champion_grants_a_boss_relic_and_a_curse(tmp_path):
+    run = _run()
+    resolution = events.resolve_event_option(run, EVENTS["fallen_champion"].options[0], random.Random(4),
+                                             meta_progression_path=str(tmp_path / "m"))
+    assert RELICS[resolution["boss_relic"]].is_boss_relic
+    assert resolution["curse"] in CURSES
+
+
+def test_field_hospital_lifts_a_curse_and_heals():
+    run = _run(shop_currency=10, relics=["rusted_gears"], lives=5)
+    resolution = events.resolve_event_option(run, EVENTS["field_hospital"].options[0], random.Random(1))
+    assert resolution["curse_removed"] == "rusted_gears"
+    assert run.lives == 7 and run.shop_currency == 0
+
+
+def test_resolving_a_boss_relic_event_in_game_plays_the_relic_cue(game):
+    from conftest import spy_on_audio
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["combat", "event"], lives=10)
+    game.active_run.current_node_id = "1-0"
+    game.current_event = EVENTS["fallen_champion"]
+    game.event_options = list(game.current_event.options)
+    played = spy_on_audio(game)
+    game._resolve_event_choice(0)
+    assert "relic_acquired" in played
+    game.state = GameState.EVENT
+    game.render()
+
+
+@pytest.mark.parametrize("resolution", [{"boss_relic": "siege_engine"}, {"potion_given_up": "fire_bomb"}])
+def test_new_event_outcomes_are_described(resolution):
+    from presentation import ui
+
+    assert ui._describe_event_outcome(EventOption("x", "x", "x"), resolution) != ["Nothing else happened."]

@@ -181,3 +181,7 @@ Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower
 `forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
 pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
 unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).
+
+Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
+while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
+`relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).

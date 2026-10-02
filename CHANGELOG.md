@@ -18,6 +18,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- Five more Events: Potion Peddler (trade a potion for a relic or currency), Fallen Champion's Tomb (a
+  boss relic, with a curse), Field Hospital (pay to lift a curse and heal), Abandoned Weapons Cache (a
+  tower, with a curse), and Brewing Contest (a potion and currency for a life).
 - The final boss's endless fight is now a real **score chase**: endless waves survived past the boss
   are tracked (best per run, restart-proof), shown on the Run Over recap, and saved in Run History.
 - Five new achievements: Apprentice Smith / Master Smith (forge 1 / 15 towers), Ascendant / Pinnacle

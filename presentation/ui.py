@@ -950,6 +950,10 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Gained relic: {RELICS[resolution['relic']].display_name}")
     if resolution.get("tower"):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
+    if resolution.get("boss_relic"):
+        lines.append(f"Gained boss relic: {RELICS[resolution['boss_relic']].display_name}")
+    if resolution.get("potion_given_up"):
+        lines.append(f"Gave up potion: {POTIONS[resolution['potion_given_up']].display_name}")
     if resolution.get("extra_relic"):
         lines.append(f"Gained relic: {RELICS[resolution['extra_relic']].display_name}")
     if resolution.get("relic_given_up"):
