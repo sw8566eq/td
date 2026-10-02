@@ -555,6 +555,13 @@ class Relic:
     veterancy_rank_bonus: int = 0
     # Extra fire rate for a tower type at VETERAN_RANK or better.
     veteran_fire_rate_bonus: float = 0.0
+    # Construction relics -- also Relic-only, read straight off RELICS by
+    # Game._apply_construction_relics: a structure's hit points (Tower.
+    # scale_structure_hp), a dead zone's radius (Tower.MIN_RANGE), and fire
+    # rate for a tower whose type has a module fitted.
+    structure_hp_multiplier: float = 1.0
+    dead_zone_multiplier: float = 1.0
+    module_fire_rate_bonus: float = 0.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1087,6 +1094,17 @@ RELICS = {
     "brewmasters_kit": Relic(
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
+    ),
+    # --- Construction relics -- see Relic.structure_hp_multiplier. ---
+    "earthworks": Relic(
+        "earthworks", "Earthworks", "Barricades have 50% more hit points.", structure_hp_multiplier=1.5,
+    ),
+    "forward_observer": Relic(
+        "forward_observer", "Forward Observer", "The Mortar's dead zone is half as wide.", dead_zone_multiplier=0.5,
+    ),
+    "quick_release_mounts": Relic(
+        "quick_release_mounts", "Quick-Release Mounts", "Towers whose type has a module fitted fire 10% faster.",
+        module_fire_rate_bonus=0.10,
     ),
     # --- Placement relics -- see Relic.variety_damage_bonus_per_type. ---
     "combined_arms": Relic(

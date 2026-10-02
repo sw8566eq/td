@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Construction relics**: Earthworks, Forward Observer, Quick-Release Mounts.
 - **Barricade**: a path structure with hit points that holds ground enemies until they break it;
   upgrades repair it. The build menu now wraps into two rows past nine towers.
 - **Mortar** tower: very long range and a big splash, but a minimum-range dead zone (shown as a red ring)
