@@ -101,7 +101,9 @@ def build_offer(rng: random.Random, run: RunState, meta_progression_path: str | 
         rng, run, count=TOWER_OFFER_COUNT, meta_progression_path=meta_progression_path,
     )
     relic_count = RELIC_OFFER_COUNT
-    if meta_progression.has_unlocked_third_relic_slot(resolved_path):
+    # A Daily Run treats the account as fully unlocked (see card_pool.
+    # draft_offer), so it always gets the 3rd relic slot too.
+    if run.is_daily or meta_progression.has_unlocked_third_relic_slot(resolved_path):
         relic_count += 1
     relic_choices = relics.relic_offer(
         rng, run, count=relic_count, meta_progression_path=meta_progression_path,

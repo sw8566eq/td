@@ -85,7 +85,11 @@ and a Random Event's own item grant fold in one further piece of identity on top
 node id alone identifies *which visit*, not *which purchase* or *which option* -- see
 `Game._enter_shop_node`/`_resolve_event_choice`).
 
-A Daily Run also gets `Game._apply_daily_modifiers` (one boss relic without a one-time lives cost,
+A Daily Run ignores the account's meta-progression gating so it really is the same for everyone:
+`Game._run_level_pool(is_daily)` draws from every level, `card_pool.draft_offer`/`relics.relic_offer`
+use the full tower/relic registries when `run.is_daily` (no explicit pool passed), and `shop.build_offer`
+always opens the 3rd relic slot. (Before this, a fresh and a veteran account got different shops,
+rewards and blessing relics for the same Daily seed.) A Daily Run also gets `Game._apply_daily_modifiers` (one boss relic without a one-time lives cost,
 plus one curse, from `_run_rng(run, "daily-mods", "start")`), applied inside `start_new_run`. A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
 `start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
 snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.

@@ -14,6 +14,8 @@ Game's own state machine/input/render tests are in test_game.py; shared
 fixtures and helpers for both are in conftest.py.
 """
 
+import random
+
 import pygame
 import pytest
 from conftest import (
@@ -3593,3 +3595,40 @@ def test_map_relics_key_follows_the_remapped_binding(game):
     assert game.state == GameState.MAP
     game._handle_keydown(pygame.K_t)
     assert game.state == GameState.RELICS
+
+
+def test_daily_run_offers_are_the_same_on_a_fresh_and_a_veteran_account(tmp_path):
+    from conftest import make_game
+
+    from run import rewards
+    from run import shop as shop_module
+
+    def daily_signature(prefix, veteran):
+        g = make_game(tmp_path, prefix=prefix)
+        if veteran:
+            for counter, amount in (("total_floors_cleared", 100), ("runs_played", 30), ("bosses_defeated", 5)):
+                meta_progression.bump(counter, amount, path=g.meta_progression_path)
+        g._start_daily_challenge(seed=20261002)
+        run = g.active_run
+        nodes = [n for row in run.map.rows for n in row]
+        return (
+            [(n.id, n.node_type, n.level_id) for n in nodes],
+            [[(i.kind, i.key) for i in shop_module.build_offer(g._run_rng(run, "draft", n.id), run,
+                                                              meta_progression_path=g.meta_progression_path)]
+             for n in nodes],
+            [rewards.build_combat_reward(g._run_rng(run, "reward", n.id), run, n.node_type == "elite",
+                                         g.meta_progression_path) for n in nodes],
+        )
+
+    assert daily_signature("fresh-", veteran=False) == daily_signature("vet-", veteran=True)
+
+
+def test_ordinary_runs_still_respect_account_unlocks(game):
+    from run.card_pool import draft_offer
+
+    game.start_new_run(seed=1)
+    offered = set()
+    for seed in range(40):
+        offered |= set(draft_offer(random.Random(seed), game.active_run, count=5,
+                                   meta_progression_path=game.meta_progression_path))
+    assert "beam" not in offered  # still meta-locked on a fresh account
