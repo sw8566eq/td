@@ -354,7 +354,10 @@ class Game:
         self.rest_heal_amount = 0
         self.rest_heal_blocked = False
         self.rest_forged_tower = None
-        self.rest_option_rects = ui.build_event_option_rects(2)
+        self.rest_option_rects = ui.build_event_option_rects(3)
+        # True once "Move on" (option 2) was picked -- the resolved screen's
+        # own text for it.
+        self.rest_moved_on = False
         self.rest_smith_choices = []
         self.rest_smith_rects = []
         self.rest_back_rect = ui.build_rest_back_rect()
@@ -1449,6 +1452,7 @@ class Game:
         self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(depth) * heal_multiplier))
         self.rest_heal_blocked = any(relics.RELICS[key].blocks_rest_heal for key in self.active_run.relics)
         self.rest_forged_tower = None
+        self.rest_moved_on = False
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
         self.rest_smith_rects = ui.build_smith_choice_rects(len(self.rest_smith_choices))
@@ -1465,14 +1469,21 @@ class Game:
 
     def _choose_rest_option(self, index):
         """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
-        tower) -- Smith is a no-op once there's nothing left to forge."""
+        tower), 2 = Move on (nothing) -- Rest is a no-op under a blocks_
+        rest_heal boss relic, Smith once there's nothing left to forge."""
         if index == 0:
             if self.rest_heal_blocked:
                 return  # an Overcharged Core-style boss relic forbids it
             self.active_run.lives += self.rest_heal_amount
             self.rest_phase = "resolved"
-        elif self.rest_smith_choices:
+        elif index == 1 and self.rest_smith_choices:
             self.rest_phase = "smith"
+        elif index == 2:
+            # Always available -- without it, a run that can't heal here
+            # (Overcharged Core) with every held tower already forged had no
+            # way off this screen at all.
+            self.rest_moved_on = True
+            self.rest_phase = "resolved"
 
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from

@@ -85,3 +85,19 @@ def test_reckless_arsenal_costs_lives_but_never_the_last_one(game):
     game._grant_relic("reckless_arsenal")
     assert run.lives == 1
     pygame.display.flip()
+
+
+def test_rest_is_never_a_softlock_when_neither_rest_nor_smith_is_possible(game):
+    from test_run import _begin_run_with_map
+
+    from core.game import GameState
+
+    run = _begin_run_with_map(game, ["combat", "rest"], relics=["overcharged_core"],
+                              forged_towers=list(STARTER_TOWERS), lives=5)
+    game._enter_node("1-0")
+    game.render()
+    game._handle_rest_click(game.rest_option_rects[2].center)  # Move on
+    assert game.rest_phase == "resolved" and game.rest_moved_on
+    game.render()
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.MAP and run.lives == 5 and run.visited_node_ids == ["1-0"]
