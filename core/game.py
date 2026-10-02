@@ -784,10 +784,10 @@ class Game:
         if affix is not None and affix.count_multiplier != 1.0:
             boss_species = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.IS_BOSS)
             wave_specs = elite_affixes.scale_wave_counts(wave_specs, affix.count_multiplier, boss_species)
-        # Sappers join from Act 2 on -- the answer to a Barricade-heavy defense.
-        sappers = run_escalation.sapper_count_for_depth(run.depth_of(node.row))
-        if sappers:
-            wave_specs = run_escalation.add_species(wave_specs, "sapper", sappers)
+        # Deep floors bring reinforcements (Sappers, Burrowers) that answer
+        # Barricade- and trap-heavy defenses -- run_escalation.RUN_REINFORCEMENTS.
+        for species, count in run_escalation.reinforcements_for_depth(run.depth_of(node.row)):
+            wave_specs = run_escalation.add_species(wave_specs, species, count)
         if wave_specs is level.wave_specs:
             return level
         return dataclasses.replace(level, wave_specs=wave_specs)
@@ -2673,7 +2673,7 @@ class Game:
             for key in self.active_run.relics:
                 ambush *= relics.RELICS[key].held_damage_multiplier
         for enemy in self.enemies:
-            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False):
+            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.BURROWS:
                 continue
             for barricade in barricades:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:

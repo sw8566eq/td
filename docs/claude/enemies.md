@@ -116,7 +116,11 @@ uniformly, not just a tower's own direct hit resolution:
 ## Breach strength and Sappers
 
 `Enemy.BREACH_MULTIPLIER` scales how hard an enemy batters a Barricade (`Game._hold_enemies_at_barricades`):
-1 by default, 6 for `BossEnemy` (and its subclasses), 5 for `SapperEnemy`. Sappers are never in an
-authored level: `Game._level_for_node` adds `run_escalation.sapper_count_for_depth(depth)` of them to
-each wave's first spawn cell (`run_escalation.add_species`, a copy -- the same private-copy path the
+1 by default, 6 for `BossEnemy` (and its subclasses), 5 for `SapperEnemy`. Sappers (and Burrowers) are never in an
+authored level: `Game._level_for_node` adds every `run_escalation.RUN_REINFORCEMENTS` entry's
+`count_for_depth(depth)` to each wave's first spawn cell (`run_escalation.add_species`, a copy -- the same private-copy path the
 Swarming affix uses, so a mid-floor save keeps them) from `SAPPER_MIN_DEPTH` (Act 2's first row) on.
+
+`Enemy.BURROWS` (Burrower): `Tower.HITS_BURROWED` is False on path traps, checked in `acquire_target`
+and passed into `Projectile(can_hit_burrowed=...)` so their splash skips it too; the barricade hold
+skips it. Trap and Mortar shots also pass `can_hit_flying` now (their splash used to touch flyers).
