@@ -931,10 +931,11 @@ def test_draft_escape_quits(game):
     assert game.running is False
 
 
-def test_enter_shop_node_skips_the_shop_screen_once_both_pools_are_exhausted(game):
+def test_enter_shop_node_skips_the_shop_screen_once_nothing_is_on_offer(game):
     _begin_run_with_map(game, ["combat", "shop", "combat"])
     game.active_run.unlocked_towers = list(TOWER_TYPES.keys())  # every tower already unlocked
-    game.active_run.relics = list(RELICS.keys())  # every relic already held
+    game.active_run.relics = [key for key, relic in RELICS.items() if not relic.is_curse]  # every relic, no curse
+    game.active_run.potions = ["fire_bomb"] * 4  # a full belt -- even with Potion Belt
     game._enter_node("0-0")
     finish_all_waves(game)
     game.update(dt=0.01)
@@ -944,6 +945,29 @@ def test_enter_shop_node_skips_the_shop_screen_once_both_pools_are_exhausted(gam
 
     assert game.state == GameState.MAP  # skipped straight through, no shop shown
     assert game.active_run.visited_node_ids == ["0-0", "1-0"]
+
+
+@pytest.mark.parametrize("leftover", ["curse", "potion_room"])
+def test_a_card_less_shop_still_opens_for_its_services(game, leftover):
+    _begin_run_with_map(game, ["combat", "shop", "combat"])
+    run = game.active_run
+    run.unlocked_towers = list(TOWER_TYPES.keys())
+    # Every ordinary relic (boss relics excluded -- Sealed Cask blocks potions), plus one curse.
+    run.relics = [key for key, relic in RELICS.items() if not relic.is_curse and not relic.is_boss_relic]
+    run.relics.append("rusted_gears")
+    if leftover == "potion_room":
+        run.relics.remove("rusted_gears")
+    else:
+        run.potions = ["fire_bomb"] * 4
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+
+    game._enter_node("1-0")
+
+    assert game.state == GameState.DRAFT and game.draft_choices == []
+    game.render()
 
 
 def test_enter_shop_node_still_shows_up_with_only_relics_left_to_offer(game):
