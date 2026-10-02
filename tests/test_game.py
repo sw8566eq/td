@@ -483,7 +483,7 @@ def test_clicking_the_skip_button_skips_the_wave_delay(playing_game):
 
 def test_clicking_empty_hud_area_does_nothing(playing_game):
     # Somewhere in the HUD bar but not on any button.
-    pos = (playing_game.button_rects["basic"].right + 200, settings.SCREEN_HEIGHT - 10)
+    pos = (settings.PLAY_WIDTH - 20, settings.SCREEN_HEIGHT - 10)
     playing_game.selected_tower_name = "basic"
     playing_game._handle_click(pos)
     assert playing_game.towers == []

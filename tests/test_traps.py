@@ -37,7 +37,7 @@ def _select(game, name):
 
 
 def test_both_traps_are_registered_path_towers():
-    assert set(TRAPS) == {"spike_trap", "tar_pit"}
+    assert set(TRAPS) == {"spike_trap", "tar_pit", "barricade"}
     assert all(not TOWER_TYPES[name].can_target_flying for name in TRAPS)
 
 

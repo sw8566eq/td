@@ -5,8 +5,6 @@ from entities.enemy import ENEMY_TYPES
 from entities.tower import TOWER_TYPES
 from presentation.ui import (
     ACHIEVEMENTS_BOTTOM,
-    BUTTON_MARGIN,
-    BUTTON_SIZE,
     CREDITS_LINE_HEIGHT,
     CREDITS_LINES,
     CREDITS_TOP,
@@ -100,6 +98,7 @@ from presentation.ui import (
     get_clicked_wave_editor_action,
     get_clicked_wave_tab,
     get_clicked_wave_unit_button,
+    hud_info_x,
     level_select_content_height,
     level_select_max_scroll,
     list_content_height,
@@ -228,7 +227,7 @@ def test_hud_gold_lives_wave_text_fits_before_the_play_area_edge():
     # gold_label/wave_label construction).
     pygame.font.init()
     font = pygame.font.SysFont(None, 32)  # matches Game.font
-    info_x = BUTTON_MARGIN + len(TOWER_ORDER) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
+    info_x = hud_info_x(build_button_rects(TOWER_ORDER))
     worst_case_lines = [
         "Gold: unlimited   Shop: 999",
         "Wave 6/6 -- Boss defeated!",

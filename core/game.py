@@ -59,6 +59,10 @@ _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
+# A Barricade's damage taken per second from each enemy battering it
+# (bosses hit far harder) -- see Game._hold_enemies_at_barricades.
+BARRICADE_BREACH_DPS = 2.5
+BARRICADE_BOSS_BREACH_MULTIPLIER = 6.0
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -1330,7 +1334,7 @@ class Game:
         self.shop_purchased_indices.add(index)
 
     def _damaging_tower_types(self):
-        return frozenset(name for name, cls in TOWER_TYPES.items() if not cls.IS_SUPPORT)
+        return frozenset(name for name, cls in TOWER_TYPES.items() if not cls.IS_SUPPORT and cls.ATTACKS)
 
     def _shop_module_price(self):
         return round(shop.MODULE_PRICE * self._shop_price_multiplier())
@@ -2025,6 +2029,9 @@ class Game:
         tower.shots_hit = tower_data.get("shots_hit", 0)
         tower.damage_dealt = tower_data.get("damage_dealt", 0.0)
         tower.kills = tower_data.get("kills", 0)
+        saved_hp = tower_data.get("hp")
+        if hasattr(tower, "hp") and isinstance(saved_hp, (int, float)) and not isinstance(saved_hp, bool):
+            tower.hp = min(tower.max_hp, max(1.0, float(saved_hp)))
         return tower
 
     def _continue_saved_run(self):
@@ -2624,6 +2631,36 @@ class Game:
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
 
+    def _hold_enemies_at_barricades(self, dt):
+        """Stop every ground enemy touching a live Barricade (Enemy.held --
+        statuses still tick, movement doesn't) and let it batter that
+        barricade; a broken barricade is removed (no refund). Runs before
+        the enemy updates each frame, so `held` is always this frame's."""
+        barricades = [tower for tower in self.towers if tower.BLOCKS_PATH]
+        for enemy in self.enemies:
+            enemy.held = False
+        if not barricades:
+            return
+        for enemy in self.enemies:
+            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False):
+                continue
+            for barricade in barricades:
+                if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:
+                    enemy.held = True
+                    multiplier = BARRICADE_BOSS_BREACH_MULTIPLIER if enemy.IS_BOSS else 1.0
+                    barricade.hp -= BARRICADE_BREACH_DPS * multiplier * dt
+                    enemy.take_damage(barricade.thorns_dps * dt)
+                    break
+        for barricade in barricades:
+            if barricade.hp <= 0:
+                self.towers.remove(barricade)
+                self.sold_towers.append(barricade)  # still listed in the floor's results
+                self.grid.remove(barricade.anchor_col, barricade.anchor_row)
+                if self.selected_tower is barricade:
+                    self.selected_tower = None
+                self._recompute_tower_density_bonuses()
+                self.audio.play("tower_sold")
+
     def _footprint_for(self, tower_cls):
         """A ground tower's footprint (_current_footprint_subtiles); a path
         trap always fills exactly one whole path tile."""
@@ -2807,6 +2844,7 @@ class Game:
         # frame pacing/FPS is unaffected -- only simulated time speeds up.
         dt = dt * self.time_scale
 
+        self._hold_enemies_at_barricades(dt)
         for enemy in self.enemies:
             enemy.update(dt, self.enemies)
 
