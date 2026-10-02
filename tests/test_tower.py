@@ -411,7 +411,9 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
         # double the TOWER_TYPES iteration for zero extra coverage.
         (
             ("relic_frost_slow_bonus_multiplier", "relic_frost_duration_bonus_multiplier"), "slow_effect", ("frost",),
-            lambda tower: None,  # Projectile's own default -- non-Frost towers never pass this kwarg at all
+            # Projectile's own default for towers with no slow at all; a Tar Pit
+            # slows with its own, unboosted values.
+            lambda tower: (tower.slow_factor, tower.slow_duration) if hasattr(tower, "slow_factor") else None,
         ),
         # Both Poison-tower-exclusive fields set together in one row -- same
         # reasoning as the Beam-exclusive row above: they map to the same

@@ -163,3 +163,15 @@ clamps to `MAX_RANK`; `_construct_tower` calls `_apply_veterancy`, which calls t
 panel text comes from each class's `VETERANCY_BONUS_LABEL`/`VETERANCY_BONUS_PER_RANK`, so a new tower
 type that overrides `apply_veterancy` describes itself. `TOWER_TYPE_NAMES` is the class->key reverse
 lookup.
+
+## Path traps
+
+`Tower.PLACEMENT` is `"ground"` by default; `"path"` makes a trap (`SpikeTrapTower`, `TarPitTower`).
+Every placement goes through three Game helpers: `placement_anchor_at(x, y, tower_cls)` (a trap snaps
+to the tile under the cursor), `_footprint_for(tower_cls)` (a trap always fills one whole tile, ignoring
+footprint-shrinking relics) and `_is_buildable_for` (`Grid.is_buildable(..., on_path=True)` flips the
+path rule: every footprint cell must be path). The click handler, the placement preview,
+`try_place_tower` and `_construct_tower` all use them, so the rest of the tower lifecycle (save/resume,
+sell, upgrade, veterancy) is unchanged. Traps fire ordinary splash projectiles from their own tile, so
+relics, kill credit and stats all work as for any tower. HUD build buttons are 40px with 6px gaps to
+fit 14 towers next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`).

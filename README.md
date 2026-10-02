@@ -124,6 +124,14 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Path traps
+
+Two towers are **traps**, built *on* the path instead of beside it -- click any path tile and the trap
+snaps to it. They have a short reach and only catch ground enemies (flyers pass over), but they're cheap
+and sit exactly where enemies must walk: the **Spike Trap** (splash damage to whatever is on top of it)
+and the **Tar Pit** (barely hurts, but bogs everything in its splash down). Both unlock through play
+(4 and 7 floors cleared). They level, specialize, sell and earn veterancy like any tower.
+
 ## Tower veterancy
 
 Your towers learn on the job. Every **tower type** in a run earns experience from the kills its towers

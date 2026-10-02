@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Path traps**: two new towers built on the path itself -- the **Spike Trap** (cheap splash damage)
+  and the **Tar Pit** (a heavy slow) -- snapped to a whole path tile, ground enemies only. Build
+  buttons shrank slightly so all 14 towers still fit the HUD.
 - **Tower veterancy**: each tower type earns experience from its kills (support towers from assists),
   banked at every floor clear, and climbs four ranks -- Blooded, Seasoned, Veteran, Legendary -- each
   making that type stronger for the rest of the run. Rank pips on build buttons, a sidebar readout,
