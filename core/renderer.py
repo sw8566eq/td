@@ -188,13 +188,30 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.DECK and game.active_run is not None:
+            back_label = {GameState.DRAFT: "Back to Shop", GameState.REST: "Back"}.get(
+                game.deck_return_state, "Back to Map")
+            ui.draw_deck_screen(
+                game.screen, game.font, game.small_font, game.active_run.deck, game.deck_entry_rects,
+                game._hovered_deck_entry(), game.deck_back_rect, game.deck_view_mode, back_label,
+            )
+            self._draw_toasts()
+            pygame.display.flip()
+            return
+
         if game.state == GameState.DRAFT and game.active_run is not None:
             ui.draw_draft_screen(
                 game.screen, game.font, game.small_font,
                 game.draft_choices, game.draft_choice_rects, game._hovered_draft_choice(),
                 game.shop_purchased_indices, game.active_run.shop_currency,
-                game.shop_continue_button_rect, game.economy.unlimited_gold,
+                game.shop_exit_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
+            )
+            ui.draw_shop_remove_card_button(
+                game.screen, game.small_font, game.shop_remove_card_rect, game._card_removal_price(),
+                has_cards=bool(game.active_run.deck), used=game.shop_card_removed,
+                affordable=shop.can_afford(game.active_run.shop_currency, game._card_removal_price(),
+                                           game.economy.unlimited_gold),
             )
             if game.shop_potion is not None:
                 ui.draw_shop_potion_button(

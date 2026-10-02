@@ -3733,7 +3733,7 @@ def test_k_opens_the_compendium_and_it_lists_every_content_kind(game):
     assert game.state == GameState.COMPENDIUM
     headers = [name for kind, name, _detail in game.compendium_rows if kind == "header"]
     assert [h.split(" (")[0] for h in headers] == [
-        "Relics", "Boss relics", "Curses", "Potions", "Commanders", "Elite affixes",
+        "Relics", "Boss relics", "Curses", "Potions", "Spells", "Commanders", "Elite affixes",
     ]
     entries = {name for kind, name, _detail in game.compendium_rows if kind == "entry"}
     assert {r.display_name for r in RELICS.values()} <= entries

@@ -172,6 +172,17 @@ reward rng so existing seeds' towers/relics/potions don't change) is a second pi
 (`ui.build_spell_reward_rects`, below the main row; `Game.reward_continue_rect` moves Continue under
 it). Boss rewards have no spells.
 
+The Shop: `shop.spell_items(rng)` appends `ShopItem("spell", ...)` entries to `draft_choices`, drawn
+after the potion stand's roll; `_enter_shop_node` lays them out as the same second row
+(`build_spell_reward_rects`), and the Shop's buttons moved into one service row under it
+(`ui._shop_button_row`: potion stand, `shop_exit_rect` Continue, `shop_remove_card_rect`,
+`shop_remove_curse_rect`) -- `build_shop_continue_button_rect` is still the reward screen's spot.
+Remove a card (`Game._open_card_removal` -> `open_deck_view("remove", GameState.DRAFT)` ->
+`_remove_card(key)`) is once per visit (`shop_card_removed`) and priced by
+`shop.card_removal_price(run.cards_removed)` (saved) times the shop multiplier. `GameState.DECK`
+(`ui.draw_deck_screen`, one card per distinct spell with its count, `ui.deck_entries`) is also the
+map's read-only `D` view; any key or Back returns to `deck_return_state`.
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
