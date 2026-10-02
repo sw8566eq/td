@@ -11,7 +11,7 @@ from core import input_handler, progress_tracker, renderer, settings_manager
 from core.editor import Editor
 from entities import effects
 from entities.enemy import ENEMY_TYPES
-from entities.tower import TOWER_TYPES
+from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
 from presentation import audio, ui
@@ -30,6 +30,7 @@ from run import (
     run_escalation,
     run_map,
     shop,
+    veterancy,
 )
 from run.run_state import RunState
 from support import settings
@@ -903,6 +904,7 @@ class Game:
                 run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
             )
         self._record_meta_progress("total_floors_cleared")
+        self._award_veterancy()
         if node.node_type == "boss":
             # An earlier act's boss -- a finite fight (only the last act's
             # is endless, see RunState.is_final_floor), so it clears like
@@ -2509,7 +2511,49 @@ class Game:
         tower.relic_overload_damage_bonus_multiplier = self.relic_modifiers.overload_damage_multiplier
         tower.relic_cannon_targets_flying = self.relic_modifiers.cannon_targets_flying
         tower.relic_cannon_projectile_speed_bonus_multiplier = self.relic_modifiers.cannon_projectile_speed_multiplier
+        if self.active_run is not None:
+            self._apply_veterancy(tower, TOWER_TYPE_NAMES[tower_cls])
         return tower
+
+    def veterancy_rank(self, tower_name):
+        """`tower_name`'s veterancy rank this run (run/veterancy.py),
+        including a Battlefield Commission-style relic's free ranks -- 0
+        outside a run."""
+        run = self.active_run
+        if run is None:
+            return 0
+        bonus = sum(relics.RELICS[key].veterancy_rank_bonus for key in run.relics)
+        return min(veterancy.MAX_RANK, veterancy.rank_for(run.tower_xp.get(tower_name, 0.0)) + bonus)
+
+    def _apply_veterancy(self, tower, tower_name):
+        """A new tower picks up its type's veterancy -- its rank bonus, plus an
+        Old Guard-style relic's fire rate once the type is a Veteran."""
+        rank = self.veterancy_rank(tower_name)
+        tower.apply_veterancy(rank)
+        if rank >= veterancy.VETERAN_RANK:
+            bonus = sum(relics.RELICS[key].veteran_fire_rate_bonus for key in self.active_run.relics)
+            tower.relic_fire_rate_bonus_multiplier *= 1 + bonus
+
+    def _award_veterancy(self):
+        """A floor just cleared: every tower type that fought here earns its
+        experience (veterancy.floor_xp, sold towers included); a promotion
+        gets a toast."""
+        run = self.active_run
+        kills_by_type = {}
+        for tower in self.towers + self.sold_towers:
+            name = TOWER_TYPE_NAMES[type(tower)]
+            kills_by_type[name] = kills_by_type.get(name, 0) + tower.kills
+        assists = {name: TOWER_TYPES[name].VETERANCY_ASSIST_FRACTION for name in kills_by_type}
+        multiplier = 1.0
+        for key in run.relics:
+            multiplier *= relics.RELICS[key].veterancy_xp_multiplier
+        for name, gained in veterancy.floor_xp(kills_by_type, assists, multiplier).items():
+            before = self.veterancy_rank(name)
+            run.tower_xp[name] = run.tower_xp.get(name, 0.0) + gained
+            after = self.veterancy_rank(name)
+            if after > before:
+                self._queue_toast(f"{TOWER_TYPES[name].display_name} promoted: {veterancy.rank_name(after)}")
+                self._record_achievement_max("veterancy_rank_reached", after)
 
     def _apply_forge(self, tower):
         """A forged tower type's free head start (see _forge_tower): one

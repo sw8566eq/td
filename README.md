@@ -124,6 +124,17 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Tower veterancy
+
+Your towers learn on the job. Every **tower type** in a run earns experience from the kills its towers
+make (towers that support rather than kill -- Support, Beacon -- earn a share of every kill as assists).
+Experience is banked when a floor is cleared, and each type climbs four ranks -- **Blooded**,
+**Seasoned**, **Veteran**, **Legendary** -- each one making every tower of that type you build from
+then on stronger: +6% damage per rank (Support: a stronger aura; Beacon: stronger marks). Gold pips on
+a build button show its rank; the sidebar shows the rank, its bonus, and experience to the next one.
+Three relics build around it: Drill Sergeant (+50% experience), Battlefield Commission (every type
+counts one rank higher) and Old Guard (Veteran-or-better types fire 15% faster).
+
 ## Bosses
 
 Every act's boss is one of five named bosses with its own twist: The Juggernaut (tougher enemies), The

@@ -8,6 +8,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Tower veterancy**: each tower type earns experience from its kills (support towers from assists),
+  banked at every floor clear, and climbs four ranks -- Blooded, Seasoned, Veteran, Legendary -- each
+  making that type stronger for the rest of the run. Rank pips on build buttons, a sidebar readout,
+  promotion toasts, two achievements (Battle-Hardened, Living Legend), and three relics: Drill
+  Sergeant, Battlefield Commission, Old Guard.
 - **Original names** for the run's systems: the opt-in difficulty ladder is now the **Gauntlet**, act-boss
   relics are **trophy relics**, the Rest node is an **Outpost** (Rest / **Forge** / Move on), the opening
   choice is **Orders from Command**, the content browser is the **Field Manual**, and a few relics,

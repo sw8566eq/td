@@ -248,7 +248,7 @@ def _format_currency(value, unlimited):
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
-             floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0):
+             floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0, veterancy_ranks=None):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -288,6 +288,9 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
             # "+" for an upgraded card.
             plus = small_font.render("+", True, settings.COLOR_GOLD)
             surface.blit(plus, plus.get_rect(topright=(rect.right - 3, rect.y + 1)))
+        # One pip per veterancy rank this tower type has earned this run.
+        for pip in range((veterancy_ranks or {}).get(name, 0)):
+            pygame.draw.circle(surface, settings.COLOR_GOLD, (rect.x + 6 + pip * 7, rect.y + 6), 2)
 
     # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
     # menu shows only its own drafted subset (see build_button_rects), and
@@ -519,7 +522,7 @@ def draw_tower_range_preview(surface, tower):
 
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
                             upgrade_button_rect, specialize_button_rects, sell_button_rect,
-                            hovered_specialize_key=None):
+                            hovered_specialize_key=None, veterancy_line=None):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -549,6 +552,10 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
     y = _draw_panel_header(surface, font, small_font, x, PANEL_PADDING, subject, is_placed,
                             tower_cls, hovered_specialize_key)
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
+    if veterancy_line is not None:
+        # Just above the Targeting row -- below the tallest stats block.
+        surface.blit(small_font.render(veterancy_line, True, settings.COLOR_GOLD),
+                     (x, TARGETING_BUTTON_TOP - PANEL_ROW_HEIGHT - 4))
 
     if is_placed:
         if not tower_cls.IS_SUPPORT:
