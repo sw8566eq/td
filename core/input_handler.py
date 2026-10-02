@@ -355,7 +355,8 @@ class InputHandler:
             elif key == pygame.K_h:
                 game.help_return_state = GameState.MAP
                 game.state = GameState.HELP
-            elif key == pygame.K_r:
+            elif keybindings.matches(game.keybindings["open_relics"], key, keybindings.normalize_mods(pygame.key.get_mods())):
+                # The same remappable binding PLAYING's own relics key uses.
                 game.relics_return_state = GameState.MAP
                 game.state = GameState.RELICS
         elif game.state == GameState.DRAFT:

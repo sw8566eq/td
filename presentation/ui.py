@@ -828,7 +828,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=(), node_threats=None):
+                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R"):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -857,7 +857,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
         # value's type.
         potion_text = ", ".join(potion_names) if potion_names else "none"
         info = small_font.render(
-            f"Lives: {lives}   Shop currency: {round(shop_currency)}   Relics: {relic_count} (R to view)"
+            f"Lives: {lives}   Shop currency: {round(shop_currency)}   Relics: {relic_count} ({relics_key_label} to view)"
             f"   Potions: {potion_text}",
             True, settings.COLOR_GOLD,
         )
