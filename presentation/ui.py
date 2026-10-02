@@ -27,7 +27,7 @@ from progression.meta_progression import (
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
-from run.potions import POTION_SLOTS, POTIONS
+from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
 from support import settings
@@ -940,6 +940,8 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Cursed: {RELICS[resolution['curse']].display_name}")
     if resolution.get("curse_removed"):
         lines.append(f"Curse lifted: {RELICS[resolution['curse_removed']].display_name}")
+    if resolution.get("forged"):
+        lines.append(f"Forged: {TOWER_TYPES[resolution['forged']].display_name} (now placed at level 2)")
     if resolution.get("potion"):
         lines.append(f"Gained potion: {POTIONS[resolution['potion']].display_name}")
     return lines or ["Nothing else happened."]
@@ -1521,6 +1523,8 @@ POTION_COLORS = {
     "liquid_gold": (255, 210, 70),
     "mending_salve": (120, 230, 140),
     "overclock_elixir": (250, 250, 140),
+    "smoke_bomb": (170, 170, 185),
+    "venom_vial": (150, 210, 60),
 }
 POTION_SLOT_SIZE = 56
 POTION_SLOT_GAP = 12
@@ -1532,17 +1536,17 @@ RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
 POTION_DESCRIPTION_BOTTOM = RUN_MODIFIERS_Y - 8
 
 
-def build_potion_slot_rects():
-    """One square rect per potions.POTION_SLOTS slot, centered in a row
-    along the sidebar's bottom edge -- below the Sell button (SELL_BUTTON_
-    TOP), which is the lowest thing the stats panel ever draws."""
-    total_width = POTION_SLOTS * POTION_SLOT_SIZE + (POTION_SLOTS - 1) * POTION_SLOT_GAP
+def build_potion_slot_rects(count):
+    """`count` square rects (potions.slot_count), centered in a row along
+    the sidebar's bottom edge -- below the Sell button (SELL_BUTTON_TOP),
+    which is the lowest thing the stats panel ever draws. Slots shrink
+    below POTION_SLOT_SIZE once that many no longer fit the panel."""
+    usable = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+    size = min(POTION_SLOT_SIZE, (usable - (count - 1) * POTION_SLOT_GAP) // count)
+    total_width = count * size + (count - 1) * POTION_SLOT_GAP
     start_x = settings.PLAY_WIDTH + (settings.PANEL_WIDTH - total_width) // 2
-    return [
-        pygame.Rect(start_x + i * (POTION_SLOT_SIZE + POTION_SLOT_GAP), POTION_BELT_TOP,
-                    POTION_SLOT_SIZE, POTION_SLOT_SIZE)
-        for i in range(POTION_SLOTS)
-    ]
+    top = POTION_BELT_TOP + (POTION_SLOT_SIZE - size)  # bottom-aligned with the default belt
+    return [pygame.Rect(start_x + i * (size + POTION_SLOT_GAP), top, size, size) for i in range(count)]
 
 
 def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
@@ -2470,7 +2474,8 @@ RUN_GUIDE_LINES = [
     "Branching map: pick your path. Won fights offer a free tower, and sometimes a potion.",
     *_RUN_GUIDE_NODE_TYPE_LINES,
     *_RUN_GUIDE_STATUS_LINES,
-    ("Relics: 74 across Economy/Offense/Status/Defense/Tower-exclusive categories -- "
+    (f"Relics: {sum(not relic.is_curse for relic in RELICS.values())} across Economy/Offense/Status/"
+     "Defense/Tower-exclusive/Potion categories -- "
      "press R in a run to see what you're holding"),
 ]
 

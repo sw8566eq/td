@@ -110,8 +110,10 @@ Rewards can also include a **potion** -- a single-use consumable (Elites always 
 to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts
 every enemy on the field, Frost Flask slows them all, Marking Dust makes them take extra damage,
 Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
-fire faster for a few seconds. Potions carry between floors until used. Every Shop also has a potion
-stand selling one potion per visit.
+fire faster for a few seconds, Smoke Bomb shoves every enemy back, and Venom Vial poisons them all.
+Potions carry between floors until used. Every Shop also has a potion stand selling one potion per
+visit, and three relics build around them: Potion Belt (+1 slot), Field Medic Kit (+1 life per
+potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
 ## Ascension
 
@@ -124,7 +126,7 @@ Runs are always played at Ascension 0 so scores stay comparable.
 
 ## Relics
 
-A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 74 of them as of
+A relic is a passive, run-wide modifier drafted from Shop/Treasure/Event nodes -- 77 of them as of
 this writing, everything from "+20 gold at the start of every floor" to relics that make one specific
 tower's own signature mechanic (Basic's crit, Sniper's execute, Frost's slow, Poison's DoT,
 Knockback's shove) hit harder, a handful of combo relics that reward running two or three towers'
