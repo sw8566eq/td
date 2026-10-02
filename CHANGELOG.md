@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
+  20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
+  stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).
 - **Incendiary Shells** relic: Mortar impacts leave burning ground (30% of the shell's damage per second
   for 3s) that hurts ground enemies crossing it, credited to the Mortar.
 - **Burrowers**: a new enemy that tunnels under the path -- immune to Spike Traps, Tar Pits and

@@ -23,6 +23,11 @@ import pygame
 
 from support import settings
 
+# Knockback stagger resistance (Enemy.apply_knockback): every shove makes
+# the next one PER_SHOVE weaker, up to CAP, wearing off at DECAY per second.
+KNOCKBACK_RESISTANCE_PER_SHOVE = 0.2
+KNOCKBACK_RESISTANCE_CAP = 0.8
+KNOCKBACK_RESISTANCE_DECAY = 0.3
 
 class Enemy:
     # --- Per-wave scaling stats (all overridable per subclass) ---
@@ -104,6 +109,9 @@ class Enemy:
 
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
+        # Stagger resistance (0..KNOCKBACK_RESISTANCE_CAP): how much of the
+        # next knockback this enemy shrugs off -- see apply_knockback.
+        self.knockback_resistance = 0.0
         # Set fresh every frame by Game: True while a Barricade holds it in
         # place, and the extra damage it takes meanwhile (an Ambush relic).
         self.held = False
@@ -165,6 +173,9 @@ class Enemy:
             if self.poison_time_remaining <= 0:
                 self.poison_time_remaining = 0.0
                 self.poison_damage_per_tick = 0.0
+
+        if self.knockback_resistance > 0:
+            self.knockback_resistance = max(0.0, self.knockback_resistance - KNOCKBACK_RESISTANCE_DECAY * dt)
 
         if self.knockback_remaining > 0:
             # Slide backward at a fixed animation speed instead of the
@@ -332,7 +343,12 @@ class Enemy:
         """
         if self.is_dead or self.reached_goal or distance <= 0:
             return
-        self.knockback_remaining += distance
+        # Stagger resistance: each shove lands weaker than the last until it
+        # wears off (see update), so stacked Knockback towers get diminishing
+        # returns instead of pinning a wave in place forever.
+        self.knockback_remaining += distance * (1.0 - self.knockback_resistance)
+        self.knockback_resistance = min(KNOCKBACK_RESISTANCE_CAP,
+                                        self.knockback_resistance + KNOCKBACK_RESISTANCE_PER_SHOVE)
 
     def _advance_knockback(self, dt):
         step = min(self.knockback_speed * dt, self.knockback_remaining)
