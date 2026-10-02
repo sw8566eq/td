@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- The map tooltip shows each fight's **threat** (enemy HP and speed multipliers from depth, Elite/Boss,
+  Ascension, difficulty and affix) -- the same numbers the fight will use.
 - **Run autosave**: the run saves itself on every map visit and node entry; Continue resumes on the
   map, or back at the start of a fight you quit mid-way. Starting a new run replaces the saved one.
 - Test suite runs ~15x faster (fixture teardown no longer waits on the dummy audio mixer).

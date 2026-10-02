@@ -773,7 +773,7 @@ MAP_TOOLTIP_MAX_WIDTH = 220
 MAP_TOOLTIP_GAP = 6  # clearance between the node's own circle and the box
 
 
-def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None):
+def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, threat=None):
     """The hovered node's own type name, the specific level name for a
     Combat/Elite/Boss node (LEVELS[node.level_id] -- naming it ahead of
     time reveals nothing a player couldn't already infer from the node's
@@ -793,6 +793,10 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None):
     if node.level_id is not None:
         body_lines.append(LEVELS[node.level_id].name)
     body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if threat is not None:
+        # Game._node_threat: how much tougher this fight's enemies are than
+        # the level's own baseline -- the same numbers the floor load uses.
+        body_lines.append(f"Enemy HP x{threat[0]:.2f}, speed x{threat[1]:.2f}")
     if affix is not None:
         # An Elite's own affix (elite_affixes.py) -- shown up front, same
         # "nothing hidden" reasoning as the level name above.
@@ -824,7 +828,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None):
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=()):
+                     relic_count=0, potion_names=(), node_threats=None):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -908,7 +912,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     # near.
     if hovered_node_id is not None:
         _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id],
-                               (node_affixes or {}).get(hovered_node_id))
+                               (node_affixes or {}).get(hovered_node_id), (node_threats or {}).get(hovered_node_id))
 
 
 # --- Random Event / Rest / Treasure screens (the run map's other three
