@@ -118,3 +118,15 @@ def test_list_custom_levels_skips_a_file_with_a_non_integer_starting_gold(tmp_pa
 
     levels = persistence.list_custom_levels(directory=tmp_path)
     assert [level.name for level in levels] == ["Good Level"]
+
+
+def test_a_level_file_with_a_non_dict_wave_composition_is_skipped_or_rejected(tmp_path):
+    import json
+    import pathlib
+
+    from persistence import persistence
+
+    data = json.loads(pathlib.Path("custom_levels/custom-level-2.json").read_text())
+    data["wave_specs"][0][0][1] = [1, 2]  # a composition that isn't a {name: count} dict
+    (tmp_path / "bad.json").write_text(json.dumps(data))
+    assert persistence.list_custom_levels(str(tmp_path)) == []
