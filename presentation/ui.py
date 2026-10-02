@@ -1224,6 +1224,37 @@ def build_shop_continue_button_rect():
 SHOP_REMOVE_CURSE_BUTTON_WIDTH = 260
 
 
+def build_shop_module_rect():
+    """The Shop's module stand, right of Continue on the same row."""
+    continue_rect = build_shop_continue_button_rect()
+    return pygame.Rect(continue_rect.right + 24, continue_rect.y, SHOP_POTION_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
+
+def draw_shop_module_button(surface, small_font, rect, offer, price, bought, can_buy, hovered=False):
+    """The module stand -- this visit's (module, tower type) and its price;
+    hovering it shows what the module does, on a plate above."""
+    module_key, tower_name = offer
+    module = MODULES[module_key]
+    pygame.draw.rect(surface, settings.COLOR_BUTTON if can_buy else settings.COLOR_BUTTON_DISABLED, rect,
+                     border_radius=6)
+    pygame.draw.rect(surface, MODULE_COLOR, rect, width=2, border_radius=6)
+    tower = TOWER_TYPES[tower_name].display_name
+    text = f"{module.display_name}: SOLD" if bought else f"{module.display_name} ({tower}) ({price})"
+    label = small_font.render(text, True, MODULE_COLOR if can_buy else settings.COLOR_TEXT_DIM)
+    surface.blit(label, label.get_rect(center=rect.center))
+    if hovered:
+        lines = _wrap_text(f"Module for your {tower} towers: {module.description}", small_font, rect.width)
+        plate = pygame.Rect(rect.x, rect.y - 12 - len(lines) * PANEL_ROW_HEIGHT, rect.width,
+                            len(lines) * PANEL_ROW_HEIGHT + 8)
+        pygame.draw.rect(surface, settings.COLOR_HUD_BG, plate, border_radius=6)
+        pygame.draw.rect(surface, MODULE_COLOR, plate, width=1, border_radius=6)
+        y = plate.y + 4
+        for line in lines:
+            line_surface = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+            surface.blit(line_surface, line_surface.get_rect(midtop=(plate.centerx, y)))
+            y += PANEL_ROW_HEIGHT
+
+
 def build_shop_remove_curse_rect():
     """The Shop's remove-a-curse button, right under Continue."""
     continue_rect = build_shop_continue_button_rect()
@@ -1364,7 +1395,8 @@ def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, a
     y = rect.y + PANEL_PADDING
     max_width = rect.width - 2 * PANEL_PADDING
 
-    for line in _wrap_text(relic.display_name, font, max_width):
+    # Leaves room for the price tag in the top-right corner.
+    for line in _wrap_text(relic.display_name, font, max_width - 40):
         title_line = font.render(line, True, settings.COLOR_TEXT)
         surface.blit(title_line, (x, y))
         y += title_line.get_height() + 2

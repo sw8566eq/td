@@ -187,3 +187,6 @@ cards -- `build_draft_choice_rects`' narrow layout). `Game._take_reward_card` ki
 `_construct_tower` calls `modules.apply_module` after relic fields and veterancy: `module_damage_bonus`
 (an additive `effective_damage()` source), range/fire-rate multipliers on the relic bonus fields, and
 on-hit slow/poison via `relic_slow_*`/`relic_poison_*` (copied onto projectiles by `Tower.update()`).
+
+The Shop's module stand (`Game.shop_module`, `_try_buy_shop_module`, `shop.MODULE_PRICE`, right of
+Continue via `ui.build_shop_module_rect`) is rolled last from the visit's rng, once per visit.

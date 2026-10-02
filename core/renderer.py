@@ -198,6 +198,12 @@ class Renderer:
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
             )
+            if game.shop_module is not None:
+                ui.draw_shop_module_button(
+                    game.screen, game.small_font, game.shop_module_rect, game.shop_module,
+                    game._shop_module_price(), game.shop_module_bought, game._can_buy_shop_module(),
+                    hovered=game.shop_module_rect.collidepoint(pygame.mouse.get_pos()),
+                )
             if game.shop_potion is not None:
                 ui.draw_shop_potion_button(
                     game.screen, game.small_font, game.shop_potion_rect, game.shop_potion,

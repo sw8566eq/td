@@ -10,7 +10,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 - **Tower modules**: one module slot per tower type per run. Elite rewards offer a module paired with
   one of your tower types (in place of the Elite's potion); seven modules from Long Barrel to Venom
-  Injector. A Tinkerer achievement for fitting five.
+  Injector. Every Shop also has a module stand (one paired module per visit). A Tinkerer achievement
+  for fitting five.
 - **Trap relics**: Serrated Spikes, Clinging Tar, Hair Trigger.
 - **Path traps**: two new towers built on the path itself -- the **Spike Trap** (cheap splash damage)
   and the **Tar Pit** (a heavy slow) -- snapped to a whole path tile, ground enemies only. Build

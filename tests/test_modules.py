@@ -128,3 +128,42 @@ def test_six_reward_cards_fit_the_screen():
     rects = ui.build_draft_choice_rects(6)
     assert rects[0].left >= 0 and rects[-1].right <= ui.settings.SCREEN_WIDTH
     assert all(not a.colliderect(b) for a, b in itertools.pairwise(rects))
+
+
+# --- The Shop's module stand ---
+
+
+def _shop(game, currency=100):
+    from test_run import _enter_run_shop
+
+    run = _enter_run_shop(game)
+    run.shop_currency = currency
+    return run
+
+
+def test_the_shop_sells_one_paired_module_per_visit(game):
+    from run import shop
+
+    run = _shop(game)
+    module_key, tower = game.shop_module
+    game.render()
+    game._handle_draft_click(game.shop_module_rect.center)
+    assert run.tower_modules == {tower: module_key}
+    assert run.shop_currency == 100 - shop.MODULE_PRICE
+    game._handle_draft_click(game.shop_module_rect.center)  # already bought
+    assert run.shop_currency == 100 - shop.MODULE_PRICE
+    game.render()
+
+
+def test_the_module_stand_needs_currency(game):
+    run = _shop(game, currency=0)
+    game._try_buy_shop_module()
+    assert run.tower_modules == {}
+
+
+def test_the_module_stand_does_not_overlap_other_shop_buttons(game):
+    _shop(game)
+    others = [game.shop_potion_rect, game.shop_continue_button_rect, game.shop_remove_curse_rect,
+              *game.draft_choice_rects]
+    assert not any(game.shop_module_rect.colliderect(rect) for rect in others)
+    assert game.shop_module_rect.right <= game.screen.get_width()
