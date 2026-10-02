@@ -896,10 +896,8 @@ class Game:
         # The fight's spell deck, shuffled from the node's own rng so a
         # restart (or Continue) deals the very same hands.
         held = [relics.RELICS[key] for key in run.relics]
-        affix = self._elite_affix(run, node)
         self.combat_deck = spells.CombatDeck.from_deck(
-            run.deck + list(affix.hex_cards if affix is not None else ()),
-            self._run_rng(run, _SPELL_RNG_STREAM, node.id),
+            run.deck, self._run_rng(run, _SPELL_RNG_STREAM, node.id),
             max_energy=spells.MAX_ENERGY + sum(relic.max_energy_bonus for relic in held),
             hand_size=spells.HAND_SIZE + sum(relic.hand_size_bonus for relic in held),
         )
@@ -1461,8 +1459,7 @@ class Game:
         upgraded while Studying."""
         entries = ui.deck_entries(self.active_run.deck)
         if self.deck_view_mode == "upgrade":
-            upgradeable = spells.upgradeable_cards(self.active_run.deck)
-            return [(card, count) for card, count in entries if card in upgradeable]
+            return [(card, count) for card, count in entries if not spells.card_level(card)]
         return entries
 
     def _hovered_deck_entry(self):

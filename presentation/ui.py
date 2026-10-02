@@ -990,8 +990,6 @@ def _describe_event_outcome(option, resolution):
         lines.append("Gained spells: " + ", ".join(card_name(card) for card in resolution["spells"]))
     if resolution.get("spells_upgraded"):
         lines.append("Upgraded: " + ", ".join(card_name(card) for card in resolution["spells_upgraded"]))
-    if resolution.get("spell_cards"):
-        lines.append("Added to your deck: " + ", ".join(card_name(card) for card in resolution["spell_cards"]))
     if resolution.get("spells_removed"):
         lines.append("Burned: " + ", ".join(card_name(card) for card in resolution["spells_removed"]))
     return lines or ["Nothing else happened."]
@@ -1671,8 +1669,7 @@ def _draw_spell_reward_card(surface, font, small_font, rect, key, hovered, purch
     y = rect.y + 8 + title.get_height()
     # Rarity also shows as the face color, so Exhaust takes its place when it applies.
     detail = "Exhaust" if spell.exhaust else spell.rarity
-    cost_line = f"{card_cost(key)} energy, {detail}" if spell.playable else "Unplayable curse"
-    surface.blit(small_font.render(cost_line, True, settings.COLOR_GOLD), (text_x, y))
+    surface.blit(small_font.render(f"{card_cost(key)} energy, {detail}", True, settings.COLOR_GOLD), (text_x, y))
     y += PANEL_ROW_HEIGHT
     for line in _wrap_text(card_description(key), small_font, max_width)[:max_description_lines]:
         surface.blit(small_font.render(line, True, settings.COLOR_TEXT_DIM), (text_x, y))
@@ -1783,7 +1780,6 @@ SPELL_RARITY_COLORS = {
     "common": (70, 90, 120),
     "uncommon": (60, 120, 110),
     "rare": (150, 110, 50),
-    "curse": (90, 40, 90),
 }
 
 
@@ -1805,12 +1801,11 @@ def draw_spell_card(surface, font, small_font, key, rect, playable=True, hovered
     if card_level(key):
         border = SPELL_UPGRADED_COLOR
     pygame.draw.rect(surface, border, rect, width=2 if card_level(key) else 1, border_radius=6)
-    if rect.height >= 40:  # a compact deck-grid face is just its color and cost pip
-        text = font.render(spell_initials(key), True, settings.COLOR_TEXT if playable else settings.COLOR_TEXT_DIM)
-        surface.blit(text, text.get_rect(center=rect.center))
+    text = font.render(spell_initials(key), True, settings.COLOR_TEXT if playable else settings.COLOR_TEXT_DIM)
+    surface.blit(text, text.get_rect(center=rect.center))
     pip_center = (rect.left + 9, rect.top + 9)
     pygame.draw.circle(surface, (40, 60, 140), pip_center, 8)
-    cost = small_font.render(str(card_cost(key)) if spell.playable else "-", True, settings.COLOR_TEXT)
+    cost = small_font.render(str(card_cost(key)), True, settings.COLOR_TEXT)
     surface.blit(cost, cost.get_rect(center=pip_center))
 
 
@@ -1877,14 +1872,14 @@ def deck_entries(deck):
 
 
 # Past this many distinct entries the deck grid switches to short,
-# name-only cards so 9 rows still fit above Back.
+# name-only cards so 8 rows still fit above Back.
 DECK_COMPACT_THRESHOLD = 16
-DECK_ENTRY_HEIGHT_COMPACT = 52
+DECK_ENTRY_HEIGHT_COMPACT = 56
 
 
 def build_deck_entry_rects(count):
     height, gap = ((DECK_ENTRY_HEIGHT, DECK_ENTRY_GAP) if count <= DECK_COMPACT_THRESHOLD
-                   else (DECK_ENTRY_HEIGHT_COMPACT, 5))
+                   else (DECK_ENTRY_HEIGHT_COMPACT, 8))
     total_width = DECK_COLUMNS * DECK_ENTRY_WIDTH + (DECK_COLUMNS - 1) * DECK_ENTRY_GAP
     left = (settings.SCREEN_WIDTH - total_width) // 2
     return [pygame.Rect(left + (i % DECK_COLUMNS) * (DECK_ENTRY_WIDTH + DECK_ENTRY_GAP),
