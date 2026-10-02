@@ -980,7 +980,7 @@ def _describe_event_outcome(option, resolution):
 
 
 def draw_event_screen(surface, font, small_font, event, options, option_rects, hovered_index, phase,
-                       chosen_option=None, resolution=None, affordable=None):
+                       chosen_option=None, resolution=None, affordable=None, status_line=None):
     """`phase` is "choose" (the event's options are still on offer) or
     "resolved" (one's been picked -- `chosen_option`/`resolution` describe
     what happened; see Game._resolve_event_choice). `options` is
@@ -994,6 +994,9 @@ def draw_event_screen(surface, font, small_font, event, options, option_rects, h
     surface.fill(settings.COLOR_BG)
     title = font.render(event.display_name, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 70)))
+    if status_line is not None:
+        status = small_font.render(status_line, True, settings.COLOR_GOLD)
+        surface.blit(status, status.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
 
     y = 130
     for line in _wrap_text(event.prompt, small_font, EVENT_OPTION_WIDTH + 80):

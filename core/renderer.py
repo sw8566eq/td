@@ -241,6 +241,7 @@ class Renderer:
                 game.event_option_rects,
                 game._hovered_event_option(), game.event_phase, game.event_chosen_option, game.event_resolution,
                 affordable=[game._can_afford_event_option(option) for option in game.event_options],
+                status_line=self._run_status_line(),
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -363,6 +364,13 @@ class Renderer:
         # clear's meta-unlock, a permadeath's runs_played unlock).
         self._draw_toasts()
         pygame.display.flip()
+
+    def _run_status_line(self):
+        """"Lives / Shop currency / Potions" for the Event screen, whose
+        options cost exactly those -- the same readout the map shows."""
+        run = self.game.active_run
+        return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
+                f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
 
     def _run_modifiers_text(self):
         """"Ascension N, <Affix> elite" for the sidebar -- whichever of the
