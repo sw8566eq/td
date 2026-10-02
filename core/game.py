@@ -2056,10 +2056,21 @@ class Game:
         test coverage for the same reason; only _import_level_from_path()
         does -- see tests). Cancelling the dialog (an empty path) is a
         silent no-op, same as any other cancelled OS file picker."""
-        import tkinter
-        from tkinter import filedialog
-
-        root = tkinter.Tk()
+        # No Tk at all (a Python built without it -- common on Linux, and
+        # possible in a frozen build) or no display to open it on: say so in
+        # the sidebar instead of crashing the whole game on the click.
+        unavailable = "Import needs Tk (python3-tk) -- copy the file into custom_levels/ instead."
+        try:
+            import tkinter
+            from tkinter import filedialog
+        except ImportError:
+            self.import_status_message, self.import_status_is_error = unavailable, True
+            return
+        try:
+            root = tkinter.Tk()
+        except tkinter.TclError:
+            self.import_status_message, self.import_status_is_error = unavailable, True
+            return
         root.withdraw()  # no blank Tk window behind the picker
         path = filedialog.askopenfilename(filetypes=[("Level JSON", "*.json")])
         root.destroy()

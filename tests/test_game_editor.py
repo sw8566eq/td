@@ -1006,3 +1006,19 @@ def test_render_editor_with_an_import_status_message_does_not_crash(game):
     game.import_status_message = "Import failed."
     game.import_status_is_error = True
     game.render()
+
+
+def test_import_level_without_tk_shows_a_message_instead_of_crashing(game, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_tk(name, *args, **kwargs):
+        if name == "tkinter" or name.startswith("tkinter."):
+            raise ModuleNotFoundError("No module named 'tkinter'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_tk)
+    game._import_level()
+    assert game.import_status_is_error
+    assert "Tk" in game.import_status_message
