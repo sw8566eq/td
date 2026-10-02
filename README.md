@@ -155,6 +155,10 @@ Four Events deal in spells too: the Ancient Library (upgrade two random spells, 
 the Hermit Mage (buy an upgraded spell), the Purifying Flame (burn two random cards for lives), and
 the Wild Surge (two spells and a curse).
 
+Every act's boss is one of five named bosses with its own twist (The Juggernaut's tougher enemies, The
+Broodmother's swarms, The Warlord's speed, The Lich's regeneration and a Regret in your deck, The Golden
+Tyrant's rich but sturdy hordes); the map title tells you which one awaits.
+
 Beware **curse cards**: unplayable cards that just clog your hand. The Haunted Grove Event pays well
 for taking a **Doubt**, and a **Hexing** Elite shuffles two **Regrets** (each drains 1 energy when
 drawn) into your deck for that fight. A Shop's Remove a card is how you get rid of a Doubt for good.
