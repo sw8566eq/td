@@ -124,6 +124,8 @@ def list_custom_levels(directory=LEVELS_DIR):
             continue
         try:
             levels.append(load_level_file(os.path.join(directory, filename)))
-        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        # AttributeError too: Level's own validation calls .items() on each
+        # wave's composition, so a non-dict one (hand-edited) raises it.
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
             continue
     return levels

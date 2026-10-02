@@ -1022,3 +1022,17 @@ def test_import_level_without_tk_shows_a_message_instead_of_crashing(game, monke
     game._import_level()
     assert game.import_status_is_error
     assert "Tk" in game.import_status_message
+
+
+def test_importing_a_level_with_a_non_dict_wave_composition_fails_cleanly(game, tmp_path):
+    import json
+
+    from persistence.persistence import level_to_dict
+    from world.levels import LEVELS
+
+    data = json.loads(json.dumps(level_to_dict(LEVELS[1])))  # a real level, as its file would hold it
+    data["wave_specs"][0][0][1] = "x"
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(data))
+    assert game._import_level_from_path(str(bad), directory=str(tmp_path / "out")) is False
+    assert game.import_status_is_error

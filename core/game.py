@@ -2110,7 +2110,7 @@ class Game:
         import_status_is_error either way for the editor sidebar to show."""
         try:
             level = persistence.load_level_file(path)
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):  # see list_custom_levels
             # Short and fixed-length by design -- the sidebar has very
             # little vertical room this low in the panel (see
             # ui._draw_editor_path_sidebar), and an arbitrary level name or
