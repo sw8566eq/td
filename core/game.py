@@ -569,6 +569,15 @@ class Game:
         time)."""
         self.button_rects = ui.build_button_rects(self._active_tower_names())
 
+    def _run_level_pool(self, is_daily):
+        """Levels a run's map may draw: this account's unlocked ones -- or,
+        for a Daily Run, every level, so the map is the same for every
+        player regardless of their own unlocks (see card_pool/relics'
+        matching Daily overrides for the tower and relic pools)."""
+        if is_daily:
+            return dict(LEVELS)
+        return meta_progression.unlocked_level_pool(self.meta_progression_path)
+
     def _enter_commander_select(self):
         """MENU's "any key" -- show the Commander select screen (see
         commanders.py). Re-reads which Commanders this account has
@@ -639,7 +648,7 @@ class Game:
         self.sandbox = False
         self._clear_practice_economy_flags()
         seed = seed if seed is not None else random.Random().getrandbits(32)
-        level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
+        level_pool = self._run_level_pool(is_daily)
         # A Daily Run is always Ascension 0, for the same comparable-score
         # reason it pins difficulty; otherwise the menu's own selection,
         # clamped to what this account has actually unlocked.
@@ -1054,7 +1063,7 @@ class Game:
         run = self.active_run
         run.floors_cleared_prior_acts = run.floors_cleared
         run.act += 1
-        level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
+        level_pool = self._run_level_pool(run.is_daily)
         run.map = run_map.generate_run_map(random.Random(f"{run.seed}:act:{run.act}"), level_pool=level_pool)
         run.visited_node_ids = []
         run.current_node_id = None

@@ -1179,6 +1179,9 @@ def relic_offer(
     already has -- same shape as card_pool.draft_offer, just for the other
     card type. Returns fewer than `count` once the pool is exhausted
     rather than raising (see rng_sampling.sample_up_to)."""
+    if unlocked_pool is None and run.is_daily:
+        # Same account-independence card_pool.draft_offer gives a Daily Run.
+        unlocked_pool = [key for key, relic in RELICS.items() if not relic.is_curse and not relic.is_boss_relic]
     if unlocked_pool is None:
         unlocked_pool = _default_relic_pool(meta_progression_path or meta_progression.META_PROGRESSION_PATH)
     candidates = [key for key in unlocked_pool if key not in run.relics]

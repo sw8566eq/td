@@ -44,6 +44,10 @@ def draft_offer(
     pool is exhausted rather than raising -- a run that's drafted every
     available tower just stops seeing new choices (see
     rng_sampling.sample_up_to)."""
+    if unlocked_pool is None and run.is_daily:
+        # A Daily Run draws from every tower, independent of this account's
+        # own unlocks, so every player gets the identical offers that day.
+        unlocked_pool = list(TOWER_TYPES)
     if unlocked_pool is None:
         unlocked_pool = _default_unlocked_pool(meta_progression_path or meta_progression.META_PROGRESSION_PATH)
     candidates = [name for name in unlocked_pool if name not in run.unlocked_towers]
