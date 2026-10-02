@@ -382,7 +382,7 @@ class Renderer:
         run = self.game.active_run
         parts = []
         if run.ascension:
-            parts.append(f"Ascension {run.ascension}")
+            parts.append(f"Gauntlet {run.ascension}")
         if run.current_node_id is not None:
             affix = self.game._elite_affix(run, run.map.node(run.current_node_id))
             if affix is not None:

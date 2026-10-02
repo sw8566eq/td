@@ -22,7 +22,7 @@ def _run(**overrides):
 def test_boss_relics_describe_themselves_and_stay_out_of_normal_offers(tmp_path):
     assert len(BOSS_RELICS) >= 5
     for key in BOSS_RELICS:
-        assert RELICS[key].description.startswith("Boss relic: ")
+        assert RELICS[key].description.startswith("Trophy: ")
     path = str(tmp_path / "m.json")
     for seed in range(30):
         assert not set(relics.relic_offer(random.Random(seed), _run(), count=10, meta_progression_path=path)) & set(BOSS_RELICS)

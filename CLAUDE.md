@@ -37,6 +37,11 @@ four places: `pyproject.toml`'s `[[tool.mypy.overrides]]`, the Commands block ab
 
 - **The game is a roguelike deckbuilder. The run loop is the main loop.** Playing a level on its own
   is Practice (always `sandbox=True`, earns nothing). See `run-loop.md` and `run-map.md`.
+- **Towers are the cards -- there is no card deck.** The run is inspired by roguelike deckbuilders, but
+  never add a deck/hand/energy system or copy Slay the Spire's names. Player-facing names differ from
+  some code identifiers (kept for save compatibility): `ascension` = **Gauntlet**, `is_boss_relic` =
+  **trophy relic**, `rest` node / Smith = **Outpost** / **Forge**, `BLESSING` = **Orders from Command**,
+  `COMPENDIUM` = **Field Manual**, `potion_belt` = **Bandolier**.
 - **Content is registries, not conditionals.** `TOWER_TYPES`, `ENEMY_TYPES`, `LEVELS`, `RELICS`
   (curses and boss relics included, via flags), `EVENTS`, `POTIONS`, `COMMANDERS`, `AFFIXES`,
   `ASCENSION_LEVELS`, `ACHIEVEMENTS` and the `*_META_UNLOCKS` are `{key: ...}` dicts (or a tuple, for

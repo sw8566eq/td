@@ -3487,7 +3487,7 @@ def test_run_summary_lines_recap_progress_and_identity():
                    unlocked_towers=[], visited_node_ids=["0-0"], act=1, floors_cleared_prior_acts=6,
                    commander="alchemist", ascension=2, relics=["lucky_strikes"])
     assert ui.run_summary_lines(run) == [
-        "Act 2, 7 floors cleared", "The Alchemist, Ascension 2, 1 relic",
+        "Act 2, 7 floors cleared", "The Alchemist, Gauntlet 2, 1 relic",
     ]
     run.boss_defeated = True
     run.ascension = 0

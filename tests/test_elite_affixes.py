@@ -110,7 +110,7 @@ def test_map_tooltip_and_sidebar_show_the_affix(game):
     finally:
         clear_mouse_mock()
     game._enter_node("0-0")
-    assert game.renderer._run_modifiers_text() == "Ascension 4, Gilded elite"
+    assert game.renderer._run_modifiers_text() == "Gauntlet 4, Gilded elite"
     game.render()
 
 

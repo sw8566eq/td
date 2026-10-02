@@ -142,7 +142,7 @@ POTIONS = {
         _overclock, needs_enemies=False,
     ),
     "smoke_bomb": Potion(
-        "smoke_bomb", "Smoke Bomb",
+        "smoke_bomb", "Smoke Screen",
         f"Shove every enemy on the field {SMOKE_BOMB_KNOCKBACK:g}px back along its route.",
         _smoke_bomb,
     ),

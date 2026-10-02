@@ -417,7 +417,7 @@ EVENTS = {
         "A champion's tomb, their legendary gear still resting on the slab -- and a warning carved above it.",
         options=(
             EventOption(
-                "claim", "Claim the champion's relic (a boss relic and a curse)",
+                "claim", "Claim the champion's trophy (a trophy relic and a curse)",
                 "Power fit for a boss-slayer, and the champion's curse with it.",
                 grant_boss_relic=True, add_curse=True,
             ),
@@ -488,11 +488,11 @@ EVENTS = {
 # Deliberately not in EVENTS/_EVENT_ORDER, so pick_event can never draw it
 # for an ordinary Event node.
 BLESSING = Event(
-    "blessing", "A Blessing for the Road",
-    "An old spirit at the trailhead offers you one gift for the journey ahead.",
+    "blessing", "Orders from Command",
+    "Command radios in before your first deployment: one requisition, your pick.",
     options=(
         EventOption(
-            "relic", "A relic", "The spirit presses a relic into your hand.", grant_relic=True,
+            "relic", "A relic", "A crate drops from the supply line with a relic inside.", grant_relic=True,
         ),
         EventOption(
             "supplies", "Supplies (+15 shop currency, +3 lives)", "You set out well provisioned.",
