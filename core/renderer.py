@@ -230,6 +230,8 @@ class Renderer:
                 [game._reward_card_available(i) for i in range(len(game.reward_rects))],
                 game.shop_continue_button_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
                 forged_names=game.reward.forged_tower_choices,
+                # Sealed Cask blocks new potions outright -- "FULL" would be a lie.
+                potion_unavailable_tag="SEALED" if potions.potions_blocked(game.active_run) else "FULL",
             )
             self._draw_toasts()
             pygame.display.flip()

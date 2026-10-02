@@ -437,3 +437,16 @@ def test_resolve_event_option_relic_cost_is_a_noop_when_no_relic_is_held():
     granted = resolve_event_option(run, option, random.Random(1))
 
     assert "relic_given_up" not in granted
+
+
+def test_every_event_keeps_an_option_that_is_always_affordable():
+    # Otherwise a run with no currency, 1 life and no potions/relics would
+    # be stuck on that Event's screen with nothing clickable.
+    from run.events import BLESSING, EVENTS
+
+    def free(option):
+        return (option.shop_currency_delta >= 0 and option.lives_delta >= 0
+                and not option.potion_cost and not option.relic_cost)
+
+    for event in [*EVENTS.values(), BLESSING]:
+        assert any(free(option) for option in event.options), event.key
