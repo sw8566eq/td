@@ -201,6 +201,17 @@ def save_run(game, path=SAVE_PATH):
         json.dump(data, f, indent=2)
 
 
+def save_map_checkpoint(run, path=SAVE_PATH):
+    """A between-nodes autosave (Game._autosave_run): just the RunState,
+    no floor -- written every time the run map is shown or a node is
+    entered, so a run can be quit from anywhere and resumed with
+    "Continue". Overwritten by a mid-floor save_run(), which is the more
+    precise of the two."""
+    data = {"schema_version": SCHEMA_VERSION, "kind": "map", "run": _run_to_dict(run)}
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def load_run(path=SAVE_PATH):
     """The saved-run dict (its "level" entry already converted to a live
     Level via persistence.level_from_dict -- everything else stays plain
@@ -221,6 +232,8 @@ def _parse_and_validate_save(data):
     of json_io's own fallback-triggering exceptions, so an invalid save is
     still just "nothing to resume") for anything semantically wrong that
     well-formed JSON can't rule out on its own."""
+    if data.get("kind") == "map":
+        return {"kind": "map", "run": _parse_and_validate_active_run(data["run"], at_map=True)}
     data["level"] = level_from_dict(data["level"])
     if data["wave_state"] not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
         raise ValueError(f"saved run's wave_state {data['wave_state']!r} is not resumable")
@@ -246,7 +259,7 @@ def _parse_and_validate_save(data):
     return data
 
 
-def _parse_and_validate_active_run(run_data):
+def _parse_and_validate_active_run(run_data, at_map=False):
     """The "run" key's own validation, split out of _parse_and_validate_save
     for the same reason the top-level checks aren't one giant function --
     same regression-guard spirit as the unrecognized-tower-type check
@@ -281,9 +294,13 @@ def _parse_and_validate_active_run(run_data):
         (node_data for row in run_data["map"]["rows"] for node_data in row if node_data["id"] == run_data["current_node_id"]),
         None,
     )
-    if current_node is None:
+    if at_map:
+        # A map checkpoint can sit before any node is picked, or on any node type.
+        if run_data["current_node_id"] is not None and current_node is None:
+            raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
+    elif current_node is None:
         raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
-    if current_node["node_type"] not in ("combat", "elite", "boss"):
+    elif current_node["node_type"] not in ("combat", "elite", "boss"):
         raise ValueError(f"saved run's current node is a {current_node['node_type']!r} node, not resumable mid-PLAYING")
     for node_id in run_data["visited_node_ids"]:
         if node_id not in node_ids:

@@ -1124,6 +1124,7 @@ class Game:
         long as they linger. runs_played only ever bumps at permadeath
         (_record_run_permadeath), so this stays True for every node visit
         across a player's entire first run, not just their first click."""
+        self._autosave_run()
         self.map_node_rects = ui.build_map_node_rects(self.active_run.map)
         run = self.active_run
         self.map_node_affixes = {
@@ -1158,6 +1159,7 @@ class Game:
         already set, rather than each one setting it independently."""
         run = self.active_run
         run.current_node_id = node_id
+        self._autosave_run()
         node = run.map.node(node_id)
         if node.node_type in ("combat", "elite", "boss"):
             self._load_combat_node(node)
@@ -1899,8 +1901,37 @@ class Game:
         save file is missing or has since become corrupt, same defensive
         spirit as every other on-disk-data load in this codebase."""
         save_data = save_state.load_run(self.save_path)
-        if save_data is not None:
+        if save_data is None:
+            return
+        if save_data.get("kind") == "map":
+            self._resume_map_checkpoint(save_data["run"])
+        else:
             self.resume_saved_run(save_data)
+
+    def _autosave_run(self):
+        """Write a map checkpoint (save_state.save_map_checkpoint) for the
+        active run -- called on every map visit and node entry, so quitting
+        anywhere between floors loses nothing. This run now owns the save
+        file, so it's deleted at the run's end like a resumed save is."""
+        if self.active_run is None or self.sandbox:
+            return
+        save_state.save_map_checkpoint(self.active_run, self.save_path)
+        self.has_saved_run = True
+        self._resumed_from_save = True
+
+    def _resume_map_checkpoint(self, run):
+        """Resume a map checkpoint: back onto the map, or -- if the save
+        was taken on entering a node not yet finished -- straight back into
+        that node, fresh (a fight restarts from wave 1; a Shop/Event/Rest/
+        Treasure is re-derived identically from its node id), so quitting
+        can't dodge a node already committed to."""
+        self.active_run = run
+        self._resumed_from_save = True
+        node_id = run.current_node_id
+        if node_id is not None and node_id not in run.visited_node_ids:
+            self._enter_node(node_id)
+        else:
+            self._enter_map()
 
     def run(self):
         while self.running:

@@ -491,6 +491,11 @@ still in progress -- there's only ever one save slot.
 Saving is only possible between waves, which is what keeps this simple: there's no live enemy or
 projectile state to serialize, so a resumed run always restarts from a clean wave boundary.
 
+Runs also **autosave** every time you're on the map or step into a node, so you can quit from
+anywhere and `C` picks the run back up. If you quit in the middle of a fight you hadn't saved, you
+resume at the start of that same fight -- quitting never lets you skip a node you already chose.
+Starting a new run replaces any run still saved (there's only one slot).
+
 ## Map editor
 
 `E` from the main menu (or `python main.py --editor`) opens a freeform
