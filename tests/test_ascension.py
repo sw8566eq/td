@@ -33,9 +33,10 @@ def test_every_level_adds_exactly_one_described_rule():
 
 def test_rules_stack_multiplicatively_and_the_reward_delta_additively():
     top = ascension.modifiers_for(MAX_ASCENSION)
-    assert top.enemy_hp_multiplier == pytest.approx(1.1 * 1.1)
+    assert top.enemy_hp_multiplier == pytest.approx(1.1)
     assert top.reward_tower_count_delta == -1
     assert isinstance(top.reward_tower_count_delta, int)
+    assert top.starting_doubt_cards == 1 and isinstance(top.starting_doubt_cards, int)
     assert ascension.modifiers_for(1).enemy_hp_multiplier == 1.0
     assert ascension.modifiers_for(1).elite_hp_multiplier == 1.2
 
@@ -118,7 +119,7 @@ def test_ascension_raises_enemy_hp_on_a_floor(game):
     _ascended_run(game, ["combat", "combat"], MAX_ASCENSION)
     game._enter_node("0-0")
 
-    assert game.wave_manager.enemy_hp_multiplier == pytest.approx(plain * 1.21)
+    assert game.wave_manager.enemy_hp_multiplier == pytest.approx(plain * 1.1)
 
 
 def test_ascension_six_starts_the_run_with_fewer_lives(game):
@@ -211,3 +212,10 @@ def test_a_save_with_an_out_of_range_ascension_is_not_resumable(game):
 def test_map_screen_renders_with_an_ascension_title(game):
     _ascended_run(game, ["combat", "combat"], 3)
     game.render()
+
+
+def test_ascenders_bane_starts_the_run_with_a_doubt(game):
+    game.start_new_run(seed=1, ascension_level=MAX_ASCENSION)
+    assert game.active_run.deck.count("doubt") == 1
+    game.start_new_run(seed=1, ascension_level=MAX_ASCENSION - 1)
+    assert "doubt" not in game.active_run.deck
