@@ -868,12 +868,24 @@ class Game:
         run_history.record_run_result(run.seed, run.floors_cleared, self.run_history_path, details={
             "commander": run.commander, "ascension": run.ascension, "act": run.act + 1,
             "daily": run.is_daily, "final_boss_defeated": run.boss_defeated,
+            "endless_waves": run.endless_waves_cleared,
         })
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
         if self.active_run.is_daily:
             self._record_achievement("daily_runs_played")
+
+    def _update_endless_score(self):
+        """A wave just cleared -- on the final boss floor, raise RunState.
+        endless_waves_cleared to however many waves past the level's own
+        authored ones have now cleared (LEVELS' entry is the authored
+        count; game.level has endless waves appended)."""
+        run = self.active_run
+        if run is None or not run.is_final_floor:
+            return
+        authored = len(LEVELS[run.current_level_id].wave_specs)
+        run.endless_waves_cleared = max(run.endless_waves_cleared, self.wave_manager.wave_index - authored)
 
     def _handle_boss_defeated(self):
         """The map's boss node just ran out of authored waves for the
@@ -2721,6 +2733,7 @@ class Game:
             self.audio.play("wave_start")
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
+            self._update_endless_score()
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
                 and self.active_run is not None and self.active_run.is_final_floor):
             self._handle_boss_defeated()

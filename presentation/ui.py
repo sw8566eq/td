@@ -2211,6 +2211,8 @@ def run_history_lines(best_floors_cleared, records):
             parts.insert(2, f"A{record['ascension']}")
         if record.get("final_boss_defeated"):
             parts.append("final boss slain")
+        if record.get("endless_waves"):
+            parts.append(f"+{record['endless_waves']} endless")
         if record.get("daily"):
             parts.append("Daily")
         lines.append("  --  ".join(parts))
@@ -2714,6 +2716,8 @@ def run_summary_lines(run):
     progress = f"Act {run.act + 1}, {run.floors_cleared} floor{plural} cleared"
     if run.boss_defeated:
         progress += " -- final boss defeated!"
+    if run.endless_waves_cleared:
+        progress += f" +{run.endless_waves_cleared} endless wave{'' if run.endless_waves_cleared == 1 else 's'}"
     identity = [COMMANDERS[run.commander].display_name]
     if run.ascension:
         identity.append(f"Ascension {run.ascension}")
