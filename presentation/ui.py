@@ -27,7 +27,7 @@ from progression.meta_progression import (
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
-from run.elite_affixes import AFFIXES
+from run.elite_affixes import AFFIXES, BOSS_AFFIXES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
@@ -847,6 +847,9 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
     title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
+    boss = (node_affixes or {}).get(game_map.boss_node_id)
+    if boss is not None:  # plan the whole act around who's waiting at the top
+        title_text += f"  --  Boss: {boss.display_name}"
     title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 14)))
 
@@ -2435,6 +2438,7 @@ def compendium_rows(small_font):
         ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
+        ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
     ]
     rows = []
     for title, entries in sections:

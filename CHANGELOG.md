@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Named bosses**: every act boss is now one of five -- The Juggernaut, The Broodmother, The Warlord,
+  The Lich, The Golden Tyrant -- each with its own twist, named in the map title and its tooltip, and
+  listed in the Compendium.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.

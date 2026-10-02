@@ -64,9 +64,37 @@ AFFIXES = {
 }
 AFFIX_ORDER = list(AFFIXES)
 
+# Boss nodes roll one of these instead -- the same EliteAffix shape (so
+# every consumer handles both), each a named boss with its own flavor, like
+# Slay the Spire's several bosses per act.
+BOSS_AFFIXES = {
+    "juggernaut": EliteAffix(
+        "juggernaut", "The Juggernaut", "Enemies have 15% more HP and take 10% less damage.",
+        hp_multiplier=1.15, damage_taken_multiplier=0.9,
+    ),
+    "broodmother": EliteAffix(
+        "broodmother", "The Broodmother", "40% more enemies per wave, each with 10% less HP.",
+        hp_multiplier=0.9, count_multiplier=1.4,
+    ),
+    "warlord": EliteAffix("warlord", "The Warlord", "Enemies move 15% faster.", speed_multiplier=1.15),
+    "lich": EliteAffix(
+        "lich", "The Lich", "Enemies heal 3% of their max HP every second and move 5% faster.",
+        regen_fraction_per_second=0.03, speed_multiplier=1.05,
+    ),
+    "golden_tyrant": EliteAffix(
+        "golden_tyrant", "The Golden Tyrant", "Enemies have 20% more HP but drop double gold.",
+        hp_multiplier=1.2, gold_multiplier=2.0,
+    ),
+}
+BOSS_AFFIX_ORDER = list(BOSS_AFFIXES)
+
 
 def roll_affix(rng: random.Random) -> str:
     return AFFIX_ORDER[rng.randrange(len(AFFIX_ORDER))]
+
+
+def roll_boss_affix(rng: random.Random) -> str:
+    return BOSS_AFFIX_ORDER[rng.randrange(len(BOSS_AFFIX_ORDER))]
 
 
 def apply_to_escalation(escalation: FloorEscalation, affix: EliteAffix) -> FloorEscalation:

@@ -124,6 +124,13 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Potion Belt (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Bosses
+
+Every act's boss is one of five named bosses with its own twist: The Juggernaut (tougher enemies), The
+Broodmother (bigger swarms), The Warlord (faster enemies), The Lich (regenerating, slightly faster
+enemies) and The Golden Tyrant (sturdier enemies that drop double gold). The map title tells you which
+one is waiting at the top of the act, so you can draft toward it.
+
 ## Ascension
 
 Defeating a run's final (Act 3) boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks

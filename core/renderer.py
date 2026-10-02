@@ -386,7 +386,9 @@ class Renderer:
         if run.current_node_id is not None:
             affix = self.game._elite_affix(run, run.map.node(run.current_node_id))
             if affix is not None:
-                parts.append(f"{affix.display_name} elite")
+                # A boss affix is already a name ("The Warlord").
+                is_elite = run.map.node(run.current_node_id).node_type == "elite"
+                parts.append(f"{affix.display_name} elite" if is_elite else affix.display_name)
         return ", ".join(parts) or None
 
     def _draw_toasts(self):

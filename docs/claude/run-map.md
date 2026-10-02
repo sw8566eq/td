@@ -176,6 +176,13 @@ those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion
 unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
 (`_can_buy_shop_potion` is shared by the click and the renderer).
 
+
+**Named bosses**: `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
+returns one for a Boss node (`roll_boss_affix` on the same `"affix"` rng stream, keyed by the node id),
+so every affix consumer -- escalation, regen/damage-taken traits, Swarming-style count scaling (boss
+species excluded), the map tooltip and `map_node_affixes`, the sidebar text -- handles
+bosses with no extra branches. The map title names the act's boss (`Boss: The Warlord`).
+
 ## Starting blessing
 
 `events.BLESSING` -- an `Event` kept out of `EVENTS`/`_EVENT_ORDER` so `pick_event` never draws it.
