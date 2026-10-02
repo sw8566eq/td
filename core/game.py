@@ -432,7 +432,6 @@ class Game:
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
         self.relics_button_rect = ui.build_relics_button_rect()
-        self.potion_slot_rects = ui.build_potion_slot_rects()
         self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
@@ -930,7 +929,7 @@ class Game:
             # Pick-one rows: claiming one forfeits the rest of its kind.
             return not any(cards[i][0] == kind for i in self.reward_claimed_indices)
         if kind == "potion":
-            return potions.has_free_slot(self.active_run.potions)
+            return potions.has_free_slot(self.active_run)
         return True
 
     def _leave_reward_screen(self):
@@ -991,8 +990,17 @@ class Game:
             return
         key = run.potions.pop(slot)
         potions.POTIONS[key].use(self)
+        self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)
         self.audio.play("potion_used")
         self._record_achievement("potions_used")
+
+    @property
+    def potion_slot_rects(self):
+        """One rect per potion slot the active run has (potions.
+        slot_count -- a Potion Belt adds one), recomputed on read since a
+        relic can change it between floors."""
+        count = potions.slot_count(self.active_run) if self.active_run is not None else potions.POTION_SLOTS
+        return ui.build_potion_slot_rects(count)
 
     def _hovered_potion_slot(self):
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.potion_slot_rects)
@@ -1163,7 +1171,7 @@ class Game:
         this visit, a free potion slot, and enough shop currency."""
         run = self.active_run
         return (self.shop_potion is not None and not self.shop_potion_bought
-                and potions.has_free_slot(run.potions)
+                and potions.has_free_slot(run)
                 and shop.can_afford(run.shop_currency, self._shop_potion_price(), self.economy.unlimited_gold))
 
     def _try_buy_shop_potion(self):

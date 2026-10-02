@@ -70,6 +70,9 @@ def build_combat_reward(
         picks = relics.relic_offer(rng, run, count=1, meta_progression_path=meta_progression_path)
         relic = picks[0] if picks else None
     potion = None
-    if is_elite or rng.random() < potions.COMBAT_POTION_DROP_CHANCE:
+    guaranteed = any(relics.RELICS[key].guaranteed_potion_drop for key in run.relics)
+    # rng.random() is still drawn when guaranteed, so holding the relic
+    # never shifts which potion the same seed rolls.
+    if is_elite or rng.random() < potions.COMBAT_POTION_DROP_CHANCE or guaranteed:
         potion = potions.random_potion(rng)
     return CombatReward(tuple(tower_choices), relic, potion)

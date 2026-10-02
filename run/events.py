@@ -29,6 +29,7 @@ _EVENT_ORDER = (
     "traveling_smith", "omen_of_ruin", "quartermasters_cache", "unclaimed_cache",
     "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
     "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
+    "ancient_forge",
 )
 
 
@@ -68,6 +69,9 @@ class EventOption:
     # One random potion (potions.py) into a free slot -- nothing if the
     # belt is full (the option's description says so up front).
     grant_potion: bool = False
+    # Forge one random held, not-yet-forged tower type (the Rest site's
+    # Smith, see Game._forge_tower) -- nothing once every held tower is.
+    forge_random_tower: bool = False
 
 
 @dataclass(frozen=True)
@@ -382,6 +386,23 @@ EVENTS = {
             ),
         ),
     ),
+    "ancient_forge": Event(
+        "ancient_forge", "Ancient Forge",
+        "A forge still burns in the ruins, hungry for fuel.",
+        options=(
+            EventOption(
+                "stoke", "Feed it your blood (-2 lives, forge a random tower)",
+                "The flames roar, and one of your designs comes out stronger.",
+                lives_delta=-2, forge_random_tower=True,
+            ),
+            EventOption(
+                "coins", "Feed it coins (-8 shop currency, forge a random tower)",
+                "The coins melt away into a better blueprint.",
+                shop_currency_delta=-8, forge_random_tower=True,
+            ),
+            EventOption("leave", "Let it burn out", "You leave the forge to its embers."),
+        ),
+    ),
 }
 
 # Registry insertion order isn't guaranteed stable input for rng.choice the
@@ -493,10 +514,16 @@ def resolve_event_option(
         if held:
             run.relics.remove(held[0])
             granted["curse_removed"] = held[0]
-    if option.grant_potion and potions.has_free_slot(run.potions):
+    if option.grant_potion and potions.has_free_slot(run):
         potion = potions.random_potion(item_rng)
         run.potions.append(potion)
         granted["potion"] = potion
+    if option.forge_random_tower:
+        candidates = [name for name in run.unlocked_towers if name not in run.forged_towers]
+        if candidates:
+            forged = item_rng.choice(candidates)
+            run.forged_towers.append(forged)
+            granted["forged"] = forged
     if given_up_relic is not None:
         run.relics.remove(given_up_relic)
         granted["relic_given_up"] = given_up_relic

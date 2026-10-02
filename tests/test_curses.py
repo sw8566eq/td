@@ -149,3 +149,21 @@ def test_bad_reputation_raises_the_curse_removal_price_too(game):
     run.shop_currency = 100
     game._try_remove_curse()
     assert run.relics == []
+
+
+def test_ancient_forge_forges_an_unforged_held_tower():
+    run = _run(forged_towers=["basic"], lives=10)
+    stoke = EVENTS["ancient_forge"].options[0]
+    resolution = events.resolve_event_option(run, stoke, random.Random(3))
+    assert resolution["forged"] in STARTER_TOWERS and resolution["forged"] != "basic"
+    assert run.forged_towers == ["basic", resolution["forged"]]
+    assert run.lives == 8
+
+    done = _run(forged_towers=list(STARTER_TOWERS))
+    assert "forged" not in events.resolve_event_option(done, stoke, random.Random(3))
+
+
+def test_forge_outcome_is_described():
+    from presentation import ui
+
+    assert ui._describe_event_outcome(EventOption("x", "x", "x"), {"forged": "cannon"})[0].startswith("Forged: ")

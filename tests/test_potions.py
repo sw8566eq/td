@@ -42,9 +42,21 @@ def test_random_potion_is_deterministic_and_always_a_real_key():
         assert potions.random_potion(random.Random(seed)) in POTIONS
 
 
-def test_has_free_slot():
-    assert potions.has_free_slot([])
-    assert not potions.has_free_slot(["fire_bomb"] * POTION_SLOTS)
+def _bare_run(**overrides):
+    from conftest import make_linear_run_map
+
+    from run.run_state import RunState
+
+    return RunState(seed=1, map=make_linear_run_map(["combat"]), difficulty="normal", unlocked_towers=[],
+                    **overrides)
+
+
+def test_has_free_slot_and_potion_belt():
+    assert potions.has_free_slot(_bare_run())
+    assert not potions.has_free_slot(_bare_run(potions=["fire_bomb"] * POTION_SLOTS))
+    belted = _bare_run(potions=["fire_bomb"] * POTION_SLOTS, relics=["potion_belt"])
+    assert potions.slot_count(belted) == POTION_SLOTS + 1
+    assert potions.has_free_slot(belted)
 
 
 def test_fire_bomb_hits_every_enemy_for_a_fraction_of_max_hp_and_bosses_less(game):
@@ -157,8 +169,12 @@ def test_belt_slots_sit_inside_the_sidebar_below_the_sell_button():
     from presentation import ui
     from support import settings
 
-    rects = ui.build_potion_slot_rects()
+    rects = ui.build_potion_slot_rects(POTION_SLOTS)
     assert len(rects) == POTION_SLOTS
+    belted = ui.build_potion_slot_rects(POTION_SLOTS + 1)
+    assert not any(a.colliderect(b) for i, a in enumerate(belted) for b in belted[i + 1:])
+    for rect in belted:
+        assert rect.left >= settings.PLAY_WIDTH and rect.right <= settings.SCREEN_WIDTH
     sell_bottom = ui.build_sell_button_rect().bottom
     for rect in rects:
         assert rect.left >= settings.PLAY_WIDTH and rect.right <= settings.SCREEN_WIDTH
@@ -259,3 +275,47 @@ def test_shop_potion_stand_does_not_overlap_continue_or_the_cards():
     for rect in ui.build_draft_choice_rects(5):
         assert not potion_rect.colliderect(rect)
     assert potion_rect.right <= settings.SCREEN_WIDTH
+
+
+# --- Potion relics and the two newer potions ---
+
+
+def test_potion_belt_adds_a_usable_fourth_slot(game):
+    run = _floor_with_potions(game, ["mending_salve"] * (POTION_SLOTS + 1))
+    run.relics.append("potion_belt")
+    assert len(game.potion_slot_rects) == POTION_SLOTS + 1
+    lives = game.economy.lives
+    game._handle_click(game.potion_slot_rects[POTION_SLOTS].center)
+    assert len(run.potions) == POTION_SLOTS
+    assert game.economy.lives == lives + potions.MENDING_SALVE_LIVES
+    game.render()
+
+
+def test_field_medic_kit_heals_on_every_potion(game):
+    run = _floor_with_potions(game, ["liquid_gold"])
+    run.relics.append("field_medic_kit")
+    lives = game.economy.lives
+    game.use_potion(0)
+    assert game.economy.lives == lives + 1
+
+
+def test_brewmasters_kit_guarantees_a_reward_potion(tmp_path, monkeypatch):
+    from run import rewards
+
+    monkeypatch.setattr(potions, "COMBAT_POTION_DROP_CHANCE", 0.0)
+    path = str(tmp_path / "m.json")
+    plain = rewards.build_combat_reward(random.Random(1), _bare_run(), is_elite=False, meta_progression_path=path)
+    kit = rewards.build_combat_reward(random.Random(1), _bare_run(relics=["brewmasters_kit"]), is_elite=False,
+                                      meta_progression_path=path)
+    assert plain.potion is None and kit.potion in POTIONS
+
+
+def test_smoke_bomb_knocks_back_and_venom_vial_poisons(game):
+    _floor_with_potions(game, ["smoke_bomb", "venom_vial"])
+    grunt, boss = _enemy(), _enemy(BossEnemy)
+    game.enemies = [grunt, boss]
+    game.use_potion(0)
+    assert grunt.knockback_remaining == potions.SMOKE_BOMB_KNOCKBACK
+    game.use_potion(0)
+    assert grunt.poison_damage_per_tick == pytest.approx(grunt.max_hp * potions.VENOM_VIAL_HP_FRACTION_PER_TICK)
+    assert boss.poison_damage_per_tick == pytest.approx(boss.max_hp * potions.VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK)

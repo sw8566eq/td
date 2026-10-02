@@ -247,3 +247,12 @@ via an Event option's `add_curse` (`relics.curse_offer`, one not yet held), and 
 CURSE_REMOVAL_PRICE` times the run's shop price multiplier; not an offer card, so no
 `PRICE_ESCALATION`). Both removal paths lift the *oldest* curse (`relics.held_curses` keeps
 acquisition order). A curse can also be given up through a `relic_cost` Event option like any relic.
+
+## Potion relics
+
+`potion_slot_bonus`/`lives_per_potion`/`guaranteed_potion_drop` are Relic-only fields read straight off
+`RELICS` (never composed into RelicModifiers -- potions live on RunState, not on a floor's towers):
+`potions.slot_count(run)` (the belt's size, which `Game.potion_slot_rects` -- a property -- rebuilds on
+every read, shrinking slots to fit the panel), `Game.use_potion`, and `rewards.build_combat_reward`
+(which still draws its `rng.random()` when the drop is guaranteed, so the same seed rolls the same
+potion either way).

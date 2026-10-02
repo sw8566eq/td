@@ -18,8 +18,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from run.relics import RELICS
+from run.run_state import RunState
 from support.rng_sampling import sample_up_to
 
+# The base belt size -- a Potion Belt-style relic adds more (slot_count).
 POTION_SLOTS = 3
 
 # Chance an ordinary Combat floor's reward includes a potion; an Elite
@@ -39,6 +42,10 @@ LIQUID_GOLD_PER_ROW = 20
 MENDING_SALVE_LIVES = 3
 OVERCLOCK_FIRE_RATE_MULTIPLIER = 1.5
 OVERCLOCK_DURATION = 10.0
+SMOKE_BOMB_KNOCKBACK = 120.0
+VENOM_VIAL_HP_FRACTION_PER_TICK = 0.04
+VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK = 0.01
+VENOM_VIAL_DURATION = 6.0
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,17 @@ def _mending_salve(game: Any) -> None:
     game.economy.lives += MENDING_SALVE_LIVES
 
 
+def _smoke_bomb(game: Any) -> None:
+    for enemy in game.enemies:
+        enemy.apply_knockback(SMOKE_BOMB_KNOCKBACK)
+
+
+def _venom_vial(game: Any) -> None:
+    for enemy in game.enemies:
+        fraction = VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK if enemy.IS_BOSS else VENOM_VIAL_HP_FRACTION_PER_TICK
+        enemy.apply_poison(enemy.max_hp * fraction, 1.0, VENOM_VIAL_DURATION)
+
+
 def _overclock(game: Any) -> None:
     game.overclock_timer = max(game.overclock_timer, OVERCLOCK_DURATION)
 
@@ -120,6 +138,17 @@ POTIONS = {
         f"for {OVERCLOCK_DURATION:g}s.",
         _overclock,
     ),
+    "smoke_bomb": Potion(
+        "smoke_bomb", "Smoke Bomb",
+        f"Shove every enemy on the field {SMOKE_BOMB_KNOCKBACK:g}px back along its route.",
+        _smoke_bomb,
+    ),
+    "venom_vial": Potion(
+        "venom_vial", "Venom Vial",
+        f"Poison every enemy for {round(VENOM_VIAL_HP_FRACTION_PER_TICK * 100)}% of its max HP per second "
+        f"for {VENOM_VIAL_DURATION:g}s ({round(VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK * 100)}% vs bosses).",
+        _venom_vial,
+    ),
 }
 
 POTION_ORDER = list(POTIONS)
@@ -132,5 +161,11 @@ def random_potion(rng: random.Random) -> str:
     return sample_up_to(rng, POTION_ORDER, 1)[0]
 
 
-def has_free_slot(held: list[str]) -> bool:
-    return len(held) < POTION_SLOTS
+def slot_count(run: RunState) -> int:
+    """POTION_SLOTS plus every held relic's potion_slot_bonus (Potion
+    Belt)."""
+    return POTION_SLOTS + sum(RELICS[key].potion_slot_bonus for key in run.relics)
+
+
+def has_free_slot(run: RunState) -> bool:
+    return len(run.potions) < slot_count(run)

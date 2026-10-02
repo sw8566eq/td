@@ -518,6 +518,14 @@ class Relic:
     # sells its removal (Game._try_remove_curse). Composed exactly like any
     # other relic: its fields are just set the "wrong" way round.
     is_curse: bool = False
+    # Potion relics -- Relic-only, read straight off RELICS rather than
+    # composed into RelicModifiers, since potions live on RunState, not on
+    # a floor's towers/enemies: potions.slot_count (potion_slot_bonus),
+    # Game.use_potion (lives_per_potion), rewards.build_combat_reward
+    # (guaranteed_potion_drop).
+    potion_slot_bonus: int = 0
+    lives_per_potion: int = 0
+    guaranteed_potion_drop: bool = False
 
 
 RELICS = {
@@ -1036,6 +1044,16 @@ RELICS = {
         "overwhelming_affliction", "Overwhelming Affliction",
         "+60% damage to enemies that are Marked, Slowed, and Poisoned all at once.",
         damage_vs_marked_and_slowed_and_poisoned_multiplier=1.60,
+    ),
+    "potion_belt": Relic(
+        "potion_belt", "Potion Belt", "+1 potion slot.", potion_slot_bonus=1,
+    ),
+    "field_medic_kit": Relic(
+        "field_medic_kit", "Field Medic Kit", "Restore 1 life every time you drink a potion.", lives_per_potion=1,
+    ),
+    "brewmasters_kit": Relic(
+        "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
+        guaranteed_potion_drop=True,
     ),
     # --- Curses (is_curse=True) -- see Relic.is_curse. ---
     "rusted_gears": Relic(
