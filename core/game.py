@@ -683,7 +683,6 @@ class Game:
             ascension=ascension.clamp(ascension_level), commander=commander,
             relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
             forged_towers=list(chosen.forged_towers),
-            deck=list(spells.STARTER_DECK) + ([chosen.signature_spell] if chosen.signature_spell else []),
         )
         if is_daily:
             self._apply_daily_modifiers()
@@ -895,15 +894,8 @@ class Game:
         self.economy.add_gold(relic_modifiers.gold_per_floor_bonus)
         # The fight's spell deck, shuffled from the node's own rng so a
         # restart (or Continue) deals the very same hands.
-        held = [relics.RELICS[key] for key in run.relics]
-        self.combat_deck = spells.CombatDeck.from_deck(
-            run.deck, self._run_rng(run, _SPELL_RNG_STREAM, node.id),
-            max_energy=spells.MAX_ENERGY + sum(relic.max_energy_bonus for relic in held),
-            hand_size=spells.HAND_SIZE + sum(relic.hand_size_bonus for relic in held),
-        )
+        self.combat_deck = spells.CombatDeck.from_deck(run.deck, self._run_rng(run, _SPELL_RNG_STREAM, node.id))
         self.combat_deck.new_turn()
-        self.combat_deck.draw(sum(relic.opening_draw_bonus for relic in held))
-        self.combat_deck.energy += sum(relic.opening_energy_bonus for relic in held)
         self.state = GameState.PLAYING
 
     def _advance_run_floor(self):
@@ -1165,8 +1157,6 @@ class Game:
         self.spell_damage_bonus = 0.0
         self.bounty_timer = 0.0
         self.free_tower_charges = 0
-        # A Runic Resonance-style relic's fight-long tower damage bonus.
-        self.spell_resonance_bonus = 0.0
 
     def play_card(self, index):
         """Play the card at `index` of the fight's hand -- refused (card
@@ -1179,17 +1169,7 @@ class Game:
         if spells.spell_of(deck.hand[index]).needs_enemies and not self.enemies:
             return False
         card = deck.play(index)
-        held = [relics.RELICS[key] for key in self.active_run.relics]
-        casts = 2 if deck.played_this_turn == 1 and any(relic.spell_echo for relic in held) else 1
-        for _ in range(casts):
-            if spells.spell_of(card).needs_enemies and not self.enemies:
-                break  # the first cast cleared the field -- nothing left to echo onto
-            spells.spell_of(card).cast(self, spells.card_level(card))
-        self.economy.add_gold(sum(relic.gold_per_spell for relic in held))
-        for relic in held:
-            if relic.spell_resonance_per_cast:
-                self.spell_resonance_bonus = min(relic.spell_resonance_cap,
-                                                 self.spell_resonance_bonus + relic.spell_resonance_per_cast)
+        spells.spell_of(card).cast(self, spells.card_level(card))
         self.audio.play("potion_used")
         self._record_achievement("spells_cast")
         return True
@@ -2885,7 +2865,7 @@ class Game:
         if self.spell_damage_timer <= 0:
             self.spell_damage_bonus = 0.0
         overclock *= self.spell_fire_rate_multiplier
-        spell_damage_bonus = self.spell_damage_bonus + self.spell_resonance_bonus
+        spell_damage_bonus = self.spell_damage_bonus
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)

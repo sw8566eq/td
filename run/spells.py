@@ -381,9 +381,6 @@ class CombatDeck:
     energy: int = 0
     max_energy: int = MAX_ENERGY
     hand_size: int = HAND_SIZE
-    # Cards played since the last new_turn -- what an Echo Chamber-style
-    # relic checks for "the first spell this wave".
-    played_this_turn: int = 0
 
     @classmethod
     def from_deck(cls, deck: list[str], rng: random.Random, max_energy: int = MAX_ENERGY,
@@ -413,7 +410,6 @@ class CombatDeck:
         self.discard_pile.extend(self.hand)
         self.hand = []
         self.energy = self.max_energy
-        self.played_this_turn = 0
         self.draw(self.hand_size)
 
     def can_play(self, index: int) -> bool:
@@ -425,6 +421,5 @@ class CombatDeck:
         after this, so a draw effect never re-draws the card just played."""
         card = self.hand.pop(index)
         self.energy -= card_cost(card)
-        self.played_this_turn += 1
         (self.exhaust_pile if spell_of(card).exhaust else self.discard_pile).append(card)
         return card

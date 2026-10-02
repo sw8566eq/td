@@ -27,38 +27,35 @@ class Commander:
     starting_relics: tuple[str, ...] = ()
     starting_potions: tuple[str, ...] = ()
     forged_towers: tuple[str, ...] = field(default_factory=tuple)
-    # One extra spell card (a spells.SPELLS key) on top of spells.STARTER_DECK.
-    signature_spell: str | None = None
 
 
 COMMANDERS = {
     "warden": Commander(
         "warden", "The Warden",
         "A steady defender. Basic, Cannon and Frost; once per run, survives a killing blow.",
-        ("basic", "cannon", "frost"), starting_relics=("guardians_reprieve",), signature_spell="blizzard",
+        ("basic", "cannon", "frost"), starting_relics=("guardians_reprieve",),
     ),
     "alchemist": Commander(
         "alchemist", "The Alchemist",
         "Poisons everything. Basic, Poison and Frost; venom-coated shots and two potions to start.",
         ("basic", "poison", "frost"), starting_relics=("venomous_coating",),
-        starting_potions=("fire_bomb", "mending_salve"), signature_spell="plague",
+        starting_potions=("fire_bomb", "mending_salve"),
     ),
     "marksman": Commander(
         "marksman", "The Marksman",
         "Precision over volume. Basic, Sniper and Frost; every tower crits more often.",
-        ("basic", "sniper", "frost"), starting_relics=("focused_fire",), signature_spell="focus_fire",
+        ("basic", "sniper", "frost"), starting_relics=("focused_fire",),
     ),
     "engineer": Commander(
         "engineer", "The Engineer",
         "Builds it better. Basic, Cannon and Support; Basic starts forged, upgrades cost less.",
         ("basic", "cannon", "support"), starting_relics=("quartermasters_favor",),
-        forged_towers=("basic",), signature_spell="requisition",
+        forged_towers=("basic",),
     ),
     "stormcaller": Commander(
         "stormcaller", "The Stormcaller",
         "Chains lightning through crowds. Basic, Lightning and Frost; Lightning starts forged and hits harder.",
         ("basic", "lightning", "frost"), starting_relics=("storm_core",), forged_towers=("lightning",),
-        signature_spell="chain_lightning",
     ),
 }
 COMMANDER_ORDER = list(COMMANDERS)

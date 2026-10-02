@@ -144,13 +144,6 @@ Blizzard, Expose, Plague, Execute, Focus Fire, Bounty (double kill gold), Empowe
 Requisition (your next tower is free), Patch the Gate (+1 life), and the draw/energy cards Insight and
 Surge. Cards marked **Exhaust** are used up for the rest of that fight. Rarer cards show up less often.
 
-Each Commander adds a **signature spell** to that starter deck (The Warden's Blizzard, The Alchemist's
-Plague, The Marksman's Focus Fire, The Engineer's Requisition, The Stormcaller's Chain Lightning), and
-six relics build around spells: Arcane Tithe (gold per cast), Runic Resonance (each cast permanently
-buffs tower damage for the fight), Prepared Grimoire (a bigger, better-fuelled opening hand), Echo
-Chamber (the first spell each wave casts twice), and the boss relics Mana Crystal (+1 energy) and
-Grand Grimoire (+1 card per hand).
-
 Cards can be **upgraded** (`Zap+`, shown with a green border): a Rest site's new **Study** option
 upgrades one card of your choice for the rest of the run, and deeper fights sometimes offer a spell
 already upgraded. Upgrades raise a card's numbers (damage, duration, draw, energy...) and make a few

@@ -19,9 +19,6 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Spell upgrades**: Rest sites gain a fourth option, **Study**, which upgrades one spell (`Zap+`) for
   the rest of the run; deeper rewards sometimes offer pre-upgraded spells. Three new achievements:
   Spark, Spellslinger, Scholar.
-- **Spell relics and signature spells**: four relics (Arcane Tithe, Runic Resonance, Prepared Grimoire,
-  Echo Chamber) and two boss relics (Mana Crystal: +1 energy; Grand Grimoire: +1 card per hand) build
-  around the deck, and every Commander starts with one signature spell on top of the starter deck.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.

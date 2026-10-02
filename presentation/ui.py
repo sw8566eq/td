@@ -1548,8 +1548,6 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
             lines.append("Potions: " + ", ".join(POTIONS[p].display_name for p in commander.starting_potions))
         if commander.forged_towers:
             lines.append("Forged: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.forged_towers))
-        if commander.signature_spell is not None:
-            lines.append(f"Spell: {SPELLS[commander.signature_spell].display_name}")
         for line in lines:
             for wrapped in (_wrap_text(line, small_font, max_width) if line else [""]):
                 surface.blit(small_font.render(wrapped, True, settings.COLOR_TEXT_DIM), (x, y))
