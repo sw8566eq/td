@@ -262,6 +262,7 @@ class Game:
         # own scroll_offset alongside achievements'/level_select's/
         # wave_unit's own precedent, always reset to 0 on (re-)entry.
         self.run_history_state = run_history.load_run_history(self.run_history_path)
+        self.run_history_records = run_history.load_run_records(self.run_history_path)
         self.run_history_scroll_offset = 0
         self.run_history_back_rect = ui.build_run_history_back_rect()
         self.unlocks_state = meta_progression.load_meta_progression(self.meta_progression_path)
@@ -851,7 +852,11 @@ class Game:
         outcome if that combination is ever reachable."""
         if self.sandbox:
             return
-        run_history.record_run_result(self.active_run.seed, self.active_run.floors_cleared, self.run_history_path)
+        run = self.active_run
+        run_history.record_run_result(run.seed, run.floors_cleared, self.run_history_path, details={
+            "commander": run.commander, "ascension": run.ascension, "act": run.act + 1,
+            "daily": run.is_daily, "final_boss_defeated": run.boss_defeated,
+        })
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
@@ -2043,6 +2048,7 @@ class Game:
         # open (see _record_run_permadeath()). Always reopens scrolled to
         # the top, same as _enter_level_select()'s own scroll_offset reset.
         self.run_history_state = run_history.load_run_history(self.run_history_path)
+        self.run_history_records = run_history.load_run_records(self.run_history_path)
         self.run_history_scroll_offset = 0
         self.state = GameState.RUN_HISTORY
 

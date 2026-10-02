@@ -3699,3 +3699,27 @@ def test_handle_events_left_click_continues_from_rest_and_treasure(game, state):
 
     assert game.state == GameState.MAP
     assert game.active_run.visited_node_ids == [node_id]
+
+
+def test_run_history_lines_show_recorded_runs_or_fall_back_to_best_per_seed():
+    records = [
+        {"seed": 2, "floors_cleared": 9, "commander": "alchemist", "ascension": 3, "act": 2,
+         "daily": True, "final_boss_defeated": True},
+        {"seed": 1, "floors_cleared": 1, "commander": "nobody", "act": 1},
+    ]
+    lines = ui.run_history_lines({1: 1, 2: 9}, records)
+    assert lines[0] == "#2  --  The Alchemist  --  A3  --  Act 2  --  9 floors  --  final boss slain  --  Daily"
+    assert lines[1] == "#1  --  Unknown  --  Act 1  --  1 floor"
+    assert ui.run_history_lines({1: 1}, []) == ["Seed 1 -- 1 floor cleared"]
+
+
+def test_permadeath_records_run_details(game):
+    from conftest import start_first_floor
+
+    start_first_floor(game, seed=5)
+    game.economy.lives = 0
+    game.update(dt=0.01)
+    records = run_history.load_run_records(game.run_history_path)
+    assert records[0]["seed"] == 5 and records[0]["commander"] == "warden" and records[0]["act"] == 1
+    game._enter_run_history()
+    game.render()

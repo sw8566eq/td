@@ -128,7 +128,11 @@ packaged build. Before this was factored out, each independently wrote the same
 - `progression/run_history.py` records `{seed: best_floors_cleared}`, written once per run by
   `_record_run_permadeath()`. Per-seed max rather than last-write, which is what makes a replayed
   seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
-  handling here at all, it's just another seed.
+  handling here at all, it's just another seed. The same file also keeps a `"runs"` list (additive,
+  same schema version): one record per run (`details` = commander/ascension/act/daily/
+  final_boss_defeated), newest first, capped at `MAX_RUN_RECORDS`; `save_run_history(best)` without
+  `records` preserves the existing list. The Run History screen renders `ui.run_history_lines`, which
+  falls back to the per-seed bests for a file written before records existed.
 - `persistence/save_state.py` saves a single in-progress session -- but **only** between waves. ("Session," not
   "run": `save_run()`/`can_save_run()`/`resume_saved_run()`/`_resumed_from_save` predate the
   overhaul and name *whatever's being played*, classic level or roguelike run alike -- unrelated to
