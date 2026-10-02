@@ -175,3 +175,9 @@ setting `event_is_blessing`; the item rng key is `"blessing:<option>"`. Every Ev
 through `Game._leave_event`, which returns to the map for the blessing (no node to mark visited) and
 calls `_finish_node` otherwise. `EventOption.extra_relic` gives the dark bargain its second relic.
 `ui.build_event_option_rects` compresses its column for 4+ options.
+
+Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower card rolls
+`min(FORGED_CARD_MAX_CHANCE, FORGED_CARD_CHANCE_PER_DEPTH * run.depth)` to come pre-forged) and
+`forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
+pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
+unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).

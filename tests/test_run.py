@@ -461,6 +461,8 @@ def test_floor_cleared_any_key_opens_the_reward_screen(game):
 def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game):
     start_first_floor(game, seed=1)
     game.active_run.unlocked_towers = list(TOWER_TYPES)
+    game.active_run.forged_towers = list(TOWER_TYPES)  # nothing left to forge either
+    game.active_run.relics.append("sealed_cask")  # and no potion can drop
     finish_all_waves(game)
     game.update(dt=0.01)
 
@@ -525,7 +527,7 @@ def test_elite_reward_includes_a_claimable_relic(game):
     _clear_into_reward(game, node_types=("elite", "combat"))
     relic_key = game.reward.relic
     assert relic_key is not None
-    relic_index = len(game.reward.tower_choices)
+    relic_index = game._reward_cards().index(("relic", relic_key))
 
     game._handle_reward_click(game.reward_rects[relic_index].center)
     game._handle_reward_click(game.reward_rects[relic_index].center)  # a second claim is a no-op
@@ -3501,3 +3503,29 @@ def test_relics_overlay_switches_to_names_only_for_long_lists():
     assert " -- " not in lines[0]
     few = many[:2]
     assert len(ui._relics_overlay_lines(few)) == 2
+
+
+def test_taking_a_forge_card_forges_a_held_tower_and_forfeits_the_tower_row(game):
+    _begin_run_with_map(game, ["combat", "combat"], unlocked_towers=list(TOWER_TYPES))
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._handle_keydown(pygame.K_SPACE)
+    cards = game._reward_cards()
+    forge_indices = [i for i, (kind, _key) in enumerate(cards) if kind == "forge"]
+    assert len(forge_indices) == rewards.TOWER_REWARD_COUNT
+    game.render()
+    game._take_reward_card(forge_indices[0])
+    game._take_reward_card(forge_indices[1])
+    assert game.active_run.forged_towers == [cards[forge_indices[0]][1]]
+    game.render()
+
+
+def test_taking_a_pre_forged_tower_card_adds_it_forged(game, monkeypatch):
+    monkeypatch.setattr(card_pool, "_default_unlocked_pool", lambda _path: list(TOWER_TYPES))
+    _clear_into_reward(game)
+    game.reward = rewards.CombatReward(("sniper",), forged_tower_choices=("sniper",))
+    game.reward_rects = ui.build_draft_choice_rects(1)
+    game.render()
+    game._take_reward_card(0)
+    assert "sniper" in game.active_run.unlocked_towers and "sniper" in game.active_run.forged_towers

@@ -108,7 +108,9 @@ there's a real choice in what to prioritize, not just "buy everything eventually
 ## Rewards and potions
 
 Every fight you win opens a **Spoils of battle** screen, Slay the Spire style: pick one of up to three
-free tower cards to add to your run (or skip them), and Elite fights also drop a free relic.
+free tower cards to add to your run (or skip them), and Elite fights also drop a free relic. Deeper
+fights sometimes offer a tower already **forged** (`FREE +`), and once you've collected every tower
+you can, the row offers **forge cards** for towers you hold instead.
 
 Rewards can also include a **potion** -- a single-use consumable (Elites always drop one). You hold up
 to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts

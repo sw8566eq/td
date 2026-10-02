@@ -926,6 +926,7 @@ class Game:
         every tower choice, the Elite relic, an act boss's relic choices,
         then the potion, each only if the reward has one."""
         cards = [("tower", name) for name in self.reward.tower_choices]
+        cards.extend(("forge", name) for name in self.reward.forge_choices)
         if self.reward.relic is not None:
             cards.append(("relic", self.reward.relic))
         cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
@@ -944,9 +945,11 @@ class Game:
             return False
         cards = self._reward_cards()
         kind = cards[index][0]
-        if kind in ("tower", "boss_relic"):
-            # Pick-one rows: claiming one forfeits the rest of its kind.
-            return not any(cards[i][0] == kind for i in self.reward_claimed_indices)
+        if kind in ("tower", "forge", "boss_relic"):
+            # Pick-one rows: claiming one forfeits the rest of its row --
+            # new towers and forge cards share one row.
+            row = ("tower", "forge") if kind in ("tower", "forge") else (kind,)
+            return not any(cards[i][0] in row for i in self.reward_claimed_indices)
         if kind == "potion":
             return potions.has_free_slot(self.active_run)
         return True
@@ -990,7 +993,12 @@ class Game:
         self.reward_claimed_indices.add(index)
         if kind == "tower":
             self.active_run.unlocked_towers.append(key)
+            if key in self.reward.forged_tower_choices:
+                self.active_run.forged_towers.append(key)
             self.audio.play("tower_unlocked_shop")
+        elif kind == "forge":
+            self.active_run.forged_towers.append(key)
+            self.audio.play("tower_upgraded")
         elif kind in ("relic", "boss_relic"):
             self._grant_relic(key)
         else:

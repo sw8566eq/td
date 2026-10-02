@@ -70,3 +70,37 @@ def test_same_rng_seed_gives_the_same_reward(tmp_path):
     first = rewards.build_combat_reward(random.Random(7), _run(), is_elite=True, meta_progression_path=path)
     second = rewards.build_combat_reward(random.Random(7), _run(), is_elite=True, meta_progression_path=path)
     assert first == second
+
+
+def test_forge_cards_fill_the_tower_row_once_new_towers_run_out(tmp_path):
+    run = _run(unlocked_towers=list(TOWER_TYPES), forged_towers=["basic"])
+    reward = rewards.build_combat_reward(random.Random(1), run, is_elite=False,
+                                         meta_progression_path=str(tmp_path / "m.json"))
+    assert reward.tower_choices == ()
+    assert len(reward.forge_choices) == rewards.TOWER_REWARD_COUNT
+    assert "basic" not in reward.forge_choices
+    assert set(reward.forge_choices) <= set(TOWER_TYPES)
+
+
+def test_no_forge_cards_while_new_towers_fill_the_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(card_pool, "_default_unlocked_pool", lambda _path: list(TOWER_TYPES))
+    reward = rewards.build_combat_reward(random.Random(1), _run(), is_elite=False,
+                                         meta_progression_path=str(tmp_path / "m.json"))
+    assert reward.forge_choices == ()
+
+
+def test_deeper_rewards_offer_pre_forged_towers(tmp_path, monkeypatch):
+    from conftest import make_linear_run_map
+
+    monkeypatch.setattr(card_pool, "_default_unlocked_pool", lambda _path: list(TOWER_TYPES))
+    path = str(tmp_path / "m.json")
+    shallow = _run(current_node_id="0-0")
+    assert all(not rewards.build_combat_reward(random.Random(s), shallow, False, path).forged_tower_choices
+               for s in range(20))
+    deep = _run(map=make_linear_run_map(["combat"] * 6), current_node_id="5-0", act=2)
+    offered = [rewards.build_combat_reward(random.Random(s), deep, False, path).forged_tower_choices
+               for s in range(20)]
+    assert any(offered)
+    for seed, forged in enumerate(offered):
+        reward = rewards.build_combat_reward(random.Random(seed), deep, False, path)
+        assert set(forged) <= set(reward.tower_choices)

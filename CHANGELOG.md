@@ -18,6 +18,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- Reward screens offer **forge cards** for towers you already hold once there aren't enough new towers
+  left, and deeper fights sometimes offer a new tower pre-forged (`FREE +`) -- up to a 50% chance per
+  card by Act 3.
 - The run map now shows your relic count and held potions, and `R` opens the relics list from the map;
   the relics list switches to a compact names-only layout once a deep run holds more than 12.
 - **Starting blessing**: every run (Daily included) opens with a choice of one gift -- a relic,
