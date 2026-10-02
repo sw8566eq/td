@@ -12,6 +12,11 @@ import pygame
 
 from entities.projectile import Projectile
 from run import veterancy
+
+# Placement relics' reach (see Tower.set_nearby_tower_bonus).
+VARIETY_RADIUS = 110
+VARIETY_BONUS_CAP = 0.25
+ISOLATION_RADIUS = 100
 from support import settings
 
 
@@ -416,6 +421,12 @@ class Tower:
         self.veterancy_damage_bonus = 0.0
         # A fitted module's damage bonus (run/modules.py) -- set at construction.
         self.module_damage_bonus = 0.0
+        # Placement relics (Relic.variety_damage_bonus_per_type/isolation_
+        # damage_bonus): the per-type/flat amounts set at construction, and
+        # the live bonus set_nearby_tower_bonus() resolves from them.
+        self.relic_variety_damage_bonus_per_type = 0.0
+        self.relic_isolation_damage_bonus = 0.0
+        self.placement_damage_bonus = 0.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -864,6 +875,7 @@ class Tower:
             + self._relic_family_damage_bonus()
             + self.veterancy_damage_bonus
             + self.module_damage_bonus
+            + self.placement_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):
@@ -955,6 +967,18 @@ class Tower:
             self.relic_tower_density_fire_rate_bonus_cap,
         )
         self.relic_tower_density_fire_rate_bonus_multiplier = 1.0 + fire_rate_bonus
+        # Combined Arms / Lone Sentinel -- the same "only when the board
+        # changes" recompute, skipped entirely without either relic.
+        self.placement_damage_bonus = 0.0
+        if self.relic_variety_damage_bonus_per_type:
+            radius_sq = VARIETY_RADIUS ** 2
+            kinds = {type(other) for other in towers
+                     if type(other) is not type(self) and self.pos.distance_squared_to(other.pos) <= radius_sq}
+            self.placement_damage_bonus += min(len(kinds) * self.relic_variety_damage_bonus_per_type, VARIETY_BONUS_CAP)
+        if self.relic_isolation_damage_bonus:
+            radius_sq = ISOLATION_RADIUS ** 2
+            if not any(other is not self and self.pos.distance_squared_to(other.pos) <= radius_sq for other in towers):
+                self.placement_damage_bonus += self.relic_isolation_damage_bonus
 
     def effective_fire_rate(self):
         """self.fire_rate scaled by three independent multiplicative

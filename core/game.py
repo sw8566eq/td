@@ -2505,6 +2505,8 @@ class Game:
         tower.relic_tower_density_radius = self.relic_modifiers.tower_density_radius
         tower.relic_tower_density_damage_bonus_per_neighbor = self.relic_modifiers.tower_density_damage_bonus_per_neighbor
         tower.relic_tower_density_damage_bonus_cap = self.relic_modifiers.tower_density_damage_bonus_cap
+        tower.relic_variety_damage_bonus_per_type = self.relic_modifiers.variety_damage_bonus_per_type
+        tower.relic_isolation_damage_bonus = self.relic_modifiers.isolation_damage_bonus
         tower.relic_tower_density_fire_rate_bonus_per_neighbor = self.relic_modifiers.tower_density_fire_rate_bonus_per_neighbor
         tower.relic_tower_density_fire_rate_bonus_cap = self.relic_modifiers.tower_density_fire_rate_bonus_cap
         tower.relic_last_stand_fire_rate_bonus_multiplier = self.relic_modifiers.last_stand_fire_rate_multiplier

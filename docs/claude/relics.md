@@ -271,3 +271,12 @@ rewards/Shop stand/Events all refuse new potions while held ones stay usable).
 `compose_relic_modifiers`' `floor_index` is fed `run.floors_cleared` (fights actually won so far, across
 every act), not the node's row/depth -- Veteran's Momentum, its only reader, promises "+2% per floor
 cleared", and depth also counts Shop/Event/Rest rows and every row of earlier acts.
+
+## Placement relics
+
+`variety_damage_bonus_per_type` (Combined Arms) and `isolation_damage_bonus` (Lone Sentinel) compose
+additively like the density fields and are copied onto each tower in `_construct_tower`. They are
+resolved in `Tower.set_nearby_tower_bonus` (so only when the board changes) into
+`Tower.placement_damage_bonus`, one more additive `effective_damage()` source. Radii and the variety
+cap are module constants in `entities/tower.py` (`VARIETY_RADIUS`, `VARIETY_BONUS_CAP`,
+`ISOLATION_RADIUS`). "Different type" means a different tower class.
