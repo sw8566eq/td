@@ -2485,6 +2485,10 @@ class Game:
         tower.relic_splash_radius_bonus_multiplier = self.relic_modifiers.tower_splash_radius_multiplier
         tower.relic_lightning_chain_range_bonus_multiplier = self.relic_modifiers.lightning_chain_range_multiplier
         tower.relic_lightning_damage_bonus_multiplier = self.relic_modifiers.lightning_damage_multiplier
+        tower.relic_spike_trap_damage_bonus_multiplier = self.relic_modifiers.spike_trap_damage_multiplier
+        tower.relic_tar_pit_marks = self.relic_modifiers.tar_pit_marks
+        if tower_cls.PLACEMENT == "path":
+            tower.relic_fire_rate_bonus_multiplier *= self.relic_modifiers.trap_fire_rate_multiplier
         tower.relic_cannon_knockback_damage_bonus_multiplier = self.relic_modifiers.cannon_knockback_damage_multiplier
         tower.relic_beacon_splash_radius_bonus_multiplier = self.relic_modifiers.beacon_splash_radius_multiplier
         tower.relic_beacon_mark_bonus_multiplier = self.relic_modifiers.beacon_mark_multiplier

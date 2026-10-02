@@ -328,6 +328,13 @@ class Relic:
     # a per-class hook instead of a field effective_damage() reads
     # directly.
     lightning_damage_multiplier: float = 1.0
+    # Trap relics (Tower.PLACEMENT "path"): serrated_spikes' Spike Trap
+    # damage (SpikeTrapTower._relic_family_damage_bonus), clinging_tar's
+    # Tar Pit marks (TarPitTower.create_projectile), and hair_trigger's
+    # fire rate for every trap (folded in by Game._construct_tower).
+    spike_trap_damage_multiplier: float = 1.0
+    tar_pit_marks: bool = False
+    trap_fire_rate_multiplier: float = 1.0
     # heavy_ordnance's own bonus -- Cannon/Knockback-exclusive, same
     # family_damage_bonus() hook shape as lightning_damage_multiplier
     # immediately above, just overridden identically by both CannonTower
@@ -1075,6 +1082,19 @@ RELICS = {
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
     ),
+    # --- Trap relics -- see Relic.spike_trap_damage_multiplier. ---
+    "serrated_spikes": Relic(
+        "serrated_spikes", "Serrated Spikes", "Spike Trap only: +40% damage.", spike_trap_damage_multiplier=1.4,
+    ),
+    "clinging_tar": Relic(
+        "clinging_tar", "Clinging Tar",
+        "Tar Pit only: enemies it hits are also Marked (+20% damage taken from every tower) for 2s.",
+        tar_pit_marks=True,
+    ),
+    "hair_trigger": Relic(
+        "hair_trigger", "Hair Trigger", "Spike Traps and Tar Pits strike 35% more often.",
+        trap_fire_rate_multiplier=1.35,
+    ),
     # --- Veterancy relics -- see Relic.veterancy_xp_multiplier. ---
     "drill_sergeant": Relic(
         "drill_sergeant", "Drill Sergeant", "Your towers earn 50% more veterancy experience.",
@@ -1321,6 +1341,9 @@ class RelicModifiers:
     lightning_chain_range_multiplier: float = 1.0
     shop_price_multiplier: float = 1.0
     lightning_damage_multiplier: float = 1.0
+    spike_trap_damage_multiplier: float = 1.0
+    tar_pit_marks: bool = False
+    trap_fire_rate_multiplier: float = 1.0
     cannon_knockback_damage_multiplier: float = 1.0
     beacon_splash_radius_multiplier: float = 1.0
     beacon_mark_multiplier: float = 1.0
@@ -1431,6 +1454,9 @@ def compose_relic_modifiers(
     lightning_chain_range_multiplier = 1.0
     shop_price_multiplier = 1.0
     lightning_damage_multiplier = 1.0
+    spike_trap_damage_multiplier = 1.0
+    tar_pit_marks = False
+    trap_fire_rate_multiplier = 1.0
     cannon_knockback_damage_multiplier = 1.0
     beacon_splash_radius_multiplier = 1.0
     beacon_mark_multiplier = 1.0
@@ -1554,6 +1580,9 @@ def compose_relic_modifiers(
         lightning_chain_range_multiplier *= relic.lightning_chain_range_multiplier
         shop_price_multiplier *= relic.shop_price_multiplier
         lightning_damage_multiplier *= relic.lightning_damage_multiplier
+        spike_trap_damage_multiplier *= relic.spike_trap_damage_multiplier
+        tar_pit_marks = tar_pit_marks or relic.tar_pit_marks
+        trap_fire_rate_multiplier *= relic.trap_fire_rate_multiplier
         cannon_knockback_damage_multiplier *= relic.cannon_knockback_damage_multiplier
         beacon_splash_radius_multiplier *= relic.beacon_splash_radius_multiplier
         beacon_mark_multiplier *= relic.beacon_mark_multiplier
@@ -1629,6 +1658,9 @@ def compose_relic_modifiers(
         lightning_chain_range_multiplier=lightning_chain_range_multiplier,
         shop_price_multiplier=shop_price_multiplier,
         lightning_damage_multiplier=lightning_damage_multiplier,
+        spike_trap_damage_multiplier=spike_trap_damage_multiplier,
+        tar_pit_marks=tar_pit_marks,
+        trap_fire_rate_multiplier=trap_fire_rate_multiplier,
         cannon_knockback_damage_multiplier=cannon_knockback_damage_multiplier,
         beacon_splash_radius_multiplier=beacon_splash_radius_multiplier,
         beacon_mark_multiplier=beacon_mark_multiplier,
