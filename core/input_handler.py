@@ -35,6 +35,7 @@ reasoning renderer.py's own docstring gives.
 import pygame
 
 from core.editor import SHAPE_TOOLS
+from entities.tower import TOWER_TYPES
 from persistence import keybindings
 from presentation import ui
 from run import difficulty
@@ -791,7 +792,7 @@ class InputHandler:
                 return
 
         if game.selected_tower_name is not None:
-            anchor_col, anchor_row = game.grid.placement_anchor(*pos, footprint_subtiles=game._current_footprint_subtiles())
+            anchor_col, anchor_row = game.placement_anchor_at(*pos, TOWER_TYPES[game.selected_tower_name])
             game.try_place_tower(anchor_col, anchor_row)
         else:
             game.selected_tower = None  # clicked empty ground -> deselect

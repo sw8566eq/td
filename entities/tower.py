@@ -75,6 +75,10 @@ class Tower:
     # experience on top of its own kills (run/veterancy.py) -- for towers
     # whose job is helping others kill, not killing.
     VETERANCY_ASSIST_FRACTION = 0.0
+    # Where it can be built: "ground" (off the path, the default) or
+    # "path" -- a trap, built on a whole path tile (see Game.placement_
+    # anchor_at/_is_buildable_for, and Grid.is_buildable's on_path).
+    PLACEMENT = "ground"
     # What a veterancy rank improves, for the stats panel ("+12% dmg").
     VETERANCY_BONUS_LABEL = "dmg"
     VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
@@ -1620,6 +1624,85 @@ class BeaconTower(Tower):
         )
 
 
+class SpikeTrapTower(Tower):
+    """A trap built right on the path: short reach, a damaging splash on
+    whatever walks over it. Ground enemies only -- flyers sail past."""
+    PLACEMENT = "path"
+    cost = 45
+    range = 40
+    damage = 7
+    fire_rate = 1.6
+    projectile_speed = 900.0
+    splash_radius = 36
+    can_target_flying = False
+    sprite_name = "tower_spike_trap"
+    display_name = "Spike Trap"
+    EXTRA_STATS = (("Splash radius", "splash_radius", _format_px),)
+    SPECIALIZATIONS = {
+        "barbed": {
+            "display_name": "Barbed Spikes",
+            "description": "Far harder strikes.",
+            "stat_multipliers": {"damage": 1.6},
+        },
+        "spring_loaded": {
+            "display_name": "Spring-Loaded",
+            "description": "Strikes far more often.",
+            "stat_multipliers": {"fire_rate": 1.5},
+        },
+    }
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(),
+            splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
+            sprite_name="projectile_spike", source=self,
+        )
+
+
+class TarPitTower(Tower):
+    """A sticky patch poured onto the path: barely hurts, but bogs down
+    everything in its splash. Ground enemies only."""
+    PLACEMENT = "path"
+    cost = 55
+    range = 40
+    damage = 1
+    fire_rate = 1.2
+    projectile_speed = 900.0
+    splash_radius = 40
+    slow_factor = 0.45
+    slow_duration = 1.2
+    can_target_flying = False
+    sprite_name = "tower_tar_pit"
+    display_name = "Tar Pit"
+    EXTRA_STATS = (
+        ("Splash radius", "splash_radius", _format_px),
+        ("Slow", "slow_factor", _format_slow_percent),
+        ("Slow duration", "slow_duration", _format_seconds),
+    )
+    SPECIALIZATIONS = {
+        "pitch_black": {
+            "display_name": "Pitch Black",
+            "description": "An even stronger slow.",
+            "stat_multipliers": {"slow_factor": 0.7},
+        },
+        "sprawling_slick": {
+            "display_name": "Sprawling Slick",
+            "description": "A much wider slick.",
+            "stat_multipliers": {"splash_radius": 1.6},
+        },
+    }
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(),
+            splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
+            slow_effect=(self.slow_factor, self.slow_duration),
+            sprite_name="projectile_tar", source=self,
+        )
+
+
 class SupportTower(Tower):
     """Never attacks -- buffs every other tower within range instead (see
     Tower.reset_aura()/receive_aura(), and Game.update()'s two-pass tower
@@ -1906,6 +1989,8 @@ TOWER_TYPES = {
     "beam": BeamTower,
     "beacon": BeaconTower,
     "overload_cannon": OverloadCannonTower,
+    "spike_trap": SpikeTrapTower,
+    "tar_pit": TarPitTower,
 }
 # The reverse lookup -- a tower class's registry key.
 TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}

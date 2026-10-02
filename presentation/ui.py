@@ -57,9 +57,9 @@ ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion o
 # fitting TOWER_ORDER's full button row (12 towers as of Siphon Tower) plus
 # that text's own worst-case width (e.g. "Gold: unlimited   Shop: 999")
 # inside settings.PLAY_WIDTH -- confirmed still comfortable (24px to spare)
-# at 12 towers with no further shrink needed.
-BUTTON_SIZE = 44
-BUTTON_MARGIN = 8
+# at 12 towers; the two path traps (14 towers) took it from 44/8 to 40/6.
+BUTTON_SIZE = 40
+BUTTON_MARGIN = 6
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many
 # tower buttons are registered -- the speed toggle (build_speed_button_rect)

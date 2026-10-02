@@ -145,7 +145,7 @@ class Grid:
             for dc in range(size):
                 yield anchor_col + dc, anchor_row + dr
 
-    def is_buildable(self, anchor_col, anchor_row, footprint_subtiles=None):
+    def is_buildable(self, anchor_col, anchor_row, footprint_subtiles=None, on_path=False):
         """True if the footprint_subtiles x footprint_subtiles footprint
         (a full tile, subtiles_per_tile, unless a smaller size is passed --
         see Game._current_footprint_subtiles) anchored at (anchor_col,
@@ -153,7 +153,9 @@ class Grid:
         doesn't overlap any placed tower's footprint. A non-positive size
         is never buildable -- _footprint_subtiles() would otherwise yield
         no cells at all to check, and an empty check vacuously returns
-        True for any anchor, path/blocked/occupied cells included."""
+        True for any anchor, path/blocked/occupied cells included.
+        `on_path` flips the path rule for a trap (Tower.PLACEMENT "path"):
+        every cell must be ON the path instead of off it."""
         size = self.resolve_footprint_size(footprint_subtiles)
         if size <= 0:
             return False
@@ -165,7 +167,7 @@ class Grid:
             # the coarse map grid, unrelated to any one tower's own
             # (possibly relic-shrunk) footprint size.
             coarse = (sub_col // self.subtiles_per_tile, sub_row // self.subtiles_per_tile)
-            if self.is_path(*coarse) or self.is_blocked(*coarse):
+            if self.is_path(*coarse) != on_path or self.is_blocked(*coarse):
                 return False
             if (sub_col, sub_row) in self.occupied_subtiles:
                 return False

@@ -2399,10 +2399,10 @@ class Game:
         # mainly guards against a future path setting it some other way.
         if self.selected_tower_name not in self._active_tower_names():
             return False
-        if not self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=self._current_footprint_subtiles()):
+        tower_cls = TOWER_TYPES[self.selected_tower_name]
+        if not self._is_buildable_for(tower_cls, anchor_col, anchor_row):
             return False
 
-        tower_cls = TOWER_TYPES[self.selected_tower_name]
         if not self.economy.can_afford(tower_cls.cost):
             return False
 
@@ -2441,7 +2441,7 @@ class Game:
         (a smaller footprint centers differently), unlike every other
         relic-driven attribute, which only needs to exist on the tower
         object once it already does."""
-        footprint_subtiles = self._current_footprint_subtiles()
+        footprint_subtiles = self._footprint_for(tower_cls)
         pixel_pos = self.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
         tower = tower_cls(anchor_col, anchor_row, pixel_pos)
         tower.footprint_subtiles = footprint_subtiles
@@ -2575,6 +2575,26 @@ class Game:
         reader of that raw field would need to remember this same clamp."""
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
+
+    def _footprint_for(self, tower_cls):
+        """A ground tower's footprint (_current_footprint_subtiles); a path
+        trap always fills exactly one whole path tile."""
+        if tower_cls.PLACEMENT == "path":
+            return self.grid.subtiles_per_tile
+        return self._current_footprint_subtiles()
+
+    def placement_anchor_at(self, x, y, tower_cls):
+        """Where a `tower_cls` placed at pixel (x, y) would anchor -- centred
+        on the cursor for a ground tower, snapped to the tile under it for
+        a path trap. Shared by the click and the placement preview."""
+        if tower_cls.PLACEMENT == "path":
+            col, row = self.grid.pixel_to_tile(x, y)
+            return col * self.grid.subtiles_per_tile, row * self.grid.subtiles_per_tile
+        return self.grid.placement_anchor(x, y, footprint_subtiles=self._footprint_for(tower_cls))
+
+    def _is_buildable_for(self, tower_cls, anchor_col, anchor_row):
+        return self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=self._footprint_for(tower_cls),
+                                      on_path=tower_cls.PLACEMENT == "path")
 
     def _recompute_tower_density_bonuses(self):
         """Refresh every placed tower's own Overcrowded Circuits-style

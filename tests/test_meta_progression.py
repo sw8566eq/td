@@ -71,7 +71,7 @@ def test_bump_can_cross_multiple_thresholds_in_one_call(tmp_path):
     path = tmp_path / "meta_progression.json"
     newly_unlocked = meta_progression.bump("total_floors_cleared", amount=5, path=path)
 
-    assert set(newly_unlocked) == {"unlock_knockback", "unlock_poison", "unlock_lightning"}
+    assert set(newly_unlocked) == {"unlock_knockback", "unlock_poison", "unlock_spike_trap", "unlock_lightning"}
 
 
 def test_bump_ignores_other_counters_thresholds(tmp_path):

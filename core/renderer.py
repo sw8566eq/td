@@ -441,9 +441,9 @@ class Renderer:
         if mouse_pos[0] >= settings.PLAY_WIDTH:
             return  # hovering the stats panel, not the grid
         tower_cls = TOWER_TYPES[game.selected_tower_name]
-        footprint_subtiles = game._current_footprint_subtiles()
-        anchor_col, anchor_row = game.grid.placement_anchor(*mouse_pos, footprint_subtiles=footprint_subtiles)
+        footprint_subtiles = game._footprint_for(tower_cls)
+        anchor_col, anchor_row = game.placement_anchor_at(*mouse_pos, tower_cls)
         preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
-        buildable = game.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
+        buildable = game._is_buildable_for(tower_cls, anchor_col, anchor_row)
         ui.draw_footprint_preview(game.screen, game.grid, anchor_col, anchor_row, buildable, footprint_subtiles=footprint_subtiles)
         ui.draw_range_preview(game.screen, tower_cls, preview_pos)
