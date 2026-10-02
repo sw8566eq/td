@@ -195,5 +195,7 @@ validates a map checkpoint with `_parse_and_validate_active_run(..., at_map=True
 None or any type). `_continue_saved_run` routes it to `_resume_map_checkpoint`: an unfinished current
 node is re-entered fresh (a fight from wave 1; Shop/Event/Rest/Treasure re-derive identically, and the
 pre-entry run state means nothing is granted twice), otherwise the map. A mid-floor `save_run()`
-overwrites the checkpoint and still resumes the precise wave. Known gaps: quitting on the reward
-screen or the opening blessing forfeits it.
+overwrites the checkpoint and still resumes the precise wave. `RunState.reward_pending`/
+`blessing_pending` (set, then autosaved, on entering those screens; cleared on leaving) make
+`_resume_map_checkpoint` reopen them -- both are re-derived from their own rng keys, so the same
+cards come back, and the checkpoint predates any claim.

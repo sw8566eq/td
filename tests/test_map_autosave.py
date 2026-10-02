@@ -94,3 +94,36 @@ def test_invalid_map_checkpoints_are_not_resumable(game):
     data["run"]["current_node_id"] = "9-9"
     path.write_text(json.dumps(data))
     assert save_state.load_run(game.save_path) is None
+
+
+def test_quitting_on_the_reward_screen_reopens_the_same_reward(game, tmp_path):
+    from conftest import finish_all_waves
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["elite", "combat"], lives=10)
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.REWARD
+    offered = game.reward
+
+    fresh = _new_game(tmp_path)
+    fresh._continue_saved_run()
+    assert fresh.state == GameState.REWARD and fresh.reward == offered
+    fresh._leave_reward_screen()
+    assert fresh.active_run.reward_pending is False
+    assert save_state.load_run(fresh.save_path)["run"].reward_pending is False
+
+
+def test_quitting_on_the_blessing_reopens_it(game, tmp_path):
+    game.start_new_run(seed=3)
+    game._enter_blessing()
+
+    fresh = _new_game(tmp_path)
+    fresh._continue_saved_run()
+    assert fresh.state == GameState.EVENT and fresh.event_is_blessing
+    fresh._resolve_event_choice(1)
+    fresh._leave_event()
+    assert fresh.state == GameState.MAP
+    assert save_state.load_run(fresh.save_path)["run"].blessing_pending is False

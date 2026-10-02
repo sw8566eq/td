@@ -983,6 +983,8 @@ class Game:
             return
         self.reward_rects = ui.build_draft_choice_rects(len(self._reward_cards()))
         self.reward_claimed_indices = set()
+        run.reward_pending = True
+        self._autosave_run()
         self.state = GameState.REWARD
 
     def _reward_cards(self):
@@ -1022,6 +1024,7 @@ class Game:
         """Continue/Skip on the reward screen -- back to the map, or, after
         an act boss, on to the next act's fresh map (_advance_act)."""
         run = self.active_run
+        run.reward_pending = False
         if run.map.node(run.current_node_id).node_type == "boss":
             self._advance_act()
         else:
@@ -1363,6 +1366,8 @@ class Game:
         self.event_chosen_option = None
         self.event_resolution = None
         self.event_is_blessing = True
+        self.active_run.blessing_pending = True
+        self._autosave_run()
         self.state = GameState.EVENT
 
     def _leave_event(self):
@@ -1371,6 +1376,7 @@ class Game:
         map)."""
         if self.event_is_blessing:
             self.event_is_blessing = False
+            self.active_run.blessing_pending = False
             self._enter_map()
         else:
             self._finish_node(self.active_run.current_node_id)
@@ -1954,7 +1960,11 @@ class Game:
         self.active_run = run
         self._resumed_from_save = True
         node_id = run.current_node_id
-        if node_id is not None and node_id not in run.visited_node_ids:
+        if run.blessing_pending:
+            self._enter_blessing()
+        elif run.reward_pending:
+            self._enter_reward_screen()
+        elif node_id is not None and node_id not in run.visited_node_ids:
             self._enter_node(node_id)
         else:
             self._enter_map()
