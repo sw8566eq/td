@@ -66,11 +66,24 @@ def make_game(tmp_path, prefix="", **kwargs):
     )
 
 
+def quit_pygame_keeping_the_mixer():
+    """pygame.quit(), minus the audio mixer. Under SDL's dummy audio
+    driver, mixer.quit() blocks ~0.2s joining its audio thread -- paid
+    once per test, that was most of the whole suite's wall time. Game()
+    calls pygame.mixer.init() itself, a no-op once it's already up, so
+    leaving it running between tests changes nothing they observe; every
+    other module (display, fonts, ...) still shuts down for isolation.
+    Tests that exercise the mixer's own init/failure paths still call
+    pygame.quit() themselves."""
+    pygame.display.quit()
+    pygame.font.quit()
+
+
 @pytest.fixture
 def game(tmp_path):
     g = make_game(tmp_path)
     yield g
-    pygame.quit()
+    quit_pygame_keeping_the_mixer()
 
 
 @pytest.fixture

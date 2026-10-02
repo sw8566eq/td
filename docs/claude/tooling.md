@@ -111,3 +111,11 @@ machine, input handling, the update loop, rendering), `tests/test_run.py` (the r
 lifecycle end to end), and `tests/test_game_editor.py` (the map editor, wave editor, and level
 browser screens as `Game` drives them). `Editor` itself is still tested directly in
 `tests/test_editor.py`.
+
+## Test teardown keeps the mixer alive
+
+The `game` fixture tears down with `conftest.quit_pygame_keeping_the_mixer()` (display + font only),
+not `pygame.quit()`: under SDL's dummy audio driver `pygame.mixer.quit()` blocks ~0.2s joining its
+audio thread, which made a full run ~160s of mostly waiting; skipping it brings the suite to ~11s.
+`Game()`'s own `pygame.mixer.init()` is a no-op once the mixer is up, so no test observes the
+difference. Tests about the mixer's own init/failure paths still call `pygame.quit()` themselves.
