@@ -90,6 +90,8 @@ class Tower:
     # False for a structure that never fires (Barricade): the stats panel
     # hides Damage/Range/Fire rate and the Targeting row for it.
     ATTACKS = True
+    # False for a path trap: a burrowing enemy (Enemy.BURROWS) passes under it.
+    HITS_BURROWED = True
     # A path structure that holds ground enemies until broken (Barricade --
     # see Game._hold_enemies_at_barricades).
     BLOCKS_PATH = False
@@ -774,6 +776,7 @@ class Tower:
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
             and (self.can_target_flying or not getattr(e, "is_flying", False))
             and (not self.MIN_RANGE or self.pos.distance_to(e.pos) >= self.MIN_RANGE)
+            and (self.HITS_BURROWED or not getattr(e, "BURROWS", False))
         ]
         if not candidates:
             return None
@@ -1706,6 +1709,7 @@ class MortarTower(Tower):
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             sprite_name="projectile_mortar", source=self,
+            can_hit_flying=self.can_target_flying, can_hit_burrowed=self.HITS_BURROWED,
         )
 
 
@@ -1713,6 +1717,7 @@ class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
     PLACEMENT = "path"
+    HITS_BURROWED = False
     cost = 45
     range = 40
     damage = 7
@@ -1746,6 +1751,7 @@ class SpikeTrapTower(Tower):
             damage=self.effective_damage(),
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             sprite_name="projectile_spike", source=self,
+            can_hit_flying=self.can_target_flying, can_hit_burrowed=self.HITS_BURROWED,
         )
 
 
@@ -1753,6 +1759,7 @@ class TarPitTower(Tower):
     """A sticky patch poured onto the path: barely hurts, but bogs down
     everything in its splash. Ground enemies only."""
     PLACEMENT = "path"
+    HITS_BURROWED = False
     cost = 55
     range = 40
     damage = 1
@@ -1792,6 +1799,7 @@ class TarPitTower(Tower):
             slow_effect=(self.slow_factor, self.slow_duration),
             mark_effect=self.RELIC_MARK_EFFECT if self.relic_tar_pit_marks else None,
             sprite_name="projectile_tar", source=self,
+            can_hit_flying=self.can_target_flying, can_hit_burrowed=self.HITS_BURROWED,
         )
 
 

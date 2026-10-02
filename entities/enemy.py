@@ -56,6 +56,9 @@ class Enemy:
     # How hard it batters a Barricade, as a multiple of the base breach
     # damage (Game._hold_enemies_at_barricades).
     BREACH_MULTIPLIER = 1.0
+    # Tunnels under the path: path traps can't hit it and Barricades don't
+    # hold it (Tower.HITS_BURROWED, Game._hold_enemies_at_barricades).
+    BURROWS = False
 
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
@@ -420,6 +423,22 @@ class SapperEnemy(Enemy):
     sprite_name = "enemy_sapper"
     radius = 13
     BREACH_MULTIPLIER = 5.0
+
+
+class BurrowerEnemy(Enemy):
+    """Tunnels just under the path: Spike Traps, Tar Pits and Barricades
+    can't touch it, but every ordinary tower can. Sturdy and steady. Joins
+    run waves from deep in Act 2 (run_escalation.RUN_REINFORCEMENTS)."""
+    BURROWS = True
+    base_hp = 60
+    hp_per_wave = 11
+    base_speed = 70.0
+    speed_per_wave = 2.5
+    max_speed = 130.0
+    base_reward = 10
+    reward_per_wave = 2
+    sprite_name = "enemy_burrower"
+    radius = 14
 
 
 class TankEnemy(Enemy):
@@ -873,6 +892,7 @@ ENEMY_TYPES = {
     "splitter": SplitterEnemy,
     "healer": HealerEnemy,
     "sapper": SapperEnemy,
+    "burrower": BurrowerEnemy,
     "final_boss": FinalBossEnemy,
     "final_boss_shielded": FinalBossShieldedEnemy,
 }

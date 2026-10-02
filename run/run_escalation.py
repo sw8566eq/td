@@ -266,18 +266,31 @@ def apply_boss_multiplier(escalation: FloorEscalation) -> FloorEscalation:
     )
 
 
-# Sappers (entities.enemy.SapperEnemy) join every run wave from this map
-# depth on (Act 2's first row), one more every SAPPER_DEPTH_STEP rows.
-SAPPER_MIN_DEPTH = 6
-SAPPER_DEPTH_STEP = 4
+@dataclass(frozen=True)
+class Reinforcement:
+    """A species (an ENEMY_TYPES key) that joins every run wave from
+    `min_depth` on, one more every `depth_step` rows deeper."""
+    species: str
+    min_depth: int
+    depth_step: int
+
+    def count_for_depth(self, depth: int) -> int:
+        if depth < self.min_depth:
+            return 0
+        return 1 + (depth - self.min_depth) // self.depth_step
 
 
-def sapper_count_for_depth(depth: int) -> int:
-    """How many Sappers each wave of a run floor at `depth` gains -- 0 before
-    SAPPER_MIN_DEPTH."""
-    if depth < SAPPER_MIN_DEPTH:
-        return 0
-    return 1 + (depth - SAPPER_MIN_DEPTH) // SAPPER_DEPTH_STEP
+# Counters to defenses that lean on one trick: Sappers break Barricades
+# (from Act 2's first row), Burrowers slip under path traps (a little later).
+RUN_REINFORCEMENTS = (
+    Reinforcement("sapper", 6, 4),
+    Reinforcement("burrower", 9, 4),
+)
+
+
+def reinforcements_for_depth(depth: int) -> list[tuple[str, int]]:
+    """(species, count) for every reinforcement a run floor at `depth` gets."""
+    return [(r.species, r.count_for_depth(depth)) for r in RUN_REINFORCEMENTS if r.count_for_depth(depth)]
 
 
 def add_species(

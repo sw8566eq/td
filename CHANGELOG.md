@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Burrowers**: a new enemy that tunnels under the path -- immune to Spike Traps, Tar Pits and
+  Barricades -- joining run waves from depth 9. Fixed: Spike Trap, Tar Pit and Mortar splash could
+  hit flying enemies they can't target.
 - **Sappers**: a new enemy that batters Barricades 5x as hard, joining every run wave from Act 2 on (one
   more every 4 rows deeper).
 - **Ambush** relic (enemies held at a Barricade take +25% damage), and the floor-cleared screen now lists

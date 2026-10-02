@@ -151,7 +151,7 @@ class Projectile:
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
-                 can_hit_flying=True):
+                 can_hit_flying=True, can_hit_burrowed=True):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -268,6 +268,9 @@ class Projectile:
         # relic bounce/overkill carry off its hits, from landing on one
         # anyway -- a flyer is untouchable by that tower, full stop.
         self.can_hit_flying = can_hit_flying
+        # Same idea for a burrowing enemy (Enemy.BURROWS): a path trap's
+        # shot can't touch one -- see Tower.HITS_BURROWED.
+        self.can_hit_burrowed = can_hit_burrowed
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -363,7 +366,8 @@ class Projectile:
         """Whether this shot may touch `enemy` at all -- see can_hit_flying.
         getattr with a False default, same as Tower.acquire_target(), since
         not every enemy stand-in (tests, mainly) defines is_flying."""
-        return self.can_hit_flying or not getattr(enemy, "is_flying", False)
+        return ((self.can_hit_flying or not getattr(enemy, "is_flying", False))
+                and (self.can_hit_burrowed or not getattr(enemy, "BURROWS", False)))
 
     def _find_chain_target(self, current, excluded, chain_range, enemies):
         """Nearest live, not-yet-`excluded` enemy within `chain_range` of

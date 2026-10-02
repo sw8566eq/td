@@ -390,7 +390,8 @@ menu holds more than nine, it wraps into two rows.
   breaks (no refund), taking a little thorns damage while they do; bosses smash it far faster and
   flyers pass over. Upgrading raises its hit points and fully repairs it. Unlocks after 12 floors.
   From Act 2 on, every run wave brings **Sappers** -- demolition troops that batter a Barricade five
-  times as hard -- so a wall alone won't hold a deep run.
+  times as hard -- so a wall alone won't hold a deep run. A little deeper, **Burrowers** join them:
+  they tunnel under the path, so Spike Traps, Tar Pits and Barricades can't touch them.
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.
