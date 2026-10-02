@@ -1466,7 +1466,7 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
 # --- Post-combat reward screen ---
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
-                       available, continue_button_rect, is_elite=False, is_boss=False):
+                       available, continue_button_rect, is_elite=False, is_boss=False, forged_names=()):
     """The free post-combat reward (see rewards.py/Game._enter_reward_
     screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
     as `card_rects`; `available[i]` is Game._reward_card_available(i).
@@ -1492,14 +1492,22 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
         claimed = index in claimed_indices
         if claimed:
             tag = "TAKEN"
-        elif available[index]:
-            tag = "FREE"
-        else:
+        elif not available[index]:
             tag = "FULL" if kind == "potion" else "--"
+        elif kind == "forge":
+            tag = "FORGE"
+        elif kind == "tower" and key in forged_names:
+            tag = "FREE +"  # comes pre-forged
+        else:
+            tag = "FREE"
         draw_card = _REWARD_CARD_DRAWERS[kind]
         draw_card(surface, font, small_font, card_rects[index], key, index == hovered_index,
                   not available[index], available[index], 0, tag)
 
+    if any(kind == "forge" or (kind == "tower" and key in forged_names) for kind, key in cards):
+        note = small_font.render("+ / FORGE: that tower is always placed at level 2, for free",
+                                 True, settings.COLOR_TEXT_DIM)
+        surface.blit(note, note.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, continue_button_rect.y - 8)))
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
     label = small_font.render("Continue" if claimed_indices else "Skip", True, settings.COLOR_GOLD)
     surface.blit(label, label.get_rect(center=continue_button_rect.center))
@@ -1526,6 +1534,7 @@ def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, 
 
 _REWARD_CARD_DRAWERS = {
     "tower": _draw_draft_card,
+    "forge": _draw_draft_card,
     "relic": _draw_relic_card,
     "potion": _draw_potion_card,
     "boss_relic": _draw_relic_card,

@@ -229,6 +229,7 @@ class Renderer:
                 game._hovered_reward_card(), game.reward_claimed_indices,
                 [game._reward_card_available(i) for i in range(len(game.reward_rects))],
                 game.shop_continue_button_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
+                forged_names=game.reward.forged_tower_choices,
             )
             self._draw_toasts()
             pygame.display.flip()
