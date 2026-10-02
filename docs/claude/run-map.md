@@ -158,3 +158,10 @@ with scaled non-boss counts for Swarming (the copy is what `save_state` stores, 
 without re-deriving). Shown in the sidebar above the potion belt (`Renderer._run_modifiers_text`,
 together with the run's Ascension) rather than on the HUD's Wave line, which has no width left with a
 12-tower build menu (`test_hud_gold_lives_wave_text_fits_before_the_play_area_edge`).
+
+Potions can also be drunk with the fixed (non-remappable) `Q`/`W`/`E` hotkeys
+(`input_handler.POTION_HOTKEYS`, checked after every remappable PLAYING action so a rebinding onto
+those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion`, rolled in
+`_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
+unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
+(`_can_buy_shop_potion` is shared by the click and the renderer).

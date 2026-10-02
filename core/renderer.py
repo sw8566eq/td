@@ -181,6 +181,12 @@ class Renderer:
                 game.shop_continue_button_rect, game.economy.unlimited_gold,
                 game._shop_price_multiplier(),
             )
+            if game.shop_potion is not None:
+                ui.draw_shop_potion_button(
+                    game.screen, game.small_font, game.shop_potion_rect, game.shop_potion,
+                    game._shop_potion_price(), game.shop_potion_bought, game._can_buy_shop_potion(),
+                    hovered=game.shop_potion_rect.collidepoint(pygame.mouse.get_pos()),
+                )
             curses = relics.held_curses(game.active_run)
             if curses or game.shop_curse_removed:
                 ui.draw_shop_remove_curse_button(
