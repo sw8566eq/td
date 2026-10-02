@@ -39,8 +39,6 @@ class AscensionModifiers:
     shop_price_multiplier: float = 1.0
     # Added to rewards.TOWER_REWARD_COUNT (Game._enter_reward_screen).
     reward_tower_count_delta: int = 0
-    # Ascender's Bane: Doubt curse cards (spells.py) added to the starting deck.
-    starting_doubt_cards: int = 0
 
 
 @dataclass(frozen=True)
@@ -62,12 +60,11 @@ ASCENSION_LEVELS = (
     AscensionLevel("Enemies move 8% faster.", {"enemy_speed_multiplier": 1.08}),
     AscensionLevel("Shop prices are 25% higher.", {"shop_price_multiplier": 1.25}),
     AscensionLevel("Post-combat rewards offer one fewer tower.", {"reward_tower_count_delta": -1}),
-    # Slay the Spire's own Ascension 10.
-    AscensionLevel("Ascender's Bane: start every run with a Doubt curse card.", {"starting_doubt_cards": 1}),
+    AscensionLevel("Enemies have another 10% more HP.", {"enemy_hp_multiplier": 1.1}),
 )
 assert len(ASCENSION_LEVELS) == MAX_ASCENSION
 
-_ADDITIVE_FIELDS = frozenset({"reward_tower_count_delta", "starting_doubt_cards"})
+_ADDITIVE_FIELDS = frozenset({"reward_tower_count_delta"})
 
 
 def modifiers_for(level: int) -> AscensionModifiers:

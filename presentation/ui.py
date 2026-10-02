@@ -1787,9 +1787,6 @@ SPELL_RARITY_COLORS = {
 }
 
 
-FIRST_SPELL_HINT_TEXT = "Cast: click a card or press A-G"
-
-
 def build_card_rects(count):
     """`count` card rects in one row, left-aligned under the hand label."""
     x = settings.PLAY_WIDTH + PANEL_PADDING
