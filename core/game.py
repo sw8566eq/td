@@ -338,6 +338,9 @@ class Game:
         # True while the Event screen is showing the run's opening blessing
         # (see _enter_blessing) rather than an Event map node.
         self.event_is_blessing = False
+        # Where the Relics overlay returns to on dismissal -- PLAYING, or
+        # MAP when opened from the run map with R.
+        self.relics_return_state = GameState.PLAYING
         # A Rest node's own three-phase state (see _enter_rest_node):
         # "choose" between Rest and Smith, "smith" while picking which
         # tower to forge, "resolved" once one's done. rest_heal_amount is

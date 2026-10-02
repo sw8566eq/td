@@ -411,18 +411,30 @@ def _draw_relics_button(surface, font, relics_button_rect, relic_count):
     surface.blit(label, label.get_rect(center=relics_button_rect.center))
 
 
+RELICS_OVERLAY_FULL_TEXT_LIMIT = 12
+RELICS_OVERLAY_NAMES_PER_LINE = 4
+
+
 def _relics_overlay_lines(relic_keys):
     """The Relics overlay's own line-per-relic text, pulled out as its own
     pure function (like _format_wave_label/_describe_event_outcome above)
-    so its content is unit-testable without a real Surface."""
+    so its content is unit-testable without a real Surface. Past
+    RELICS_OVERLAY_FULL_TEXT_LIMIT relics (a deep three-act run), only
+    names fit, several per line -- descriptions live in the Compendium."""
     if not relic_keys:
         return ["No relics yet."]
+    if len(relic_keys) > RELICS_OVERLAY_FULL_TEXT_LIMIT:
+        names = [RELICS[key].display_name for key in relic_keys]
+        step = RELICS_OVERLAY_NAMES_PER_LINE
+        return ["   ".join(names[i:i + step]) for i in range(0, len(names), step)] + [
+            "", "(K at the main menu opens the Compendium for every relic's full text)",
+        ]
     # A curse's own description already starts "Curse: " (see relics.py),
     # so it reads as one in this same plain list without a separate style.
     return [f"{RELICS[key].display_name} -- {RELICS[key].description}" for key in relic_keys]
 
 
-def draw_relics_overlay(surface, font, small_font, relic_keys):
+def draw_relics_overlay(surface, font, small_font, relic_keys, width=settings.PLAY_WIDTH):
     """Dim overlay atop the still-frozen board+HUD (see Game.render's
     RELICS branch) -- reuses _draw_centered_overlay verbatim, the same
     title+list-of-lines shape draw_pause_menu already uses, rather than a
@@ -432,7 +444,7 @@ def draw_relics_overlay(surface, font, small_font, relic_keys):
     destination screen."""
     lines = _relics_overlay_lines(relic_keys)
     _draw_centered_overlay(surface, font, small_font, f"Relics ({len(relic_keys)})", lines,
-                            settings.COLOR_TEXT, width=settings.PLAY_WIDTH)
+                            settings.COLOR_TEXT, width=width)
 
 
 def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
@@ -805,7 +817,8 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None):
 
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
-                     first_run=False, ascension_level=0, act_number=1, node_affixes=None):
+                     first_run=False, ascension_level=0, act_number=1, node_affixes=None,
+                     relic_count=0, potion_names=()):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -825,17 +838,20 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     surface.fill(settings.COLOR_BG)
     title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
     title = font.render(title_text, True, settings.COLOR_TEXT)
-    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 24)))
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 14)))
 
     if lives is not None and shop_currency is not None:
         # round(), not a bare shop_currency -- see _format_currency's own
         # comment on why every currency display in this game coerces to a
         # whole number before rendering, regardless of the underlying
         # value's type.
+        potion_text = ", ".join(potion_names) if potion_names else "none"
         info = small_font.render(
-            f"Lives: {lives}   Shop currency: {round(shop_currency)}", True, settings.COLOR_GOLD,
+            f"Lives: {lives}   Shop currency: {round(shop_currency)}   Relics: {relic_count} (R to view)"
+            f"   Potions: {potion_text}",
+            True, settings.COLOR_GOLD,
         )
-        surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 58)))
+        surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 44)))
 
     for from_id, target_ids in game_map.edges.items():
         if from_id not in node_rects:
