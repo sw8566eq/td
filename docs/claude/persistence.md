@@ -183,3 +183,17 @@ packaged build. Before this was factored out, each independently wrote the same
   repo-wide" above for the actual registry/matching/conflict logic -- it follows this same one-JSON-
   file, defensive-load, injectable-path shape, just with `(key, mods)` pairs as its values instead of
   a flat settings dict.
+
+## Map checkpoints (autosave)
+
+`save_state.save_map_checkpoint(run)` writes `{"kind": "map", "run": ...}` into the same single save
+slot -- no floor state. `Game._autosave_run` calls it from `_enter_map` and `_enter_node` (before
+dispatching, so the committed node is recorded), and sets `_resumed_from_save = True`: the active run
+now owns the slot, so the existing floor-clear/permadeath deletion (`_delete_save_if_this_run_was_
+resumed`) clears it like a resumed save, and the next map visit writes a fresh checkpoint. `load_run`
+validates a map checkpoint with `_parse_and_validate_active_run(..., at_map=True)` (current node may be
+None or any type). `_continue_saved_run` routes it to `_resume_map_checkpoint`: an unfinished current
+node is re-entered fresh (a fight from wave 1; Shop/Event/Rest/Treasure re-derive identically, and the
+pre-entry run state means nothing is granted twice), otherwise the map. A mid-floor `save_run()`
+overwrites the checkpoint and still resumes the precise wave. Known gaps: quitting on the reward
+screen or the opening blessing forfeits it.

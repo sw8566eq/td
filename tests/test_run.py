@@ -3059,21 +3059,29 @@ def test_clearing_a_resumed_runs_floor_deletes_its_now_stale_save(game):
     assert game._resumed_from_save is False
 
 
-def test_clearing_a_fresh_runs_floor_keeps_an_unrelated_save(game):
-    # Save one run, then start a brand new one instead of continuing it --
-    # the new run's floor clear must not delete the other run's save.
-    _begin_run_with_map(game, ["combat", "shop", "combat"])
+def test_a_new_run_takes_over_the_save_slot_with_its_own_checkpoint(game):
+    # Autosave (Game._autosave_run): a run owns the one save slot from its
+    # first map visit, so starting a new run replaces an abandoned one.
+    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=11)
     game._enter_node("0-0")
     game.save_run()
     game.state = GameState.MENU
+    _begin_run_with_map(game, ["combat", "shop", "combat"], seed=22)
+
+    assert save_state.load_run(game.save_path)["run"].seed == 22
+
+
+def test_a_floor_clear_drops_the_stale_mid_floor_save_and_the_map_autosaves_again(game):
     _begin_run_with_map(game, ["combat", "shop", "combat"])
     game._enter_node("0-0")
-
+    game.save_run()
     finish_all_waves(game)
     game.update(dt=0.01)
-
     assert game.state == GameState.FLOOR_CLEARED
-    assert save_state.has_saved_run(game.save_path)
+    assert not save_state.has_saved_run(game.save_path)
+
+    game._enter_map()
+    assert save_state.load_run(game.save_path)["kind"] == "map"
 
 
 # --- Daily Run ---
