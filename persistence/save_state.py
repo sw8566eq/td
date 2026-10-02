@@ -61,7 +61,7 @@ def _tower_to_dict(tower):
     reconstructs it from -- shared by both `towers` and `sold_towers`
     below, since a sold tower needs everything a placed one does (it's
     still shown in the post-level results table) except grid occupancy."""
-    return {
+    data = {
         "type": _tower_type_name(tower),
         "anchor_col": tower.anchor_col,
         "anchor_row": tower.anchor_row,
@@ -77,6 +77,9 @@ def _tower_to_dict(tower):
         "damage_dealt": tower.damage_dealt,
         "kills": tower.kills,
     }
+    if hasattr(tower, "hp"):
+        data["hp"] = tower.hp  # a Barricade's remaining hit points
+    return data
 
 
 def _map_to_dict(run_map):

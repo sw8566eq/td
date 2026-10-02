@@ -58,7 +58,7 @@ def test_draw_without_a_font_skips_the_upgrade_badge(tmp_path):
 def test_every_registered_tower_creates_a_projectile_aimed_at_its_target():
     target = FakeEnemy()
     for name, tower_cls in TOWER_TYPES.items():
-        if name == "support":
+        if name == "support" or not tower_cls.ATTACKS:
             continue  # never fires at all -- create_projectile() raises, see below
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(target)
@@ -214,7 +214,7 @@ def test_knockback_tower_is_aoe_but_only_a_light_shove():
 
 def test_other_towers_have_no_knockback():
     for name, tower_cls in TOWER_TYPES.items():
-        if name in ("knockback", "support"):
+        if name in ("knockback", "support") or not tower_cls.ATTACKS:
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
@@ -270,7 +270,7 @@ def test_lightning_tower_specialization_boosts_carry_through_to_the_projectile()
 
 def test_other_towers_do_not_chain():
     for name, tower_cls in TOWER_TYPES.items():
-        if name in ("lightning", "support"):
+        if name in ("lightning", "support") or not tower_cls.ATTACKS:
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
@@ -454,7 +454,7 @@ def test_storm_core_relic_stacks_additively_with_other_damage_relics():
 )
 def test_tower_exclusive_relic_bonus_does_not_affect_other_towers(relic_attrs, projectile_attr, affected_names, expected_fn):
     for name, tower_cls in TOWER_TYPES.items():
-        if name in affected_names or name == "support":
+        if name in affected_names or name == "support" or not tower_cls.ATTACKS:
             continue
         if name == "overload_cannon" and projectile_attr == "damage":
             # OverloadCannonTower's own create_projectile() always
@@ -630,7 +630,7 @@ def test_festering_wound_relic_boosts_poison_tower_duration():
 
 def test_other_towers_have_no_poison_effect():
     for name, tower_cls in TOWER_TYPES.items():
-        if name in ("poison", "support"):
+        if name in ("poison", "support") or not tower_cls.ATTACKS:
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
@@ -1344,7 +1344,7 @@ def test_beacon_tower_specialization_boosts_carry_through_to_the_projectile():
 
 def test_other_towers_have_no_mark_effect():
     for name, tower_cls in TOWER_TYPES.items():
-        if name in ("beacon", "support"):
+        if name in ("beacon", "support") or not tower_cls.ATTACKS:
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         projectile = tower.create_projectile(FakeEnemy())
@@ -1373,7 +1373,7 @@ def test_beacon_exclusive_relics_do_not_affect_other_towers_mark_effect():
     # doesn't fit the numeric parametrized check below -- kept as its own
     # small test rather than forced into that shape.
     for name, tower_cls in TOWER_TYPES.items():
-        if name in ("beacon", "support"):
+        if name in ("beacon", "support") or not tower_cls.ATTACKS:
             continue
         tower = tower_cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
         tower.relic_beacon_splash_radius_bonus_multiplier = 1.25

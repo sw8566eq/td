@@ -58,10 +58,13 @@ ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion o
 # fitting TOWER_ORDER's full button row (12 towers as of Siphon Tower) plus
 # that text's own worst-case width (e.g. "Gold: unlimited   Shop: 999")
 # inside settings.PLAY_WIDTH -- confirmed still comfortable (24px to spare)
-# at 12 towers; the two path traps (14 towers) took it from 44/8 to 40/6,
-# and the Mortar (15) to 36/5.
-BUTTON_SIZE = 36
-BUTTON_MARGIN = 5
+# at 12 towers. Past BUTTONS_PER_ROW towers the menu now wraps into two
+# rows (build_button_rects) instead of shrinking further -- two 40px rows
+# fit the 96px button row, so the roster can keep growing.
+BUTTON_SIZE = 40
+BUTTON_MARGIN = 6
+BUTTONS_PER_ROW = 9
+BUTTON_ROW_GAP = 6
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many
 # tower buttons are registered -- the speed toggle (build_speed_button_rect)
@@ -112,12 +115,27 @@ def build_button_rects(tower_names=TOWER_ORDER):
     menu to only the towers that run has drafted so far -- everything else
     about a button (its Rect shape, hit-testing, drawing) is unchanged
     regardless of which names it's built from."""
+    names = list(tower_names)
+    if len(names) <= BUTTONS_PER_ROW:
+        rows, top = 1, BUTTON_Y
+    else:
+        rows = 2
+        block_height = 2 * BUTTON_SIZE + BUTTON_ROW_GAP
+        top = settings.SCREEN_HEIGHT - HUD_BUTTON_ROW_HEIGHT + (HUD_BUTTON_ROW_HEIGHT - block_height) // 2
+    per_row = -(-len(names) // rows)  # ceiling division -- the top row takes any odd one out
     rects = {}
-    x = BUTTON_MARGIN
-    for name in tower_names:
-        rects[name] = pygame.Rect(x, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE)
-        x += BUTTON_SIZE + BUTTON_MARGIN
+    for index, name in enumerate(names):
+        row, col = divmod(index, per_row)
+        rects[name] = pygame.Rect(BUTTON_MARGIN + col * (BUTTON_SIZE + BUTTON_MARGIN),
+                                  top + row * (BUTTON_SIZE + BUTTON_ROW_GAP), BUTTON_SIZE, BUTTON_SIZE)
     return rects
+
+
+def hud_info_x(button_rects):
+    """Where the Gold/Lives/Wave text starts: just past the build menu's
+    widest row."""
+    right = max((rect.right for rect in button_rects.values()), default=0)
+    return right + 20
 
 
 def _key_of_rect_containing(pos, rects):
@@ -277,7 +295,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
             color = settings.COLOR_BUTTON_DISABLED
         pygame.draw.rect(surface, color, rect, border_radius=6)
 
-        icon_size = BUTTON_SIZE - 14
+        icon_size = BUTTON_SIZE - 16
         icon = assets.get(tower_cls.sprite_name, (icon_size, icon_size))
         icon_rect = icon.get_rect(center=(rect.centerx, rect.centery - 8))
         surface.blit(icon, icon_rect)
@@ -298,7 +316,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     # menu shows only its own drafted subset (see build_button_rects), and
     # the gold/lives/wave text needs to sit right after however many
     # buttons are actually drawn, not always past all 9 registered towers.
-    info_x = BUTTON_MARGIN + len(button_rects) * (BUTTON_SIZE + BUTTON_MARGIN) + 20
+    info_x = hud_info_x(button_rects)
     gold_display = _format_currency(economy.gold, economy.unlimited_gold)
     gold_label = f"Gold: {gold_display}"
     # shop_currency is None outside of an active run (classic/Practice
@@ -568,7 +586,7 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
                      (x, TARGETING_BUTTON_TOP - PANEL_ROW_HEIGHT - 4))
 
     if is_placed:
-        if not tower_cls.IS_SUPPORT:
+        if tower_cls.ATTACKS and not tower_cls.IS_SUPPORT:
             _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
         _draw_panel_action_buttons(surface, small_font, subject, economy,
                                     upgrade_button_rect, specialize_button_rects, sell_button_rect)
@@ -654,7 +672,7 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
     # that's actually its buff radius, not an attack range). Its own
     # EXTRA_STATS (Damage buff / Range buff, see tower.SupportTower) are
     # its entire visible stat block instead.
-    if not tower_cls.IS_SUPPORT:
+    if tower_cls.ATTACKS and not tower_cls.IS_SUPPORT:
         stat_row("Damage", subject.damage if is_placed else tower_cls.damage,
                   subject.damage_after_next_upgrade() if show_upgrade_preview else None)
         stat_row("Range", subject.range if is_placed else tower_cls.range,

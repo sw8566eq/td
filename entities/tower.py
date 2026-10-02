@@ -87,6 +87,12 @@ class Tower:
     # A dead zone: enemies closer than this can't be targeted (the Mortar's
     # high arc). 0 for every ordinary tower.
     MIN_RANGE = 0
+    # False for a structure that never fires (Barricade): the stats panel
+    # hides Damage/Range/Fire rate and the Targeting row for it.
+    ATTACKS = True
+    # A path structure that holds ground enemies until broken (Barricade --
+    # see Game._hold_enemies_at_barricades).
+    BLOCKS_PATH = False
     # What a veterancy rank improves, for the stats panel ("+12% dmg").
     VETERANCY_BONUS_LABEL = "dmg"
     VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
@@ -1785,6 +1791,87 @@ class TarPitTower(Tower):
         )
 
 
+class BarricadeTower(Tower):
+    """A wall across the path. Ground enemies that reach it stop and batter
+    it (Game._hold_enemies_at_barricades) until its hp runs out and it
+    breaks -- no refund. Upgrading raises its max hp and fully repairs it.
+    Never fires; flyers pass over."""
+    PLACEMENT = "path"
+    ATTACKS = False
+    BLOCKS_PATH = True
+    can_target_flying = False  # flyers pass over it
+    LEVEL_SCALED_STATS = ("max_hp",)
+    LEVEL_STAT_MULTIPLIERS = {1: 1.0, 2: 1.6, 3: 2.4}
+    cost = 60
+    range = 0
+    damage = 0
+    fire_rate = 0
+    max_hp = 90.0
+    # Damage per second dealt back to every enemy battering it (Spiked).
+    thorns_dps = 1.0
+    # How close (px from its center) an enemy must be to be stopped.
+    block_radius = 30
+    VETERANCY_ASSIST_FRACTION = 0.15
+    VETERANCY_BONUS_LABEL = "hp"
+    sprite_name = "tower_barricade"
+    display_name = "Barricade"
+    EXTRA_STATS = (
+        ("Max HP", "max_hp", lambda value: f"{value:.0f}"),
+        ("Thorns", "thorns_dps", lambda value: f"{value:.1f}/s"),
+    )
+    SPECIALIZATIONS = {
+        "reinforced": {
+            "display_name": "Reinforced",
+            "description": "Far more hit points.",
+            "stat_multipliers": {"max_hp": 1.6},
+        },
+        "spiked": {
+            "display_name": "Spiked",
+            "description": "Hurts whatever batters it.",
+            "stat_multipliers": {"thorns_dps": 6.0},
+        },
+    }
+
+    def __init__(self, anchor_col, anchor_row, pixel_pos):
+        super().__init__(anchor_col, anchor_row, pixel_pos)
+        self.hp = self.max_hp
+
+    def apply_veterancy(self, rank):
+        """A seasoned Barricade is built sturdier."""
+        super().apply_veterancy(rank)
+        self.veterancy_damage_bonus = 0.0
+        self.max_hp *= 1 + veterancy.DAMAGE_BONUS_PER_RANK * rank
+        self._base_stats["max_hp"] = self.max_hp
+        self.hp = self.max_hp
+
+    def upgrade(self):
+        upgraded = super().upgrade()
+        if upgraded:
+            self.hp = self.max_hp  # an upgrade is also a full repair
+        return upgraded
+
+    def specialize(self, key):
+        result = super().specialize(key)
+        self.hp = self.max_hp
+        return result
+
+    def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
+        """Never fires -- its work happens in Game._hold_enemies_at_barricades."""
+
+    def draw(self, surface, assets, font=None):
+        super().draw(surface, assets, font)
+        width = self.footprint_subtiles * settings.SUBTILE_SIZE - 12
+        bar = pygame.Rect(0, 0, width, 5)
+        bar.midbottom = (int(self.pos.x), int(self.pos.y) + width // 2 + 4)
+        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_BG, bar)
+        filled = bar.copy()
+        filled.width = max(0, round(width * self.hp / self.max_hp))
+        pygame.draw.rect(surface, settings.COLOR_GOLD, filled)
+
+    def create_projectile(self, target):
+        raise NotImplementedError("BarricadeTower never fires -- see update()")
+
+
 class SupportTower(Tower):
     """Never attacks -- buffs every other tower within range instead (see
     Tower.reset_aura()/receive_aura(), and Game.update()'s two-pass tower
@@ -2072,6 +2159,7 @@ TOWER_TYPES = {
     "beacon": BeaconTower,
     "overload_cannon": OverloadCannonTower,
     "mortar": MortarTower,
+    "barricade": BarricadeTower,
     "spike_trap": SpikeTrapTower,
     "tar_pit": TarPitTower,
 }

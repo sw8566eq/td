@@ -196,3 +196,14 @@ Continue via `ui.build_shop_module_rect`) is rolled last from the visit's rng, o
 `Tower.MIN_RANGE` (0 by default) is a dead zone `acquire_target` filters out; `MortarTower` sets it to
 80. Both range previews draw it as a red ring. HUD build buttons are now 36px with 5px gaps (15 towers);
 icons are `BUTTON_SIZE - 14`.
+
+## Barricade and the two-row build menu
+
+`BarricadeTower` (`PLACEMENT "path"`, `ATTACKS = False`, `BLOCKS_PATH = True`) never fires. Each frame,
+before enemies update, `Game._hold_enemies_at_barricades` resets every `Enemy.held`, then marks ground
+enemies within a barricade's `block_radius` as held (`Enemy.update` skips movement but still ticks
+statuses), drains `BARRICADE_BREACH_DPS` per enemy (x`BARRICADE_BOSS_BREACH_MULTIPLIER` for bosses) and
+deals its `thorns_dps` back. A broken barricade moves to `sold_towers` and frees its tile. `hp` is saved
+per tower (`_tower_to_dict` adds it only for towers that have one). `ATTACKS = False` also hides the
+attack stats/Targeting row and keeps it out of damage-module offers. `ui.build_button_rects` wraps into
+two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row.

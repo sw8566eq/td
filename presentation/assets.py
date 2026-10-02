@@ -55,6 +55,7 @@ SPRITE_MANIFEST = {
     "tower_siphon": ("towers/siphon.png", (30, 180, 165), "rect"),
     "tower_overload_cannon": ("towers/overload_cannon.png", (200, 30, 10), "rect"),
     "tower_mortar": ("towers/mortar.png", (95, 105, 80), "rect"),
+    "tower_barricade": ("towers/barricade.png", (120, 85, 50), "rect"),
     "tower_spike_trap": ("towers/spike_trap.png", (150, 150, 160), "rect"),
     "tower_tar_pit": ("towers/tar_pit.png", (40, 30, 30), "circle"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),

@@ -98,6 +98,8 @@ class Enemy:
 
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
+        # Set fresh every frame by Game: True while a Barricade holds it in place.
+        self.held = False
         self.distance_traveled = 0.0
         self.is_dead = False
         self.reached_goal = False
@@ -162,6 +164,9 @@ class Enemy:
             # walking forward don't happen at once.
             self._advance_knockback(dt)
             return
+
+        if self.held:
+            return  # stopped at a Barricade (Game._hold_enemies_at_barricades)
 
         if self.wp_index >= len(self.waypoints):
             self.reached_goal = True

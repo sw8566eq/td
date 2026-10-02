@@ -86,6 +86,7 @@ META_UNLOCKS: dict[str, MetaUnlock] = {
     "unlock_spike_trap": MetaUnlock("unlock_spike_trap", "spike_trap", "total_floors_cleared", 4),
     "unlock_tar_pit": MetaUnlock("unlock_tar_pit", "tar_pit", "total_floors_cleared", 7),
     "unlock_mortar": MetaUnlock("unlock_mortar", "mortar", "total_floors_cleared", 10),
+    "unlock_barricade": MetaUnlock("unlock_barricade", "barricade", "total_floors_cleared", 12),
 }
 
 
