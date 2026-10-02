@@ -110,7 +110,8 @@ Rewards can also include a **potion** -- a single-use consumable (Elites always 
 to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts
 every enemy on the field, Frost Flask slows them all, Marking Dust makes them take extra damage,
 Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
-fire faster for a few seconds. Potions carry between floors until used.
+fire faster for a few seconds. Potions carry between floors until used. Every Shop also has a potion
+stand selling one potion per visit.
 
 ## Ascension
 
@@ -144,6 +145,9 @@ From the main **menu**: press any other key to start a new run (see "Runs" above
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen, `D` starts today's Daily Run, `B` opens
 the Credits screen, and `C` (shown only when one exists) continues a saved in-progress run.
+
+During a run's fight, `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
+sidebar).
 
 On the **map** screen, click any highlighted node to enter it; a legend explains what each node
 color means, and hovering a node shows a tooltip with its specific details (which level, how much a

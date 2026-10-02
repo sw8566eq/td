@@ -295,6 +295,11 @@ class Game:
         # use per visit, reset by _enter_shop_node.
         self.shop_remove_curse_rect = ui.build_shop_remove_curse_rect()
         self.shop_curse_removed = False
+        # The Shop's potion stand (see _try_buy_shop_potion) -- this visit's
+        # one potion, rolled by _enter_shop_node.
+        self.shop_potion_rect = ui.build_shop_potion_rect()
+        self.shop_potion = None
+        self.shop_potion_bought = False
 
         # The run's own branching map screen (see run_map.py/_enter_map) --
         # rebuilt fresh every time that screen is (re-)entered, same
@@ -1108,6 +1113,8 @@ class Game:
         run = self.active_run
         rng = self._run_rng(run, _DRAFT_RNG_STREAM, node.id)
         self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
+        self.shop_potion = potions.random_potion(rng)
+        self.shop_potion_bought = False
         if not self.draft_choices:
             self._finish_node(node.id)
             return
@@ -1147,6 +1154,26 @@ class Game:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
         self.shop_purchased_indices.add(index)
+
+    def _shop_potion_price(self):
+        return round(shop.POTION_PRICE * self._shop_price_multiplier())
+
+    def _can_buy_shop_potion(self):
+        """Shared by _try_buy_shop_potion and the renderer: not bought yet
+        this visit, a free potion slot, and enough shop currency."""
+        run = self.active_run
+        return (self.shop_potion is not None and not self.shop_potion_bought
+                and potions.has_free_slot(run.potions)
+                and shop.can_afford(run.shop_currency, self._shop_potion_price(), self.economy.unlimited_gold))
+
+    def _try_buy_shop_potion(self):
+        if not self._can_buy_shop_potion():
+            return
+        if not self.economy.unlimited_gold:
+            self.active_run.shop_currency -= self._shop_potion_price()
+        self.active_run.potions.append(self.shop_potion)
+        self.shop_potion_bought = True
+        self.audio.play("relic_acquired")
 
     def _curse_removal_price(self):
         return round(shop.CURSE_REMOVAL_PRICE * self._shop_price_multiplier())

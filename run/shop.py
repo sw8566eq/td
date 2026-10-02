@@ -39,6 +39,11 @@ RELIC_PRICE = 10
 # never escalates with PRICE_ESCALATION -- only the run's own shop price
 # multiplier (relics/ascension) applies.
 CURSE_REMOVAL_PRICE = 12
+# The Shop's potion stand (Game._try_buy_shop_potion): one potion per
+# visit, rolled after the card offer from the same rng so existing seeds'
+# cards are unchanged. Like curse removal it sits outside the card row, so
+# it never escalates with PRICE_ESCALATION.
+POTION_PRICE = 6
 
 # Each purchase within the same shop visit costs 50% more than the last --
 # price_for() applies this against however many items this visit has

@@ -190,3 +190,72 @@ def test_a_save_with_an_unknown_potion_is_not_resumable(game):
     _floor_with_potions(game, ["not_a_potion"])
     game.save_run()
     assert save_state.load_run(game.save_path) is None
+
+
+# --- Hotkeys and the Shop's potion stand ---
+
+
+@pytest.mark.parametrize("key, slot", [(pygame.K_q, 0), (pygame.K_w, 1), (pygame.K_e, 2)])
+def test_q_w_e_use_potion_slots(game, key, slot):
+    _floor_with_potions(game, ["fire_bomb", "frost_flask", "mending_salve"])
+    expected = [p for i, p in enumerate(["fire_bomb", "frost_flask", "mending_salve"]) if i != slot]
+    game._handle_keydown(key)
+    assert game.active_run.potions == expected
+
+
+def _shop(game, **overrides):
+    from test_run import _enter_run_shop
+
+    run = _enter_run_shop(game, **overrides)
+    assert game.state == GameState.DRAFT
+    return run
+
+
+def test_shop_offers_one_deterministic_potion(game):
+    _shop(game)
+    first = game.shop_potion
+    assert first in POTIONS
+    _shop(game)
+    assert game.shop_potion == first
+
+
+def test_buying_the_shop_potion(game):
+    from run import shop
+
+    run = _shop(game)
+    run.shop_currency = 20
+    game.render()
+    game._handle_draft_click(game.shop_potion_rect.center)
+    assert run.potions == [game.shop_potion]
+    assert run.shop_currency == 20 - shop.POTION_PRICE
+    game._try_buy_shop_potion()  # once per visit
+    assert len(run.potions) == 1
+    mock_mouse_pos(game.shop_potion_rect.center)
+    try:
+        game.render()  # SOLD + hover description
+    finally:
+        clear_mouse_mock()
+
+
+def test_shop_potion_needs_currency_and_a_free_slot(game):
+    run = _shop(game)
+    run.shop_currency = 0
+    game._try_buy_shop_potion()
+    assert run.potions == []
+    run.shop_currency = 50
+    run.potions = ["fire_bomb"] * POTION_SLOTS
+    game._try_buy_shop_potion()
+    assert run.potions == ["fire_bomb"] * POTION_SLOTS
+    game.render()
+
+
+def test_shop_potion_stand_does_not_overlap_continue_or_the_cards():
+    from presentation import ui
+    from support import settings
+
+    potion_rect = ui.build_shop_potion_rect()
+    assert potion_rect.left >= 0
+    assert not potion_rect.colliderect(ui.build_shop_continue_button_rect())
+    for rect in ui.build_draft_choice_rects(5):
+        assert not potion_rect.colliderect(rect)
+    assert potion_rect.right <= settings.SCREEN_WIDTH

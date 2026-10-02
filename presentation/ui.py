@@ -1174,6 +1174,34 @@ def build_shop_remove_curse_rect():
                        SHOP_REMOVE_CURSE_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
 
 
+SHOP_POTION_BUTTON_WIDTH = 280
+
+
+def build_shop_potion_rect():
+    """The Shop's potion stand, left of Continue on the same row."""
+    continue_rect = build_shop_continue_button_rect()
+    return pygame.Rect(continue_rect.left - 24 - SHOP_POTION_BUTTON_WIDTH, continue_rect.y,
+                       SHOP_POTION_BUTTON_WIDTH, SHOP_CONTINUE_BUTTON_HEIGHT)
+
+
+def draw_shop_potion_button(surface, small_font, rect, potion_key, price, bought, can_buy, hovered=False):
+    """The potion stand -- this visit's one potion and its price; hovering
+    it shows the potion's description underneath."""
+    potion = POTIONS[potion_key]
+    pygame.draw.rect(surface, settings.COLOR_BUTTON if can_buy else settings.COLOR_BUTTON_DISABLED, rect,
+                     border_radius=6)
+    pygame.draw.rect(surface, POTION_COLORS[potion_key], rect, width=2, border_radius=6)
+    text = f"{potion.display_name}: SOLD" if bought else f"Potion: {potion.display_name} ({price})"
+    label = small_font.render(text, True, POTION_COLORS[potion_key] if can_buy else settings.COLOR_TEXT_DIM)
+    surface.blit(label, label.get_rect(center=rect.center))
+    if hovered:
+        y = rect.bottom + 8
+        for line in _wrap_text(potion.description, small_font, rect.width):
+            line_surface = small_font.render(line, True, settings.COLOR_TEXT_DIM)
+            surface.blit(line_surface, line_surface.get_rect(midtop=(rect.centerx, y)))
+            y += PANEL_ROW_HEIGHT
+
+
 def draw_shop_remove_curse_button(surface, small_font, rect, price, has_curse, used, affordable):
     """Only drawn while the run carries a curse (or just lifted one this
     visit) -- see Game._try_remove_curse."""
@@ -1524,7 +1552,7 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
     shows that potion's name and description above the belt; a running
     Overclock Elixir shows its countdown in the belt's own label."""
     x = settings.PLAY_WIDTH + PANEL_PADDING
-    label_text = "Potions -- click to use"
+    label_text = "Potions -- click or Q/W/E"
     if overclock_timer > 0:
         label_text = f"Overclocked! {overclock_timer:.1f}s"
     label = small_font.render(label_text, True, settings.COLOR_GOLD if overclock_timer > 0 else settings.COLOR_TEXT_DIM)
@@ -2358,6 +2386,7 @@ HELP_LINES = [
     "At max level, Upgrade becomes two permanent Specialize choices",
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
+    "Q / W / E (or click a sidebar slot) drink potion 1 / 2 / 3 during a run's fight",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]

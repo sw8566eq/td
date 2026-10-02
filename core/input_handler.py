@@ -40,6 +40,9 @@ from presentation import ui
 from run import difficulty
 from support import settings
 
+# Q/W/E use potion slots 1-3 while PLAYING (see ui.draw_potion_belt).
+POTION_HOTKEYS = (pygame.K_q, pygame.K_w, pygame.K_e)
+
 
 class InputHandler:
     def __init__(self, game):
@@ -249,6 +252,11 @@ class InputHandler:
                 game.set_time_scale(3.0)
             elif keybindings.matches(game.keybindings["open_relics"], key, mods) and game.active_run is not None:
                 game.state = GameState.RELICS
+            elif key in POTION_HOTKEYS:
+                # Fixed, not remappable (the Keybinds screen has no room
+                # for three more rows) -- checked last, so a remapped
+                # action bound to Q/W/E still wins.
+                game.use_potion(POTION_HOTKEYS.index(key))
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
             # any key dismisses it, Escape included. That's PAUSED's own
@@ -696,6 +704,9 @@ class InputHandler:
             return
         if game.shop_remove_curse_rect.collidepoint(pos):
             game._try_remove_curse()
+            return
+        if game.shop_potion_rect.collidepoint(pos):
+            game._try_buy_shop_potion()
             return
         index = ui.get_clicked_draft_choice(pos, game.draft_choice_rects)
         if index is None or index in game.shop_purchased_indices:
