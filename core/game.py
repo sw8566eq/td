@@ -1236,7 +1236,9 @@ class Game:
         self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
         self.shop_potion = potions.random_potion(rng)
         self.shop_potion_bought = False
-        if not self.draft_choices:
+        # Skipped only when nothing at all is on offer: no cards, no curse
+        # to lift, and no room for the potion stand's potion.
+        if not self.draft_choices and not relics.held_curses(run) and not potions.has_free_slot(run):
             self._finish_node(node.id)
             return
         self.draft_choice_rects = ui.build_draft_choice_rects(len(self.draft_choices))
