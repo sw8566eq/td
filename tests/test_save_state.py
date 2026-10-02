@@ -539,3 +539,16 @@ def test_load_run_with_an_unrecognized_targeting_mode_returns_none(tmp_path):
     path.write_text(json.dumps(data))
 
     assert save_state.load_run(path=path) is None
+
+
+def test_old_run_saves_infer_lives_captured_from_their_lives():
+    from conftest import make_linear_run_map
+
+    from run.run_state import RunState
+
+    run = RunState(seed=1, map=make_linear_run_map(["combat"]), difficulty="normal", unlocked_towers=[], lives=9)
+    data = save_state._run_to_dict(run)
+    del data["lives_captured"]
+    assert save_state._run_from_dict(data).lives_captured is True
+    data["lives"] = 0
+    assert save_state._run_from_dict(data).lives_captured is False
