@@ -214,6 +214,7 @@ def test_a_save_with_an_unknown_potion_is_not_resumable(game):
 @pytest.mark.parametrize("key, slot", [(pygame.K_q, 0), (pygame.K_w, 1), (pygame.K_e, 2)])
 def test_q_w_e_use_potion_slots(game, key, slot):
     _floor_with_potions(game, ["fire_bomb", "frost_flask", "mending_salve"])
+    game.enemies = [_enemy()]  # something for the enemy-targeting ones to hit
     expected = [p for i, p in enumerate(["fire_bomb", "frost_flask", "mending_salve"]) if i != slot]
     game._handle_keydown(key)
     assert game.active_run.potions == expected
@@ -319,3 +320,19 @@ def test_smoke_bomb_knocks_back_and_venom_vial_poisons(game):
     game.use_potion(0)
     assert grunt.poison_damage_per_tick == pytest.approx(grunt.max_hp * potions.VENOM_VIAL_HP_FRACTION_PER_TICK)
     assert boss.poison_damage_per_tick == pytest.approx(boss.max_hp * potions.VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK)
+
+
+def test_enemy_potions_are_kept_with_a_toast_when_the_field_is_empty(game):
+    _floor_with_potions(game, ["fire_bomb", "liquid_gold"])
+    game.enemies = []
+    game.use_potion(0)
+    assert game.active_run.potions == ["fire_bomb", "liquid_gold"]
+    assert any("No enemies" in toast.text for toast in game.achievement_toasts)
+    game.use_potion(1)  # Liquid Gold needs no target
+    assert game.active_run.potions == ["fire_bomb"]
+
+
+def test_needs_enemies_flags_match_what_each_potion_touches():
+    assert {key for key, potion in POTIONS.items() if not potion.needs_enemies} == {
+        "liquid_gold", "mending_salve", "overclock_elixir",
+    }
