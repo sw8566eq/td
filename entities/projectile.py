@@ -151,7 +151,7 @@ class Projectile:
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
-                 can_hit_flying=True, can_hit_burrowed=True):
+                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -271,6 +271,9 @@ class Projectile:
         # Same idea for a burrowing enemy (Enemy.BURROWS): a path trap's
         # shot can't touch one -- see Tower.HITS_BURROWED.
         self.can_hit_burrowed = can_hit_burrowed
+        # (fraction of damage per second, seconds) -- a burning patch where
+        # this shell lands (Game drains impact_events into GroundFire).
+        self.ground_fire = ground_fire
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute

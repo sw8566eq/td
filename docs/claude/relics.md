@@ -287,3 +287,12 @@ cap are module constants in `entities/tower.py` (`VARIETY_RADIUS`, `VARIETY_BONU
 read by `Game._apply_construction_relics` at the end of `_construct_tower` (after modules): it calls
 `Tower.scale_structure_hp` (a no-op except on `BarricadeTower`), shrinks an instance's `MIN_RANGE`
 (never the class's), and boosts fire rate for a type that has a module fitted.
+
+## Ground fire (Incendiary Shells)
+
+`Relic.mortar_ground_fire` ((damage fraction per second, seconds), Relic-only) is copied onto every
+tower as `relic_ground_fire` by `_construct_tower`; only `MortarTower.create_projectile` reads it, as
+`Projectile.ground_fire`. The impact drain in `Game.update` turns such an impact into an
+`effects.GroundFire` (`Game.ground_fires`, reset per floor), which `Game._update_ground_fires` ticks
+before enemies move: ground enemies (not flying, not burrowed) inside it take `dps * dt`, credited to
+the Mortar's `damage_dealt`/`kills`. Fires draw under towers and enemies.

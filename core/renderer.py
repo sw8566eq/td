@@ -279,6 +279,8 @@ class Renderer:
             return
 
         game.grid.draw(game.screen, game.assets)
+        for fire in game.ground_fires:
+            fire.draw(game.screen)
         for tower in game.towers:
             tower.draw(game.screen, game.assets, game.tiny_font)
         for enemy in game.enemies:

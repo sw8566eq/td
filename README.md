@@ -129,7 +129,8 @@ potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion)
 **Earthworks** (Barricades get 50% more hit points), **Forward Observer** (the Mortar's dead zone is
 half as wide) and **Quick-Release Mounts** (towers whose type has a module fire 10% faster).
 
-**Ambush** makes enemies held at a Barricade take 25% more damage from everything.
+**Ambush** makes enemies held at a Barricade take 25% more damage from everything, and **Incendiary
+Shells** makes every Mortar shell leave burning ground for 3 seconds.
 
 ## Placement relics
 

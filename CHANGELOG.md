@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Incendiary Shells** relic: Mortar impacts leave burning ground (30% of the shell's damage per second
+  for 3s) that hurts ground enemies crossing it, credited to the Mortar.
 - **Burrowers**: a new enemy that tunnels under the path -- immune to Spike Traps, Tar Pits and
   Barricades -- joining run waves from depth 9. Fixed: Spike Trap, Tar Pit and Mortar splash could
   hit flying enemies they can't target.

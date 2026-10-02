@@ -562,6 +562,9 @@ class Relic:
     structure_hp_multiplier: float = 1.0
     dead_zone_multiplier: float = 1.0
     module_fire_rate_bonus: float = 0.0
+    # Mortar only: each shell leaves burning ground -- (fraction of the
+    # shell's damage dealt per second, seconds). See Game._update_ground_fires.
+    mortar_ground_fire: tuple[float, float] | None = None
     # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
     # damage_multiplier, set by Game._hold_enemies_at_barricades).
     held_damage_multiplier: float = 1.0
@@ -1108,6 +1111,11 @@ RELICS = {
     "quick_release_mounts": Relic(
         "quick_release_mounts", "Quick-Release Mounts", "Towers whose type has a module fitted fire 10% faster.",
         module_fire_rate_bonus=0.10,
+    ),
+    "incendiary_shells": Relic(
+        "incendiary_shells", "Incendiary Shells",
+        "Mortar only: each shell leaves burning ground for 3s, hurting ground enemies that cross it.",
+        mortar_ground_fire=(0.3, 3.0),
     ),
     "ambush": Relic(
         "ambush", "Ambush", "Enemies held at a Barricade take 25% more damage from everything.",

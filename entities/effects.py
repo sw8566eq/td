@@ -41,6 +41,32 @@ class FloatingText:
         surface.blit(rendered, rendered.get_rect(center=(int(self.pos.x), int(self.pos.y))))
 
 
+class GroundFire:
+    """A burning patch left by an Incendiary Shells-style Mortar impact:
+    every ground enemy inside `radius` takes `dps` per second until it
+    burns out. Simulation state, ticked by Game._update_ground_fires; it
+    only draws itself."""
+
+    def __init__(self, pos, radius, dps, duration, source=None):
+        self.pos = pos
+        self.radius = radius
+        self.dps = dps
+        self.time_left = duration
+        self.duration = duration
+        self.source = source  # the Mortar that fired it -- credited with damage/kills
+
+    @property
+    def dead(self):
+        return self.time_left <= 0
+
+    def draw(self, surface):
+        alpha = int(90 * max(0.0, self.time_left / self.duration)) + 30
+        size = int(self.radius * 2)
+        patch = pygame.Surface((size, size), pygame.SRCALPHA)
+        pygame.draw.circle(patch, (255, 120, 30, alpha), (size // 2, size // 2), int(self.radius))
+        surface.blit(patch, (int(self.pos.x - self.radius), int(self.pos.y - self.radius)))
+
+
 class ExpandingRing:
     """A short-lived ring that grows from start_radius to max_radius and
     fades out -- the same "age it, fade it, then it's dead" shape as
