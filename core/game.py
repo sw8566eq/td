@@ -1225,8 +1225,18 @@ class Game:
         _advance_run_floor, so this is never called for those (there's no
         separate "leave the results screen" step distinct from pressing
         any key on FLOOR_CLEARED, which goes straight to _enter_map)."""
-        self.active_run.visited_node_ids.append(node_id)
+        self._commit_node(node_id)
         self._enter_map()
+
+    def _commit_node(self, node_id):
+        """Mark `node_id` visited (once) and autosave -- called the moment a
+        choice on it is final (an Event option, a Rest/Smith/Move on pick),
+        not only when its screen is left, so quitting on the result and
+        pressing Continue can't reopen the choice to pick again."""
+        run = self.active_run
+        if node_id not in run.visited_node_ids:
+            run.visited_node_ids.append(node_id)
+        self._autosave_run()
 
     def _enter_shop_node(self, node):
         """Enter the Shop screen for `node` (see GameState.DRAFT's own
@@ -1438,6 +1448,8 @@ class Game:
         elif "tower" in self.event_resolution:
             self.audio.play("tower_unlocked_shop")
         self._record_achievement("events_resolved")
+        if not self.event_is_blessing:
+            self._commit_node(node_id)
         if "forged" in self.event_resolution:
             self._record_achievement("towers_forged")
         if "curse" in self.event_resolution:
@@ -1479,6 +1491,7 @@ class Game:
                 return  # an Overcharged Core-style boss relic forbids it
             self.active_run.lives += self.rest_heal_amount
             self.rest_phase = "resolved"
+            self._commit_node(self.active_run.current_node_id)
         elif index == 1 and self.rest_smith_choices:
             self.rest_phase = "smith"
         elif index == 2:
@@ -1487,6 +1500,7 @@ class Game:
             # way off this screen at all.
             self.rest_moved_on = True
             self.rest_phase = "resolved"
+            self._commit_node(self.active_run.current_node_id)
 
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from
@@ -1496,6 +1510,7 @@ class Game:
         self._record_achievement("towers_forged")
         self.rest_forged_tower = name
         self.rest_phase = "resolved"
+        self._commit_node(self.active_run.current_node_id)
         self.audio.play("tower_upgraded")
 
     def _enter_treasure_node(self, node):

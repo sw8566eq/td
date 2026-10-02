@@ -198,7 +198,10 @@ pre-entry run state means nothing is granted twice), otherwise the map. A mid-fl
 overwrites the checkpoint and still resumes the precise wave. `RunState.reward_pending`/
 `blessing_pending` (set, then autosaved, on entering those screens; cleared on leaving) make
 `_resume_map_checkpoint` reopen them -- both are re-derived from their own rng keys, so the same
-cards come back, and the checkpoint predates any claim.
+cards come back, and the checkpoint predates any claim. An Event option or a Rest/Smith/Move-on
+choice commits its node the moment it resolves (`Game._commit_node`: mark visited + autosave), so
+quitting on the result screen and pressing Continue lands on the map rather than reopening the choice
+for a second pick; `_finish_node` only appends the id if it isn't already there.
 
 ## Save validation is strict about types
 
