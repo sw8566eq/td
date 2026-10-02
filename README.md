@@ -41,6 +41,10 @@ Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sn
 and **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) unlock as you play.
 The Daily Run always uses The Warden.
 
+Before the map, an old spirit offers a **starting blessing** (Slay the Spire's Neow) -- pick one: a
+relic, supplies (+15 shop currency, +3 lives), a forged tower plus a potion, or a dark bargain (two
+relics and a curse).
+
 That generates a **branching map** -- six rows of nodes, shown to you in full from the start, no fog
 of war. The build menu shows only your three starter towers at first; more join your run from
 rewards, the Shop, and Events (and the full pool grows as you unlock towers -- see

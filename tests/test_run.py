@@ -2755,7 +2755,7 @@ def test_m_after_permadeath_returns_to_the_menu_and_any_key_starts_a_fresh_run(g
     assert game.state == GameState.COMMANDER_SELECT
     game._choose_commander(0)
 
-    assert game.state == GameState.MAP
+    assert game.state == GameState.EVENT and game.event_is_blessing
     assert game.active_run is not old_run
 
 
@@ -3079,7 +3079,7 @@ def test_clearing_a_fresh_runs_floor_keeps_an_unrelated_save(game):
 
 def test_menu_d_key_starts_daily_run(game):
     game._handle_keydown(pygame.K_d)
-    assert game.state == GameState.MAP
+    assert game.state == GameState.EVENT and game.event_is_blessing  # the opening blessing first
     assert game.active_run is not None
     assert game.active_run.is_daily is True
 

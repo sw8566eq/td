@@ -82,7 +82,7 @@ def test_picking_an_unlocked_commander_starts_that_run(game):
     meta_progression.bump("runs_played", path=game.meta_progression_path)
     game._enter_commander_select()
     game._handle_commander_select_click(game.commander_rects[COMMANDER_ORDER.index("alchemist")].center)
-    assert game.state == GameState.MAP
+    assert game.state == GameState.EVENT  # the opening blessing, then the map
     assert game.active_run.commander == "alchemist"
 
 

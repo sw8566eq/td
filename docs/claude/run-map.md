@@ -165,3 +165,13 @@ those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion
 `_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
 unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
 (`_can_buy_shop_potion` is shared by the click and the renderer).
+
+## Starting blessing
+
+`events.BLESSING` -- an `Event` kept out of `EVENTS`/`_EVENT_ORDER` so `pick_event` never draws it.
+`Game._enter_blessing` shows it on the ordinary Event screen right after `_choose_commander`/
+`_start_daily_challenge` (not inside `start_new_run`, which tests and the save path call directly),
+setting `event_is_blessing`; the item rng key is `"blessing:<option>"`. Every Event-leaving path goes
+through `Game._leave_event`, which returns to the map for the blessing (no node to mark visited) and
+calls `_finish_node` otherwise. `EventOption.extra_relic` gives the dark bargain its second relic.
+`ui.build_event_option_rects` compresses its column for 4+ options.

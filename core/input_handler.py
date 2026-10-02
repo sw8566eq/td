@@ -369,7 +369,7 @@ class InputHandler:
             if key == pygame.K_ESCAPE:
                 game.running = False
             elif game.event_phase == "resolved" and key not in keybindings.MODIFIER_KEY_CODES:
-                game._finish_node(game.active_run.current_node_id)
+                game._leave_event()
         elif game.state == GameState.REST:
             # Choosing Rest/Smith (and which tower to forge) is mouse-only,
             # same as an Event's options; once resolved, any key but Escape
@@ -726,7 +726,7 @@ class InputHandler:
         otherwise resolves whichever option (if any) was clicked."""
         game = self.game
         if game.event_phase == "resolved":
-            game._finish_node(game.active_run.current_node_id)
+            game._leave_event()
             return
         index = ui.get_clicked_event_option(pos, game.event_option_rects)
         if index is None:

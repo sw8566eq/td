@@ -905,11 +905,10 @@ def build_event_option_rects(count):
     list-indexed shape (an Event's options aren't a stable identity across
     visits the way a map node's id is)."""
     x = (settings.SCREEN_WIDTH - EVENT_OPTION_WIDTH) // 2
-    return [
-        pygame.Rect(x, EVENT_OPTIONS_TOP + i * (EVENT_OPTION_HEIGHT + EVENT_OPTION_GAP),
-                    EVENT_OPTION_WIDTH, EVENT_OPTION_HEIGHT)
-        for i in range(count)
-    ]
+    # Up to 3 options keep the original roomy layout; more (the run's
+    # 4-option blessing) compress so the column still ends on screen.
+    height, gap, top = (EVENT_OPTION_HEIGHT, EVENT_OPTION_GAP, EVENT_OPTIONS_TOP) if count <= 3 else (80, 12, 250)
+    return [pygame.Rect(x, top + i * (height + gap), EVENT_OPTION_WIDTH, height) for i in range(count)]
 
 
 def get_clicked_event_option(pos, option_rects):
@@ -935,6 +934,8 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Gained relic: {RELICS[resolution['relic']].display_name}")
     if resolution.get("tower"):
         lines.append(f"Unlocked tower: {TOWER_TYPES[resolution['tower']].display_name}")
+    if resolution.get("extra_relic"):
+        lines.append(f"Gained relic: {RELICS[resolution['extra_relic']].display_name}")
     if resolution.get("relic_given_up"):
         lines.append(f"Gave up relic: {RELICS[resolution['relic_given_up']].display_name}")
     if resolution.get("curse"):
