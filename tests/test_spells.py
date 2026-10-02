@@ -264,9 +264,9 @@ def test_zap_hits_the_leaders_and_bosses_less(game):
     game.enemies = [trailer, mid, leader, boss]
     game.play_card(0)
     assert trailer.hp == trailer.max_hp
-    assert leader.hp == pytest.approx(leader.max_hp * (1 - spells.ZAP_HP_FRACTION))
+    assert leader.hp == pytest.approx(leader.max_hp * (1 - spells.ZAP_HP_FRACTION[0]))
     assert mid.hp < mid.max_hp
-    assert boss.max_hp - boss.hp <= boss.max_hp * spells.ZAP_BOSS_HP_FRACTION + 1e-6
+    assert boss.max_hp - boss.hp <= boss.max_hp * spells.ZAP_BOSS_HP_FRACTION[0] + 1e-6
 
 
 def test_chain_lightning_hits_everything(game):
@@ -274,7 +274,7 @@ def test_chain_lightning_hits_everything(game):
     enemies = [_enemy(x=i) for i in range(5)]
     game.enemies = list(enemies)
     game.play_card(0)
-    assert all(e.hp == pytest.approx(e.max_hp * (1 - spells.CHAIN_LIGHTNING_HP_FRACTION)) for e in enemies)
+    assert all(e.hp == pytest.approx(e.max_hp * (1 - spells.CHAIN_LIGHTNING_HP_FRACTION[0])) for e in enemies)
 
 
 def test_focus_fire_hits_the_toughest_enemy(game):
@@ -284,7 +284,7 @@ def test_focus_fire_hits_the_toughest_enemy(game):
     game.enemies = [weak, tough]
     game.play_card(0)
     assert weak.hp == weak.max_hp
-    assert tough.hp == pytest.approx(tough.max_hp * (1 - spells.FOCUS_FIRE_HP_FRACTION))
+    assert tough.hp == pytest.approx(tough.max_hp * (1 - spells.FOCUS_FIRE_HP_FRACTION[0]))
 
 
 def test_blizzard_expose_plague_and_shove_apply_their_status(game):
@@ -294,12 +294,12 @@ def test_blizzard_expose_plague_and_shove_apply_their_status(game):
     game.enemies = [enemy]
     game.play_card(0)
     game.play_card(0)
-    assert enemy.slow_multiplier == spells.BLIZZARD_SLOW_FACTOR
-    assert enemy.mark_damage_multiplier == spells.EXPOSE_MULTIPLIER
+    assert enemy.slow_multiplier == spells.BLIZZARD_SLOW_FACTOR[0]
+    assert enemy.mark_damage_multiplier == spells.EXPOSE_MULTIPLIER[0]
     game.combat_deck.hand = ["plague", "shove"]
     game.combat_deck.energy = MAX_ENERGY
     game.play_card(0)
-    assert enemy.poison_time_remaining == spells.PLAGUE_DURATION
+    assert enemy.poison_time_remaining == spells.PLAGUE_DURATION[0]
     game.play_card(0)  # shove -- knockback queued without crashing
 
 
@@ -325,10 +325,10 @@ def test_rally_and_empower_buff_towers_until_they_expire(game):
     game.play_card(0)
     game.play_card(0)
     game.update(dt=0.01)
-    assert tower.effective_fire_rate() == pytest.approx(rate * spells.RALLY_FIRE_RATE_MULTIPLIER)
-    assert tower.effective_damage() == pytest.approx(damage * (1 + spells.EMPOWER_DAMAGE_BONUS))
+    assert tower.effective_fire_rate() == pytest.approx(rate * spells.RALLY_FIRE_RATE_MULTIPLIER[0])
+    assert tower.effective_damage() == pytest.approx(damage * (1 + spells.EMPOWER_DAMAGE_BONUS[0]))
 
-    game.update(dt=spells.RALLY_DURATION)
+    game.update(dt=spells.RALLY_DURATION[0])
     game.update(dt=0.01)
     assert tower.effective_fire_rate() == pytest.approx(rate)
     assert tower.effective_damage() == pytest.approx(damage)
@@ -351,7 +351,7 @@ def test_insight_draws_and_surge_adds_energy(game):
     game.play_card(0)
     assert sorted(deck.hand) == ["surge", "zap", "zap"]
     game.play_card(deck.hand.index("surge"))
-    assert deck.energy == spells.SURGE_ENERGY
+    assert deck.energy == spells.SURGE_ENERGY[0]
     assert sorted(deck.exhaust_pile) == ["insight", "surge"]
 
 
@@ -359,7 +359,7 @@ def test_patch_the_gate_restores_a_life(game):
     _floor_with_hand(game, ["patch_gate"])
     lives = game.economy.lives
     game.play_card(0)
-    assert game.economy.lives == lives + spells.PATCH_GATE_LIVES
+    assert game.economy.lives == lives + spells.PATCH_GATE_LIVES[0]
 
 
 def test_requisition_makes_the_next_tower_free_and_unrefundable(game):
@@ -590,3 +590,139 @@ def test_the_compendium_lists_every_spell():
     names = {name for kind, name, _detail in rows if kind == "entry" and name}
     for spell in SPELLS.values():
         assert f"{spell.display_name} ({spell.cost})" in names
+
+
+# --- Upgrades ("+" cards) and the Rest site's Study ---
+
+
+def test_card_helpers():
+    assert spells.base_key("zap+") == "zap" and spells.base_key("zap") == "zap"
+    assert spells.card_level("zap+") == 1 and spells.card_level("zap") == 0
+    assert spells.upgraded("zap") == spells.upgraded("zap+") == "zap+"
+    assert spells.card_name("zap+") == "Zap+"
+    assert spells.initials("chain_lightning+") == "CL+"
+    assert spells.is_valid_card("zap+") and spells.is_valid_card("zap")
+    assert not spells.is_valid_card("zap++") and not spells.is_valid_card("nope+")
+    assert spells.card_cost("requisition+") == 0 and spells.card_cost("execute+") == 1
+
+
+def test_every_upgrade_is_described_differently_or_cheaper():
+    for key, spell in SPELLS.items():
+        assert spell.describe(1) != spell.describe(0) or spell.costs[1] < spell.costs[0], key
+        assert spell.costs[1] <= spell.costs[0]
+
+
+def test_an_upgraded_zap_hits_harder(game):
+    _floor_with_hand(game, ["zap+"])
+    enemy = _enemy()
+    game.enemies = [enemy]
+    game.play_card(0)
+    assert enemy.hp == pytest.approx(enemy.max_hp * (1 - spells.ZAP_HP_FRACTION[1]))
+
+
+def test_upgraded_rally_and_empower_use_their_stronger_values_then_reset(game):
+    _floor_with_hand(game, ["rally+", "empower+"])
+    game.selected_tower_name = "basic"
+    assert game.try_place_tower(*find_buildable_anchor(game))
+    tower = game.towers[0]
+    rate, damage = tower.effective_fire_rate(), tower.effective_damage()
+    game.play_card(0)
+    game.play_card(0)
+    game.update(dt=0.01)
+    assert tower.effective_fire_rate() == pytest.approx(rate * spells.RALLY_FIRE_RATE_MULTIPLIER[1])
+    assert tower.effective_damage() == pytest.approx(damage * (1 + spells.EMPOWER_DAMAGE_BONUS[1]))
+    game.update(dt=spells.RALLY_DURATION[1] + 1)
+    game.update(dt=0.01)
+    assert game.spell_fire_rate_multiplier == 1.0 and game.spell_damage_bonus == 0.0
+    assert tower.effective_fire_rate() == pytest.approx(rate)
+
+
+def test_upgraded_cards_render_in_hand_and_deck(game):
+    _floor_with_hand(game, ["zap+", "insight+"])
+    try:
+        mock_mouse_pos(game.card_rects()[0].center)
+        game.render()
+    finally:
+        clear_mouse_mock()
+    game.active_run.deck.append("zap+")
+    assert ("zap+", 1) in ui.deck_entries(game.active_run.deck)
+    entries = [card for card, _count in ui.deck_entries(game.active_run.deck)]
+    assert entries.index("zap+") == entries.index("zap") + 1
+    game.open_deck_view()
+    game.render()
+
+
+def test_a_big_deck_switches_to_the_compact_grid(game):
+    run = start_first_floor(game, seed=1)
+    run.deck = list(SPELLS) + [spells.upgraded(key) for key in SPELLS]
+    game.open_deck_view()
+    rects = game.deck_entry_rects
+    assert len(rects) == 2 * len(SPELLS)
+    assert all(rect.bottom < game.deck_back_rect.top for rect in rects)
+    game.render()
+
+
+def _rest(game):
+    from test_run import _begin_run_with_map
+
+    run = _begin_run_with_map(game, ["combat", "rest"], lives=5)
+    game._enter_node("1-0")
+    assert game.state == GameState.REST
+    return run
+
+
+def test_study_upgrades_one_copy_and_resolves_the_rest_site(game):
+    run = _rest(game)
+    game._handle_rest_click(game.rest_option_rects[2].center)
+    assert game.state == GameState.DECK and game.deck_view_mode == "upgrade"
+    game.render()
+    cards = [card for card, _count in game.deck_view_entries()]
+    game.input_handler._handle_deck_click(game.deck_entry_rects[cards.index("zap")].center)
+
+    assert game.state == GameState.REST and game.rest_phase == "resolved"
+    assert run.deck.count("zap+") == 1 and run.deck.count("zap") == STARTER_DECK.count("zap") - 1
+    assert run.visited_node_ids == ["1-0"]
+    assert achievements.load_achievements(game.achievements_path)["counters"]["spells_upgraded"] == 1
+    game.render()
+
+
+def test_study_only_offers_cards_not_yet_upgraded_and_back_returns_to_the_choice(game):
+    run = _rest(game)
+    run.deck = ["zap+", "rally"]
+    game._choose_rest_option(2)
+    assert [card for card, _count in game.deck_view_entries()] == ["rally"]
+    game.input_handler._handle_deck_click(game.deck_back_rect.center)
+    assert game.state == GameState.REST and game.rest_phase == "choose"
+    game._upgrade_card("zap+")  # already upgraded -- ignored
+    assert run.deck == ["zap+", "rally"]
+
+
+def test_study_is_unavailable_once_everything_is_upgraded(game):
+    run = _rest(game)
+    run.deck = ["zap+"]
+    game._choose_rest_option(2)
+    assert game.state == GameState.REST and game.rest_phase == "choose"
+    game.render()
+
+
+def test_deep_rewards_sometimes_offer_upgraded_spells(game):
+    from run import rewards
+
+    run = start_first_floor(game, seed=1)
+    run.act = 2  # deep enough for the max upgrade chance
+    seen = set()
+    for seed in range(40):
+        reward = rewards.build_combat_reward(random.Random(seed), run, is_elite=False)
+        seen.update(spells.card_level(card) for card in reward.spell_choices)
+    assert seen == {0, 1}
+
+
+def test_upgraded_cards_survive_a_save_and_bad_ones_are_rejected(game):
+    run = start_first_floor(game, seed=1)
+    run.deck.append("zap+")
+    game.save_run()
+    game.resume_saved_run(save_state.load_run(game.save_path))
+    assert "zap+" in game.active_run.deck
+    game.active_run.deck.append("zap++")
+    game.save_run()
+    assert save_state.load_run(game.save_path) is None

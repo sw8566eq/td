@@ -367,7 +367,9 @@ class Game:
         self.rest_heal_amount = 0
         self.rest_heal_blocked = False
         self.rest_forged_tower = None
-        self.rest_option_rects = ui.build_event_option_rects(3)
+        self.rest_option_rects = ui.build_event_option_rects(4)
+        # Study's pick once made (a base card key), for the resolved text.
+        self.rest_upgraded_card = None
         # True once "Move on" (option 2) was picked -- the resolved screen's
         # own text for it.
         self.rest_moved_on = False
@@ -1150,7 +1152,9 @@ class Game:
         level load; _load_combat_node then deals a run's fresh deck."""
         self.combat_deck = None
         self.spell_fire_rate_timer = 0.0
+        self.spell_fire_rate_multiplier = 1.0
         self.spell_damage_timer = 0.0
+        self.spell_damage_bonus = 0.0
         self.bounty_timer = 0.0
         self.free_tower_charges = 0
 
@@ -1162,10 +1166,10 @@ class Game:
         deck = self.combat_deck
         if self.state != GameState.PLAYING or deck is None or not deck.can_play(index):
             return False
-        if spells.SPELLS[deck.hand[index]].needs_enemies and not self.enemies:
+        if spells.spell_of(deck.hand[index]).needs_enemies and not self.enemies:
             return False
-        key = deck.play(index)
-        spells.SPELLS[key].cast(self)
+        card = deck.play(index)
+        spells.spell_of(card).cast(self, spells.card_level(card))
         self.audio.play("potion_used")
         self._record_achievement("spells_cast")
         return True
@@ -1427,8 +1431,16 @@ class Game:
         or "remove" (the Shop's picker); Back returns to `return_state`."""
         self.deck_view_mode = mode
         self.deck_return_state = return_state
-        self.deck_entry_rects = ui.build_deck_entry_rects(len(ui.deck_entries(self.active_run.deck)))
+        self.deck_entry_rects = ui.build_deck_entry_rects(len(self.deck_view_entries()))
         self.state = GameState.DECK
+
+    def deck_view_entries(self):
+        """The deck screen's (card, count) grid -- only cards not yet
+        upgraded while Studying."""
+        entries = ui.deck_entries(self.active_run.deck)
+        if self.deck_view_mode == "upgrade":
+            return [(card, count) for card, count in entries if not spells.card_level(card)]
+        return entries
 
     def _hovered_deck_entry(self):
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.deck_entry_rects)
@@ -1586,6 +1598,7 @@ class Game:
         self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(depth) * heal_multiplier))
         self.rest_heal_blocked = any(relics.RELICS[key].blocks_rest_heal for key in self.active_run.relics)
         self.rest_forged_tower = None
+        self.rest_upgraded_card = None
         self.rest_moved_on = False
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
@@ -1603,8 +1616,10 @@ class Game:
 
     def _choose_rest_option(self, index):
         """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
-        tower), 2 = Move on (nothing) -- Rest is a no-op under a blocks_
-        rest_heal boss relic, Smith once there's nothing left to forge."""
+        tower), 2 = Study (upgrade a spell, on the deck screen), 3 = Move on
+        (nothing) -- Rest is a no-op under a blocks_rest_heal boss relic,
+        Smith once there's nothing left to forge, Study once every card is
+        upgraded."""
         if index == 0:
             if self.rest_heal_blocked:
                 return  # an Overcharged Core-style boss relic forbids it
@@ -1613,13 +1628,29 @@ class Game:
             self._commit_node(self.active_run.current_node_id)
         elif index == 1 and self.rest_smith_choices:
             self.rest_phase = "smith"
-        elif index == 2:
+        elif index == 2 and spells.upgradeable_cards(self.active_run.deck):
+            self.open_deck_view("upgrade", GameState.REST)
+        elif index == 3:
             # Always available -- without it, a run that can't heal here
             # (Overcharged Core) with every held tower already forged had no
             # way off this screen at all.
             self.rest_moved_on = True
             self.rest_phase = "resolved"
             self._commit_node(self.active_run.current_node_id)
+
+    def _upgrade_card(self, card):
+        """Study: upgrade one copy of `card` (a base card the deck holds)
+        for the rest of the run, resolving the Rest site."""
+        run = self.active_run
+        if card not in spells.upgradeable_cards(run.deck):
+            return
+        run.deck[run.deck.index(card)] = spells.upgraded(card)
+        self._record_achievement("spells_upgraded")
+        self.rest_upgraded_card = card
+        self.rest_phase = "resolved"
+        self._commit_node(run.current_node_id)
+        self.audio.play("tower_upgraded")
+        self.state = GameState.REST
 
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from
@@ -2827,9 +2858,14 @@ class Game:
         self.spell_fire_rate_timer = max(0.0, self.spell_fire_rate_timer - dt)
         self.spell_damage_timer = max(0.0, self.spell_damage_timer - dt)
         self.bounty_timer = max(0.0, self.bounty_timer - dt)
-        if self.spell_fire_rate_timer > 0:
-            overclock *= spells.RALLY_FIRE_RATE_MULTIPLIER
-        spell_damage_bonus = spells.EMPOWER_DAMAGE_BONUS if self.spell_damage_timer > 0 else 0.0
+        # Each effect's strength lasts only as long as its timer (an
+        # upgraded cast raises it -- see spells._rally/_empower).
+        if self.spell_fire_rate_timer <= 0:
+            self.spell_fire_rate_multiplier = 1.0
+        if self.spell_damage_timer <= 0:
+            self.spell_damage_bonus = 0.0
+        overclock *= self.spell_fire_rate_multiplier
+        spell_damage_bonus = self.spell_damage_bonus
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)

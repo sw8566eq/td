@@ -147,6 +147,15 @@ ACHIEVEMENTS = {
     "alchemist": Achievement(
         "alchemist", "Alchemist", "Use 25 potions.", "potions_used", 25,
     ),
+    "first_spell": Achievement(
+        "first_spell", "Spark", "Cast a spell.", "spells_cast", 1,
+    ),
+    "spellslinger": Achievement(
+        "spellslinger", "Spellslinger", "Cast 100 spells.", "spells_cast", 100,
+    ),
+    "scholar": Achievement(
+        "scholar", "Scholar", "Upgrade 5 spells at Rest sites.", "spells_upgraded", 5,
+    ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 
