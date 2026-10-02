@@ -141,6 +141,12 @@ class RunState:
     # identically from its own rng key, so reopening offers the same cards.
     reward_pending: bool = False
     blessing_pending: bool = False
+    # Whether `lives` has been captured from the run's first fight yet
+    # (Game._load_combat_node). Before that, `lives` only accumulates
+    # pre-fight bonuses (the opening blessing's supplies, a Sturdy Gate
+    # taken there), which the capture adds on top of the level's own
+    # starting lives rather than overwriting.
+    lives_captured: bool = False
 
     @property
     def current_level_id(self) -> object:

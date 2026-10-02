@@ -22,6 +22,7 @@ def _run_on(game, node_types, act=0, **overrides):
     kwargs = {
         "seed": 1, "map": make_linear_run_map(node_types), "difficulty": "normal",
         "unlocked_towers": list(STARTER_TOWERS), "act": act, "lives": 15,
+        "lives_captured": True,  # any run past its first fight
     }
     kwargs.update(overrides)
     game.active_run = RunState(**kwargs)

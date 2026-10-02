@@ -131,6 +131,7 @@ def _run_to_dict(run):
         "endless_waves_cleared": run.endless_waves_cleared,
         "reward_pending": run.reward_pending,
         "blessing_pending": run.blessing_pending,
+        "lives_captured": run.lives_captured,
     }
 
 
@@ -163,6 +164,10 @@ def _run_from_dict(data):
         endless_waves_cleared=data.get("endless_waves_cleared", 0),
         reward_pending=data.get("reward_pending", False),
         blessing_pending=data.get("blessing_pending", False),
+        # A save from before this field: its lives were captured iff its
+        # first fight had loaded, i.e. iff they're no longer the 0
+        # placeholder.
+        lives_captured=data.get("lives_captured", data["lives"] > 0),
     )
 
 

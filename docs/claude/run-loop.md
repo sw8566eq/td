@@ -122,8 +122,11 @@ plus a potion, no towers; leaving it calls `Game._leave_reward_screen` -> `_adva
 `visited_node_ids`/`current_node_id`, heal `ACT_HEAL_LIVES`. Node ids repeat across acts, so
 `_run_rng` folds `act{n}:` into the key for act >= 1 (again leaving act 0 byte-identical). Everything
 that scaled by `node.row` now reads `run.depth_of(node.row)` (= `act * ROW_COUNT + row`): escalation,
-relic modifiers, shop income, rest heal, treasure, Liquid Gold. The first-node lives capture is
-gated on `act == 0` so act 2's first node restores the carried lives instead of re-capturing.
+relic modifiers, shop income, rest heal, treasure, Liquid Gold. The first-fight lives capture is
+gated on `RunState.lives_captured` (not on visited nodes/act): until then `run.lives` only holds
+pre-fight bonuses (the blessing's supplies, a Sturdy Gate taken there), which the capture adds on top
+of the level's starting lives; afterwards every load -- including a restart of that same first
+floor -- restores the carried value.
 `floors_cleared` counts combat/elite/boss nodes (a visited boss is always an earlier act's).
 `RunState.endless_waves_cleared` is the final boss's score chase: `Game._update_endless_score` (on
 every wave clear) sets it to the max of itself and `wave_manager.wave_index - len(LEVELS[...].

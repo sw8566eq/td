@@ -83,3 +83,18 @@ def test_four_event_options_fit_on_screen_with_room_for_the_hint():
     rects = ui.build_event_option_rects(len(BLESSING.options))
     assert rects[-1].bottom + 60 < settings.SCREEN_HEIGHT
     assert rects[0].top > 200  # below the event's own prompt
+
+
+def test_blessing_supplies_lives_carry_into_the_first_fight_and_a_restart_keeps_them(game):
+    run = _blessed_run(game)
+    game._resolve_event_choice(1)  # supplies: +3 lives
+    game._leave_event()
+    game._enter_node(run.map.start_node_ids[0])
+    expected = game.level.starting_lives + 3
+    assert game.economy.lives == run.lives == expected
+    assert run.lives_captured
+
+    game.economy.lives -= 5
+    game.state = GameState.PAUSED
+    game.reset()  # restart the same first floor
+    assert game.economy.lives == run.lives == expected  # not re-added, not reset to the bare level value

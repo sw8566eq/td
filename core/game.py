@@ -834,9 +834,14 @@ class Game:
         )
         self.current_level_id = node.level_id
         self._apply_affix_traits(run, node)
-        if run.act == 0 and not run.visited_node_ids:
+        if not run.lives_captured:
+            # run.lives so far is only pre-fight bonuses (see RunState.
+            # lives_captured) -- added on, not overwritten. Flagged so a
+            # restart of this same first floor restores instead of adding
+            # the bonuses (and the level's lives) a second time.
             lives_multiplier = ascension.modifiers_for(run.ascension).starting_lives_multiplier
-            run.lives = max(1, round(self.economy.lives * lives_multiplier))
+            run.lives = max(1, round(self.economy.lives * lives_multiplier) + run.lives)
+            run.lives_captured = True
             self.economy.lives = run.lives
         else:
             self.economy.lives = run.lives
