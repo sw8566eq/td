@@ -3632,3 +3632,12 @@ def test_ordinary_runs_still_respect_account_unlocks(game):
         offered |= set(draft_offer(random.Random(seed), game.active_run, count=5,
                                    meta_progression_path=game.meta_progression_path))
     assert "beam" not in offered  # still meta-locked on a fresh account
+
+
+def test_run_over_hint_says_r_replays_as_practice(game, monkeypatch):
+    drawn = []
+    monkeypatch.setattr(ui, "_draw_overlay_with_results", lambda *args: drawn.append(args[4]))
+    ui.draw_game_over_screen(game.screen, game.font, game.small_font, [], ["Act 1, 0 floors cleared", "x"])
+    ui.draw_game_over_screen(game.screen, game.font, game.small_font, [], None)
+    assert "Practice" in drawn[0][-1]
+    assert drawn[1] == ["Press R to restart, M for main menu"]
