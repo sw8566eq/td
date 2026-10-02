@@ -147,6 +147,9 @@ ACHIEVEMENTS = {
     "living_legend": Achievement(
         "living_legend", "Living Legend", "Promote a tower type to Legendary in one run.", "veterancy_rank_reached", 4,
     ),
+    "tinkerer": Achievement(
+        "tinkerer", "Tinkerer", "Fit 5 tower modules.", "modules_fitted", 5,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),

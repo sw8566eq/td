@@ -115,7 +115,7 @@ free tower cards to add to your run (or skip them), and Elite fights also drop a
 fights sometimes offer a tower already **forged** (`FREE +`), and once you've collected every tower
 you can, the row offers **forge cards** for towers you hold instead.
 
-Rewards can also include a **potion** -- a single-use consumable (Elites always drop one). You hold up
+Rewards can also include a **potion** -- a single-use consumable (ordinary fights sometimes drop one). You hold up
 to three, shown at the bottom of the sidebar during a fight; click one to use it. Fire Bomb blasts
 every enemy on the field, Frost Flask slows them all, Marking Dust makes them take extra damage,
 Liquid Gold gives battle gold, Mending Salve restores lives, and Overclock Elixir makes every tower
@@ -123,6 +123,15 @@ fire faster for a few seconds, Smoke Screen shoves every enemy back, and Venom V
 Potions carry between floors until used. Every Shop also has a potion stand selling one potion per
 visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
+
+## Tower modules
+
+Every tower type has one **module** slot per run. Elite fights reward a module already paired with one
+of your tower types ("Rapid Loader, for your Frost towers") in place of their potion -- take it, and
+every tower of that type you build from then on carries it. Fitting a new module to a type replaces
+the old one. Seven modules: Long Barrel (+range), Rapid Loader (+fire rate), Heavy Payload (big damage,
+slower), Cryo Coil (every hit slows), Venom Injector (every hit poisons), Targeting Chip (+crit) and
+Overclocked Core (a little of everything, less range). The sidebar shows a type's fitted module.
 
 ## Path traps
 

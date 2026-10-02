@@ -93,7 +93,7 @@ module = [
     "run.relics", "run.run_map", "run.events", "run.shop", "support.rng_sampling", "run.difficulty",
     "world.economy", "progression.run_history", "persistence.json_io", "progression.threshold_unlocks",
     "progression.meta_progression", "run.run_state", "run.card_pool", "run.run_escalation",
-    "progression.progress", "progression.achievements", "run.rewards", "run.potions", "run.ascension", "run.commanders", "run.elite_affixes", "run.veterancy",
+    "progression.progress", "progression.achievements", "run.rewards", "run.potions", "run.ascension", "run.commanders", "run.elite_affixes", "run.veterancy", "run.modules",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

@@ -175,3 +175,15 @@ path rule: every footprint cell must be path). The click handler, the placement 
 sell, upgrade, veterancy) is unchanged. Traps fire ordinary splash projectiles from their own tile, so
 relics, kill credit and stats all work as for any tower. HUD build buttons are 40px with 6px gaps to
 fit 14 towers next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`).
+
+## Modules
+
+`run/modules.py` (strict mypy): `MODULES` registry and `module_offer(rng, run, damaging_types)` -> a
+(module, tower type) pair, preferring a type with no module and never re-offering its current one
+(damage-only modules skip non-damaging types). `RunState.tower_modules` ({type: module}, saved and
+validated). `rewards.build_combat_reward` draws one *last* for an Elite (`CombatReward.module`) and
+drops the Elite's potion in its place unless a guaranteed-potion relic is held (then the reward is 6
+cards -- `build_draft_choice_rects`' narrow layout). `Game._take_reward_card` kind `"module"` fits it.
+`_construct_tower` calls `modules.apply_module` after relic fields and veterancy: `module_damage_bonus`
+(an additive `effective_damage()` source), range/fire-rate multipliers on the relic bonus fields, and
+on-hit slow/poison via `relic_slow_*`/`relic_poison_*` (copied onto projectiles by `Tower.update()`).

@@ -28,6 +28,7 @@ from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
 from run.elite_affixes import AFFIXES, BOSS_AFFIXES
+from run.modules import MODULES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
@@ -522,7 +523,7 @@ def draw_tower_range_preview(surface, tower):
 
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
                             upgrade_button_rect, specialize_button_rects, sell_button_rect,
-                            hovered_specialize_key=None, veterancy_line=None):
+                            hovered_specialize_key=None, veterancy_line=None, module_line=None):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -552,6 +553,9 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
     y = _draw_panel_header(surface, font, small_font, x, PANEL_PADDING, subject, is_placed,
                             tower_cls, hovered_specialize_key)
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
+    if module_line is not None:
+        surface.blit(small_font.render(module_line, True, MODULE_COLOR),
+                     (x, TARGETING_BUTTON_TOP - 2 * PANEL_ROW_HEIGHT - 4))
     if veterancy_line is not None:
         # Just above the Targeting row -- below the tallest stats block.
         surface.blit(small_font.render(veterancy_line, True, settings.COLOR_GOLD),
@@ -1197,6 +1201,7 @@ DRAFT_CARD_WIDTH = settings.PANEL_WIDTH  # matches the sidebar's own visual widt
 # to this narrower width only at that point, so every ≤4-card shop visit
 # renders pixel-identical to before.
 DRAFT_CARD_WIDTH_COMPACT = 216  # 5*216 + 4*24 = 1176, fits
+DRAFT_CARD_WIDTH_SIX = 186
 DRAFT_CARD_HEIGHT = 260
 DRAFT_CARD_GAP = 24
 DRAFT_CARDS_TOP = 200
@@ -1278,10 +1283,13 @@ def build_draft_choice_rects(count):
     ceiling -- see that constant's own comment for why 5 cards would
     otherwise overflow the screen."""
     card_width = DRAFT_CARD_WIDTH_COMPACT if count >= 5 else DRAFT_CARD_WIDTH
-    total_width = count * card_width + (count - 1) * DRAFT_CARD_GAP
+    gap = DRAFT_CARD_GAP
+    if count >= 6:  # an Elite reward with a module: 6 * 186 + 5 * 12 = 1176
+        card_width, gap = DRAFT_CARD_WIDTH_SIX, 12
+    total_width = count * card_width + (count - 1) * gap
     start_x = (settings.SCREEN_WIDTH - total_width) // 2
     return [
-        pygame.Rect(start_x + i * (card_width + DRAFT_CARD_GAP), DRAFT_CARDS_TOP,
+        pygame.Rect(start_x + i * (card_width + gap), DRAFT_CARDS_TOP,
                     card_width, DRAFT_CARD_HEIGHT)
         for i in range(count)
     ]
@@ -1514,7 +1522,7 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
         subtitle_text = "Then onward to the next act"
     else:
         title_text = "Spoils of battle: choose one tower to add to your run"
-        subtitle_text = "Elite bonus: a free relic and a potion" if is_elite else None
+        subtitle_text = "Elite bonus: a free relic and a tower module" if is_elite else None
     title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
     if subtitle_text is not None:
@@ -1565,7 +1573,32 @@ def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, 
         y += PANEL_ROW_HEIGHT
 
 
+MODULE_COLOR = (120, 190, 230)
+
+
+def _draw_module_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
+    """A module offer -- `key` is (module key, tower type): the module,
+    which tower type it fits, and its effect."""
+    module_key, tower_name = key
+    module = MODULES[module_key]
+    x = _draw_card_frame(surface, small_font, rect, hovered, purchased, affordable, price, tag)
+    y = rect.y + PANEL_PADDING
+    max_width = rect.width - 2 * PANEL_PADDING
+    for line in _wrap_text(module.display_name, font, max_width - 40):
+        title_line = font.render(line, True, MODULE_COLOR)
+        surface.blit(title_line, (x, y))
+        y += title_line.get_height() + 2
+    for line in _wrap_text(f"Module for your {TOWER_TYPES[tower_name].display_name} towers", small_font, max_width):
+        surface.blit(small_font.render(line, True, settings.COLOR_TEXT_DIM), (x, y))
+        y += PANEL_ROW_HEIGHT
+    y += 6
+    for line in _wrap_text(module.description, small_font, max_width):
+        surface.blit(small_font.render(line, True, settings.COLOR_TEXT), (x, y))
+        y += PANEL_ROW_HEIGHT
+
+
 _REWARD_CARD_DRAWERS = {
+    "module": _draw_module_card,
     "tower": _draw_draft_card,
     "forge": _draw_draft_card,
     "relic": _draw_relic_card,

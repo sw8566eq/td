@@ -538,7 +538,10 @@ def test_elite_reward_includes_a_claimable_relic(game):
     assert relic_index in game.reward_claimed_indices
 
 
-def test_elite_reward_potion_goes_into_a_free_slot_but_not_a_full_belt(game):
+def test_elite_reward_potion_goes_into_a_free_slot_but_not_a_full_belt(game, monkeypatch):
+    from run import modules
+
+    monkeypatch.setattr(modules, "module_offer", lambda *_args: None)  # a module would replace the potion
     _clear_into_reward(game, node_types=("elite", "combat"))
     potion_index = len(game._reward_cards()) - 1
     assert game._reward_cards()[potion_index] == ("potion", game.reward.potion)
