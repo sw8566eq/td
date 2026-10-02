@@ -24,7 +24,7 @@ an existing seed offers.
 import random
 from dataclasses import dataclass
 
-from run import card_pool, potions, relics
+from run import card_pool, potions, relics, spells
 from run.run_state import RunState
 from support.rng_sampling import sample_up_to
 
@@ -56,11 +56,14 @@ class CombatReward:
     # once there aren't enough new towers left to offer. Part of the same
     # pick-one row as tower_choices.
     forge_choices: tuple[str, ...] = ()
+    # Spell cards (spells.py) -- a second pick-one row: take one into the
+    # run's deck, or skip. Never on a boss reward.
+    spell_choices: tuple[str, ...] = ()
 
     @property
     def is_empty(self) -> bool:
         return (not self.tower_choices and self.relic is None and self.potion is None
-                and not self.boss_relic_choices and not self.forge_choices)
+                and not self.boss_relic_choices and not self.forge_choices and not self.spell_choices)
 
 
 def build_combat_reward(
@@ -95,7 +98,10 @@ def build_combat_reward(
     forged_tower_choices = tuple(name for name in tower_choices if rng.random() < forged_chance)
     forgeable = [name for name in run.unlocked_towers if name not in run.forged_towers]
     forge_choices = sample_up_to(rng, forgeable, tower_count - len(tower_choices)) if tower_count > 0 else []
+    # Drawn after everything above, for the same reason.
+    spell_choices = spells.spell_offer(rng)
     return CombatReward(
         tuple(tower_choices), relic, potion,
         forged_tower_choices=forged_tower_choices, forge_choices=tuple(forge_choices),
+        spell_choices=tuple(spell_choices),
     )

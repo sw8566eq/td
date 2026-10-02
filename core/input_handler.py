@@ -42,6 +42,8 @@ from support import settings
 
 # Q/W/E use potion slots 1-3 while PLAYING (see ui.draw_potion_belt).
 POTION_HOTKEYS = (pygame.K_q, pygame.K_w, pygame.K_e)
+# A/S/D/F/G play the hand's cards 1-5 while PLAYING (see ui.draw_hand).
+CARD_HOTKEYS = (pygame.K_a, pygame.K_s, pygame.K_d, pygame.K_f, pygame.K_g)
 
 
 class InputHandler:
@@ -264,6 +266,8 @@ class InputHandler:
                 # for three more rows) -- checked last, so a remapped
                 # action bound to Q/W/E still wins.
                 game.use_potion(POTION_HOTKEYS.index(key))
+            elif key in CARD_HOTKEYS:
+                game.play_card(CARD_HOTKEYS.index(key))
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
             # any key dismisses it, Escape included. That's PAUSED's own
@@ -699,7 +703,7 @@ class InputHandler:
         """A click on the post-combat reward screen -- Continue/Skip (back
         to the map, leaving anything unclaimed) or one reward card."""
         game = self.game
-        if game.shop_continue_button_rect.collidepoint(pos):
+        if game.reward_continue_rect.collidepoint(pos):
             game._leave_reward_screen()
             return
         index = ui.get_clicked_draft_choice(pos, game.reward_rects)
@@ -769,6 +773,10 @@ class InputHandler:
             slot = ui.get_clicked_draft_choice(pos, game.potion_slot_rects)
             if slot is not None:
                 game.use_potion(slot)
+                return
+            card = ui.get_clicked_draft_choice(pos, game.card_rects())
+            if card is not None:
+                game.play_card(card)
                 return
 
         if self._handle_panel_action_click(pos):

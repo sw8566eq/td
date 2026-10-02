@@ -394,6 +394,9 @@ class Tower:
         # An Overclock Elixir potion's live fire-rate bonus -- set every
         # frame by Game.update() (1.0 whenever no Overclock is running).
         self.potion_fire_rate_multiplier = 1.0
+        # An Empower spell's (spells.py) live damage bonus -- also set every
+        # frame by Game.update(), and one more additive effective_damage() source.
+        self.spell_damage_bonus = 0.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -834,6 +837,7 @@ class Tower:
             + (self.relic_last_stand_multiplier - 1.0)
             + (self.relic_tower_density_bonus_multiplier - 1.0)
             + self._relic_family_damage_bonus()
+            + self.spell_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):

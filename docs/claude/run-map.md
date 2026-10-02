@@ -147,6 +147,31 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
 
+## Spell deck
+
+`run/spells.py` -- `SPELLS` registry (cost, rarity, `exhaust`, `needs_enemies`, and its own
+`cast(game)` function, so `Game.play_card(index)` never branches on which spell it is) plus
+`CombatDeck`, the pure draw/hand/discard/exhaust/energy state machine. `RunState.deck` (starts as
+`STARTER_DECK`; saved, validated against `SPELLS`, and an old save without it gets the starter deck)
+is the persistent part. Nothing about a `CombatDeck` is ever saved: `_load_combat_node` builds a fresh
+one from `run.deck` with `_run_rng(run, "spells", node.id)` and deals the opening hand, so a restart
+or Continue deals the identical hands. `_load_level_object` calls `Game._reset_spell_state` (deck
+`None`, timers zeroed), so Practice/sandbox floors never have a hand. **A turn is a wave**: `update()`
+calls `combat_deck.new_turn()` (discard hand, refill `MAX_ENERGY`, draw `HAND_SIZE`, capped at
+`HAND_LIMIT`) at the same `current_wave_number` bump that records `waves_survived`.
+
+Timed spells ride the Overclock shape: `spell_fire_rate_timer` multiplies into each tower's
+`potion_fire_rate_multiplier`, `spell_damage_timer` sets `Tower.spell_damage_bonus` (one more additive
+`effective_damage()` source), `bounty_timer` multiplies kill gold in the death drain, and
+`free_tower_charges` makes `try_place_tower` skip the cost (that tower's `total_invested` is 0, so it
+refunds nothing). The hand is drawn in the sidebar between Sell and the potion belt
+(`ui.build_card_rects`/`draw_hand`; tooltips sit on a plate, as do potion descriptions, which can now
+overlap the hand). Hotkeys `A`-`G` (`input_handler.CARD_HOTKEYS`) are fixed, checked after the potion
+keys. Rewards: `CombatReward.spell_choices` (`spells.spell_offer`, rarity-weighted, drawn *last* from the
+reward rng so existing seeds' towers/relics/potions don't change) is a second pick-one row
+(`ui.build_spell_reward_rects`, below the main row; `Game.reward_continue_rect` moves Continue under
+it). Boss rewards have no spells.
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
