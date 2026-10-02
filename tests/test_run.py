@@ -46,7 +46,7 @@ from entities.waves import WaveState
 from persistence import save_state
 from presentation import ui
 from progression import achievements, meta_progression, progress, run_history
-from run import card_pool, events, potions, rewards, shop
+from run import card_pool, events, potions, rewards, shop, spells
 from run.card_pool import STARTER_TOWERS
 from run.difficulty import DIFFICULTY_MODES
 from run.events import EVENTS
@@ -460,7 +460,8 @@ def test_floor_cleared_any_key_opens_the_reward_screen(game):
     assert game.reward.relic is None  # an ordinary Combat floor -- no Elite relic
 
 
-def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game):
+def test_floor_cleared_skips_the_reward_screen_when_nothing_is_left_to_offer(game, monkeypatch):
+    monkeypatch.setattr(spells, "spell_offer", lambda _rng, count=3: [])  # no spell row either
     start_first_floor(game, seed=1)
     game.active_run.unlocked_towers = list(TOWER_TYPES)
     game.active_run.forged_towers = list(TOWER_TYPES)  # nothing left to forge either
@@ -500,7 +501,7 @@ def test_reward_continue_returns_to_the_map_without_marking_a_second_visit(game)
     _clear_into_reward(game)
     visited_before = list(game.active_run.visited_node_ids)
 
-    game._handle_reward_click(game.shop_continue_button_rect.center)
+    game._handle_reward_click(game.reward_continue_rect.center)
 
     assert game.state == GameState.MAP
     assert game.active_run.visited_node_ids == visited_before
@@ -540,7 +541,7 @@ def test_elite_reward_includes_a_claimable_relic(game):
 
 def test_elite_reward_potion_goes_into_a_free_slot_but_not_a_full_belt(game):
     _clear_into_reward(game, node_types=("elite", "combat"))
-    potion_index = len(game._reward_cards()) - 1
+    potion_index = [kind for kind, _key in game._reward_cards()].index("potion")
     assert game._reward_cards()[potion_index] == ("potion", game.reward.potion)
 
     game.active_run.potions = ["fire_bomb"] * potions.POTION_SLOTS

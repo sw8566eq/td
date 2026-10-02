@@ -8,6 +8,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Spell deck**: every run now carries a deck of spell cards. Each fight deals a hand of 4 with 3
+  energy in the sidebar; clearing a wave discards the hand, refills energy and draws anew. Cast with a
+  click or `A`/`S`/`D`/`F`/`G`. 16 spells (Zap, Rally, Prospect, Shove, Chain Lightning, Blizzard,
+  Expose, Plague, Bounty, Insight, Surge, Patch the Gate, Execute, Empower, Requisition, Focus Fire),
+  some that Exhaust. Every won fight's reward adds a pick-one row of three spells.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.

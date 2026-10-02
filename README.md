@@ -124,6 +124,22 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Potion Belt (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Spells: your deck
+
+Every run also carries a **deck of spell cards**, Slay the Spire style. Each fight shuffles it into a
+draw pile and deals you a **hand of 4** in the sidebar, with **3 energy**; every time a wave is
+cleared, your unplayed cards are discarded, energy refills, and a fresh hand is drawn (the discard
+pile is reshuffled when the draw pile runs out). Click a card -- or press `A` / `S` / `D` / `F` / `G`
+-- to cast it; its cost is the number in its corner. Cards that hit enemies wait in your hand while
+the field is empty.
+
+You start with Zap x3 (hit the three enemies furthest along), Rally x2 (towers fire faster for a few
+seconds), Prospect (battle gold) and Shove (push everything back). Every won fight's reward screen
+offers a second pick-one row of three spells to add to your deck -- among them Chain Lightning,
+Blizzard, Expose, Plague, Execute, Focus Fire, Bounty (double kill gold), Empower (tower damage),
+Requisition (your next tower is free), Patch the Gate (+1 life), and the draw/energy cards Insight and
+Surge. Cards marked **Exhaust** are used up for the rest of that fight. Rarer cards show up less often.
+
 ## Ascension
 
 Defeating a run's final (Act 3) boss unlocks **Ascension 1**; defeating it again at your highest Ascension unlocks
@@ -167,7 +183,7 @@ when one exists) continues a saved in-progress run.
 
 On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
 `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
-sidebar).
+sidebar), and `A` / `S` / `D` / `F` / `G` cast the spell cards in your hand (or click a card).
 
 On the **map** screen, click any highlighted node to enter it; a legend explains what each node
 color means, and hovering a node shows a tooltip with its specific details (which level, how much a
