@@ -2,6 +2,7 @@
 Game._autosave_run/_resume_map_checkpoint)."""
 
 import json
+import pathlib
 
 import pygame
 from conftest import make_game
@@ -88,7 +89,8 @@ def test_invalid_map_checkpoints_are_not_resumable(game):
     from test_run import _begin_run_with_map
 
     _begin_run_with_map(game, ["combat", "combat"])
-    data = json.loads(open(game.save_path).read())
+    path = pathlib.Path(game.save_path)
+    data = json.loads(path.read_text())
     data["run"]["current_node_id"] = "9-9"
-    open(game.save_path, "w").write(json.dumps(data))
+    path.write_text(json.dumps(data))
     assert save_state.load_run(game.save_path) is None
