@@ -22,6 +22,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Spell relics and signature spells**: four relics (Arcane Tithe, Runic Resonance, Prepared Grimoire,
   Echo Chamber) and two boss relics (Mana Crystal: +1 energy; Grand Grimoire: +1 card per hand) build
   around the deck, and every Commander starts with one signature spell on top of the starter deck.
+- **Curse cards**: unplayable Doubt (clogs a hand slot) and Regret (drains 1 energy when drawn). A new
+  Haunted Grove Event trades a Doubt for currency (or a life for an upgrade), and a new **Hexing** Elite
+  affix shuffles two Regrets into that fight's deck.
 - Four spell **Events**: Ancient Library, Hermit Mage, Purifying Flame, Wild Surge. The Event screen's
   status line shows your deck size.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a

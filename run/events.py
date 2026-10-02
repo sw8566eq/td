@@ -32,6 +32,7 @@ _EVENT_ORDER = (
     "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
     "ancient_forge", "potion_peddler", "fallen_champion", "field_hospital", "weapons_cache",
     "brewing_contest", "ancient_library", "hermit_mage", "purifying_flame", "wild_surge",
+    "haunted_grove",
 )
 
 
@@ -89,6 +90,8 @@ class EventOption:
     upgrade_granted_spells: bool = False
     upgrade_random_spells: int = 0
     remove_random_spells: int = 0
+    # Curse cards (spells.py, playable=False) shuffled into the deck.
+    add_spell_cards: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -473,6 +476,23 @@ EVENTS = {
         ),
     ),
     # --- Spell deck events (spells.py) ---
+    "haunted_grove": Event(
+        "haunted_grove", "Haunted Grove",
+        "Coins glint among the roots of a grove that whispers your failures back to you.",
+        options=(
+            EventOption(
+                "take", "Take the coins (+25 shop currency, add a Doubt card)",
+                "You pocket the coins. The whispers follow you.",
+                shop_currency_delta=25, add_spell_cards=("doubt",),
+            ),
+            EventOption(
+                "listen", "Listen (-1 life, upgrade a random spell)",
+                "The whispers sting, but you learn from them.",
+                lives_delta=-1, upgrade_random_spells=1,
+            ),
+            EventOption("leave", "Leave the grove", "You hurry past."),
+        ),
+    ),
     "ancient_library": Event(
         "ancient_library", "Ancient Library",
         "Dusty shelves of spellbooks, most of them still legible.",
@@ -716,7 +736,8 @@ def resolve_event_option(
         run.deck.extend(cards)
         granted["spells"] = cards
     if option.upgrade_random_spells:
-        indices = [i for i, card in enumerate(run.deck) if not spells.card_level(card)]
+        indices = [i for i, card in enumerate(run.deck)
+                   if not spells.card_level(card) and spells.spell_of(card).playable]
         chosen = sample_up_to(item_rng, indices, option.upgrade_random_spells)
         for index in chosen:
             run.deck[index] = spells.upgraded(run.deck[index])
@@ -725,6 +746,9 @@ def resolve_event_option(
         doomed = sample_up_to(item_rng, list(range(len(run.deck))), option.remove_random_spells)
         granted["spells_removed"] = [run.deck[index] for index in sorted(doomed)]
         run.deck = [card for index, card in enumerate(run.deck) if index not in doomed]
+    if option.add_spell_cards:
+        run.deck.extend(option.add_spell_cards)
+        granted["spell_cards"] = list(option.add_spell_cards)
     if given_up_relic is not None:
         run.relics.remove(given_up_relic)
         granted["relic_given_up"] = given_up_relic

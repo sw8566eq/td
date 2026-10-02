@@ -37,6 +37,8 @@ class EliteAffix:
     # and scale every hit taken.
     regen_fraction_per_second: float = 0.0
     damage_taken_multiplier: float = 1.0
+    # Curse cards (spells.py) shuffled into the fight's deck -- this fight only.
+    hex_cards: tuple[str, ...] = ()
 
 
 AFFIXES = {
@@ -60,6 +62,10 @@ AFFIXES = {
     "armored": EliteAffix(
         "armored", "Armored", "Enemies take 25% less damage from every hit.",
         damage_taken_multiplier=0.75,
+    ),
+    "hexing": EliteAffix(
+        "hexing", "Hexing", "Two Regret curse cards join your spell deck for this fight.",
+        hex_cards=("regret", "regret"),
     ),
 }
 AFFIX_ORDER = list(AFFIXES)
