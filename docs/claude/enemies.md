@@ -112,3 +112,11 @@ uniformly, not just a tower's own direct hit resolution:
   one-way-ratchet rule, not the `min()`/`max()` its numeric fields use: a genuinely fresh
   application sets it directly, but a refresh of already-active poison ORs it in, so the stronger
   property (bypassing a shield) can never be silently downgraded by a second, weaker application.
+
+## Breach strength and Sappers
+
+`Enemy.BREACH_MULTIPLIER` scales how hard an enemy batters a Barricade (`Game._hold_enemies_at_barricades`):
+1 by default, 6 for `BossEnemy` (and its subclasses), 5 for `SapperEnemy`. Sappers are never in an
+authored level: `Game._level_for_node` adds `run_escalation.sapper_count_for_depth(depth)` of them to
+each wave's first spawn cell (`run_escalation.add_species`, a copy -- the same private-copy path the
+Swarming affix uses, so a mid-floor save keeps them) from `SAPPER_MIN_DEPTH` (Act 2's first row) on.

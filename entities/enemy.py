@@ -53,6 +53,9 @@ class Enemy:
     # FinalBossShieldedEnemy, neither of which overrides it). Same
     # class-level-flag shape as Tower.IS_SUPPORT.
     IS_BOSS = False
+    # How hard it batters a Barricade, as a multiple of the base breach
+    # damage (Game._hold_enemies_at_barricades).
+    BREACH_MULTIPLIER = 1.0
 
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
@@ -403,6 +406,22 @@ class ScoutEnemy(Enemy):
     radius = 12
 
 
+class SapperEnemy(Enemy):
+    """Carries demolition charges: middling HP and speed, but tears through
+    a Barricade five times faster than anything else. Joins run waves from
+    Act 2 on (run_escalation.sapper_count_for_depth)."""
+    base_hp = 45
+    hp_per_wave = 9
+    base_speed = 85.0
+    speed_per_wave = 3.0
+    max_speed = 150.0
+    base_reward = 9
+    reward_per_wave = 2
+    sprite_name = "enemy_sapper"
+    radius = 13
+    BREACH_MULTIPLIER = 5.0
+
+
 class TankEnemy(Enemy):
     """Slow and heavily armored: high HP that takes sustained fire to bring
     down, but gives towers plenty of time to line up shots -- and frost's
@@ -446,6 +465,7 @@ class BossEnemy(Enemy):
     *after* construction (see its own hasattr(enemy, "max_shield") patch-up
     for ShieldedEnemy, same reasoning), so a threshold computed at
     __init__ time would silently fire at the wrong HP on Easy/Hard."""
+    BREACH_MULTIPLIER = 6.0  # a boss smashes a Barricade far faster
     base_hp = 500
     hp_per_wave = 50
     base_speed = 25.0
@@ -852,6 +872,7 @@ ENEMY_TYPES = {
     "flying": FlyingEnemy,
     "splitter": SplitterEnemy,
     "healer": HealerEnemy,
+    "sapper": SapperEnemy,
     "final_boss": FinalBossEnemy,
     "final_boss_shielded": FinalBossShieldedEnemy,
 }

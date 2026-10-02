@@ -50,7 +50,7 @@ def test_flyers_pass_and_bosses_hit_harder(game):
     boss = _enemy_on(barricade, BossEnemy)
     game.enemies = [boss]
     game.update(dt=1.0)
-    expected = game_module.BARRICADE_BREACH_DPS * game_module.BARRICADE_BOSS_BREACH_MULTIPLIER
+    expected = game_module.BARRICADE_BREACH_DPS * BossEnemy.BREACH_MULTIPLIER
     assert barricade.hp == pytest.approx(barricade.max_hp - expected)
 
 

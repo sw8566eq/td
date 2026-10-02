@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Sappers**: a new enemy that batters Barricades 5x as hard, joining every run wave from Act 2 on (one
+  more every 4 rows deeper).
 - **Ambush** relic (enemies held at a Barricade take +25% damage), and the floor-cleared screen now lists
   the veterancy experience each tower type earned.
 - **Construction relics**: Earthworks, Forward Observer, Quick-Release Mounts.
