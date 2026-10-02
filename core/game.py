@@ -395,6 +395,7 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
+        self.ground_fires = []
         self.floor_veterancy_gains = []
         # The highest Ascension this account has unlocked (run/ascension.py)
         # -- read once here and kept in step by _unlock_next_ascension, the
@@ -1767,6 +1768,7 @@ class Game:
         self.projectiles = []
         self.damage_numbers = []
         self.impact_effects = []
+        self.ground_fires = []
         self.overclock_timer = 0.0
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
@@ -2540,6 +2542,9 @@ class Game:
         tower.relic_lightning_damage_bonus_multiplier = self.relic_modifiers.lightning_damage_multiplier
         tower.relic_spike_trap_damage_bonus_multiplier = self.relic_modifiers.spike_trap_damage_multiplier
         tower.relic_tar_pit_marks = self.relic_modifiers.tar_pit_marks
+        if self.active_run is not None:
+            fires = [relics.RELICS[key].mortar_ground_fire for key in self.active_run.relics]
+            tower.relic_ground_fire = next((fire for fire in fires if fire is not None), None)
         if tower_cls.PLACEMENT == "path":
             tower.relic_fire_rate_bonus_multiplier *= self.relic_modifiers.trap_fire_rate_multiplier
         tower.relic_cannon_knockback_damage_bonus_multiplier = self.relic_modifiers.cannon_knockback_damage_multiplier
@@ -2656,6 +2661,23 @@ class Game:
         reader of that raw field would need to remember this same clamp."""
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
+
+    def _update_ground_fires(self, dt):
+        """Burn every ground (not flying, not burrowed) enemy standing in a
+        live GroundFire, crediting the Mortar that left it, then drop the
+        ones that have burnt out."""
+        for fire in self.ground_fires:
+            fire.time_left -= dt
+            for enemy in self.enemies:
+                if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.BURROWS
+                        or enemy.pos.distance_to(fire.pos) > fire.radius):
+                    continue
+                dealt = enemy.take_damage(fire.dps * dt)
+                if fire.source is not None:
+                    fire.source.damage_dealt += dealt or 0.0
+                    if enemy.is_dead:
+                        fire.source.kills += 1
+        self.ground_fires = [fire for fire in self.ground_fires if not fire.dead]
 
     def _hold_enemies_at_barricades(self, dt):
         """Stop every ground enemy touching a live Barricade (Enemy.held --
@@ -2876,6 +2898,7 @@ class Game:
         dt = dt * self.time_scale
 
         self._hold_enemies_at_barricades(dt)
+        self._update_ground_fires(dt)
         for enemy in self.enemies:
             enemy.update(dt, self.enemies)
 
@@ -2939,6 +2962,11 @@ class Game:
         # before the projectile itself disappears.
         for projectile in self.projectiles:
             for impact_pos, splash_radius in projectile.impact_events:
+                if projectile.ground_fire is not None:
+                    fraction, seconds = projectile.ground_fire
+                    self.ground_fires.append(effects.GroundFire(
+                        impact_pos, splash_radius or 30, projectile.damage * fraction, seconds, projectile.source,
+                    ))
                 # Sized to the blast's real splash_radius when there is
                 # one, so the ring actually shows what it hit -- a small
                 # fixed flash otherwise, just to mark a direct hit landed.

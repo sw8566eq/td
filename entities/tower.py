@@ -286,6 +286,8 @@ class Tower:
         # Relic.spike_trap_damage_multiplier).
         self.relic_spike_trap_damage_bonus_multiplier = 1.0
         self.relic_tar_pit_marks = False
+        # An Incendiary Shells-style relic -- read only by MortarTower.
+        self.relic_ground_fire = None
         # Aerial Targeting Array-style relic -- Cannon's first fully
         # exclusive relic (heavy_ordnance immediately above is shared
         # 50/50 with Knockback), boolean OR-composed the same shape as
@@ -1710,6 +1712,7 @@ class MortarTower(Tower):
             splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
             sprite_name="projectile_mortar", source=self,
             can_hit_flying=self.can_target_flying, can_hit_burrowed=self.HITS_BURROWED,
+            ground_fire=self.relic_ground_fire,
         )
 
 
