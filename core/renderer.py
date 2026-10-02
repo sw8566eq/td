@@ -372,6 +372,7 @@ class Renderer:
                 node.row + 1, game.active_run.map.final_row_index + 1,
                 game._cached_tower_results,
                 act_cleared=game.active_run.act + 1 if node.node_type == "boss" else None,
+                veterancy_line=ui.veterancy_summary_line(game.floor_veterancy_gains),
             )
 
         # Drawn last, on top of any overlay -- a toast is most often queued
@@ -409,6 +410,10 @@ class Renderer:
         xp = game.active_run.tower_xp.get(name, 0.0)
         target = veterancy.next_rank_xp(xp)
         progress = f"{round(xp)}/{target}" if target is not None else "max rank"
+        type_rank = game.veterancy_rank(name)
+        if rank < type_rank:
+            # Built before its type's latest promotion -- new ones get more.
+            return f"{veterancy.rank_name(rank)}, new ones {veterancy.rank_name(type_rank)}"
         if rank == 0:
             return f"{veterancy.rank_name(0)}  {progress} xp"
         bonus = round(tower_cls.VETERANCY_BONUS_PER_RANK * rank * 100)

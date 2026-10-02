@@ -155,3 +155,18 @@ def test_quick_release_mounts_needs_a_module(game):
     plain = _build(game, "basic").effective_fire_rate()
     run.tower_modules["basic"] = "long_barrel"
     assert _build(game, "basic").effective_fire_rate() == pytest.approx(plain * 1.10)
+
+
+def test_ambush_makes_held_enemies_take_more_damage(game):
+    run = _run_with(game, ["ambush"])
+    barricade = _build(game, "barricade")
+    held, free = _enemy_on(barricade), GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(10, 0)], wave_number=1)
+    game.enemies = [held, free]
+    game._hold_enemies_at_barricades(0.0)
+    assert held.held_damage_multiplier == pytest.approx(1.25) and free.held_damage_multiplier == 1.0
+    before = held.hp
+    held.take_damage(10)
+    assert before - held.hp == pytest.approx(12.5)
+    run.relics.remove("ambush")
+    game._hold_enemies_at_barricades(0.0)
+    assert held.held_damage_multiplier == 1.0

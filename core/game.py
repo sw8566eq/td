@@ -396,6 +396,7 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
+        self.floor_veterancy_gains = []
         # The highest Ascension this account has unlocked (run/ascension.py)
         # -- read once here and kept in step by _unlock_next_ascension, the
         # only thing that raises it, so the menu never re-reads the file
@@ -2620,10 +2621,13 @@ class Game:
         multiplier = 1.0
         for key in run.relics:
             multiplier *= relics.RELICS[key].veterancy_xp_multiplier
+        # For the floor-cleared screen's summary (ui.veterancy_summary_line).
+        self.floor_veterancy_gains = []
         for name, gained in veterancy.floor_xp(kills_by_type, assists, multiplier).items():
             before = self.veterancy_rank(name)
             run.tower_xp[name] = run.tower_xp.get(name, 0.0) + gained
             after = self.veterancy_rank(name)
+            self.floor_veterancy_gains.append((name, gained, after if after > before else None))
             if after > before:
                 self._queue_toast(f"{TOWER_TYPES[name].display_name} promoted: {veterancy.rank_name(after)}")
                 self._record_achievement_max("veterancy_rank_reached", after)
@@ -2657,14 +2661,20 @@ class Game:
         barricades = [tower for tower in self.towers if tower.BLOCKS_PATH]
         for enemy in self.enemies:
             enemy.held = False
+            enemy.held_damage_multiplier = 1.0
         if not barricades:
             return
+        ambush = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                ambush *= relics.RELICS[key].held_damage_multiplier
         for enemy in self.enemies:
             if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False):
                 continue
             for barricade in barricades:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:
                     enemy.held = True
+                    enemy.held_damage_multiplier = ambush
                     multiplier = BARRICADE_BOSS_BREACH_MULTIPLIER if enemy.IS_BOSS else 1.0
                     barricade.hp -= BARRICADE_BREACH_DPS * multiplier * dt
                     enemy.take_damage(barricade.thorns_dps * dt)

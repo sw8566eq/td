@@ -129,6 +129,8 @@ potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion)
 **Earthworks** (Barricades get 50% more hit points), **Forward Observer** (the Mortar's dead zone is
 half as wide) and **Quick-Release Mounts** (towers whose type has a module fire 10% faster).
 
+**Ambush** makes enemies held at a Barricade take 25% more damage from everything.
+
 ## Placement relics
 
 Two relics reward opposite ways of building: **Combined Arms** (+5% damage for each *different* tower
@@ -161,7 +163,7 @@ Your towers learn on the job. Every **tower type** in a run earns experience fro
 make (towers that support rather than kill -- Support, Beacon -- earn a share of every kill as assists).
 Experience is banked when a floor is cleared, and each type climbs four ranks -- **Blooded**,
 **Seasoned**, **Veteran**, **Legendary** -- each one making every tower of that type you build from
-then on stronger: +6% damage per rank (Support: a stronger aura; Beacon: stronger marks). Gold pips on
+then on stronger (the floor-cleared screen lists the experience each type earned): +6% damage per rank (Support: a stronger aura; Beacon: stronger marks). Gold pips on
 a build button show its rank; the sidebar shows the rank, its bonus, and experience to the next one.
 Three relics build around it: Drill Sergeant (+50% experience), Battlefield Commission (every type
 counts one rank higher) and Old Guard (Veteran-or-better types fire 15% faster).
