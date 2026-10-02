@@ -1,4 +1,7 @@
 import json
+import pathlib
+
+import pytest
 
 from entities.tower import BasicTower, LightningTower
 from entities.waves import WaveState
@@ -552,3 +555,60 @@ def test_old_run_saves_infer_lives_captured_from_their_lives():
     assert save_state._run_from_dict(data).lives_captured is True
     data["lives"] = 0
     assert save_state._run_from_dict(data).lives_captured is False
+
+
+# --- Corrupted / hand-edited saves read as "nothing to resume", never crash ---
+
+
+def _real_saves(tmp_path):
+    from conftest import find_buildable_anchor, make_game
+    from test_run import _begin_run_with_map
+
+    game = make_game(tmp_path)
+    _begin_run_with_map(game, ["combat", "shop", "combat"], relics=["lucky_strikes"], potions=["fire_bomb"])
+    map_save = json.loads(pathlib.Path(game.save_path).read_text())
+    game._enter_node("0-0")
+    game.selected_tower_name = "basic"
+    game.try_place_tower(*find_buildable_anchor(game))
+    game.save_run()
+    floor_save = json.loads(pathlib.Path(game.save_path).read_text())
+    return map_save, floor_save
+
+
+@pytest.mark.parametrize("which, path, value", [
+    ("floor", ("gold",), "x"),
+    ("floor", ("lives",), {}),
+    ("floor", ("wave_index",), 1.5),
+    ("floor", ("towers", 0, "level"), "x"),
+    ("floor", ("towers", 0, "level"), 99),
+    ("floor", ("towers", 0, "anchor_col"), 10**9),
+    ("floor", ("towers", 0, "specialization"), "not_a_spec"),
+    ("floor", ("endless",), "yes"),
+    ("map", ("run", "shop_currency"), "x"),
+    ("map", ("run", "ascension"), 1.5),
+    ("map", ("run", "act"), True),
+    ("map", ("run", "reward_pending"), True),
+    ("map", ("run", "potions"), "fire_bomb"),
+    ("map", ("run", "map", "rows", 0, 0, "col"), 99),
+    ("map", ("run", "map", "rows", 0, 0, "row"), 3),
+    ("map", ("run", "map", "rows", 0, 0, "level_id"), None),
+    ("map", ("run", "map", "edges"), []),
+])
+def test_corrupted_save_fields_are_not_resumable(tmp_path, which, path, value):
+    map_save, floor_save = _real_saves(tmp_path)
+    data = map_save if which == "map" else floor_save
+    target = data
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    save_path = tmp_path / "corrupt.json"
+    save_path.write_text(json.dumps(data))
+    assert save_state.load_run(save_path) is None
+
+
+def test_the_unmodified_real_saves_still_load(tmp_path):
+    map_save, floor_save = _real_saves(tmp_path)
+    for data in (map_save, floor_save):
+        path = tmp_path / "ok.json"
+        path.write_text(json.dumps(data))
+        assert save_state.load_run(path) is not None

@@ -199,3 +199,14 @@ overwrites the checkpoint and still resumes the precise wave. `RunState.reward_p
 `blessing_pending` (set, then autosaved, on entering those screens; cleared on leaving) make
 `_resume_map_checkpoint` reopen them -- both are re-derived from their own rng keys, so the same
 cards come back, and the checkpoint predates any claim.
+
+## Save validation is strict about types
+
+`save_state` validates every field it later feeds into arithmetic, indexing or a `pygame.Rect`
+(`_require_int`/`_require_number`/`_require_bool`/`_require_str_list`, tower anchors within the grid,
+tower level within `MAX_LEVEL`, map node row/col consistent with their position, fight nodes having a
+level, a pending reward only on a cleared fight). A mutation fuzzer over real saves found 30 distinct
+ways a wrong-typed or out-of-range value used to pass validation and then crash Continue mid-play;
+`test_corrupted_save_fields_are_not_resumable` keeps a representative sample. Type problems raise
+`TypeError`, range problems `ValueError` -- both are in `json_io`'s fallback set, so either way the
+save just reads as "nothing to resume".
