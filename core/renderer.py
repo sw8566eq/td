@@ -180,7 +180,6 @@ class Renderer:
                 node_affixes=game.map_node_affixes, relic_count=len(run.relics), node_threats=game.map_node_threats,
                 relics_key_label=ui.binding_display_string(game.keybindings["open_relics"]),
                 potion_names=[potions.POTIONS[key].display_name for key in run.potions],
-                deck_size=len(run.deck),
             )
             if relics_over_map:
                 ui.draw_relics_overlay(game.screen, game.font, game.small_font, run.relics,
@@ -429,9 +428,7 @@ class Renderer:
         if run.current_node_id is not None:
             affix = self.game._elite_affix(run, run.map.node(run.current_node_id))
             if affix is not None:
-                # A boss affix is already a name ("The Warlord").
-                is_elite = run.map.node(run.current_node_id).node_type == "elite"
-                parts.append(f"{affix.display_name} elite" if is_elite else affix.display_name)
+                parts.append(f"{affix.display_name} elite")
         return ", ".join(parts) or None
 
     def _draw_toasts(self):

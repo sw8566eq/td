@@ -759,14 +759,9 @@ class Game:
                 escalation.enemy_speed_multiplier * mode.enemy_speed_multiplier)
 
     def _elite_affix(self, run, node):
-        """`node`'s EliteAffix (elite_affixes.py) if it's an Elite node --
-        or its named boss (elite_affixes.BOSS_AFFIXES, same shape) if it's
-        a Boss node -- else None. Re-derived from the node id every time,
-        never stored, so the map tooltip, the floor load, and a resumed
-        save all agree."""
-        if node.node_type == "boss":
-            rng = self._run_rng(run, _AFFIX_RNG_STREAM, node.id)
-            return elite_affixes.BOSS_AFFIXES[elite_affixes.roll_boss_affix(rng)]
+        """`node`'s EliteAffix (elite_affixes.py) if it's an Elite node,
+        else None -- re-derived from the node id every time, never stored,
+        so the map tooltip, the floor load, and a resumed save all agree."""
         if node.node_type != "elite":
             return None
         return elite_affixes.AFFIXES[elite_affixes.roll_affix(self._run_rng(run, _AFFIX_RNG_STREAM, node.id))]
@@ -1275,7 +1270,7 @@ class Game:
         run = self.active_run
         self.map_node_affixes = {
             node.id: self._elite_affix(run, node)
-            for row in run.map.rows for node in row if node.node_type in ("elite", "boss")
+            for row in run.map.rows for node in row if node.node_type == "elite"
         }
         self.map_node_threats = {
             node.id: self._node_threat(run, node)
