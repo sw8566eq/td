@@ -114,3 +114,21 @@ def test_window_size_falls_back_to_default_when_non_positive(tmp_path):
     path = tmp_path / "player_settings.json"
     path.write_text('{"schema_version": 1, "window_size": [0, -50]}')
     assert load_settings(path)["window_size"] == DEFAULTS["window_size"]
+
+
+def test_absurd_window_sizes_fall_back_or_clamp(tmp_path):
+    import json
+
+    from persistence import player_settings
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"window_size": [100000, 100000]}))
+    assert player_settings.load_settings(path)["window_size"] == list(player_settings.DEFAULTS["window_size"])
+
+
+def test_a_negative_resize_is_clamped_not_fatal(game):
+    import pygame
+
+    pygame.event.post(pygame.event.Event(pygame.VIDEORESIZE, w=-5, h=10, size=(-5, 10)))
+    game.handle_events()
+    assert game.window_size == (1, 10)

@@ -160,7 +160,10 @@ class SettingsManager:
         game = self.game
         if game.fullscreen:
             return  # meaningless while fullscreen, same as a drag already being ignored there
-        game.window_size = tuple(size)
+        # Clamped -- a resize event's size goes straight to set_mode(), which
+        # raises on a non-positive or absurdly large one.
+        width, height = (max(1, min(player_settings.MAX_WINDOW_DIMENSION, int(v))) for v in size)
+        game.window_size = (width, height)
         self.apply_display_mode(game.window_size)
         self._save_player_settings()
 

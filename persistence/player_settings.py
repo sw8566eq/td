@@ -48,6 +48,9 @@ def _coerce_volume(value):
         return DEFAULTS["sound_volume"]
 
 
+MAX_WINDOW_DIMENSION = 16384
+
+
 def _coerce_window_size(value):
     """A corrupt/hand-edited/missing window_size (wrong shape, non-numeric,
     zero/negative) falls back to the default rather than handing Game.
@@ -56,7 +59,9 @@ def _coerce_window_size(value):
     above, just with more ways for this particular field to be malformed."""
     try:
         width, height = int(value[0]), int(value[1])
-        if width > 0 and height > 0:
+        # An upper bound too: a hand-edited 100000x100000 makes
+        # set_mode() fail outright at launch.
+        if 0 < width <= MAX_WINDOW_DIMENSION and 0 < height <= MAX_WINDOW_DIMENSION:
             return [width, height]
     except (TypeError, ValueError, IndexError, KeyError):
         pass
