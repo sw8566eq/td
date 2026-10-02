@@ -202,12 +202,6 @@ applies `opening_draw_bonus`/`opening_energy_bonus` once; `Game.play_card` appli
 tower's `spell_damage_bonus`). `Commander.signature_spell` is appended to `STARTER_DECK` by
 `start_new_run` (Daily Runs therefore get The Warden's).
 
-Events touch the deck through four `EventOption` fields, resolved by `events.resolve_event_option`
-after every older effect (so existing options' rng draws are unchanged): `grant_spells` (N
-`spells.random_spell` picks, `upgrade_granted_spells` makes them `+`), `upgrade_random_spells`
-(samples indices of not-yet-upgraded cards), `remove_random_spells` (samples indices to burn). The
-resolution dict reports `spells`/`spells_upgraded`/`spells_removed` for `ui._describe_event_outcome`.
-
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,

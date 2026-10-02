@@ -20,9 +20,8 @@ including why the given-up relic must be drawn before it's removed.
 import random
 from dataclasses import dataclass
 
-from run import card_pool, potions, relics, spells
+from run import card_pool, potions, relics
 from run.run_state import RunState
-from support.rng_sampling import sample_up_to
 
 _EVENT_ORDER = (
     "wandering_merchant", "ancient_shrine", "abandoned_camp", "friendly_duel",
@@ -31,7 +30,7 @@ _EVENT_ORDER = (
     "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
     "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
     "ancient_forge", "potion_peddler", "fallen_champion", "field_hospital", "weapons_cache",
-    "brewing_contest", "ancient_library", "hermit_mage", "purifying_flame", "wild_surge",
+    "brewing_contest",
 )
 
 
@@ -82,13 +81,6 @@ class EventOption:
     # One boss relic (relics.boss_relic_offer) -- the strongest grant an
     # Event can make, so it always comes with a cost attached.
     grant_boss_relic: bool = False
-    # Spell deck (spells.py) effects: add this many random spells (upgraded
-    # when upgrade_granted_spells), upgrade this many random not-yet-
-    # upgraded cards, or burn this many random cards out of the deck.
-    grant_spells: int = 0
-    upgrade_granted_spells: bool = False
-    upgrade_random_spells: int = 0
-    remove_random_spells: int = 0
 
 
 @dataclass(frozen=True)
@@ -472,61 +464,6 @@ EVENTS = {
                         shop_currency_delta=3),
         ),
     ),
-    # --- Spell deck events (spells.py) ---
-    "ancient_library": Event(
-        "ancient_library", "Ancient Library",
-        "Dusty shelves of spellbooks, most of them still legible.",
-        options=(
-            EventOption(
-                "study", "Study the tomes (upgrade 2 random spells)",
-                "Hours of reading sharpen two of your spells.",
-                upgrade_random_spells=2,
-            ),
-            EventOption(
-                "scroll", "Take a scroll (gain a random spell)",
-                "You pocket a scroll and add its spell to your deck.",
-                grant_spells=1,
-            ),
-            EventOption("leave", "Leave quietly", "You leave the books to the dust."),
-        ),
-    ),
-    "hermit_mage": Event(
-        "hermit_mage", "Hermit Mage",
-        "A hermit offers to teach you one of her spells -- for a price.",
-        options=(
-            EventOption(
-                "learn", "Pay 10 shop currency (gain a random upgraded spell)",
-                "She teaches you a spell, already mastered.",
-                shop_currency_delta=-10, grant_spells=1, upgrade_granted_spells=True,
-            ),
-            EventOption("decline", "Decline politely", "You thank her and move on."),
-        ),
-    ),
-    "purifying_flame": Event(
-        "purifying_flame", "Purifying Flame",
-        "A pale flame that consumes whatever is thrown into it -- and leaves the rest stronger.",
-        options=(
-            EventOption(
-                "burn", "Burn 2 random spell cards (and recover 2 lives)",
-                "Two cards curl into ash; the warmth restores you.",
-                remove_random_spells=2, lives_delta=2,
-            ),
-            EventOption("walk_past", "Walk past", "You keep your deck as it is."),
-        ),
-    ),
-    "wild_surge": Event(
-        "wild_surge", "Wild Surge",
-        "Raw magic crackles in the air, eager for a vessel.",
-        options=(
-            EventOption(
-                "absorb", "Absorb it (gain 2 random spells, but take a curse)",
-                "Power floods in -- along with something darker.",
-                grant_spells=2, add_curse=True,
-            ),
-            EventOption("ground", "Ground it safely (+4 shop currency)", "You bleed it off into the earth.",
-                        shop_currency_delta=4),
-        ),
-    ),
     "ancient_forge": Event(
         "ancient_forge", "Ancient Forge",
         "A forge still burns in the ruins, hungry for fuel.",
@@ -656,7 +593,7 @@ def resolve_event_option(
     if option.relic_cost and run.relics:
         given_up_relic = item_rng.choice(run.relics)
 
-    granted: dict[str, str | list[str]] = {}
+    granted = {}
     if option.grant_relic:
         picks = relics.relic_offer(
             item_rng, run, count=2 if option.extra_relic else 1, meta_progression_path=meta_progression_path,
@@ -709,22 +646,6 @@ def resolve_event_option(
             forged = item_rng.choice(candidates)
             run.forged_towers.append(forged)
             granted["forged"] = forged
-    if option.grant_spells:
-        cards = [spells.random_spell(item_rng) for _ in range(option.grant_spells)]
-        if option.upgrade_granted_spells:
-            cards = [spells.upgraded(card) for card in cards]
-        run.deck.extend(cards)
-        granted["spells"] = cards
-    if option.upgrade_random_spells:
-        indices = [i for i, card in enumerate(run.deck) if not spells.card_level(card)]
-        chosen = sample_up_to(item_rng, indices, option.upgrade_random_spells)
-        for index in chosen:
-            run.deck[index] = spells.upgraded(run.deck[index])
-        granted["spells_upgraded"] = [run.deck[index] for index in sorted(chosen)]
-    if option.remove_random_spells:
-        doomed = sample_up_to(item_rng, list(range(len(run.deck))), option.remove_random_spells)
-        granted["spells_removed"] = [run.deck[index] for index in sorted(doomed)]
-        run.deck = [card for index, card in enumerate(run.deck) if index not in doomed]
     if given_up_relic is not None:
         run.relics.remove(given_up_relic)
         granted["relic_given_up"] = given_up_relic

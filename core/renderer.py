@@ -396,8 +396,7 @@ class Renderer:
         options cost exactly those -- the same readout the map shows."""
         run = self.game.active_run
         return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
-                f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}   "
-                f"Spells: {len(run.deck)}")
+                f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
 
     def _spell_status_text(self):
         """The hand's label tail: whichever timed spells are running, or a

@@ -986,12 +986,6 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Forged: {TOWER_TYPES[resolution['forged']].display_name} (now placed at level 2)")
     if resolution.get("potion"):
         lines.append(f"Gained potion: {POTIONS[resolution['potion']].display_name}")
-    if resolution.get("spells"):
-        lines.append("Gained spells: " + ", ".join(card_name(card) for card in resolution["spells"]))
-    if resolution.get("spells_upgraded"):
-        lines.append("Upgraded: " + ", ".join(card_name(card) for card in resolution["spells_upgraded"]))
-    if resolution.get("spells_removed"):
-        lines.append("Burned: " + ", ".join(card_name(card) for card in resolution["spells_removed"]))
     return lines or ["Nothing else happened."]
 
 
