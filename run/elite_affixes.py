@@ -32,6 +32,11 @@ class EliteAffix:
     gold_multiplier: float = 1.0
     # Every non-boss enemy count in every wave, rounded up.
     count_multiplier: float = 1.0
+    # Enemy-side traits, copied onto every spawned enemy via WaveManager
+    # (Game._apply_affix_traits): heal this fraction of max HP per second,
+    # and scale every hit taken.
+    regen_fraction_per_second: float = 0.0
+    damage_taken_multiplier: float = 1.0
 
 
 AFFIXES = {
@@ -47,6 +52,14 @@ AFFIXES = {
     "gilded": EliteAffix(
         "gilded", "Gilded", "Enemies have 25% more HP but drop 60% more gold.",
         hp_multiplier=1.25, gold_multiplier=1.6,
+    ),
+    "regenerating": EliteAffix(
+        "regenerating", "Regenerating", "Enemies heal 4% of their max HP every second.",
+        regen_fraction_per_second=0.04,
+    ),
+    "armored": EliteAffix(
+        "armored", "Armored", "Enemies take 25% less damage from every hit.",
+        damage_taken_multiplier=0.75,
     ),
 }
 AFFIX_ORDER = list(AFFIXES)

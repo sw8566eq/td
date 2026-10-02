@@ -685,6 +685,16 @@ class Game:
             return None
         return elite_affixes.AFFIXES[elite_affixes.roll_affix(self._run_rng(run, _AFFIX_RNG_STREAM, node.id))]
 
+    def _apply_affix_traits(self, run, node):
+        """Copy `node`'s Elite affix's enemy-side traits (regeneration,
+        damage taken) onto the freshly-built WaveManager -- the escalation
+        half is already folded in by _floor_load_context. Shared by a
+        node load and a resume, like _floor_load_context itself."""
+        affix = self._elite_affix(run, node)
+        if affix is not None:
+            self.wave_manager.enemy_regen_fraction_per_second = affix.regen_fraction_per_second
+            self.wave_manager.enemy_damage_taken_multiplier = affix.damage_taken_multiplier
+
     def _level_for_node(self, run, node):
         """The Level `node` loads -- LEVELS' own entry, or a private copy
         with every non-boss count scaled for a Swarming-style affix. The
@@ -782,6 +792,7 @@ class Game:
             active_run=run, resumed_from_save=self._resumed_from_save,
         )
         self.current_level_id = node.level_id
+        self._apply_affix_traits(run, node)
         if run.act == 0 and not run.visited_node_ids:
             lives_multiplier = ascension.modifiers_for(run.ascension).starting_lives_multiplier
             run.lives = max(1, round(self.economy.lives * lives_multiplier))
@@ -1811,6 +1822,8 @@ class Game:
             resumed_from_save=True,
         )
         self.current_level_id = save_data["current_level_id"]
+        if run is not None:
+            self._apply_affix_traits(run, run.map.node(run.current_node_id))
         self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
         self.economy.gold = save_data["gold"]
         self.economy.lives = save_data["lives"]
