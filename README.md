@@ -338,8 +338,8 @@ path renders as one unbroken tile -- no seams -- since it's never buildable anyw
 
 ## Towers
 
-Fourteen so far. In a run you start with three of them and unlock the rest (see "Runs" and
-"Meta-progression"); Practice mode and editor playtests always offer all fourteen.
+Fifteen so far. In a run you start with three of them and unlock the rest (see "Runs" and
+"Meta-progression"); Practice mode and editor playtests always offer all fifteen.
 
 - **Basic** -- cheap, single-target, no special mechanic; its damage scales especially steeply with
   level so it stays worth building late-game, and it has a native chance to land a bigger crit.
@@ -375,6 +375,9 @@ Fourteen so far. In a run you start with three of them and unlock the rest (see 
   seconds, then unleashes one massive burst -- high ceiling, but a real risk: if the target dies or
   leaves range mid-charge, the whole charge is lost with no partial credit, and it starts over from
   nothing.
+- **Mortar** -- huge range and a big, slow splash, but a **dead zone**: it can't hit anything within
+  80px of itself (the red ring in its range preview), so it wants to sit back from the path. Ground
+  enemies only. Unlocks after 10 floors cleared.
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.

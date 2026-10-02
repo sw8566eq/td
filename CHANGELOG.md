@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Mortar** tower: very long range and a big splash, but a minimum-range dead zone (shown as a red ring)
+  it can't fire into. Build buttons shrank to 36px so all 15 towers fit.
 - **Placement relics**: Combined Arms (+5% damage per different nearby tower type, up to +25%) and Lone
   Sentinel (+30% damage for an isolated tower).
 - **Tower modules**: one module slot per tower type per run. Elite rewards offer a module paired with

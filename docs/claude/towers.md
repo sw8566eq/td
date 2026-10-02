@@ -190,3 +190,9 @@ on-hit slow/poison via `relic_slow_*`/`relic_poison_*` (copied onto projectiles 
 
 The Shop's module stand (`Game.shop_module`, `_try_buy_shop_module`, `shop.MODULE_PRICE`, right of
 Continue via `ui.build_shop_module_rect`) is rolled last from the visit's rng, once per visit.
+
+## Minimum range (Mortar)
+
+`Tower.MIN_RANGE` (0 by default) is a dead zone `acquire_target` filters out; `MortarTower` sets it to
+80. Both range previews draw it as a red ring. HUD build buttons are now 36px with 5px gaps (15 towers);
+icons are `BUTTON_SIZE - 14`.

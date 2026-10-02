@@ -58,9 +58,10 @@ ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion o
 # fitting TOWER_ORDER's full button row (12 towers as of Siphon Tower) plus
 # that text's own worst-case width (e.g. "Gold: unlimited   Shop: 999")
 # inside settings.PLAY_WIDTH -- confirmed still comfortable (24px to spare)
-# at 12 towers; the two path traps (14 towers) took it from 44/8 to 40/6.
-BUTTON_SIZE = 40
-BUTTON_MARGIN = 6
+# at 12 towers; the two path traps (14 towers) took it from 44/8 to 40/6,
+# and the Mortar (15) to 36/5.
+BUTTON_SIZE = 36
+BUTTON_MARGIN = 5
 
 # The HUD's top 32px is reserved for content that doesn't depend on how many
 # tower buttons are registered -- the speed toggle (build_speed_button_rect)
@@ -276,7 +277,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
             color = settings.COLOR_BUTTON_DISABLED
         pygame.draw.rect(surface, color, rect, border_radius=6)
 
-        icon_size = BUTTON_SIZE - 20
+        icon_size = BUTTON_SIZE - 14
         icon = assets.get(tower_cls.sprite_name, (icon_size, icon_size))
         icon_rect = icon.get_rect(center=(rect.centerx, rect.centery - 8))
         surface.blit(icon, icon_rect)
@@ -506,6 +507,9 @@ def draw_range_preview(surface, tower_cls, pixel_pos):
         surface, settings.COLOR_RANGE_PREVIEW,
         (int(pixel_pos[0]), int(pixel_pos[1])), tower_cls.range, width=1,
     )
+    if tower_cls.MIN_RANGE:  # a Mortar's dead zone
+        pygame.draw.circle(surface, settings.COLOR_LIVES, (int(pixel_pos[0]), int(pixel_pos[1])),
+                           tower_cls.MIN_RANGE, width=1)
 
 
 def draw_tower_range_preview(surface, tower):
@@ -519,6 +523,8 @@ def draw_tower_range_preview(surface, tower):
     pygame.draw.circle(surface, settings.COLOR_RANGE_PREVIEW, center, int(tower.range), width=1)
     if not tower.is_max_level:
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
+    if tower.MIN_RANGE:
+        pygame.draw.circle(surface, settings.COLOR_LIVES, center, tower.MIN_RANGE, width=1)
 
 
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
