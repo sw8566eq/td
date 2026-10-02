@@ -194,6 +194,12 @@ class Relic:
     tower_density_radius: float = 0.0
     tower_density_damage_bonus_per_neighbor: float = 0.0
     tower_density_damage_bonus_cap: float = 0.0
+    # Placement relics, resolved by Tower.set_nearby_tower_bonus alongside
+    # the density bonus above: combined_arms' damage per *distinct* other
+    # tower type within VARIETY_RADIUS (capped at VARIETY_BONUS_CAP), and
+    # lone_sentinel's damage for a tower with no other within ISOLATION_RADIUS.
+    variety_damage_bonus_per_type: float = 0.0
+    isolation_damage_bonus: float = 0.0
     # overclocked_circuits' own third density channel -- fire rate instead
     # of damage, reusing set_nearby_tower_bonus()'s own live neighbor count
     # (see Tower.set_nearby_tower_bonus/effective_fire_rate) rather than a
@@ -1082,6 +1088,16 @@ RELICS = {
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
     ),
+    # --- Placement relics -- see Relic.variety_damage_bonus_per_type. ---
+    "combined_arms": Relic(
+        "combined_arms", "Combined Arms",
+        "+5% tower damage for each different tower type within 110 pixels (up to +25%).",
+        variety_damage_bonus_per_type=0.05,
+    ),
+    "lone_sentinel": Relic(
+        "lone_sentinel", "Lone Sentinel", "+30% damage for a tower with no other tower within 100 pixels.",
+        isolation_damage_bonus=0.30,
+    ),
     # --- Trap relics -- see Relic.spike_trap_damage_multiplier. ---
     "serrated_spikes": Relic(
         "serrated_spikes", "Serrated Spikes", "Spike Trap only: +40% damage.", spike_trap_damage_multiplier=1.4,
@@ -1320,6 +1336,8 @@ class RelicModifiers:
     tower_density_radius: float = 0.0
     tower_density_damage_bonus_per_neighbor: float = 0.0
     tower_density_damage_bonus_cap: float = 0.0
+    variety_damage_bonus_per_type: float = 0.0
+    isolation_damage_bonus: float = 0.0
     tower_density_fire_rate_bonus_per_neighbor: float = 0.0
     tower_density_fire_rate_bonus_cap: float = 0.0
     last_stand_fire_rate_multiplier: float = 1.0
@@ -1433,6 +1451,8 @@ def compose_relic_modifiers(
     tower_density_radius = 0.0
     tower_density_damage_bonus_per_neighbor = 0.0
     tower_density_damage_bonus_cap = 0.0
+    variety_damage_bonus_per_type = 0.0
+    isolation_damage_bonus = 0.0
     tower_density_fire_rate_bonus_per_neighbor = 0.0
     tower_density_fire_rate_bonus_cap = 0.0
     last_stand_fire_rate_multiplier = 1.0
@@ -1536,6 +1556,8 @@ def compose_relic_modifiers(
         tower_density_radius = max(tower_density_radius, relic.tower_density_radius)
         tower_density_damage_bonus_per_neighbor += relic.tower_density_damage_bonus_per_neighbor
         tower_density_damage_bonus_cap += relic.tower_density_damage_bonus_cap
+        variety_damage_bonus_per_type += relic.variety_damage_bonus_per_type
+        isolation_damage_bonus += relic.isolation_damage_bonus
         tower_density_fire_rate_bonus_per_neighbor += relic.tower_density_fire_rate_bonus_per_neighbor
         tower_density_fire_rate_bonus_cap += relic.tower_density_fire_rate_bonus_cap
         last_stand_fire_rate_multiplier = max(last_stand_fire_rate_multiplier, relic.last_stand_fire_rate_multiplier)
@@ -1637,6 +1659,8 @@ def compose_relic_modifiers(
         tower_density_radius=tower_density_radius,
         tower_density_damage_bonus_per_neighbor=tower_density_damage_bonus_per_neighbor,
         tower_density_damage_bonus_cap=tower_density_damage_bonus_cap,
+        variety_damage_bonus_per_type=variety_damage_bonus_per_type,
+        isolation_damage_bonus=isolation_damage_bonus,
         tower_density_fire_rate_bonus_per_neighbor=tower_density_fire_rate_bonus_per_neighbor,
         tower_density_fire_rate_bonus_cap=tower_density_fire_rate_bonus_cap,
         last_stand_fire_rate_multiplier=last_stand_fire_rate_multiplier,

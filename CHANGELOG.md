@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Placement relics**: Combined Arms (+5% damage per different nearby tower type, up to +25%) and Lone
+  Sentinel (+30% damage for an isolated tower).
 - **Tower modules**: one module slot per tower type per run. Elite rewards offer a module paired with
   one of your tower types (in place of the Elite's potion); seven modules from Long Barrel to Venom
   Injector. Every Shop also has a module stand (one paired module per visit). A Tinkerer achievement

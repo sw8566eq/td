@@ -124,6 +124,13 @@ Potions carry between floors until used. Every Shop also has a potion stand sell
 visit, and three relics build around them: Bandolier (+1 slot), Field Medic Kit (+1 life per
 potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion).
 
+## Placement relics
+
+Two relics reward opposite ways of building: **Combined Arms** (+5% damage for each *different* tower
+type within reach, up to +25% -- mix your towers together) and **Lone Sentinel** (+30% damage for a
+tower with no other tower nearby -- spread them out). Like the density relics, they're worked out when
+a tower is placed or sold, and shown in each tower's damage.
+
 ## Tower modules
 
 Every tower type has one **module** slot per run. Elite fights reward a module already paired with one
