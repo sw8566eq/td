@@ -256,3 +256,14 @@ acquisition order). A curse can also be given up through a `relic_cost` Event op
 every read, shrinking slots to fit the panel), `Game.use_potion`, and `rewards.build_combat_reward`
 (which still draws its `rng.random()` when the drop is guaranteed, so the same seed rolls the same
 potion either way).
+
+## Boss relics
+
+`Relic.is_boss_relic` -- excluded from `_default_relic_pool`; `relics.boss_relic_offer` (used only by
+`rewards.build_combat_reward(..., is_boss=True)`) draws from `BOSS_RELICS`, topped up from the
+ordinary pool once fewer are left. Downsides use ordinary fields where one exists (Siege Engine's
+`enemy_speed_multiplier`, Reckless Arsenal's negative `starting_lives_bonus` -- `_apply_one_time_relic_
+bonus` clamps lives at 1) and three Relic-only switches otherwise, each read in one place:
+`blocks_rest_heal` (`Game._enter_rest_node` -> `rest_heal_blocked`, Rest option disabled, Smith still
+works), `blocks_shop_income` (`_advance_run_floor`), `blocks_potions` (`potions.has_free_slot`, so
+rewards/Shop stand/Events all refuse new potions while held ones stay usable).

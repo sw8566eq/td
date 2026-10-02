@@ -236,6 +236,7 @@ class Renderer:
                 game.screen, game.font, game.small_font, game.rest_phase, game.rest_heal_amount,
                 game.active_run.lives, game.rest_option_rects, game.rest_smith_choices, game.rest_smith_rects,
                 game.rest_back_rect, game.rest_forged_tower, game._hovered_rest_rect_index(),
+                heal_blocked=game.rest_heal_blocked,
             )
             self._draw_toasts()
             pygame.display.flip()

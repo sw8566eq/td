@@ -526,6 +526,19 @@ class Relic:
     potion_slot_bonus: int = 0
     lives_per_potion: int = 0
     guaranteed_potion_drop: bool = False
+    # A Boss relic (Slay the Spire's own tier): only ever offered by an act
+    # boss's reward (boss_relic_offer), never the ordinary pool, and each
+    # pairs a big upside with a real downside -- some through ordinary
+    # fields (enemy_speed_multiplier, a negative starting_lives_bonus),
+    # the rest through the three Relic-only switches below, each read at
+    # exactly one place: Game._enter_rest_node (blocks_rest_heal), Game.
+    # _advance_run_floor (blocks_shop_income), potions.has_free_slot
+    # (blocks_potions -- no new potion from any source; ones already held
+    # still work).
+    is_boss_relic: bool = False
+    blocks_rest_heal: bool = False
+    blocks_shop_income: bool = False
+    blocks_potions: bool = False
 
 
 RELICS = {
@@ -1055,6 +1068,33 @@ RELICS = {
         "brewmasters_kit", "Brewmaster's Kit", "Every won fight's reward includes a potion.",
         guaranteed_potion_drop=True,
     ),
+    # --- Boss relics (is_boss_relic=True) -- see Relic.is_boss_relic. ---
+    "overcharged_core": Relic(
+        "overcharged_core", "Overcharged Core",
+        "Boss relic: +30% damage for every tower, but Rest sites can no longer heal you.",
+        tower_damage_multiplier=1.3, is_boss_relic=True, blocks_rest_heal=True,
+    ),
+    "gilded_ledger": Relic(
+        "gilded_ledger", "Gilded Ledger",
+        "Boss relic: +60 gold at the start of every floor, but clearing a floor earns no shop currency.",
+        gold_per_floor_bonus=60, is_boss_relic=True, blocks_shop_income=True,
+    ),
+    "sealed_cask": Relic(
+        "sealed_cask", "Sealed Cask",
+        "Boss relic: +20% fire rate for every tower, but you can't obtain new potions.",
+        tower_fire_rate_multiplier=1.2, is_boss_relic=True, blocks_potions=True,
+    ),
+    "siege_engine": Relic(
+        "siege_engine", "Siege Engine",
+        "Boss relic: +25% range for every tower, but enemies move 10% faster.",
+        tower_range_multiplier=1.25, enemy_speed_multiplier=1.1, is_boss_relic=True,
+    ),
+    "reckless_arsenal": Relic(
+        "reckless_arsenal", "Reckless Arsenal",
+        "Boss relic: +20% damage and +10% fire rate for every tower, but lose 5 lives now.",
+        tower_damage_multiplier=1.2, tower_fire_rate_multiplier=1.1, starting_lives_bonus=-5,
+        is_boss_relic=True,
+    ),
     # --- Curses (is_curse=True) -- see Relic.is_curse. ---
     "rusted_gears": Relic(
         "rusted_gears", "Rusted Gears", "Curse: tower upgrades and specializations cost 25% more gold.",
@@ -1083,6 +1123,7 @@ RELICS = {
 }
 
 CURSES = [key for key, relic in RELICS.items() if relic.is_curse]
+BOSS_RELICS = [key for key, relic in RELICS.items() if relic.is_boss_relic]
 
 DEFAULT_RELIC_OFFER_COUNT = 3
 
@@ -1095,7 +1136,22 @@ def _default_relic_pool(meta_progression_path: str) -> list[str]:
     for towers."""
     gated = {unlock.relic_key for unlock in meta_progression.RELIC_META_UNLOCKS.values()}
     unlocked_gated = meta_progression.unlocked_relic_pool(meta_progression_path)
-    return [key for key in RELICS if (key not in gated or key in unlocked_gated) and not RELICS[key].is_curse]
+    return [
+        key for key in RELICS
+        if (key not in gated or key in unlocked_gated) and not RELICS[key].is_curse and not RELICS[key].is_boss_relic
+    ]
+
+
+def boss_relic_offer(
+    rng: random.Random, run: RunState, count: int, meta_progression_path: str | None = None,
+) -> list[str]:
+    """An act boss's relic choice: boss relics the run doesn't hold yet,
+    topped up from the ordinary pool (relic_offer) once fewer than `count`
+    are left."""
+    picks = sample_up_to(rng, [key for key in BOSS_RELICS if key not in run.relics], count)
+    if len(picks) < count:
+        picks += relic_offer(rng, run, count=count - len(picks), meta_progression_path=meta_progression_path)
+    return picks
 
 
 def curse_offer(rng: random.Random, run: RunState) -> str | None:
