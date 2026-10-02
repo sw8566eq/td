@@ -38,7 +38,8 @@ Press any unbound key at the main menu, then pick a **Commander** -- Slay the Sp
 one sets your three starter towers and a signature starting relic: **The Warden** (Basic, Cannon,
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
-and **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) unlock as you play.
+**The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) and **The
+Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) unlock as you play.
 The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one boss relic and
 one curse, the same pair for everyone.
 

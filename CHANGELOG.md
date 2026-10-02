@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- A fifth Commander, **The Stormcaller** (Basic, Lightning, Frost; Lightning starts forged, Storm
+  Core), unlocked by reaching the final boss.
 - **Daily modifiers**: every Daily Run starts with the same seed-chosen boss relic and curse for
   everyone, so each day plays differently.
 - Two new Elite affixes: **Regenerating** (enemies heal 4% of max HP per second) and **Armored**
