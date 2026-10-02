@@ -37,8 +37,10 @@ four places: `pyproject.toml`'s `[[tool.mypy.overrides]]`, the Commands block ab
 
 - **The game is a roguelike deckbuilder. The run loop is the main loop.** Playing a level on its own
   is Practice (always `sandbox=True`, earns nothing). See `run-loop.md` and `run-map.md`.
-- **Content is registries, not conditionals.** `TOWER_TYPES`, `ENEMY_TYPES`, `LEVELS`, `RELICS`,
-  `EVENTS`, `ACHIEVEMENTS` and `META_UNLOCKS` are `{key: ...}` dicts. To add content, write a new
+- **Content is registries, not conditionals.** `TOWER_TYPES`, `ENEMY_TYPES`, `LEVELS`, `RELICS`
+  (curses and boss relics included, via flags), `EVENTS`, `POTIONS`, `COMMANDERS`, `AFFIXES`,
+  `ASCENSION_LEVELS`, `ACHIEVEMENTS` and the `*_META_UNLOCKS` are `{key: ...}` dicts (or a tuple, for
+  Ascension). To add content, write a new
   class or entry plus one registry line. Never add branches to the code that consumes a registry.
 - **Imports are always fully qualified** (`from entities.tower import TOWER_TYPES`), never relative.
   Every package sits exactly one level under the repo root. `json_io.module_relative_path()` depends
@@ -51,6 +53,8 @@ four places: `pyproject.toml`'s `[[tool.mypy.overrides]]`, the Commands block ab
   records progress.
 - **A new relic field that `Tower.update()` tags onto projectiles needs a matching copy in
   `OverloadCannonTower.update()`'s duplicate block** (see `towers.md`).
+- **Runs autosave on every map visit and node entry** (`save_state.save_map_checkpoint`); a choice that
+  resolves on a node commits it (`Game._commit_node`) so Continue can't reopen it. See `persistence.md`.
 - **Run RNG is re-derived on demand** with `Game._run_rng(run, stream, key)`, keyed by node id, never
   by row number. No RNG state is ever serialized.
 - Tests run headless (SDL dummy driver, set in `tests/conftest.py`). Inject every on-disk JSON path
@@ -66,9 +70,9 @@ heading in one of the files below. Run `grep -rn "## Some Section" docs/claude` 
 |---|---|
 | [tooling.md](docs/claude/tooling.md) | ruff/coverage config, the history of the incremental mypy passes and how to extend the list, how the test suite is laid out |
 | [core-game.md](docs/claude/core-game.md) | folder layout, `Game`, and its pieces split out into `Renderer`/`InputHandler`/`ProgressTracker`; toasts |
-| [run-loop.md](docs/claude/run-loop.md) | `RunState`, `start_new_run`, node flow, floor clear/permadeath, `_run_rng`, Daily Run |
+| [run-loop.md](docs/claude/run-loop.md) | `RunState`, `start_new_run`, node flow, floor clear/permadeath, `_run_rng`, Daily Run, acts, Ascension, Commanders |
 | [relics.md](docs/claude/relics.md) | `run/relics.py`: every relic batch, the effect shapes, `compose_relic_modifiers` stacking rules |
-| [run-map.md](docs/claude/run-map.md) | `run/run_map.py`, the node types (Combat/Elite/Shop/Event/Rest/Treasure/Boss), map screen |
+| [run-map.md](docs/claude/run-map.md) | `run/run_map.py`, the node types (Combat/Elite/Shop/Event/Rest/Treasure/Boss), map screen, rewards, potions, elite affixes, the opening blessing |
 | [economy-shop.md](docs/claude/economy-shop.md) | battle gold vs shop currency, `run/shop.py`, `--unlimited-gold` |
 | [enemies.md](docs/claude/enemies.md) | registries, Boss/FinalBoss mechanics, `IS_BOSS`, Mark, Corrosive Poison shield bypass |
 | [grid-paths.md](docs/claude/grid-paths.md) | tile vs subtile coords, footprints, path topology (forest rule), `sample_route` |
