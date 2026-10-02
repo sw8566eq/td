@@ -101,3 +101,16 @@ def test_rest_is_never_a_softlock_when_neither_rest_nor_smith_is_possible(game):
     game.render()
     game._handle_keydown(pygame.K_SPACE)
     assert game.state == GameState.MAP and run.lives == 5 and run.visited_node_ids == ["1-0"]
+
+
+def test_reward_potion_card_says_sealed_not_full_under_sealed_cask(game):
+    from conftest import finish_all_waves
+    from test_run import _begin_run_with_map
+
+    _begin_run_with_map(game, ["elite", "combat"], relics=["sealed_cask"], lives=10)
+    game._enter_node("0-0")
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._handle_keydown(pygame.K_SPACE)
+    assert potions.potions_blocked(game.active_run)
+    game.render()

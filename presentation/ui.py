@@ -1488,7 +1488,8 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
 # --- Post-combat reward screen ---
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
-                       available, continue_button_rect, is_elite=False, is_boss=False, forged_names=()):
+                       available, continue_button_rect, is_elite=False, is_boss=False, forged_names=(),
+                       potion_unavailable_tag="FULL"):
     """The free post-combat reward (see rewards.py/Game._enter_reward_
     screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
     as `card_rects`; `available[i]` is Game._reward_card_available(i).
@@ -1515,7 +1516,7 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
         if claimed:
             tag = "TAKEN"
         elif not available[index]:
-            tag = "FULL" if kind == "potion" else "--"
+            tag = potion_unavailable_tag if kind == "potion" else "--"
         elif kind == "forge":
             tag = "FORGE"
         elif kind == "tower" and key in forged_names:

@@ -167,9 +167,14 @@ def slot_count(run: RunState) -> int:
     return POTION_SLOTS + sum(RELICS[key].potion_slot_bonus for key in run.relics)
 
 
+def potions_blocked(run: RunState) -> bool:
+    """Whether a Sealed Cask-style boss relic (Relic.blocks_potions)
+    forbids taking any new potion."""
+    return any(RELICS[key].blocks_potions for key in run.relics)
+
+
 def has_free_slot(run: RunState) -> bool:
-    """Room for one more potion -- never, while a Sealed Cask-style boss
-    relic (Relic.blocks_potions) is held."""
-    if any(RELICS[key].blocks_potions for key in run.relics):
+    """Room for one more potion -- never, while potions_blocked."""
+    if potions_blocked(run):
         return False
     return len(run.potions) < slot_count(run)
