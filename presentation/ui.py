@@ -27,7 +27,7 @@ from progression.meta_progression import (
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
-from run.elite_affixes import AFFIXES
+from run.elite_affixes import AFFIXES, BOSS_AFFIXES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
@@ -838,7 +838,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R"):
+                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R", deck_size=None):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -857,6 +857,9 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     the terse version, since by then they already know."""
     surface.fill(settings.COLOR_BG)
     title_text = f"Act {act_number}: choose your path" + (f"  --  Ascension {ascension_level}" if ascension_level else "")
+    boss = (node_affixes or {}).get(game_map.boss_node_id)
+    if boss is not None:  # Slay the Spire shows the act's boss up front, too
+        title_text += f"  --  {boss.display_name} awaits"
     title = font.render(title_text, True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 14)))
 
@@ -868,7 +871,7 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
         potion_text = ", ".join(potion_names) if potion_names else "none"
         info = small_font.render(
             f"Lives: {lives}   Shop currency: {round(shop_currency)}   Relics: {relic_count} ({relics_key_label} to view)"
-            f"   Potions: {potion_text}",
+            f"   Potions: {potion_text}" + (f"   Spells: {deck_size} (D)" if deck_size is not None else ""),
             True, settings.COLOR_GOLD,
         )
         surface.blit(info, info.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 44)))
@@ -2737,6 +2740,7 @@ def compendium_rows(small_font):
         ("Spells", [(f"{s.display_name} ({s.cost})", s.description) for s in SPELLS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
+        ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
     ]
     rows = []
     for title, entries in sections:
