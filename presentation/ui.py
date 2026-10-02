@@ -2748,7 +2748,11 @@ def _draw_overlay_with_results(surface, font, small_font, title, subtitle, title
 def draw_game_over_screen(surface, font, small_font, results=None, run_summary=None):
     """`run_summary` (run_summary_lines, below) adds a permadeath recap
     above the key hints when a roguelike run just ended."""
-    subtitle = [*(run_summary or []), "Press R to restart, M for main menu"]
+    # For a run, R can't resurrect it (see Game.reset) -- it replays that
+    # floor as Practice, which earns nothing; say so.
+    hint = ("R -- replay this floor as Practice, M -- main menu" if run_summary
+            else "Press R to restart, M for main menu")
+    subtitle = [*(run_summary or []), hint]
     title = "Run Over" if run_summary else "Game Over"
     _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_LIVES, results)
 
