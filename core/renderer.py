@@ -229,7 +229,7 @@ class Renderer:
                 game.screen, game.font, game.small_font, game._reward_cards(), game.reward_rects,
                 game._hovered_reward_card(), game.reward_claimed_indices,
                 [game._reward_card_available(i) for i in range(len(game.reward_rects))],
-                game.reward_continue_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
+                game.shop_continue_button_rect, is_elite=node.node_type == "elite", is_boss=node.node_type == "boss",
                 forged_names=game.reward.forged_tower_choices,
                 # Sealed Cask blocks new potions outright -- "FULL" would be a lie.
                 potion_unavailable_tag="SEALED" if potions.potions_blocked(game.active_run) else "FULL",
@@ -320,9 +320,6 @@ class Renderer:
             game._hovered_specialize_key(panel_subject),
         )
         if game.active_run is not None:
-            if game.combat_deck is not None:
-                ui.draw_hand(game.screen, game.font, game.small_font, game.combat_deck, game.card_rects(),
-                             game._hovered_card(), self._spell_status_text())
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
@@ -377,21 +374,6 @@ class Renderer:
         run = self.game.active_run
         return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
                 f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
-
-    def _spell_status_text(self):
-        """The hand's label tail: whichever timed spells are running, or a
-        pending free tower -- None when nothing is active."""
-        game = self.game
-        parts = []
-        if game.spell_fire_rate_timer > 0:
-            parts.append(f"Rally {game.spell_fire_rate_timer:.0f}s")
-        if game.spell_damage_timer > 0:
-            parts.append(f"Empower {game.spell_damage_timer:.0f}s")
-        if game.bounty_timer > 0:
-            parts.append(f"Bounty {game.bounty_timer:.0f}s")
-        if game.free_tower_charges:
-            parts.append("Free tower")
-        return "  ".join(parts) or None
 
     def _run_modifiers_text(self):
         """"Ascension N, <Affix> elite" for the sidebar -- whichever of the
