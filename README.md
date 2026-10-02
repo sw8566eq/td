@@ -39,7 +39,8 @@ one sets your three starter towers and a signature starting relic: **The Warden*
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
 and **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) unlock as you play.
-The Daily Run always uses The Warden.
+The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one boss relic and
+one curse, the same pair for everyone.
 
 Before the map, an old spirit offers a **starting blessing** (Slay the Spire's Neow) -- pick one: a
 relic, supplies (+15 shop currency, +3 lives), a forged tower plus a potion, or a dark bargain (two

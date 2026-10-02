@@ -3529,3 +3529,26 @@ def test_taking_a_pre_forged_tower_card_adds_it_forged(game, monkeypatch):
     game.render()
     game._take_reward_card(0)
     assert "sniper" in game.active_run.unlocked_towers and "sniper" in game.active_run.forged_towers
+
+
+def test_daily_run_starts_with_the_same_boss_relic_and_curse_for_everyone(game):
+    from run.relics import BOSS_RELICS, RELICS
+
+    game.start_new_run(seed=20261002, is_daily=True)
+    mods = [key for key in game.active_run.relics if RELICS[key].is_curse or RELICS[key].is_boss_relic]
+    assert len(mods) == 2
+    assert sum(RELICS[key].is_curse for key in mods) == 1
+    boon = next(key for key in mods if key in BOSS_RELICS)
+    assert RELICS[boon].starting_lives_bonus == 0
+    assert any("Daily modifiers" in toast.text for toast in game.achievement_toasts)
+    first = list(game.active_run.relics)
+
+    game.start_new_run(seed=20261002, is_daily=True)
+    assert game.active_run.relics == first
+
+
+def test_ordinary_runs_get_no_daily_modifiers(game):
+    from run.relics import RELICS
+
+    game.start_new_run(seed=20261002)
+    assert not any(RELICS[key].is_curse or RELICS[key].is_boss_relic for key in game.active_run.relics)

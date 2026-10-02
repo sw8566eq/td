@@ -56,6 +56,7 @@ _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's o
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
+_DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -645,7 +646,25 @@ class Game:
             relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
             forged_towers=list(chosen.forged_towers),
         )
+        if is_daily:
+            self._apply_daily_modifiers()
         self._enter_map()
+
+    def _apply_daily_modifiers(self):
+        """A Daily Run's own twist (Slay the Spire's Daily Climb mods):
+        one boss relic and one curse, picked from the date seed so every
+        player gets the same pair today. Boss relics with a one-time lives
+        cost are skipped -- the run's lives aren't captured until its first
+        node loads, so that cost would silently vanish."""
+        run = self.active_run
+        rng = self._run_rng(run, _DAILY_MODS_RNG_STREAM, "start")
+        boons = [key for key in relics.BOSS_RELICS if relics.RELICS[key].starting_lives_bonus == 0]
+        boon = rng.choice(boons)
+        curse = relics.curse_offer(rng, run)
+        run.relics.extend([boon, curse])
+        self._queue_toast(
+            f"Daily modifiers: {relics.RELICS[boon].display_name} + {relics.RELICS[curse].display_name}",
+        )
 
     def _floor_load_context(self, run, node):
         """The (relic_modifiers, escalation, rng) triple _load_level_object()
