@@ -335,6 +335,9 @@ class Game:
         self.event_phase = "choose"
         self.event_chosen_option = None
         self.event_resolution = None
+        # True while the Event screen is showing the run's opening blessing
+        # (see _enter_blessing) rather than an Event map node.
+        self.event_is_blessing = False
         # A Rest node's own three-phase state (see _enter_rest_node):
         # "choose" between Rest and Smith, "smith" while picking which
         # tower to forge, "resolved" once one's done. rest_heal_amount is
@@ -573,6 +576,7 @@ class Game:
         key = commanders.COMMANDER_ORDER[index]
         if key in self.commander_unlocked:
             self.start_new_run(commander=key)
+            self._enter_blessing()
 
     def _handle_commander_select_click(self, pos):
         return self.input_handler._handle_commander_select_click(pos)
@@ -1260,7 +1264,32 @@ class Game:
         self.event_phase = "choose"
         self.event_chosen_option = None
         self.event_resolution = None
+        self.event_is_blessing = False
         self.state = GameState.EVENT
+
+    def _enter_blessing(self):
+        """The run's opening blessing (events.BLESSING, Slay the Spire's
+        Neow): shown on the Event screen right after a new run starts,
+        before the map. No node is involved -- leaving it (_leave_event)
+        goes straight to the map instead of marking anything visited."""
+        self.current_event = events.BLESSING
+        self.event_options = events.available_options(self.current_event, self.active_run)
+        self.event_option_rects = ui.build_event_option_rects(len(self.event_options))
+        self.event_phase = "choose"
+        self.event_chosen_option = None
+        self.event_resolution = None
+        self.event_is_blessing = True
+        self.state = GameState.EVENT
+
+    def _leave_event(self):
+        """Any key/click once an Event is resolved -- back to the map,
+        marking the Event node visited (or, for the blessing, just the
+        map)."""
+        if self.event_is_blessing:
+            self.event_is_blessing = False
+            self._enter_map()
+        else:
+            self._finish_node(self.active_run.current_node_id)
 
     def _handle_event_click(self, pos):
         return self.input_handler._handle_event_click(pos)
@@ -1283,7 +1312,9 @@ class Game:
         # not just the node) -- see events.resolve_event_option's own
         # docstring for why only the branch actually taken needs to be
         # reproducible.
-        item_rng = self._run_rng(run, _EVENT_ITEM_RNG_STREAM, f"{node_id}:{option.key}")
+        item_rng = self._run_rng(
+            run, _EVENT_ITEM_RNG_STREAM, f"{'blessing' if self.event_is_blessing else node_id}:{option.key}",
+        )
         self.event_resolution = events.resolve_event_option(
             run, option, item_rng, meta_progression_path=self.meta_progression_path,
         )
@@ -1770,6 +1801,7 @@ class Game:
         docstring for what is_daily=True actually does."""
         seed = seed if seed is not None else daily_challenge.todays_seed()
         self.start_new_run(seed=seed, is_daily=True)
+        self._enter_blessing()  # same blessing everyone gets today -- keyed on the seed
 
     def _tower_from_save_data(self, tower_data):
         """Reconstruct one Tower from save_state.py's per-tower dict --

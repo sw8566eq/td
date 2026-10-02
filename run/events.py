@@ -72,6 +72,8 @@ class EventOption:
     # Forge one random held, not-yet-forged tower type (the Rest site's
     # Smith, see Game._forge_tower) -- nothing once every held tower is.
     forge_random_tower: bool = False
+    # A second relic on top of grant_relic's (the blessing's dark bargain).
+    extra_relic: bool = False
 
 
 @dataclass(frozen=True)
@@ -405,6 +407,34 @@ EVENTS = {
     ),
 }
 
+# The run's opening blessing (Slay the Spire's Neow) -- shown once, right
+# after the Commander is picked and before the map (Game._enter_blessing).
+# Deliberately not in EVENTS/_EVENT_ORDER, so pick_event can never draw it
+# for an ordinary Event node.
+BLESSING = Event(
+    "blessing", "A Blessing for the Road",
+    "An old spirit at the trailhead offers you one gift for the journey ahead.",
+    options=(
+        EventOption(
+            "relic", "A relic", "The spirit presses a relic into your hand.", grant_relic=True,
+        ),
+        EventOption(
+            "supplies", "Supplies (+15 shop currency, +3 lives)", "You set out well provisioned.",
+            shop_currency_delta=15, lives_delta=3,
+        ),
+        EventOption(
+            "forge", "A forged blueprint (forge a random tower, gain a potion)",
+            "One of your designs comes back stronger, with a flask besides.",
+            forge_random_tower=True, grant_potion=True,
+        ),
+        EventOption(
+            "bargain", "A dark bargain (two relics and a curse)",
+            "Great power, at a price that will follow you.",
+            grant_relic=True, add_curse=True, extra_relic=True,
+        ),
+    ),
+)
+
 # Registry insertion order isn't guaranteed stable input for rng.choice the
 # way it is for rng.sample (see card_pool._default_unlocked_pool's own
 # comment on the identical risk) -- _EVENT_ORDER above is the fixed order
@@ -487,7 +517,13 @@ def resolve_event_option(
 
     granted = {}
     if option.grant_relic:
-        picks = relics.relic_offer(item_rng, run, count=1, meta_progression_path=meta_progression_path)
+        picks = relics.relic_offer(
+            item_rng, run, count=2 if option.extra_relic else 1, meta_progression_path=meta_progression_path,
+        )
+        for key in picks[1:]:
+            run.relics.append(key)
+            run.lives += relics.RELICS[key].starting_lives_bonus
+            granted["extra_relic"] = key
         if picks:
             key = picks[0]
             run.relics.append(key)

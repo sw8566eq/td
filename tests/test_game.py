@@ -138,7 +138,7 @@ def test_menu_any_key_opens_commander_select_then_a_pick_starts_a_new_run(game):
 
     game._handle_commander_select_click(game.commander_rects[0].center)
 
-    assert game.state == GameState.MAP  # shows the run's own map -- see Game.start_new_run
+    assert game.state == GameState.EVENT  # the run's opening blessing (see Game._enter_blessing)
     assert game.active_run is not None
 
 
