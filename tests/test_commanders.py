@@ -141,3 +141,12 @@ def test_commander_cards_fit_on_screen():
     for rect in ui.build_commander_card_rects(len(commanders.COMMANDER_ORDER)):
         assert 0 <= rect.left and rect.right <= settings.SCREEN_WIDTH
         assert rect.height == ui.COMMANDER_CARD_HEIGHT and rect.bottom < settings.SCREEN_HEIGHT - 60
+
+
+def test_every_commander_lock_line_fits_its_card(game):
+    from presentation import ui
+
+    width = game.commander_rects[0].width - 2 * ui.PANEL_PADDING
+    for unlock in meta_progression.COMMANDER_META_UNLOCKS.values():
+        requirement = ui.COMMANDER_LOCK_TEXT[unlock.counter].format(goal=unlock.goal)
+        assert game.small_font.size(f"{requirement} ({unlock.goal}/{unlock.goal})")[0] <= width

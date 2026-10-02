@@ -1419,6 +1419,7 @@ COMMANDER_LOCK_TEXT = {
     "runs_played": "Finish {goal} run",
     "total_floors_cleared": "Clear {goal} floors",
     "bosses_defeated": "Defeat {goal} boss",
+    "runs_reached_endless": "Reach the last boss",
 }
 
 

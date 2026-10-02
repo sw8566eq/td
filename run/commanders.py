@@ -52,5 +52,10 @@ COMMANDERS = {
         ("basic", "cannon", "support"), starting_relics=("quartermasters_favor",),
         forged_towers=("basic",),
     ),
+    "stormcaller": Commander(
+        "stormcaller", "The Stormcaller",
+        "Chains lightning through crowds. Basic, Lightning and Frost; Lightning starts forged and hits harder.",
+        ("basic", "lightning", "frost"), starting_relics=("storm_core",), forged_towers=("lightning",),
+    ),
 }
 COMMANDER_ORDER = list(COMMANDERS)
