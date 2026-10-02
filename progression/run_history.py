@@ -41,7 +41,22 @@ def load_run_records(path: str = RUN_HISTORY_PATH) -> list[RunRecord]:
     """Every recorded run's details (see record_run_result's `details`),
     most recent first -- [] for a file written before this existed, or a
     missing/corrupt one."""
-    return load_json_with_fallback(path, lambda data: list(data.get("runs", [])), list)
+    return load_json_with_fallback(path, _parse_run_records, list)
+
+
+def _parse_run_records(data: Any) -> list[RunRecord]:
+    """The "runs" list, keeping only well-formed records -- a dict with an
+    int seed/floors_cleared and, if present, a string commander -- so one
+    damaged entry drops out instead of crashing the Run History screen."""
+    def well_formed(record: Any) -> bool:
+        return (
+            isinstance(record, dict)
+            and all(isinstance(record.get(key), int) and not isinstance(record.get(key), bool)
+                    for key in ("seed", "floors_cleared"))
+            and isinstance(record.get("commander", ""), str)
+            and all(isinstance(record.get(key, 0), int) for key in ("ascension", "act", "endless_waves"))
+        )
+    return [record for record in data.get("runs", []) if well_formed(record)]
 
 
 def save_run_history(

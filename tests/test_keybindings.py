@@ -142,3 +142,15 @@ def test_escape_is_reserved():
 
 def test_an_ordinary_key_is_not_reserved():
     assert is_reserved(pygame.K_p) is False
+
+
+def test_out_of_range_key_codes_fall_back_to_the_default(tmp_path):
+    import json
+
+    from persistence import keybindings
+
+    path = tmp_path / "keybindings.json"
+    path.write_text(json.dumps({"bindings": {"pause": [10**12, 0], "skip_wave": [32, 10**9]}}))
+    loaded = keybindings.load_bindings(path)
+    assert loaded["pause"] == keybindings.DEFAULT_BINDINGS["pause"]
+    assert loaded["skip_wave"] == keybindings.DEFAULT_BINDINGS["skip_wave"]
