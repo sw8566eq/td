@@ -183,6 +183,17 @@ Remove a card (`Game._open_card_removal` -> `open_deck_view("remove", GameState.
 (`ui.draw_deck_screen`, one card per distinct spell with its count, `ui.deck_entries`) is also the
 map's read-only `D` view; any key or Back returns to `deck_return_state`.
 
+Upgrades: a deck card is a `SPELLS` key or that key + `spells.UPGRADE_SUFFIX` (`"zap+"`). Every spell
+number is a `(base, upgraded)` tuple and `Spell.costs`/`describe(level)`/`cast(game, level)` take the
+level, so **always go through `spells.spell_of`/`card_level`/`card_cost`/`card_name`/
+`card_description`** on a deck card, never `SPELLS[card]` (saves validate with `is_valid_card`).
+Rally/Empower store their strength on Game (`spell_fire_rate_multiplier`/`spell_damage_bonus`, raised
+with `max`) and `update()` resets it once the timer runs out. The Rest site has four options now (Rest,
+Smith, **Study**, Move on -- Move on is index 3): Study opens `open_deck_view("upgrade", GameState.REST)`
+whose grid (`Game.deck_view_entries`) shows only not-yet-upgraded cards; `_upgrade_card` swaps one copy,
+commits the node and returns to the resolved Rest screen. Rewards roll each spell card for an upgrade
+with the same depth chance as pre-forged towers, after the spell picks themselves.
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,

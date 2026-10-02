@@ -35,7 +35,7 @@ from run.potions import POTIONS
 from run.relics import RELICS
 from run.run_map import ACT_COUNT, COLS, NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
-from run.spells import SPELLS, STARTER_DECK
+from run.spells import STARTER_DECK, is_valid_card
 from support import settings
 from world.levels import LEVELS
 
@@ -431,7 +431,7 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     if run_data.get("commander", DEFAULT_COMMANDER) not in COMMANDERS:
         raise ValueError(f"saved run's commander {run_data['commander']!r} is not a known commander")
     for spell_key in run_data.get("deck", []):
-        if spell_key not in SPELLS:
+        if not is_valid_card(spell_key):
             raise ValueError(f"saved run's deck references an unrecognized spell {spell_key!r}")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:

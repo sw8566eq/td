@@ -35,7 +35,7 @@ import pygame
 
 from entities.tower import TOWER_TYPES
 from presentation import ui
-from run import potions, relics, shop
+from run import potions, relics, shop, spells
 from support import settings
 
 
@@ -192,7 +192,8 @@ class Renderer:
             back_label = {GameState.DRAFT: "Back to Shop", GameState.REST: "Back"}.get(
                 game.deck_return_state, "Back to Map")
             ui.draw_deck_screen(
-                game.screen, game.font, game.small_font, game.active_run.deck, game.deck_entry_rects,
+                game.screen, game.font, game.small_font, game.active_run.deck, game.deck_view_entries(),
+                game.deck_entry_rects,
                 game._hovered_deck_entry(), game.deck_back_rect, game.deck_view_mode, back_label,
             )
             self._draw_toasts()
@@ -273,6 +274,8 @@ class Renderer:
                 game.active_run.lives, game.rest_option_rects, game.rest_smith_choices, game.rest_smith_rects,
                 game.rest_back_rect, game.rest_forged_tower, game._hovered_rest_rect_index(),
                 heal_blocked=game.rest_heal_blocked, moved_on=game.rest_moved_on,
+                can_study=bool(spells.upgradeable_cards(game.active_run.deck)),
+                studied_card=game.rest_upgraded_card,
             )
             self._draw_toasts()
             pygame.display.flip()
