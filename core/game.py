@@ -106,6 +106,9 @@ class GameState(Enum):
     # own MOUSEWHEEL handling those four don't need.
     RUN_HISTORY = auto()
     UNLOCKS = auto()
+    # A read-only browser of every relic/boss relic/curse/potion/commander/
+    # elite affix and what it does (ui.compendium_rows) -- K from MENU.
+    COMPENDIUM = auto()
     # Reached from a button on HELP, not a new top-level menu key (see
     # ui.RUN_GUIDE_ENTRY_BUTTON_WIDTH's own comment) -- a run-loop/status-
     # effect explainer deepening HELP's own controls-only reference. Esc
@@ -268,6 +271,8 @@ class Game:
         self.unlocks_state = meta_progression.load_meta_progression(self.meta_progression_path)
         self.unlocks_scroll_offset = 0
         self.unlocks_back_rect = ui.build_unlocks_back_rect()
+        self.compendium_rows = []
+        self.compendium_scroll_offset = 0
         # The active roguelike run, or None outside of one (classic/
         # Practice play, a map-editor playtest -- a Daily Run is still a
         # real run, see _start_daily_challenge). Same reset-inside-
@@ -2070,6 +2075,19 @@ class Game:
 
     def _scroll_unlocks(self, wheel_y):
         return self.input_handler._scroll_unlocks(wheel_y)
+
+    def _enter_compendium(self):
+        """Built on entry (wrapping needs the live font), reopened scrolled
+        to the top like every other list screen."""
+        self.compendium_rows = ui.compendium_rows(self.small_font)
+        self.compendium_scroll_offset = 0
+        self.state = GameState.COMPENDIUM
+
+    def _handle_compendium_click(self, pos):
+        return self.input_handler._handle_static_screen_back_click(pos, self.unlocks_back_rect)
+
+    def _scroll_compendium(self, wheel_y):
+        return self.input_handler._scroll_compendium(wheel_y)
 
     # --- Help / How to Play ---
 

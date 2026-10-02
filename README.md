@@ -152,7 +152,9 @@ a Shop ("Remove a curse", once per visit) or at the Cleansing Spring event.
 From the main **menu**: press any other key to start a new run (see "Runs" above), `E` opens the
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen, `D` starts today's Daily Run, `B` opens
-the Credits screen, and `C` (shown only when one exists) continues a saved in-progress run.
+the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Compendium** (every
+relic, boss relic, curse, potion, commander, and elite affix with what it does), and `C` (shown only
+when one exists) continues a saved in-progress run.
 
 During a run's fight, `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
 sidebar).

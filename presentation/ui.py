@@ -27,6 +27,7 @@ from progression.meta_progression import (
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
+from run.elite_affixes import AFFIXES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
@@ -1710,6 +1711,7 @@ MENU_KEY_HINTS = [
     ("b", "Credits"),
     ("r", "Run History"),
     ("u", "Unlocks"),
+    ("k", "Compendium"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -2352,6 +2354,72 @@ def draw_unlocks_screen(surface, font, small_font, unlocked_keys, counters, scro
         if scroll_offset < max_scroll:
             more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
             surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, UNLOCKS_BOTTOM - 4)))
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
+
+
+# --- Compendium screen ---
+#
+# Every piece of run content and what it does, grouped -- shares the
+# Unlocks screen's own scrolling list layout (UNLOCKS_* constants, its back
+# button and list_max_scroll), since it's the same shape of screen.
+
+COMPENDIUM_NAME_X = 60
+COMPENDIUM_DETAIL_X = 300
+COMPENDIUM_TEXT_WIDTH = settings.SCREEN_WIDTH - COMPENDIUM_DETAIL_X - 40
+
+
+def compendium_rows(small_font):
+    """[(kind, name, detail), ...] -- one row per line: a "header" row
+    (name is the section title), or an "entry" row (name on its first
+    line only, then one wrapped line of its description per row) -- built
+    from the live registries, so new content shows up here with no change
+    to this screen."""
+    sections = [
+        ("Relics", [(r.display_name, r.description) for r in RELICS.values()
+                    if not r.is_curse and not r.is_boss_relic]),
+        ("Boss relics", [(r.display_name, r.description) for r in RELICS.values() if r.is_boss_relic]),
+        ("Curses", [(r.display_name, r.description) for r in RELICS.values() if r.is_curse]),
+        ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
+        ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
+        ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
+    ]
+    rows = []
+    for title, entries in sections:
+        rows.append(("header", f"{title} ({len(entries)})", ""))
+        for name, description in entries:
+            for index, line in enumerate(_wrap_text(description, small_font, COMPENDIUM_TEXT_WIDTH)):
+                rows.append(("entry", name if index == 0 else "", line))
+    return rows
+
+
+def draw_compendium_screen(surface, font, small_font, rows, scroll_offset, back_rect):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Compendium", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    viewport = pygame.Rect(0, UNLOCKS_ROWS_TOP, settings.SCREEN_WIDTH, UNLOCKS_ROWS_BOTTOM - UNLOCKS_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+    y = UNLOCKS_ROWS_TOP - scroll_offset
+    for kind, name, detail in rows:
+        if pygame.Rect(0, y, settings.SCREEN_WIDTH, UNLOCKS_ROW_HEIGHT).colliderect(viewport):
+            if kind == "header":
+                surface.blit(font.render(name, True, settings.COLOR_TEXT), (COMPENDIUM_NAME_X, y))
+            else:
+                surface.blit(small_font.render(name, True, settings.COLOR_GOLD), (COMPENDIUM_NAME_X, y))
+                surface.blit(small_font.render(detail, True, settings.COLOR_TEXT_DIM), (COMPENDIUM_DETAIL_X, y))
+        y += UNLOCKS_ROW_HEIGHT
+    surface.set_clip(previous_clip)
+
+    max_scroll = unlocks_max_scroll(len(rows))
+    if scroll_offset < max_scroll:
+        more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, UNLOCKS_BOTTOM - 4)))
+    if scroll_offset > 0:
+        more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, UNLOCKS_TOP + 4)))
 
     _draw_back_to_menu_button(surface, small_font, back_rect)
     _draw_escape_hint(surface, small_font)
