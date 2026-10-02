@@ -33,8 +33,9 @@ from run.commanders import COMMANDERS, DEFAULT_COMMANDER
 from run.difficulty import DIFFICULTY_MODES
 from run.potions import POTIONS
 from run.relics import RELICS
-from run.run_map import ACT_COUNT, NODE_TYPES, MapNode, RunMap
+from run.run_map import ACT_COUNT, COLS, NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
+from support import settings
 from world.levels import LEVELS
 
 # Bumped from 1 -- the "run" blob's own shape changed (floor_sequence/
@@ -235,6 +236,57 @@ def load_run(path=SAVE_PATH):
     return load_json_with_fallback(path, _parse_and_validate_save, lambda: None)
 
 
+def _require_int(value, name, minimum=None, maximum=None):
+    """Raise ValueError unless `value` is a plain int (never a bool, float
+    or anything JSON could otherwise hand back) within [minimum, maximum]
+    -- every numeric save field is read straight into arithmetic, list
+    indexing or a pygame.Rect later, so a wrong type or a wild value there
+    would otherwise crash mid-play instead of reading as "nothing to
+    resume" here."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"saved {name} {value!r} is not an integer")
+    if (minimum is not None and value < minimum) or (maximum is not None and value > maximum):
+        raise ValueError(f"saved {name} {value!r} is out of range")
+
+
+def _require_number(value, name, minimum=None):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"saved {name} {value!r} is not a number")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"saved {name} {value!r} is out of range")
+
+
+def _require_bool(value, name):
+    if not isinstance(value, bool):
+        raise TypeError(f"saved {name} {value!r} is not a boolean")
+
+
+def _require_str_list(value, name):
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise TypeError(f"saved {name} {value!r} is not a list of strings")
+
+
+# Generous sanity ceiling for counts/currency -- far beyond anything real
+# play reaches, low enough that nothing downstream overflows.
+_SANE_MAX = 10**7
+
+
+def _validate_tower_data(tower_data):
+    max_anchor_col = settings.GRID_COLS * settings.SUBTILES_PER_TILE
+    max_anchor_row = settings.GRID_ROWS * settings.SUBTILES_PER_TILE
+    _require_int(tower_data["anchor_col"], "tower anchor_col", 0, max_anchor_col)
+    _require_int(tower_data["anchor_row"], "tower anchor_row", 0, max_anchor_row)
+    tower_cls = TOWER_TYPES[tower_data["type"]]
+    _require_int(tower_data["level"], "tower level", 1, tower_cls.MAX_LEVEL)
+    specialization = tower_data["specialization"]
+    if specialization is not None and specialization not in tower_cls.SPECIALIZATIONS:
+        raise ValueError(f"saved tower specialization {specialization!r} is not one of its own")
+    _require_bool(tower_data.get("forged", False), "tower forged")
+    for stat in ("shots_fired", "shots_hit", "kills"):
+        _require_int(tower_data.get(stat, 0), f"tower {stat}", 0)
+    _require_number(tower_data.get("damage_dealt", 0.0), "tower damage_dealt", 0)
+
+
 def _parse_and_validate_save(data):
     """The `transform` half of load_run()'s load_json_with_fallback() call
     -- converts the level blob to a live Level and raises ValueError (one
@@ -246,8 +298,12 @@ def _parse_and_validate_save(data):
     data["level"] = level_from_dict(data["level"])
     if data["wave_state"] not in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES):
         raise ValueError(f"saved run's wave_state {data['wave_state']!r} is not resumable")
-    if not 0 <= data["wave_index"] < len(data["level"].wave_specs):
-        raise ValueError("saved run's wave_index is out of range for its own level")
+    _require_int(data["wave_index"], "wave_index", 0, len(data["level"].wave_specs) - 1)
+    _require_int(data["gold"], "gold", 0, _SANE_MAX)
+    _require_int(data["lives"], "lives", 0, _SANE_MAX)
+    _require_number(data["between_wave_timer"], "between_wave_timer", 0)
+    _require_bool(data["endless"], "endless")
+    _require_bool(data["sandbox"], "sandbox")
     # Game._load_level_object() indexes DIFFICULTY_MODES with this directly
     # (for a run-less save -- a run's own difficulty is checked in
     # _parse_and_validate_active_run below), so an unknown key would
@@ -263,6 +319,7 @@ def _parse_and_validate_save(data):
         # first time that tower has an enemy in range.
         if tower_data["targeting_mode"] not in Tower.TARGETING_MODES:
             raise ValueError(f"saved run references an unrecognized targeting mode {tower_data['targeting_mode']!r}")
+        _validate_tower_data(tower_data)
     run_data = data.get("run")  # absent (older save) and explicit None both mean "no active run"
     data["run"] = _parse_and_validate_active_run(run_data) if run_data is not None else None
     return data
@@ -284,6 +341,41 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     the way back to "nothing to resume" -- see this module's own docstring
     and CLAUDE.md's run-loop section for why a clean break, not a
     migration, is the right call here."""
+    _require_int(run_data["seed"], "run seed")
+    _require_int(run_data["lives"], "run lives", 0, _SANE_MAX)
+    _require_int(run_data.get("shop_currency", 0), "run shop_currency", 0, _SANE_MAX)
+    _require_int(run_data.get("ascension", 0), "run ascension", 0, MAX_ASCENSION)
+    _require_int(run_data.get("act", 0), "run act", 0, ACT_COUNT - 1)
+    _require_int(run_data.get("floors_cleared_prior_acts", 0), "run floors_cleared_prior_acts", 0, _SANE_MAX)
+    _require_int(run_data.get("endless_waves_cleared", 0), "run endless_waves_cleared", 0, _SANE_MAX)
+    for flag in ("is_daily", "has_spent_gold", "used_guardians_reprieve", "used_emergency_reserves"):
+        _require_bool(run_data[flag], f"run {flag}")
+    for flag in ("boss_defeated", "reward_pending", "blessing_pending"):
+        _require_bool(run_data.get(flag, False), f"run {flag}")
+    if "lives_captured" in run_data:
+        _require_bool(run_data["lives_captured"], "run lives_captured")
+    for field_name in ("unlocked_towers", "relics", "visited_node_ids"):
+        _require_str_list(run_data[field_name], f"run {field_name}")
+    for field_name in ("potions", "forged_towers"):
+        _require_str_list(run_data.get(field_name, []), f"run {field_name}")
+    if run_data["current_node_id"] is not None and not isinstance(run_data["current_node_id"], str):
+        raise TypeError("saved run's current_node_id is not a string")
+    if not isinstance(run_data["map"]["rows"], list) or not run_data["map"]["rows"]:
+        raise TypeError("saved run's map has no rows")
+    for row_index, row in enumerate(run_data["map"]["rows"]):
+        if not isinstance(row, list) or not row:
+            raise TypeError("saved run's map has an empty or malformed row")
+        for node_data in row:
+            if not isinstance(node_data["id"], str):
+                raise TypeError("saved run's map has a node with a non-string id")
+            _require_int(node_data["row"], "map node row", row_index, row_index)
+            _require_int(node_data["col"], "map node col", 0, COLS - 1)
+            if node_data["node_type"] in ("combat", "elite", "boss") and node_data["level_id"] is None:
+                raise ValueError("saved run's map has a fight node with no level")
+    if not isinstance(run_data["map"]["edges"], dict):
+        raise TypeError("saved run's map edges are malformed")
+    for target_ids in run_data["map"]["edges"].values():
+        _require_str_list(target_ids, "map edge targets")
     node_ids = {node_data["id"] for row in run_data["map"]["rows"] for node_data in row}
     for row in run_data["map"]["rows"]:
         for node_data in row:
@@ -311,6 +403,12 @@ def _parse_and_validate_active_run(run_data, at_map=False):
         raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
     elif current_node["node_type"] not in ("combat", "elite", "boss"):
         raise ValueError(f"saved run's current node is a {current_node['node_type']!r} node, not resumable mid-PLAYING")
+    # A pending reward belongs to the cleared fight the run is standing on.
+    if run_data.get("reward_pending", False) and (
+        current_node is None or current_node["node_type"] not in ("combat", "elite", "boss")
+        or run_data["current_node_id"] not in run_data["visited_node_ids"]
+    ):
+        raise ValueError("saved run has a pending reward but isn't standing on a cleared fight")
     for node_id in run_data["visited_node_ids"]:
         if node_id not in node_ids:
             raise ValueError(f"saved run's visited_node_ids references an unrecognized node id {node_id!r}")
@@ -325,10 +423,6 @@ def _parse_and_validate_active_run(run_data, at_map=False):
             raise ValueError(f"saved run's forged_towers references an unrecognized tower type {tower_name!r}")
     if run_data.get("commander", DEFAULT_COMMANDER) not in COMMANDERS:
         raise ValueError(f"saved run's commander {run_data['commander']!r} is not a known commander")
-    if not 0 <= run_data.get("act", 0) < ACT_COUNT:
-        raise ValueError(f"saved run's act {run_data['act']!r} is out of range")
-    if not 0 <= run_data.get("ascension", 0) <= MAX_ASCENSION:
-        raise ValueError(f"saved run's ascension {run_data['ascension']!r} is out of range")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")
