@@ -84,6 +84,9 @@ class Tower:
     # "path" -- a trap, built on a whole path tile (see Game.placement_
     # anchor_at/_is_buildable_for, and Grid.is_buildable's on_path).
     PLACEMENT = "ground"
+    # A dead zone: enemies closer than this can't be targeted (the Mortar's
+    # high arc). 0 for every ordinary tower.
+    MIN_RANGE = 0
     # What a veterancy rank improves, for the stats panel ("+12% dmg").
     VETERANCY_BONUS_LABEL = "dmg"
     VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
@@ -760,6 +763,7 @@ class Tower:
             e for e in pool
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
             and (self.can_target_flying or not getattr(e, "is_flying", False))
+            and (not self.MIN_RANGE or self.pos.distance_to(e.pos) >= self.MIN_RANGE)
         ]
         if not candidates:
             return None
@@ -1655,6 +1659,46 @@ class BeaconTower(Tower):
         )
 
 
+class MortarTower(Tower):
+    """Lobs heavy shells a long way -- but its high arc can't hit anything
+    closer than MIN_RANGE, so it wants to sit back from the path, not on
+    it. Big, slow splash; ground enemies only."""
+    MIN_RANGE = 80
+    cost = 120
+    range = 230
+    damage = 20
+    fire_rate = 0.35
+    projectile_speed = 200.0
+    splash_radius = 60
+    can_target_flying = False
+    sprite_name = "tower_mortar"
+    display_name = "Mortar"
+    EXTRA_STATS = (
+        ("Splash radius", "splash_radius", _format_px),
+        ("Dead zone", "MIN_RANGE", _format_px),
+    )
+    SPECIALIZATIONS = {
+        "cluster_shells": {
+            "display_name": "Cluster Shells",
+            "description": "A much wider blast.",
+            "stat_multipliers": {"splash_radius": 1.5},
+        },
+        "rapid_battery": {
+            "display_name": "Rapid Battery",
+            "description": "Fires far more often.",
+            "stat_multipliers": {"fire_rate": 1.5},
+        },
+    }
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(),
+            splash_radius=self.splash_radius * self.relic_splash_radius_bonus_multiplier,
+            sprite_name="projectile_mortar", source=self,
+        )
+
+
 class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
@@ -2027,6 +2071,7 @@ TOWER_TYPES = {
     "beam": BeamTower,
     "beacon": BeaconTower,
     "overload_cannon": OverloadCannonTower,
+    "mortar": MortarTower,
     "spike_trap": SpikeTrapTower,
     "tar_pit": TarPitTower,
 }
