@@ -232,6 +232,7 @@ def test_hud_gold_lives_wave_text_fits_before_the_play_area_edge():
     worst_case_lines = [
         "Gold: unlimited   Shop: 999",
         "Wave 6/6 -- Boss defeated!",
+        "Wave 999 -- Endless +999",
         "Wave 3/3   Act 3  Floor 6/6",  # a run's own floor_label, see Renderer
     ]
     for line in worst_case_lines:

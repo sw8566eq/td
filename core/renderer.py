@@ -305,6 +305,7 @@ class Renderer:
             floor_label=floor_label,
             boss_defeated=game.active_run.boss_defeated if game.active_run is not None else False,
             forged_towers=game.active_run.forged_towers if game.active_run is not None else (),
+            endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
         )
         if game._show_first_placement_hint and not game.towers:
             ui.draw_first_placement_hint(game.screen, game.small_font)
