@@ -718,6 +718,9 @@ class InputHandler:
         if game.shop_remove_curse_rect.collidepoint(pos):
             game._try_remove_curse()
             return
+        if game.shop_module_rect.collidepoint(pos):
+            game._try_buy_shop_module()
+            return
         if game.shop_potion_rect.collidepoint(pos):
             game._try_buy_shop_potion()
             return

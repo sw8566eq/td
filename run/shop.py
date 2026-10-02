@@ -44,6 +44,11 @@ CURSE_REMOVAL_PRICE = 12
 # cards are unchanged. Like curse removal it sits outside the card row, so
 # it never escalates with PRICE_ESCALATION.
 POTION_PRICE = 6
+# The Shop's module stand (Game._try_buy_shop_module): one module, paired
+# with one of the run's tower types, per visit -- rolled last from the
+# visit's rng so existing seeds' cards and potion are unchanged. Outside
+# the card row, so never escalated by PRICE_ESCALATION.
+MODULE_PRICE = 9
 
 # Each purchase within the same shop visit costs 50% more than the last --
 # price_for() applies this against however many items this visit has

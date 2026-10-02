@@ -307,6 +307,11 @@ class Game:
         # The Shop's potion stand (see _try_buy_shop_potion) -- this visit's
         # one potion, rolled by _enter_shop_node.
         self.shop_potion_rect = ui.build_shop_potion_rect()
+        # The Shop's module stand (see _try_buy_shop_module) -- this visit's
+        # one (module, tower type) offer, or None.
+        self.shop_module_rect = ui.build_shop_module_rect()
+        self.shop_module = None
+        self.shop_module_bought = False
         self.shop_potion = None
         self.shop_potion_bought = False
 
@@ -1010,7 +1015,7 @@ class Game:
         self.reward = rewards.build_combat_reward(
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
             tower_count=tower_count, is_boss=node.node_type == "boss",
-            damaging_types=frozenset(name for name, cls in TOWER_TYPES.items() if not cls.IS_SUPPORT),
+            damaging_types=self._damaging_tower_types(),
         )
         if self.reward.is_empty:
             self._leave_reward_screen()
@@ -1280,6 +1285,8 @@ class Game:
         self.draft_choices = shop.build_offer(rng, run, meta_progression_path=self.meta_progression_path)
         self.shop_potion = potions.random_potion(rng)
         self.shop_potion_bought = False
+        self.shop_module = modules.module_offer(rng, run, self._damaging_tower_types())
+        self.shop_module_bought = False
         # Skipped only when nothing at all is on offer: no cards, no curse
         # to lift, and no room for the potion stand's potion.
         if not self.draft_choices and not relics.held_curses(run) and not potions.has_free_slot(run):
@@ -1321,6 +1328,29 @@ class Game:
             run.unlocked_towers.append(item.key)
             self.audio.play("tower_unlocked_shop")
         self.shop_purchased_indices.add(index)
+
+    def _damaging_tower_types(self):
+        return frozenset(name for name, cls in TOWER_TYPES.items() if not cls.IS_SUPPORT)
+
+    def _shop_module_price(self):
+        return round(shop.MODULE_PRICE * self._shop_price_multiplier())
+
+    def _can_buy_shop_module(self):
+        """Shared by _try_buy_shop_module and the renderer."""
+        run = self.active_run
+        return (self.shop_module is not None and not self.shop_module_bought
+                and shop.can_afford(run.shop_currency, self._shop_module_price(), self.economy.unlimited_gold))
+
+    def _try_buy_shop_module(self):
+        if not self._can_buy_shop_module():
+            return
+        if not self.economy.unlimited_gold:
+            self.active_run.shop_currency -= self._shop_module_price()
+        module_key, tower_name = self.shop_module
+        self.active_run.tower_modules[tower_name] = module_key
+        self.shop_module_bought = True
+        self._record_achievement("modules_fitted")
+        self.audio.play("tower_upgraded")
 
     def _shop_potion_price(self):
         return round(shop.POTION_PRICE * self._shop_price_multiplier())
