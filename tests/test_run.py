@@ -3584,3 +3584,12 @@ def test_ordinary_runs_get_no_daily_modifiers(game):
 
     game.start_new_run(seed=20261002)
     assert not any(RELICS[key].is_curse or RELICS[key].is_boss_relic for key in game.active_run.relics)
+
+
+def test_map_relics_key_follows_the_remapped_binding(game):
+    _begin_run_with_map(game, ["combat", "combat"])
+    game.rebind_action("open_relics", pygame.K_t, 0)
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.MAP
+    game._handle_keydown(pygame.K_t)
+    assert game.state == GameState.RELICS
