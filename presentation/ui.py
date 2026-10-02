@@ -2163,6 +2163,32 @@ def run_history_entries(best_floors_cleared):
     return sorted(best_floors_cleared.items(), key=lambda item: item[1], reverse=True)
 
 
+def run_history_lines(best_floors_cleared, records):
+    """One display line per row of the Run History screen: every recorded
+    run, newest first, with its commander/ascension/act (run_history.
+    load_run_records) -- or, for history written before runs were
+    recorded individually, the old per-seed best (run_history_entries)."""
+    if not records:
+        return [
+            f"Seed {seed} -- {floors} floor{'' if floors == 1 else 's'} cleared"
+            for seed, floors in run_history_entries(best_floors_cleared)
+        ]
+    lines = []
+    for number, record in zip(range(len(records), 0, -1), records):
+        commander = COMMANDERS.get(record.get("commander"))
+        floors = record.get("floors_cleared", 0)
+        parts = [f"#{number}", commander.display_name if commander else "Unknown",
+                 f"Act {record.get('act', 1)}", f"{floors} floor{'' if floors == 1 else 's'}"]
+        if record.get("ascension"):
+            parts.insert(2, f"A{record['ascension']}")
+        if record.get("final_boss_defeated"):
+            parts.append("final boss slain")
+        if record.get("daily"):
+            parts.append("Daily")
+        lines.append("  --  ".join(parts))
+    return lines
+
+
 def run_history_max_scroll(entry_count):
     return list_max_scroll(
         entry_count, RUN_HISTORY_ROW_HEIGHT, 0, RUN_HISTORY_ROWS_TOP, RUN_HISTORY_ROWS_BOTTOM,
@@ -2175,17 +2201,15 @@ def build_run_history_back_rect():
     return pygame.Rect(x, y, RUN_HISTORY_BACK_BUTTON_WIDTH, RUN_HISTORY_BACK_BUTTON_HEIGHT)
 
 
-def draw_run_history_screen(surface, font, small_font, best_floors_cleared, scroll_offset, back_rect):
-    """`best_floors_cleared` is run_history.load_run_history()'s own
-    return value -- read fresh whenever this screen is (re-)entered (see
-    Game._enter_run_history()), same "always re-read" spirit
-    _enter_achievements() already follows."""
+def draw_run_history_screen(surface, font, small_font, lines, scroll_offset, back_rect):
+    """`lines` is run_history_lines()'s own return value, built from the
+    file read fresh whenever this screen is (re-)entered (see Game.
+    _enter_run_history())."""
     surface.fill(settings.COLOR_BG)
     title = font.render("Run History", True, settings.COLOR_TEXT)
     surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
 
-    entries = run_history_entries(best_floors_cleared)
-    if not entries:
+    if not lines:
         hint = small_font.render("No runs played yet.", True, settings.COLOR_TEXT_DIM)
         surface.blit(hint, hint.get_rect(center=(settings.SCREEN_WIDTH // 2, RUN_HISTORY_ROWS_TOP + 20)))
 
@@ -2194,18 +2218,16 @@ def draw_run_history_screen(surface, font, small_font, best_floors_cleared, scro
     surface.set_clip(viewport)
 
     y = RUN_HISTORY_ROWS_TOP - scroll_offset
-    for seed, floors_cleared in entries:
+    for line in lines:
         row_rect = pygame.Rect(0, y, settings.SCREEN_WIDTH, RUN_HISTORY_ROW_HEIGHT)
         if row_rect.colliderect(viewport):
-            plural = "" if floors_cleared == 1 else "s"
-            line = f"Seed {seed} -- {floors_cleared} floor{plural} cleared"
             text = small_font.render(line, True, settings.COLOR_TEXT)
             surface.blit(text, text.get_rect(midtop=(settings.SCREEN_WIDTH // 2, y)))
         y += RUN_HISTORY_ROW_HEIGHT
 
     surface.set_clip(previous_clip)
 
-    max_scroll = run_history_max_scroll(len(entries))
+    max_scroll = run_history_max_scroll(len(lines))
     if max_scroll > 0:
         if scroll_offset > 0:
             more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)

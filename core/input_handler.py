@@ -869,7 +869,7 @@ class InputHandler:
 
     def _scroll_run_history(self, wheel_y):
         game = self.game
-        entry_count = len(game.run_history_state)
+        entry_count = len(ui.run_history_lines(game.run_history_state, game.run_history_records))
         max_scroll = ui.run_history_max_scroll(entry_count)
         game.run_history_scroll_offset = self._scroll_list(
             wheel_y, game.run_history_scroll_offset, max_scroll, ui.RUN_HISTORY_SCROLL_STEP,

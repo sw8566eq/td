@@ -85,7 +85,8 @@ class Renderer:
         if game.state == GameState.RUN_HISTORY:
             ui.draw_run_history_screen(
                 game.screen, game.font, game.small_font,
-                game.run_history_state, game.run_history_scroll_offset, game.run_history_back_rect,
+                ui.run_history_lines(game.run_history_state, game.run_history_records),
+                game.run_history_scroll_offset, game.run_history_back_rect,
             )
             pygame.display.flip()
             return
