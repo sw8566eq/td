@@ -172,3 +172,25 @@ def test_the_panel_and_build_menu_show_veterancy(game):
     assert game.renderer._veterancy_line(None) is None
     game.selected_tower = tower
     game.render()
+
+
+def test_floor_cleared_screen_summarizes_experience(game):
+    from presentation import ui
+
+    assert ui.veterancy_summary_line([]) is None
+    assert ui.veterancy_summary_line([("basic", 0.2, None)]) is None
+    line = ui.veterancy_summary_line([("basic", 12, None), ("cannon", 40, 2), ("frost", 5, None), ("poison", 1, None)])
+    assert line == "Experience: Cannon +40 (Seasoned!), Basic +12, Frost +5"
+    start_first_floor(game, seed=1)
+    _place(game).kills = 30
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    assert game.floor_veterancy_gains == [("basic", 30, 1)]
+    game.render()
+
+
+def test_a_tower_built_before_a_promotion_says_new_ones_are_stronger(game):
+    run = start_first_floor(game, seed=1)
+    tower = _place(game)
+    run.tower_xp["basic"] = veterancy.RANKS[0].xp_required
+    assert game.renderer._veterancy_line(tower) == "Recruit, new ones Blooded"

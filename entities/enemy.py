@@ -98,8 +98,10 @@ class Enemy:
 
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
-        # Set fresh every frame by Game: True while a Barricade holds it in place.
+        # Set fresh every frame by Game: True while a Barricade holds it in
+        # place, and the extra damage it takes meanwhile (an Ambush relic).
         self.held = False
+        self.held_damage_multiplier = 1.0
         self.distance_traveled = 0.0
         self.is_dead = False
         self.reached_goal = False
@@ -207,7 +209,7 @@ class Enemy:
         # after that absorption, never before it; SplitterEnemy calls
         # super().take_damage() first, unmodified, so its split-on-death
         # logic is indifferent to the exact number Mark produces.
-        amount *= self.mark_damage_multiplier * self.damage_taken_multiplier
+        amount *= self.mark_damage_multiplier * self.damage_taken_multiplier * self.held_damage_multiplier
         if self.is_dead or self.reached_goal:
             return 0.0
         self.damage_events.append(amount)

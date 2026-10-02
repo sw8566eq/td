@@ -562,6 +562,9 @@ class Relic:
     structure_hp_multiplier: float = 1.0
     dead_zone_multiplier: float = 1.0
     module_fire_rate_bonus: float = 0.0
+    # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
+    # damage_multiplier, set by Game._hold_enemies_at_barricades).
+    held_damage_multiplier: float = 1.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1105,6 +1108,10 @@ RELICS = {
     "quick_release_mounts": Relic(
         "quick_release_mounts", "Quick-Release Mounts", "Towers whose type has a module fitted fire 10% faster.",
         module_fire_rate_bonus=0.10,
+    ),
+    "ambush": Relic(
+        "ambush", "Ambush", "Enemies held at a Barricade take 25% more damage from everything.",
+        held_damage_multiplier=1.25,
     ),
     # --- Placement relics -- see Relic.variety_damage_bonus_per_type. ---
     "combined_arms": Relic(

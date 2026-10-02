@@ -32,6 +32,7 @@ from run.modules import MODULES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
+from run.veterancy import RANKS as VETERANCY_RANKS
 from support import settings
 from world.levels import LEVELS
 
@@ -1741,17 +1742,35 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
 
-def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_count, results=None, act_cleared=None):
+VETERANCY_SUMMARY_LIMIT = 3
+
+
+def veterancy_summary_line(gains):
+    """"Experience: Cannon +40 (Seasoned!), Basic +12" -- the floor's
+    biggest veterancy gains (Game.floor_veterancy_gains: (tower type, xp,
+    new rank or None)), a promotion named; None when nothing was earned."""
+    earned = sorted((gain for gain in gains if round(gain[1]) > 0), key=lambda gain: -gain[1])
+    if not earned:
+        return None
+    parts = []
+    for name, xp, promoted in earned[:VETERANCY_SUMMARY_LIMIT]:
+        part = f"{TOWER_TYPES[name].display_name} +{round(xp)}"
+        if promoted is not None:
+            part += f" ({VETERANCY_RANKS[promoted - 1].name}!)"
+        parts.append(part)
+    return "Experience: " + ", ".join(parts)
+
+
+def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_count, results=None, act_cleared=None,
+                              veterancy_line=None):
     """floor_number/floor_count are 1-based ("Floor 2/6 cleared!") -- the
     run's own equivalent of draw_victory_screen, just without "next
     level"/"play again" framing since advancing goes to the draft screen
     (see draw_draft_screen above) instead of straight back into play."""
     title = (f"Act {act_cleared} cleared!" if act_cleared is not None
              else f"Floor {floor_number}/{floor_count} cleared!")
-    _draw_overlay_with_results(
-        surface, font, small_font, title,
-        "Press any key to continue", settings.COLOR_GOLD, results,
-    )
+    subtitle = [veterancy_line, "Press any key to continue"] if veterancy_line else "Press any key to continue"
+    _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_GOLD, results)
 
 
 def _draw_panel_action_buttons(surface, small_font, subject, economy,
