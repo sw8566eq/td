@@ -1249,9 +1249,10 @@ def test_snipers_discipline_damage_bonus_reaches_a_freshly_placed_tower(game):
     assert tower.relic_fire_rate_bonus_multiplier == RELICS["snipers_discipline"].tower_fire_rate_multiplier
 
 
-def test_veterans_momentum_damage_bonus_grows_with_floor_index(game):
-    _begin_run_with_map(game, ["combat"] * 4)
+def test_veterans_momentum_damage_bonus_grows_with_floors_cleared(game):
+    _begin_run_with_map(game, ["combat", "shop", "combat", "combat"], lives=20, lives_captured=True)
     game.active_run.relics = ["veterans_momentum"]
+    game.active_run.visited_node_ids = ["0-0", "1-0", "2-0"]  # 2 fights cleared + a Shop stop
 
     game._enter_node("3-0")
 
@@ -1261,7 +1262,7 @@ def test_veterans_momentum_damage_bonus_grows_with_floor_index(game):
 
     tower = game.grid.get_tower(anchor_col, anchor_row)
     growth = RELICS["veterans_momentum"].tower_damage_growth_per_floor
-    assert tower.relic_damage_bonus_multiplier == pytest.approx(1.0 + growth * 3)
+    assert tower.relic_damage_bonus_multiplier == pytest.approx(1.0 + growth * 2)  # the Shop row doesn't count
 
 
 def test_venomous_coating_poison_chance_reaches_a_freshly_placed_towers_shots(game):
