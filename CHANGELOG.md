@@ -22,6 +22,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Spell relics and signature spells**: four relics (Arcane Tithe, Runic Resonance, Prepared Grimoire,
   Echo Chamber) and two boss relics (Mana Crystal: +1 energy; Grand Grimoire: +1 card per hand) build
   around the deck, and every Commander starts with one signature spell on top of the starter deck.
+- Four spell **Events**: Ancient Library, Hermit Mage, Purifying Flame, Wild Surge. The Event screen's
+  status line shows your deck size.
 - **Post-combat rewards**, Slay the Spire style: every cleared Combat/Elite floor now opens a
   "Spoils of battle" screen offering up to 3 tower cards -- take one for free, or skip. Elite floors
   also drop a free relic.
