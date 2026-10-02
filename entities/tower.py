@@ -414,6 +414,8 @@ class Tower:
         # construction by Game._construct_tower via apply_veterancy().
         self.veterancy_rank = 0
         self.veterancy_damage_bonus = 0.0
+        # A fitted module's damage bonus (run/modules.py) -- set at construction.
+        self.module_damage_bonus = 0.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -861,6 +863,7 @@ class Tower:
             + (self.relic_tower_density_bonus_multiplier - 1.0)
             + self._relic_family_damage_bonus()
             + self.veterancy_damage_bonus
+            + self.module_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):

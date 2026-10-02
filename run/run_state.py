@@ -120,6 +120,8 @@ class RunState:
     # Veterancy experience per tower type (run/veterancy.py) -- earned at
     # every floor clear, read at every tower construction.
     tower_xp: dict[str, float] = field(default_factory=dict)
+    # Module fitted to each tower type (run/modules.py) -- one slot per type.
+    tower_modules: dict[str, str] = field(default_factory=dict)
     # This run's Ascension level (run/ascension.py), snapshotted at
     # start_new_run and never changed mid-run.
     ascension: int = 0

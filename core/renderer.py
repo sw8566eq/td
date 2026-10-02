@@ -37,7 +37,7 @@ import pygame
 
 from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES
 from presentation import ui
-from run import potions, relics, shop, veterancy
+from run import modules, potions, relics, shop, veterancy
 from support import settings
 
 
@@ -323,6 +323,7 @@ class Renderer:
             game.upgrade_button_rect, game.specialize_button_rects, game.sell_button_rect,
             game._hovered_specialize_key(panel_subject),
             veterancy_line=self._veterancy_line(panel_subject),
+            module_line=self._module_line(panel_subject),
         )
         if game.active_run is not None:
             ui.draw_potion_belt(
@@ -379,6 +380,15 @@ class Renderer:
         run = self.game.active_run
         return (f"Lives: {run.lives}   Shop currency: {round(run.shop_currency)}   "
                 f"Potions: {len(run.potions)}/{potions.slot_count(run)}   Relics: {len(run.relics)}")
+
+    def _module_line(self, subject):
+        """"Module: <name>" for `subject`'s tower type, if one is fitted this run."""
+        run = self.game.active_run
+        if run is None or subject is None:
+            return None
+        tower_cls = subject if inspect.isclass(subject) else type(subject)
+        module_key = run.tower_modules.get(TOWER_TYPE_NAMES[tower_cls])
+        return f"Module: {modules.MODULES[module_key].display_name}" if module_key else None
 
     def _veterancy_line(self, subject):
         """The stats panel's veterancy readout for `subject` (a tower class

@@ -24,6 +24,7 @@ from run import (
     difficulty,
     elite_affixes,
     events,
+    modules,
     potions,
     relics,
     rewards,
@@ -1009,6 +1010,7 @@ class Game:
         self.reward = rewards.build_combat_reward(
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
             tower_count=tower_count, is_boss=node.node_type == "boss",
+            damaging_types=frozenset(name for name, cls in TOWER_TYPES.items() if not cls.IS_SUPPORT),
         )
         if self.reward.is_empty:
             self._leave_reward_screen()
@@ -1027,6 +1029,8 @@ class Game:
         cards.extend(("forge", name) for name in self.reward.forge_choices)
         if self.reward.relic is not None:
             cards.append(("relic", self.reward.relic))
+        if self.reward.module is not None:
+            cards.append(("module", self.reward.module))
         cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
         if self.reward.potion is not None:
             cards.append(("potion", self.reward.potion))
@@ -1102,6 +1106,11 @@ class Game:
             self.audio.play("tower_upgraded")
         elif kind in ("relic", "boss_relic"):
             self._grant_relic(key)
+        elif kind == "module":
+            module_key, tower_name = key
+            self.active_run.tower_modules[tower_name] = module_key
+            self._record_achievement("modules_fitted")
+            self.audio.play("tower_upgraded")
         else:
             self.active_run.potions.append(key)
             self.audio.play("relic_acquired")
@@ -2517,6 +2526,9 @@ class Game:
         tower.relic_cannon_projectile_speed_bonus_multiplier = self.relic_modifiers.cannon_projectile_speed_multiplier
         if self.active_run is not None:
             self._apply_veterancy(tower, TOWER_TYPE_NAMES[tower_cls])
+            module_key = self.active_run.tower_modules.get(TOWER_TYPE_NAMES[tower_cls])
+            if module_key is not None:
+                modules.apply_module(tower, modules.MODULES[module_key])
         return tower
 
     def veterancy_rank(self, tower_name):

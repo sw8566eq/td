@@ -31,6 +31,7 @@ from persistence.persistence import level_from_dict, level_to_dict
 from run.ascension import MAX_ASCENSION
 from run.commanders import COMMANDERS, DEFAULT_COMMANDER
 from run.difficulty import DIFFICULTY_MODES
+from run.modules import MODULES
 from run.potions import POTIONS
 from run.relics import RELICS
 from run.run_map import ACT_COUNT, COLS, NODE_TYPES, MapNode, RunMap
@@ -126,6 +127,7 @@ def _run_to_dict(run):
         "potions": list(run.potions),
         "forged_towers": list(run.forged_towers),
         "tower_xp": dict(run.tower_xp),
+        "tower_modules": dict(run.tower_modules),
         "ascension": run.ascension,
         "act": run.act,
         "commander": run.commander,
@@ -160,6 +162,7 @@ def _run_from_dict(data):
         potions=list(data.get("potions", [])),
         forged_towers=list(data.get("forged_towers", [])),
         tower_xp=dict(data.get("tower_xp", {})),
+        tower_modules=dict(data.get("tower_modules", {})),
         ascension=data.get("ascension", 0),
         act=data.get("act", 0),
         commander=data.get("commander", DEFAULT_COMMANDER),
@@ -433,6 +436,12 @@ def _parse_and_validate_active_run(run_data, at_map=False):
             raise ValueError(f"saved run's tower_xp references an unrecognized tower type {tower_name!r}")
         if isinstance(xp, bool) or not isinstance(xp, (int, float)) or not 0 <= xp <= _SANE_MAX:
             raise ValueError(f"saved run's tower_xp for {tower_name!r} is not a sane number")
+    tower_modules = run_data.get("tower_modules", {})
+    if not isinstance(tower_modules, dict):
+        raise TypeError("saved run's tower_modules is not a mapping")
+    for tower_name, module_key in tower_modules.items():
+        if tower_name not in TOWER_TYPES or module_key not in MODULES:
+            raise ValueError(f"saved run's tower_modules has an unrecognized entry {tower_name!r}: {module_key!r}")
     for potion_key in run_data.get("potions", []):
         if potion_key not in POTIONS:
             raise ValueError(f"saved run's potions references an unrecognized potion {potion_key!r}")
