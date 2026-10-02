@@ -336,6 +336,7 @@ class Game:
         # rest_forged_tower is Smith's pick once made (None after a Rest).
         self.rest_phase = "choose"
         self.rest_heal_amount = 0
+        self.rest_heal_blocked = False
         self.rest_forged_tower = None
         self.rest_option_rects = ui.build_event_option_rects(2)
         self.rest_smith_choices = []
@@ -802,9 +803,10 @@ class Game:
         node = run.map.node(run.current_node_id)
         run.lives = self.economy.lives
         run.visited_node_ids.append(node.id)
-        run.shop_currency += shop.income_for_floor(
-            run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
-        )
+        if not any(relics.RELICS[key].blocks_shop_income for key in run.relics):
+            run.shop_currency += shop.income_for_floor(
+                run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
+            )
         self._record_meta_progress("total_floors_cleared")
         if node.node_type == "boss":
             # An earlier act's boss -- a finite fight (only the last act's
@@ -1298,6 +1300,7 @@ class Game:
         heal_multiplier = ascension.modifiers_for(self.active_run.ascension).rest_heal_multiplier
         depth = self.active_run.depth_of(node.row)
         self.rest_heal_amount = max(1, round(run_map.heal_amount_for_row(depth) * heal_multiplier))
+        self.rest_heal_blocked = any(relics.RELICS[key].blocks_rest_heal for key in self.active_run.relics)
         self.rest_forged_tower = None
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
@@ -1317,6 +1320,8 @@ class Game:
         """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
         tower) -- Smith is a no-op once there's nothing left to forge."""
         if index == 0:
+            if self.rest_heal_blocked:
+                return  # an Overcharged Core-style boss relic forbids it
             self.active_run.lives += self.rest_heal_amount
             self.rest_phase = "resolved"
         elif self.rest_smith_choices:
@@ -1379,7 +1384,8 @@ class Game:
         no longer does -- see relics.py's own module docstring for why its
         starting_gold_multiplier is a normal per-floor RelicModifiers field
         now instead."""
-        self.active_run.lives += relic.starting_lives_bonus
+        # max(1, ...): a negative bonus (Reckless Arsenal) never kills.
+        self.active_run.lives = max(1, self.active_run.lives + relic.starting_lives_bonus)
 
     def _load_level_object(self, level, endless=False, sandbox=False, difficulty_override=None, rng=None,
                             escalation=_DEFAULT_ESCALATION, relic_modifiers=_DEFAULT_RELIC_MODIFIERS,

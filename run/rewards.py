@@ -60,7 +60,7 @@ def build_combat_reward(
     if is_boss:
         # A boss reward is its relic choice plus a guaranteed potion -- no
         # tower cards, keeping the screen to one decision that matters.
-        boss_relics = relics.relic_offer(rng, run, count=BOSS_RELIC_CHOICES, meta_progression_path=meta_progression_path)
+        boss_relics = relics.boss_relic_offer(rng, run, BOSS_RELIC_CHOICES, meta_progression_path=meta_progression_path)
         return CombatReward((), potion=potions.random_potion(rng), boss_relic_choices=tuple(boss_relics))
     tower_choices = card_pool.draft_offer(
         rng, run, count=tower_count, meta_progression_path=meta_progression_path,

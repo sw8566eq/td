@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- **Boss relics**: five powerful relics with real downsides (Overcharged Core, Gilded Ledger, Sealed
+  Cask, Siege Engine, Reckless Arsenal), offered only by act-boss rewards.
 - Two new potions (Smoke Bomb, Venom Vial), three potion relics (Potion Belt, Field Medic Kit,
   Brewmaster's Kit), and an **Ancient Forge** Event that forges a random tower for lives or currency.
 - Potion hotkeys (`Q`/`W`/`E`) and a **potion stand** in every Shop (one potion per visit).

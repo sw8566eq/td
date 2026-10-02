@@ -136,6 +136,12 @@ specifically. Almost none of them are gated behind an account-wide unlock -- see
 full registry and "Meta-progression" below for the handful that are. Press `R` while playing a run
 floor to bring up a read-only overlay of every relic you're currently holding.
 
+**Boss relics** are their own tier, only ever offered when you beat an act's boss: big upsides with a
+real cost attached -- Overcharged Core (+30% damage, but Rest sites can't heal), Gilded Ledger (+60
+gold every floor, but no shop currency from clears), Sealed Cask (+20% fire rate, but no new potions),
+Siege Engine (+25% range, but faster enemies), and Reckless Arsenal (more damage and fire rate, but
+lose 5 lives).
+
 **Curses** are the flip side: relics with only downsides (pricier upgrades, less starting gold,
 shorter range, slower towers, faster enemies, a worse Shop). You never draft one -- a few Events
 offer a bigger-than-usual reward with a curse attached (Forbidden Tome, Gilded Coffer). Lift one at

@@ -168,4 +168,8 @@ def slot_count(run: RunState) -> int:
 
 
 def has_free_slot(run: RunState) -> bool:
+    """Room for one more potion -- never, while a Sealed Cask-style boss
+    relic (Relic.blocks_potions) is held."""
+    if any(RELICS[key].blocks_potions for key in run.relics):
+        return False
     return len(run.potions) < slot_count(run)

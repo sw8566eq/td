@@ -1057,7 +1057,7 @@ def _draw_option_box(surface, small_font, rect, label, description, enabled, hov
 
 
 def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, option_rects, smith_choices,
-                     smith_rects, back_rect, forged_tower, hovered_index):
+                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False):
     """A Rest node's campfire (see Game._enter_rest_node), by `phase`:
     "choose" shows Rest and Smith as two Event-style options; "smith" a
     grid of `smith_choices` tower names to forge, plus Back; "resolved"
@@ -1071,8 +1071,9 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
 
     if phase == "choose":
         can_smith = bool(smith_choices)
-        _draw_option_box(surface, small_font, option_rects[0], "Rest",
-                         f"Recover {heal_amount} lives.", True, hovered_index == 0)
+        rest_text = "A boss relic forbids resting." if heal_blocked else f"Recover {heal_amount} lives."
+        _draw_option_box(surface, small_font, option_rects[0], "Rest", rest_text, not heal_blocked,
+                         hovered_index == 0)
         smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
                       if can_smith else "Every tower you hold is already forged.")
         _draw_option_box(surface, small_font, option_rects[1], "Smith", smith_text, can_smith, hovered_index == 1)
@@ -2474,7 +2475,7 @@ RUN_GUIDE_LINES = [
     "Branching map: pick your path. Won fights offer a free tower, and sometimes a potion.",
     *_RUN_GUIDE_NODE_TYPE_LINES,
     *_RUN_GUIDE_STATUS_LINES,
-    (f"Relics: {sum(not relic.is_curse for relic in RELICS.values())} across Economy/Offense/Status/"
+    (f"Relics: {sum(not relic.is_curse and not relic.is_boss_relic for relic in RELICS.values())} across Economy/Offense/Status/"
      "Defense/Tower-exclusive/Potion categories -- "
      "press R in a run to see what you're holding"),
 ]
