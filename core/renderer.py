@@ -35,7 +35,7 @@ import pygame
 
 from entities.tower import TOWER_TYPES
 from presentation import ui
-from run import relics, shop
+from run import potions, relics, shop
 from support import settings
 
 
@@ -161,7 +161,8 @@ class Renderer:
         # blanket sweep across every GameState), in which case falling
         # through to the normal board/HUD/panel drawing below (with no
         # overlay on top) is fine; crashing on it wouldn't be.
-        if game.state == GameState.MAP and game.active_run is not None:
+        relics_over_map = game.state == GameState.RELICS and game.relics_return_state == GameState.MAP
+        if (game.state == GameState.MAP or relics_over_map) and game.active_run is not None:
             run = game.active_run
             # lives/shop_currency are meaningless before the run's very
             # first node has ever loaded (run.lives is still its 0
@@ -176,8 +177,12 @@ class Renderer:
                 run.lives if has_played_a_node else None,
                 run.shop_currency if has_played_a_node else None,
                 first_run=game._map_is_first_run, ascension_level=run.ascension, act_number=run.act + 1,
-                node_affixes=game.map_node_affixes,
+                node_affixes=game.map_node_affixes, relic_count=len(run.relics),
+                potion_names=[potions.POTIONS[key].display_name for key in run.potions],
             )
+            if relics_over_map:
+                ui.draw_relics_overlay(game.screen, game.font, game.small_font, run.relics,
+                                       width=settings.SCREEN_WIDTH)
             self._draw_toasts()
             pygame.display.flip()
             return

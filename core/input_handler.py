@@ -257,6 +257,7 @@ class InputHandler:
             elif keybindings.matches(game.keybindings["time_scale_3"], key, mods):
                 game.set_time_scale(3.0)
             elif keybindings.matches(game.keybindings["open_relics"], key, mods) and game.active_run is not None:
+                game.relics_return_state = GameState.PLAYING
                 game.state = GameState.RELICS
             elif key in POTION_HOTKEYS:
                 # Fixed, not remappable (the Keybinds screen has no room
@@ -270,8 +271,9 @@ class InputHandler:
             # special-case Escape to quit the app instead, which would be
             # bad UX here (there's a live board underneath, not a result
             # to leave); nothing else warrants special-casing Escape while
-            # just glancing at your relics.
-            game.state = GameState.PLAYING
+            # just glancing at your relics. Returns to wherever it was
+            # opened from -- the board, or the run map (see MAP's own R).
+            game.state = game.relics_return_state
         elif game.state == GameState.PAUSED:
             if game.pause_restart_confirm_pending:
                 # Only R (confirm) or Esc (cancel, back to the normal pause
@@ -353,6 +355,9 @@ class InputHandler:
             elif key == pygame.K_h:
                 game.help_return_state = GameState.MAP
                 game.state = GameState.HELP
+            elif key == pygame.K_r:
+                game.relics_return_state = GameState.MAP
+                game.state = GameState.RELICS
         elif game.state == GameState.DRAFT:
             # No keyboard equivalent for picking a card, same as the build
             # menu's own tower buttons -- but Escape should still quit, the
@@ -755,6 +760,7 @@ class InputHandler:
             return
 
         if game.active_run is not None and game.relics_button_rect.collidepoint(pos):
+            game.relics_return_state = GameState.PLAYING
             game.state = GameState.RELICS
             return
 

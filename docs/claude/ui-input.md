@@ -112,3 +112,10 @@ caught text silently overflowing past both of them.
 (wrapping needs the live font, so `Game._enter_compendium` builds them on entry); it borrows the
 Unlocks screen's layout constants, back button and `unlocks_max_scroll`, since it's the same shape
 of scrolling list.
+
+## Relics overlay from the map
+
+`GameState.RELICS` can be opened from PLAYING (R / HUD button) or MAP (R); `Game.relics_return_state`
+records which, and any key returns there. Over the map, `Renderer` draws the map screen and then the
+overlay at full `SCREEN_WIDTH`. Past `ui.RELICS_OVERLAY_FULL_TEXT_LIMIT` relics the overlay lists
+names only, several per line, pointing at the Compendium for full text.

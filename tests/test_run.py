@@ -3468,3 +3468,36 @@ def test_render_run_over_with_summary_and_toasts_does_not_crash(game):
     assert game.state == GameState.GAME_OVER
     game._queue_toast("A toast with a backing plate")
     game.render()
+
+
+# --- Relics from the map, and long relic lists ---
+
+
+def test_r_on_the_map_opens_relics_and_any_key_returns_to_the_map(game):
+    run = _begin_run_with_map(game, ["combat", "combat"], relics=["lucky_strikes"], potions=["fire_bomb"])
+    game.render()
+    game._handle_keydown(pygame.K_r)
+    assert game.state == GameState.RELICS
+    game.render()
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.MAP
+    assert run.current_node_id is None
+
+
+def test_relics_from_the_hud_still_return_to_play(game):
+    start_first_floor(game, seed=1)
+    game._handle_click(game.relics_button_rect.center)
+    assert game.state == GameState.RELICS
+    game._handle_keydown(pygame.K_SPACE)
+    assert game.state == GameState.PLAYING
+
+
+def test_relics_overlay_switches_to_names_only_for_long_lists():
+    from run.relics import RELICS
+
+    many = [key for key, relic in RELICS.items() if not relic.is_curse][:ui.RELICS_OVERLAY_FULL_TEXT_LIMIT + 1]
+    lines = ui._relics_overlay_lines(many)
+    assert len(lines) < len(many)
+    assert " -- " not in lines[0]
+    few = many[:2]
+    assert len(ui._relics_overlay_lines(few)) == 2
