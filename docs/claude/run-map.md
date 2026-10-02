@@ -150,7 +150,10 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 ## Elite affixes
 
 `run/elite_affixes.py` -- `AFFIXES` registry of plain multipliers (hp/speed/gold, plus
-`count_multiplier`). `Game._elite_affix(run, node)` rolls one per Elite node from
+`count_multiplier`, plus enemy-side traits `regen_fraction_per_second`/`damage_taken_multiplier`,
+which `Game._apply_affix_traits` copies onto the WaveManager after a node load or resume and
+`WaveManager.apply_spawn_multipliers` copies onto every enemy -- `Enemy.update` regenerates,
+`Enemy.take_damage` scales alongside Mark). `Game._elite_affix(run, node)` rolls one per Elite node from
 `_run_rng(run, "affix", node.id)` -- never stored, so the map tooltip (`Game.map_node_affixes`, built
 in `_enter_map`), the floor load and a resumed save always agree. `_floor_load_context` folds it into
 the escalation (after Elite's own bump and Ascension); `_level_for_node` swaps in a private Level copy

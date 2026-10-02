@@ -67,6 +67,11 @@ class Enemy:
 
         self.slow_multiplier = 1.0
         self.slow_timer = 0.0
+        # An Elite affix's own enemy-side traits (see elite_affixes.py and
+        # WaveManager.apply_spawn_multipliers): Regenerating heals this
+        # fraction of max_hp per second; Armored scales every hit taken.
+        self.regen_fraction_per_second = 0.0
+        self.damage_taken_multiplier = 1.0
 
         # Mark state -- see apply_mark()/take_damage(). Mirrors slow_
         # multiplier/slow_timer's own shape exactly (a multiplier plus a
@@ -123,6 +128,9 @@ class Enemy:
     def update(self, dt, enemies=None):
         if self.is_dead or self.reached_goal:
             return
+
+        if self.regen_fraction_per_second > 0:
+            self.hp = min(self.max_hp, self.hp + self.max_hp * self.regen_fraction_per_second * dt)
 
         if self.slow_timer > 0:
             self.slow_timer -= dt
@@ -194,7 +202,7 @@ class Enemy:
         # after that absorption, never before it; SplitterEnemy calls
         # super().take_damage() first, unmodified, so its split-on-death
         # logic is indifferent to the exact number Mark produces.
-        amount *= self.mark_damage_multiplier
+        amount *= self.mark_damage_multiplier * self.damage_taken_multiplier
         if self.is_dead or self.reached_goal:
             return 0.0
         self.damage_events.append(amount)

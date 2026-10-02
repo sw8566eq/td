@@ -78,6 +78,11 @@ class WaveManager:
         # ShieldedEnemy's own max_shield scaling right below it. 1.0 (the
         # default) is a no-op, same as every other multiplier here.
         self.healer_heal_rate_multiplier = healer_heal_rate_multiplier
+        # An Elite affix's enemy-side traits (elite_affixes.py) -- set by
+        # Game._apply_affix_traits after construction, copied onto every
+        # enemy in apply_spawn_multipliers. Defaults are no-ops.
+        self.enemy_regen_fraction_per_second = 0.0
+        self.enemy_damage_taken_multiplier = 1.0
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -255,6 +260,8 @@ class WaveManager:
         # into a float for the rest of the run, compounding further with
         # every subsequent kill.
         enemy.gold_reward = round(enemy.gold_reward * self.enemy_gold_multiplier)
+        enemy.regen_fraction_per_second = self.enemy_regen_fraction_per_second
+        enemy.damage_taken_multiplier = self.enemy_damage_taken_multiplier
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
             enemy.max_shield *= self.enemy_hp_multiplier
             enemy.shield = enemy.max_shield

@@ -18,6 +18,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - **Rest sites are a choice now**: Rest (heal, as before) or **Smith** -- forge one of your towers so
   every copy you place for the rest of the run starts at level 2 for free (Slay the Spire's upgraded
   cards; forged towers show a `+` on their build button).
+- Two new Elite affixes: **Regenerating** (enemies heal 4% of max HP per second) and **Armored**
+  (enemies take 25% less damage).
 - Five more Events: Potion Peddler (trade a potion for a relic or currency), Fallen Champion's Tomb (a
   boss relic, with a curse), Field Hospital (pay to lift a curse and heal), Abandoned Weapons Cache (a
   tower, with a curse), and Brewing Contest (a potion and currency for a life).

@@ -119,3 +119,51 @@ def test_sidebar_modifiers_text_is_none_on_a_plain_floor(game):
     game._enter_node("0-0")
     assert game.renderer._run_modifiers_text() is None
     pygame.display.flip()
+
+
+def test_regenerating_enemies_heal_but_never_past_max_or_from_death():
+    from entities.enemy import GruntEnemy
+
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(500, 0)], wave_number=1)
+    enemy.regen_fraction_per_second = 0.5
+    enemy.hp = enemy.max_hp / 2
+    enemy.update(0.5)
+    assert enemy.hp == pytest.approx(enemy.max_hp * 0.75)
+    enemy.update(5.0)
+    assert enemy.hp == enemy.max_hp
+    enemy.take_damage(enemy.max_hp * 10)
+    enemy.update(1.0)
+    assert enemy.is_dead and enemy.hp == 0
+
+
+def test_armored_enemies_take_less_from_every_hit():
+    from entities.enemy import GruntEnemy
+
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(500, 0)], wave_number=1)
+    enemy.damage_taken_multiplier = 0.75
+    assert enemy.take_damage(10) == pytest.approx(7.5)
+
+
+@pytest.mark.parametrize("key, attr, value", [
+    ("regenerating", "regen_fraction_per_second", 0.04),
+    ("armored", "damage_taken_multiplier", 0.75),
+])
+def test_trait_affixes_reach_every_spawned_enemy_and_survive_resume(game, key, attr, value):
+    _seed_with_affix(game, key)
+    game._enter_node("0-0")
+    assert getattr(game.wave_manager, f"enemy_{attr}") == value
+    from entities.enemy import GruntEnemy
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(500, 0)], wave_number=1)
+    game.wave_manager.apply_spawn_multipliers(enemy)
+    assert getattr(enemy, attr) == value
+
+    game.save_run()
+    game.resume_saved_run(save_state.load_run(game.save_path))
+    assert getattr(game.wave_manager, f"enemy_{attr}") == value
+
+
+def test_ordinary_floors_have_no_enemy_traits(game):
+    _run_on(game, ["combat", "combat"])
+    game._enter_node("0-0")
+    assert game.wave_manager.enemy_regen_fraction_per_second == 0.0
+    assert game.wave_manager.enemy_damage_taken_multiplier == 1.0

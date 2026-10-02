@@ -58,7 +58,8 @@ node types:
 - **Elite** -- a harder floor that pays out more shop currency on clear (and drops a relic). Each
   Elite also rolls an **affix** you can see by hovering it on the map: **Swift** (faster enemies),
   **Hulking** (tougher but slower), **Swarming** (half again as many, each a bit weaker), or
-  **Gilded** (tougher, but they drop much more gold).
+  **Gilded** (tougher, but they drop much more gold), **Regenerating** (enemies heal over time), or
+  **Armored** (enemies take less damage from every hit).
 - **Shop** -- spend shop currency on towers and relics (see "The Shop and two currencies" below).
 - **Event** -- a short prompt with 2-3 honestly-described options (gain currency, lose a relic for a
   bigger reward, unlock a tower early, heal, ...) -- never a hidden-odds gamble.
