@@ -83,3 +83,13 @@ def test_records_without_details_and_older_files_are_empty(tmp_path):
     run_history.record_run_result(1, 3, path=path)
     assert run_history.load_run_records(path=path) == []
     assert run_history.load_run_records(path="/does/not/exist.json") == []
+
+
+def test_malformed_run_records_are_dropped_not_fatal(tmp_path):
+    path = tmp_path / "run_history.json"
+    good = {"seed": 1, "floors_cleared": 3, "commander": "warden", "ascension": 0, "act": 1}
+    path.write_text(json.dumps({"best_floors_cleared": {"1": 3}, "runs": [
+        good, None, 1.5, "x", [], {"seed": 2, "floors_cleared": 1, "commander": []},
+        {"seed": "x", "floors_cleared": 1}, {"seed": 3, "floors_cleared": 2, "act": "two"},
+    ]}))
+    assert run_history.load_run_records(path=path) == [good]

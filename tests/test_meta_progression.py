@@ -214,3 +214,13 @@ def test_has_unlocked_third_relic_slot_reflects_crossed_threshold(tmp_path):
     meta_progression.bump("total_floors_cleared", amount=100, path=path)
 
     assert meta_progression.has_unlocked_third_relic_slot(path=path) is True
+
+
+def test_non_string_unlock_ids_are_dropped_on_load(tmp_path):
+    import json
+
+    path = tmp_path / "meta_progression.json"
+    path.write_text(json.dumps({"counters": {"runs_played": 1}, "unlocked": ["unlock_knockback", 1.5, None, True]}))
+    state = meta_progression.load_meta_progression(path)
+    assert state["unlocked"] == {"unlock_knockback"}
+    meta_progression.bump("runs_played", path=path)  # saving sorts the set -- must not crash

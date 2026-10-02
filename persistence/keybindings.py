@@ -168,9 +168,14 @@ def _coerce_binding(value, default):
     of for the whole file at once."""
     try:
         key, mods = int(value[0]), int(value[1])
-        return (key, mods)
     except (TypeError, ValueError, IndexError, KeyError):
         return default
+    # pygame key codes/modifier masks are C ints -- an out-of-range one
+    # loads fine here but overflows the first time pygame.key.name() reads
+    # it (the Keybinds screen, the pause menu's hint).
+    if not (0 <= key < 2**31 and 0 <= mods < 2**16):
+        return default
+    return (key, mods)
 
 
 def _merge_with_defaults(data):

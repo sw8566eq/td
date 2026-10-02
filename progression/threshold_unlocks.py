@@ -62,9 +62,12 @@ def parse_counters_state(data: Any) -> CountersState:
     """Parse a persisted counters-state JSON blob back into
     {"counters": {name: int}, "unlocked": {key, ...}} -- the shared load
     transform, passed to json_io.load_json_with_fallback."""
+    # Only string keys are ever unlock ids -- anything else (a damaged
+    # file) is dropped here rather than crashing the sorted() a later save
+    # does over this set.
     return {
         "counters": {str(name): int(value) for name, value in data.get("counters", {}).items()},
-        "unlocked": set(data.get("unlocked", [])),
+        "unlocked": {key for key in data.get("unlocked", []) if isinstance(key, str)},
     }
 
 
