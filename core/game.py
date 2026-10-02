@@ -629,6 +629,11 @@ class Game:
         out from under it by this new, unrelated run's own eventual
         conclusion."""
         self._resumed_from_save = False
+        # A run is never sandbox -- but self.sandbox is only reset by a
+        # floor load, so a Practice session's True would otherwise linger
+        # through this run's whole pre-fight phase (no autosave, blessing/
+        # Daily progress unrecorded).
+        self.sandbox = False
         seed = seed if seed is not None else random.Random().getrandbits(32)
         level_pool = meta_progression.unlocked_level_pool(self.meta_progression_path)
         # A Daily Run is always Ascension 0, for the same comparable-score
@@ -1964,6 +1969,7 @@ class Game:
         can't dodge a node already committed to."""
         self.active_run = run
         self._resumed_from_save = True
+        self.sandbox = False  # see start_new_run's own reset
         node_id = run.current_node_id
         if run.blessing_pending:
             self._enter_blessing()
