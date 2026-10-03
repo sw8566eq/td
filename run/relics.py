@@ -571,6 +571,10 @@ class Relic:
     # Path traps can hit burrowing enemies (Game._apply_construction_relics
     # sets the trap's HITS_BURROWED on the instance).
     traps_hit_burrowed: bool = False
+    # Combo relics: burning ground vs slowed enemies (Game._update_ground_
+    # fires), and path traps vs slowed enemies (_apply_construction_relics).
+    ground_fire_vs_slowed_multiplier: float = 1.0
+    trap_damage_vs_slowed_multiplier: float = 1.0
     # A Barricade that breaks explodes for this fraction of its max hp, hitting
     # ground enemies within BARRICADE_BURST_RADIUS (Game._hold_enemies_at_barricades).
     barricade_burst_fraction: float = 0.0
@@ -1122,6 +1126,14 @@ RELICS = {
         "incendiary_shells", "Incendiary Shells",
         "Mortar only: each shell leaves burning ground for 3s, hurting ground enemies that cross it.",
         mortar_ground_fire=(0.3, 3.0),
+    ),
+    "flashpoint": Relic(
+        "flashpoint", "Flashpoint", "Burning ground deals double damage to slowed enemies.",
+        ground_fire_vs_slowed_multiplier=2.0,
+    ),
+    "kill_corridor": Relic(
+        "kill_corridor", "Kill Corridor", "Spike Traps and Tar Pits deal 50% more damage to slowed enemies.",
+        trap_damage_vs_slowed_multiplier=1.5,
     ),
     "seismic_sensors": Relic(
         "seismic_sensors", "Seismic Sensors", "Spike Traps and Tar Pits can hit Burrowers.",
