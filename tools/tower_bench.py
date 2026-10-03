@@ -13,6 +13,12 @@ for tuning exact numbers. Writes nothing outside a temp directory.
     python tools/tower_bench.py                 # each floor's real starting gold
     python tools/tower_bench.py --budget 300    # a fixed budget
     python tools/tower_bench.py --level 5 --towers basic mortar --extra barricade
+    python tools/tower_bench.py --reinvest      # also spend kill gold mid-fight
+
+--reinvest models a player spending as they go: every REINVEST_INTERVAL
+seconds, gold goes into the cheapest upgrade available (specializing a maxed
+tower into its first option), otherwise into another tower at the next best
+spot.
 """
 
 import argparse
@@ -34,6 +40,7 @@ from entities.tower import TOWER_TYPES
 
 SIM_STEP = 1 / 30
 SIM_LIMIT_SECONDS = 900
+REINVEST_INTERVAL = 0.5
 
 
 def _candidate_anchors(game, cls):
@@ -51,7 +58,29 @@ def _coverage(game, cls, anchor, path_points):
     return sum(1 for point in path_points if cls.MIN_RANGE <= pos.distance_to(point) <= reach)
 
 
-def run_bench(tower, act, budget=0, level=3, extra=None, seed=1):
+def _reinvest(game, tower, ranked):
+    """Spend what gold allows: the cheapest upgrade/specialization first,
+    then another `tower` at the next best open spot."""
+    while True:
+        options = []
+        for placed in game.towers:
+            if placed.upgrade_cost() is not None:
+                options.append((placed.upgrade_cost(), lambda p=placed: game.try_upgrade_tower(p)))
+            elif placed.can_specialize:
+                key = next(iter(placed.SPECIALIZATIONS))
+                options.append((placed.specialization_cost(), lambda p=placed, k=key: game.try_specialize_tower(p, k)))
+        options.sort(key=lambda option: option[0])
+        if options and options[0][0] <= game.economy.gold and options[0][1]():
+            continue
+        cls = TOWER_TYPES[tower]
+        if game.economy.gold < cls.cost:
+            return
+        game.selected_tower_name = tower
+        if not any(game.try_place_tower(*anchor) for anchor in ranked):
+            return
+
+
+def run_bench(tower, act, budget=0, level=3, extra=None, seed=1, reinvest=False):
     """One floor: returns {gold, placed, leaked ("DEAD" on a loss), damage}."""
     game = make_game(pathlib.Path(tempfile.mkdtemp()))
     game.start_new_run(seed=seed)
@@ -77,9 +106,16 @@ def run_bench(tower, act, budget=0, level=3, extra=None, seed=1):
                 placed += 1
                 if name == extra:
                     break  # one extra piece only
+    main_cls = TOWER_TYPES[tower]
+    main_ranked = sorted(_candidate_anchors(game, main_cls),
+                         key=lambda anchor: -_coverage(game, main_cls, anchor, path_points))
     lives = game.economy.lives
     elapsed = 0.0
+    next_reinvest = 0.0
     while game.state == GameState.PLAYING and elapsed < SIM_LIMIT_SECONDS:
+        if reinvest and elapsed >= next_reinvest:
+            _reinvest(game, tower, main_ranked)
+            next_reinvest = elapsed + REINVEST_INTERVAL
         game.wave_manager.skip_delay()
         game.update(SIM_STEP)
         elapsed += SIM_STEP
@@ -94,13 +130,14 @@ def main(argv=None):
     parser.add_argument("--level", type=int, default=3)
     parser.add_argument("--towers", nargs="*", help="tower types (default: every attacking type)")
     parser.add_argument("--extra", help="one extra piece placed first, e.g. barricade")
+    parser.add_argument("--reinvest", action="store_true", help="spend kill gold on upgrades/towers mid-fight")
     args = parser.parse_args(argv)
     towers = args.towers or [name for name, cls in TOWER_TYPES.items() if cls.ATTACKS and not cls.IS_SUPPORT]
     print(f"{'tower':18}" + "".join(f"{'act ' + str(act + 1):<18}" for act in range(3)))
     for tower in towers:
         cells = []
         for act in range(3):
-            result = run_bench(tower, act, args.budget, args.level, args.extra)
+            result = run_bench(tower, act, args.budget, args.level, args.extra, reinvest=args.reinvest)
             cells.append(f"{result['leaked']!s:>4} lk {result['damage']:>7} dmg")
         print(f"{tower:18}" + "  ".join(cells))
 

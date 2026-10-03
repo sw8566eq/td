@@ -126,5 +126,5 @@ A dev-only balance check, excluded from coverage (`tools/*` in `[tool.coverage.r
 attacking tower type gets the same gold on the same floor at Act 1/2/3 depth, placed greedily by path
 coverage, then every wave runs headless (Game built via `tests/conftest.make_game` in a temp dir, so no
 real player files are touched). Prints leaks and damage per act; `--budget`, `--level`, `--towers`,
-`--extra`. It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
+`--extra`, `--reinvest` (spend kill gold on the cheapest upgrade, else another tower, every 0.5s). It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
 fixed by stagger resistance (see enemies.md).
