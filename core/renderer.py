@@ -301,6 +301,9 @@ class Renderer:
             ring.draw(game.screen)
         for text in game.damage_numbers:
             text.draw(game.screen, game.tiny_font)
+        hovered_enemy = game._hovered_enemy() if game.state == GameState.PLAYING else None
+        if hovered_enemy is not None:
+            ui.draw_enemy_tooltip(game.screen, game.small_font, hovered_enemy)
 
         self._render_placement_preview()
         hovered_tower = game._hovered_tower()

@@ -1712,6 +1712,45 @@ OUTPOST_DRILL_XP_TEXT = 60  # mirrors core.game.OUTPOST_DRILL_XP -- checked by a
 RESONANCE_COLOR = (200, 150, 240)
 
 
+def enemy_tooltip_lines(enemy):
+    """Name, HP, what it does, and whatever is affecting it right now."""
+    lines = [enemy.display_name, f"HP {round(enemy.hp)}/{round(enemy.max_hp)}"]
+    if enemy.description:
+        lines.append(enemy.description)
+    states = []
+    if getattr(enemy, "is_burrowed", False):
+        states.append("Burrowed")
+    if getattr(enemy, "held", False):
+        states.append("Held")
+    if enemy.mark_timer > 0:
+        states.append("Marked")
+    if enemy.slow_timer > 0:
+        states.append("Slowed")
+    if enemy.poison_time_remaining > 0:
+        states.append("Poisoned")
+    if states:
+        lines.append(", ".join(states))
+    return lines
+
+
+def draw_enemy_tooltip(surface, small_font, enemy):
+    """A small box beside a hovered enemy (enemy_tooltip_lines), kept
+    inside the play area."""
+    lines = enemy_tooltip_lines(enemy)
+    rendered = [small_font.render(line, True, settings.COLOR_TEXT if i == 0 else settings.COLOR_TEXT_DIM)
+                for i, line in enumerate(lines)]
+    width = max(text.get_width() for text in rendered) + 16
+    height = len(rendered) * PANEL_ROW_HEIGHT + 8
+    box = pygame.Rect(int(enemy.pos.x) + enemy.radius + 8, int(enemy.pos.y) - height // 2, width, height)
+    box.clamp_ip(pygame.Rect(0, 0, settings.PLAY_WIDTH, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT))
+    pygame.draw.rect(surface, settings.COLOR_HUD_BG, box, border_radius=6)
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, box, width=1, border_radius=6)
+    y = box.y + 4
+    for text in rendered:
+        surface.blit(text, (box.x + 8, y))
+        y += PANEL_ROW_HEIGHT
+
+
 def draw_coverage_overlay(surface, towers):
     """Every placed tower's real reach (and a Mortar's dead zone) as faint
     rings, plus a link for each active resonance -- toggled with V."""
