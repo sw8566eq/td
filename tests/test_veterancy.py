@@ -194,3 +194,13 @@ def test_a_tower_built_before_a_promotion_says_new_ones_are_stronger(game):
     tower = _place(game)
     run.tower_xp["basic"] = veterancy.RANKS[0].xp_required
     assert game.renderer._veterancy_line(tower) == "Recruit, new ones Blooded"
+
+
+def test_run_over_recap_names_the_top_crew_and_modules(game):
+    from presentation import ui
+
+    run = start_first_floor(game, seed=1)
+    assert len(ui.run_summary_lines(run)) == 2  # nothing to say yet
+    run.tower_xp = {"basic": 30, "cannon": 200}
+    run.tower_modules = {"cannon": "long_barrel", "basic": "rapid_loader"}
+    assert ui.run_summary_lines(run)[2] == "Top crew: Cannon (Veteran), 2 modules fitted"
