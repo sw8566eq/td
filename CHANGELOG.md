@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- The stats panel shows each placed tower's **live bonus** next to Damage/Range/Fire rate (e.g. `+18%`
+  from veterancy, modules, relics, auras and placement), and its hover range ring now shows its real,
+  boosted reach.
 - **Balance -- Overload Cannon targets the newest arrival by default** ("last"): its 5-second charge
   kept locking onto the enemy about to leave its range and fizzling; the bench measured ~3x the damage.
 - **Counter relics**: Seismic Sensors (Spike Traps and Tar Pits can hit Burrowers) and Booby-Trapped

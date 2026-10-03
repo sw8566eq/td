@@ -1391,3 +1391,13 @@ def test_help_lines_show_remapped_keys():
     assert any(line.startswith("G (or the HUD button)") for line in lines)
     assert any(line.startswith("O or Esc pauses") for line in lines)
     assert len(lines) == len(HELP_LINES)
+
+
+def test_bonus_tag_formats_live_vs_base():
+    from presentation.ui import bonus_tag
+
+    assert bonus_tag(10.0, 12.4) == "+24%"
+    assert bonus_tag(10.0, 9.0) == "-10%"
+    assert bonus_tag(10.0, 10.02) is None
+    assert bonus_tag(10.0, None) is None
+    assert bonus_tag(0, 5.0) is None

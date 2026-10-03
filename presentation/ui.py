@@ -539,9 +539,12 @@ def draw_tower_range_preview(surface, tower):
     you commit. Just the one ring once the tower is maxed, since there's
     nothing left to preview."""
     center = (int(tower.pos.x), int(tower.pos.y))
-    pygame.draw.circle(surface, settings.COLOR_RANGE_PREVIEW, center, int(tower.range), width=1)
+    # The tower's real reach (relics, module, auras), not its base range --
+    # and the upgrade ring scaled by the same bonus.
+    bonus = tower.effective_range() / tower.range if tower.range else 1.0
+    pygame.draw.circle(surface, settings.COLOR_RANGE_PREVIEW, center, int(tower.range * bonus), width=1)
     if not tower.is_max_level:
-        pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade()), width=2)
+        pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade() * bonus), width=2)
     if tower.MIN_RANGE:
         pygame.draw.circle(surface, settings.COLOR_LIVES, center, tower.MIN_RANGE, width=1)
 
@@ -652,13 +655,24 @@ def _draw_panel_header(surface, font, small_font, x, y, subject, is_placed, towe
     return y + 6  # small gap before the stat rows
 
 
+def bonus_tag(base, live):
+    """"+24%" / "-10%" for a live stat vs its base, or None when there's no
+    live value or the two round to the same percent."""
+    if live is None or not base:
+        return None
+    percent = round((live / base - 1) * 100)
+    if percent == 0:
+        return None
+    return f"{percent:+d}%"
+
+
 def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
     """Damage/Range/Fire rate (with a '-> value' preview of what the next
     upgrade would change while not yet maxed) plus the tower's own
     EXTRA_STATS."""
     show_upgrade_preview = is_placed and not subject.is_max_level
 
-    def stat_row(label, current, previewed=None, suffix=""):
+    def stat_row(label, current, previewed=None, suffix="", live=None):
         nonlocal y
         if previewed is not None and round(previewed, 2) != round(current, 2):
             value_str = f"{current:.1f}{suffix} -> {previewed:.1f}{suffix}"
@@ -666,6 +680,13 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
             value_str = f"{current:.1f}{suffix}"
         row = small_font.render(f"{label}: {value_str}", True, settings.COLOR_TEXT)
         surface.blit(row, (x, y))
+        # A placed tower's live total from every bonus (relics, veterancy,
+        # module, auras, placement) vs its base stat, right-aligned in gold.
+        tag = bonus_tag(current, live)
+        if tag is not None:
+            tag_text = small_font.render(tag, True, settings.COLOR_GOLD)
+            right = settings.PLAY_WIDTH + settings.PANEL_WIDTH - PANEL_PADDING // 2
+            surface.blit(tag_text, (max(x + row.get_width() + 6, right - tag_text.get_width()), y))
         y += PANEL_ROW_HEIGHT
 
     # A support tower never attacks -- Damage/Range/Fire rate would just
@@ -675,10 +696,13 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
     # its entire visible stat block instead.
     if tower_cls.ATTACKS and not tower_cls.IS_SUPPORT:
         stat_row("Damage", subject.damage if is_placed else tower_cls.damage,
-                  subject.damage_after_next_upgrade() if show_upgrade_preview else None)
+                  subject.damage_after_next_upgrade() if show_upgrade_preview else None,
+                  live=subject.effective_damage() if is_placed else None)
         stat_row("Range", subject.range if is_placed else tower_cls.range,
-                  subject.range_after_next_upgrade() if show_upgrade_preview else None)
-        stat_row("Fire rate", subject.fire_rate if is_placed else tower_cls.fire_rate, suffix="/s")
+                  subject.range_after_next_upgrade() if show_upgrade_preview else None,
+                  live=subject.effective_range() if is_placed else None)
+        stat_row("Fire rate", subject.fire_rate if is_placed else tower_cls.fire_rate, suffix="/s",
+                 live=subject.effective_fire_rate() if is_placed else None)
 
     for label, attr_name, format_fn in tower_cls.EXTRA_STATS:
         value = getattr(subject if is_placed else tower_cls, attr_name)
