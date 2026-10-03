@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Achievements for the new towers: Artillerist (10 Mortars), Hold the Line (10 Barricades), Trapper (20
+  Spike Traps).
 - Combo relics: **Flashpoint** (burning ground deals double damage to slowed enemies) and **Kill
   Corridor** (Spike Traps and Tar Pits deal +50% damage to slowed enemies).
 - Two tower Events: **Abandoned Workshop** (pay to fit a random module to a random tower type, or sell
