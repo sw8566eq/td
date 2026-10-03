@@ -11,7 +11,7 @@ from core import input_handler, progress_tracker, renderer, settings_manager
 from core.editor import Editor
 from entities import effects
 from entities.enemy import ENEMY_TYPES
-from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES
+from entities.tower import RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
 from presentation import audio, ui
@@ -410,6 +410,7 @@ class Game:
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
         self.ground_fires = []
+        self._announced_resonances = set()
         self.floor_veterancy_gains = []
         # V toggles every placed tower's range ring (ui.draw_coverage_overlay).
         self.show_coverage = False
@@ -1859,6 +1860,8 @@ class Game:
         self.damage_numbers = []
         self.impact_effects = []
         self.ground_fires = []
+        # Resonances already announced with a toast this floor.
+        self._announced_resonances = set()
         self.overclock_timer = 0.0
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
@@ -2880,6 +2883,10 @@ class Game:
         active = sum(len(tower.resonance_keys) for tower in self.towers)
         if active:
             self._record_achievement_max("resonances_active", active)
+        # A toast the first time each resonance switches on this floor.
+        for key in {key for tower in self.towers for key in tower.resonance_keys} - self._announced_resonances:
+            self._announced_resonances.add(key)
+            self._queue_toast(f"Resonance: {RESONANCES[key].display_name}!")
 
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --

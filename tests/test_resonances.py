@@ -166,3 +166,24 @@ def test_v_toggles_the_coverage_overlay(game):
     game.render()
     game._handle_keydown(pygame.K_v)
     assert not game.show_coverage
+
+
+def test_a_resonance_is_announced_once_per_floor(game):
+    from conftest import start_first_floor
+
+    start_first_floor(game, seed=1)
+    game.active_run.unlocked_towers += ["lightning"]
+    game._rebuild_button_rects()
+    game.economy.gold = 2000
+    step = game.grid.subtiles_per_tile
+    spots = sorted((c, r) for c in range(0, game.grid.sub_cols, step) for r in range(0, game.grid.sub_rows, step)
+                   if game.grid.is_buildable(c, r))
+    game.selected_tower_name = "lightning"
+    assert game.try_place_tower(*spots[0])
+    lightning = game.towers[-1]
+    near = [s for s in spots[1:] if game.grid.anchor_to_pixel_center(*s).distance_to(lightning.pos) <= RESONANCE_RADIUS]
+    game.selected_tower_name = "frost"
+    for spot in near[:2]:
+        game.try_place_tower(*spot)
+    toasts = [toast.text for toast in game.achievement_toasts if "Resonance" in toast.text]
+    assert toasts == ["Resonance: Superconductor!"]

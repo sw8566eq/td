@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- A toast announces each resonance the first time it switches on during a floor.
 - Two more named bosses: **The Undermine** (every ground enemy burrows) and **The Battering Ram** (enemies
   batter Barricades 4x as hard, +10% HP).
 - Run History records and shows each run's top crew; its Gauntlet tag reads `G3` (was `A3`).
