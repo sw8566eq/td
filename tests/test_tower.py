@@ -1644,3 +1644,11 @@ def test_overload_cannon_update_stays_in_sync_with_the_base_towers_relic_tagging
     assert cannon_relic_state == basic_relic_state
     assert cannon_relic_state["relic_damage_vs_boss_multiplier"] == 1.25
     assert cannon_relic_state["relic_damage_vs_marked_and_slowed_and_poisoned_multiplier"] == 1.60
+
+
+def test_overload_cannon_defaults_to_last_targeting_and_others_to_first():
+    for name, cls in TOWER_TYPES.items():
+        tower = cls(anchor_col=0, anchor_row=0, pixel_pos=(0, 0))
+        expected = "last" if name == "overload_cannon" else "first"
+        assert tower.targeting_mode == expected, name
+        assert tower.targeting_mode in cls.TARGETING_MODES

@@ -92,6 +92,8 @@ class Tower:
     ATTACKS = True
     # False for a path trap: a burrowing enemy (Enemy.BURROWS) passes under it.
     HITS_BURROWED = True
+    # Which TARGETING_MODES entry a freshly built tower starts on.
+    DEFAULT_TARGETING_MODE = "first"
     # A path structure that holds ground enemies until broken (Barricade --
     # see Game._hold_enemies_at_barricades).
     BLOCKS_PATH = False
@@ -202,7 +204,7 @@ class Tower:
         # Which TARGETING_MODES strategy acquire_target() uses -- "first"
         # (furthest along the path) is this class's original, only-ever
         # default; see cycle_targeting_mode().
-        self.targeting_mode = "first"
+        self.targeting_mode = self.DEFAULT_TARGETING_MODE
 
         # Lifetime stats, purely for the post-level results screen (see
         # ui.compute_tower_results) -- never read by any gameplay logic.
@@ -2024,6 +2026,10 @@ class OverloadCannonTower(Tower):
     here would break that read. The existing generic "Fire rate" row
     already communicates cadence just fine: 1/fire_rate literally IS the
     charge time here too, just under a different display name."""
+    # Its long charge needs a target that stays in range: lock onto the
+    # newest arrival, not the one about to walk out (tools/tower_bench.py
+    # measured ~3x the damage).
+    DEFAULT_TARGETING_MODE = "last"
     cost = 140
     range = 140
     damage = 70
