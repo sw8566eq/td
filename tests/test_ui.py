@@ -819,7 +819,9 @@ def test_format_wave_preview_orders_by_registry_order_not_dict_order():
 
     text = _format_wave_preview(composition)
 
-    positions = [text.index(f"{name.capitalize()} x") for name in ENEMY_ORDER]
+    from entities.enemy import ENEMY_TYPES
+
+    positions = [text.index(f"{ENEMY_TYPES[name].display_name} x{composition[name]}") for name in ENEMY_ORDER]
     assert positions == sorted(positions)
 
 

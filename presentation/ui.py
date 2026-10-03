@@ -416,7 +416,7 @@ def _format_wave_preview(composition):
     insertion order), not whatever order the dict happens to iterate in, so
     the same species always lines up in the same spot from wave to wave."""
     ordered_names = [name for name in ENEMY_ORDER if name in composition]
-    parts = [f"{name.capitalize()} x{composition[name]}" for name in ordered_names]
+    parts = [f"{ENEMY_TYPES[name].display_name} x{composition[name]}" for name in ordered_names]
     return "Next: " + ", ".join(parts)
 
 
