@@ -521,14 +521,15 @@ def draw_footprint_preview(surface, grid, anchor_col, anchor_row, buildable, foo
     pygame.draw.rect(surface, color, rect, width=2)
 
 
-def draw_range_preview(surface, tower_cls, pixel_pos):
-    pygame.draw.circle(
-        surface, settings.COLOR_RANGE_PREVIEW,
-        (int(pixel_pos[0]), int(pixel_pos[1])), tower_cls.range, width=1,
-    )
-    if tower_cls.MIN_RANGE:  # a Mortar's dead zone
-        pygame.draw.circle(surface, settings.COLOR_LIVES, (int(pixel_pos[0]), int(pixel_pos[1])),
-                           tower_cls.MIN_RANGE, width=1)
+def draw_range_preview(surface, tower_cls, pixel_pos, radius=None, dead_zone=None):
+    """The placement ring -- `radius`/`dead_zone` override the class's base
+    values with what the tower would really get (Game.preview_tower)."""
+    center = (int(pixel_pos[0]), int(pixel_pos[1]))
+    pygame.draw.circle(surface, settings.COLOR_RANGE_PREVIEW, center,
+                       int(tower_cls.range if radius is None else radius), width=1)
+    dead_zone = tower_cls.MIN_RANGE if dead_zone is None else dead_zone
+    if dead_zone:  # a Mortar's dead zone
+        pygame.draw.circle(surface, settings.COLOR_LIVES, center, int(dead_zone), width=1)
 
 
 def draw_tower_range_preview(surface, tower):

@@ -167,3 +167,11 @@ def test_the_module_stand_does_not_overlap_other_shop_buttons(game):
               *game.draft_choice_rects]
     assert not any(game.shop_module_rect.colliderect(rect) for rect in others)
     assert game.shop_module_rect.right <= game.screen.get_width()
+
+
+def test_preview_tower_carries_module_range_and_is_never_placed(game):
+    run = start_first_floor(game, seed=1)
+    run.tower_modules["basic"] = "long_barrel"
+    probe = game.preview_tower(TOWER_TYPES["basic"], 0, 0)
+    assert probe.effective_range() == pytest.approx(TOWER_TYPES["basic"].range * 1.2)
+    assert probe not in game.towers and not game.grid.is_occupied(0, 0)
