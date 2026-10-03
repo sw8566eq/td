@@ -59,6 +59,8 @@ _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
+# Veterancy experience an Outpost's Drill gives the chosen tower type.
+OUTPOST_DRILL_XP = 60
 # A Barricade's damage taken per second from each enemy battering it, times
 # that enemy's own Enemy.BREACH_MULTIPLIER -- see _hold_enemies_at_barricades.
 BARRICADE_BREACH_DPS = 2.5
@@ -366,7 +368,11 @@ class Game:
         self.rest_heal_amount = 0
         self.rest_heal_blocked = False
         self.rest_forged_tower = None
-        self.rest_option_rects = ui.build_event_option_rects(3)
+        self.rest_option_rects = ui.build_event_option_rects(4)
+        # Drill's pick (a tower type) once made, for the resolved text.
+        self.rest_drilled_tower = None
+        self.rest_drill_choices = []
+        self.rest_drill_rects = []
         # True once "Move on" (option 2) was picked -- the resolved screen's
         # own text for it.
         self.rest_moved_on = False
@@ -1544,6 +1550,9 @@ class Game:
         self.rest_phase = "choose"
         self.rest_smith_choices = self._forgeable_towers()
         self.rest_smith_rects = ui.build_smith_choice_rects(len(self.rest_smith_choices))
+        self.rest_drilled_tower = None
+        self.rest_drill_choices = self._active_tower_names()
+        self.rest_drill_rects = ui.build_smith_choice_rects(len(self.rest_drill_choices))
         self.state = GameState.REST
 
     def _forgeable_towers(self):
@@ -1556,9 +1565,10 @@ class Game:
         return self.input_handler._handle_rest_click(pos)
 
     def _choose_rest_option(self, index):
-        """0 = Rest (heal now, resolved), 1 = Smith (on to picking a
-        tower), 2 = Move on (nothing) -- Rest is a no-op under a blocks_
-        rest_heal boss relic, Smith once there's nothing left to forge."""
+        """0 = Rest (heal now, resolved), 1 = Forge (on to picking a
+        tower), 2 = Drill (on to picking a crew for OUTPOST_DRILL_XP veterancy
+        experience), 3 = Move on (nothing) -- Rest is a no-op under a
+        blocks_rest_heal boss relic, Forge once there's nothing left to forge."""
         if index == 0:
             if self.rest_heal_blocked:
                 return  # an Overcharged Core-style boss relic forbids it
@@ -1567,13 +1577,37 @@ class Game:
             self._commit_node(self.active_run.current_node_id)
         elif index == 1 and self.rest_smith_choices:
             self.rest_phase = "smith"
-        elif index == 2:
+        elif index == 2 and self.rest_drill_choices:
+            self.rest_phase = "drill"
+        elif index == 3:
             # Always available -- without it, a run that can't heal here
             # (Overcharged Core) with every held tower already forged had no
             # way off this screen at all.
             self.rest_moved_on = True
             self.rest_phase = "resolved"
             self._commit_node(self.active_run.current_node_id)
+
+    def rest_picker(self):
+        """(choices, rects) for the Outpost's current tower picker -- Forge's
+        or Drill's."""
+        if self.rest_phase == "drill":
+            return self.rest_drill_choices, self.rest_drill_rects
+        return self.rest_smith_choices, self.rest_smith_rects
+
+    def _drill_tower(self, name):
+        """Drill: OUTPOST_DRILL_XP veterancy experience for `name`'s crews,
+        resolving the Outpost."""
+        run = self.active_run
+        before = self.veterancy_rank(name)
+        run.tower_xp[name] = run.tower_xp.get(name, 0.0) + OUTPOST_DRILL_XP
+        after = self.veterancy_rank(name)
+        if after > before:
+            self._queue_toast(f"{TOWER_TYPES[name].display_name} promoted: {veterancy.rank_name(after)}")
+            self._record_achievement_max("veterancy_rank_reached", after)
+        self.rest_drilled_tower = name
+        self.rest_phase = "resolved"
+        self._commit_node(run.current_node_id)
+        self.audio.play("tower_upgraded")
 
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from
@@ -3268,7 +3302,7 @@ class Game:
     def _hovered_rest_rect_index(self):
         """Index of the Rest screen's option (choose phase) or Smith tower
         (smith phase) under the mouse, or None."""
-        rects = self.rest_option_rects if self.rest_phase == "choose" else self.rest_smith_rects
+        rects = self.rest_option_rects if self.rest_phase == "choose" else self.rest_picker()[1]
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), rects)
 
     def _stats_panel_subject(self, hovered_tower):

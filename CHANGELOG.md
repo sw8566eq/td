@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Outposts gain Drill**: give one tower type of your choice +60 veterancy experience (Move on is now
+  the fourth option).
 - The Run Guide now explains veterancy, modules, resonances and path structures (status effects condensed to two lines).
 - The Run Over recap names your top crew (most experienced tower type and its rank) and modules fitted.
 - **Harmonist** achievement (4 resonances active at once).

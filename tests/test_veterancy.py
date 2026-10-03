@@ -204,3 +204,46 @@ def test_run_over_recap_names_the_top_crew_and_modules(game):
     run.tower_xp = {"basic": 30, "cannon": 200}
     run.tower_modules = {"cannon": "long_barrel", "basic": "rapid_loader"}
     assert ui.run_summary_lines(run)[2] == "Top crew: Cannon (Veteran), 2 modules fitted"
+
+
+# --- Outpost Drill ---
+
+
+def _outpost(game):
+    from test_run import _begin_run_with_map
+
+    run = _begin_run_with_map(game, ["combat", "rest"], lives=5)
+    game._enter_node("1-0")
+    assert game.state == GameState.REST
+    return run
+
+
+def test_drill_trains_the_chosen_crew_and_resolves(game):
+    from core import game as game_module
+
+    run = _outpost(game)
+    game._handle_rest_click(game.rest_option_rects[2].center)
+    assert game.rest_phase == "drill"
+    game.render()
+    choices, rects = game.rest_picker()
+    game._handle_rest_click(rects[choices.index("cannon")].center)
+    assert run.tower_xp["cannon"] == game_module.OUTPOST_DRILL_XP
+    assert game.rest_phase == "resolved" and run.visited_node_ids == ["1-0"]
+    assert any("Cannon promoted: Blooded" in toast.text for toast in game.achievement_toasts)
+    game.render()
+
+
+def test_drill_back_returns_to_the_choice_and_move_on_is_last(game):
+    run = _outpost(game)
+    game._choose_rest_option(2)
+    game._handle_rest_click(game.rest_back_rect.center)
+    assert game.rest_phase == "choose"
+    game._choose_rest_option(3)
+    assert game.rest_moved_on and run.tower_xp == {}
+
+
+def test_drill_text_matches_the_game_constant():
+    from core import game as game_module
+    from presentation import ui
+
+    assert ui.OUTPOST_DRILL_XP_TEXT == game_module.OUTPOST_DRILL_XP

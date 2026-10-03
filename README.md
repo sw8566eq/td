@@ -66,7 +66,8 @@ node types:
 - **Shop** -- spend shop currency on towers and relics (see "The Shop and two currencies" below).
 - **Event** -- a short prompt with 2-3 honestly-described options (gain currency, lose a relic for a
   bigger reward, unlock a tower early, heal, ...) -- never a hidden-odds gamble.
-- **Outpost** -- a choice: **Rest** to heal some lives back, **Move on**, or **Forge** one of your
+- **Outpost** -- a choice: **Rest** to heal some lives back, **Drill** one tower type's crews (+60
+  veterancy experience), **Move on**, or **Forge** one of your
   towers -- every copy of it you place for the rest of the run starts at level 2, for free (marked
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
