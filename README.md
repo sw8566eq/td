@@ -41,8 +41,8 @@ Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sn
 **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades), **The
 Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) and **The Trapmaster**
 (Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) unlock as you play.
-The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic and
-one curse, the same pair for everyone.
+The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
+one curse, and one module fitted to a starter tower, the same for everyone.
 
 Before the map, **Orders from Command** offer one requisition -- pick one: a
 relic, supplies (+15 shop currency, +3 lives), a forged tower plus a potion, or a dark bargain (two
