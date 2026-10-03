@@ -32,7 +32,7 @@ class FakeEnemy:
     def apply_knockback(self, distance):
         self.knockback_applied = distance
 
-    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False):
+    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False, source=None):
         self.poison_applied = (damage_per_tick, tick_interval, duration)
         self.poison_ignore_shield = ignore_shield
 

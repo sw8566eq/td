@@ -1436,3 +1436,37 @@ def test_stagger_resistance_wears_off():
     assert enemy.knockback_resistance == pytest.approx(0.6 - KNOCKBACK_RESISTANCE_DECAY)
     enemy.update(10.0)
     assert enemy.knockback_resistance == 0.0
+
+
+# --- Poison credit ---
+
+
+class _Source:
+    def __init__(self):
+        self.damage_dealt = 0.0
+        self.kills = 0
+
+
+def test_poison_ticks_credit_their_source_tower_including_the_kill():
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    tower = _Source()
+    enemy.apply_poison(5.0, 0.5, 10.0, source=tower)
+    enemy.update(0.01)
+    assert tower.damage_dealt == pytest.approx(5.0)
+    enemy.hp = 3.0
+    enemy.update(0.6)
+    assert enemy.is_dead and tower.kills == 1
+
+
+def test_a_stronger_poison_takes_over_the_credit_and_sourceless_poison_credits_nobody():
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    weak, strong = _Source(), _Source()
+    enemy.apply_poison(2.0, 1.0, 5.0, source=weak)
+    enemy.apply_poison(1.0, 1.0, 5.0, source=strong)
+    assert enemy.poison_source is weak  # weaker re-poison doesn't steal the credit
+    enemy.apply_poison(4.0, 1.0, 5.0, source=strong)
+    assert enemy.poison_source is strong
+    other = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    other.apply_poison(2.0, 1.0, 5.0)
+    other.update(0.01)
+    assert other.poison_source is None

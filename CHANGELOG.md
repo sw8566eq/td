@@ -145,6 +145,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Fixed
 
+- Poison damage-over-time is now credited to the tower that applied it, so Poison towers' damage and
+  kills show in the floor results and count toward their veterancy (they barely ranked before).
 - The opening Orders' lives (Supplies, or a Sturdy Gate taken there) were lost at the first fight.
 - A Practice session leaked into the next run: no map autosave before the first fight, and a run
   Continued inside a Shop let you take everything for free.

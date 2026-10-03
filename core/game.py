@@ -3112,6 +3112,7 @@ class Game:
                         enemy.apply_poison(
                             source.poison_damage_per_tick, source.poison_tick_interval,
                             source.poison_time_remaining, source.poison_ignores_shield,
+                            source=source.poison_source,
                         )
         if kills_this_frame:
             # One bump for however many enemies died this tick, not one
