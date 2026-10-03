@@ -2283,4 +2283,17 @@ RESONANCES = {
     "overwatch": Resonance(
         "Overwatch", "basic", "sniper", "Basic near a Sniper: +10% damage.", damage_bonus=0.10,
     ),
+    "static_charge": Resonance(
+        "Static Charge", "overload_cannon", "lightning", "Overload Cannon near Lightning: +20% damage.",
+        damage_bonus=0.20,
+    ),
+    "deep_freeze": Resonance(
+        "Deep Freeze", "frost", "tar_pit", "Frost near a Tar Pit: +20% range.", range_bonus=0.20,
+    ),
+    "bounty_link": Resonance(
+        "Bounty Link", "siphon", "sniper", "Siphon near a Sniper: +20% fire rate.", fire_rate_bonus=0.20,
+    ),
+    "thermal_shock": Resonance(
+        "Thermal Shock", "mortar", "frost", "Mortar near a Frost tower: +15% damage.", damage_bonus=0.15,
+    ),
 }

@@ -49,7 +49,7 @@ def test_resonance_panel_lines():
     from presentation import ui
 
     assert ui.resonance_line(TOWER_TYPES["lightning"]) == "Pairs with: Frost"
-    assert ui.resonance_line(TOWER_TYPES["frost"]) == "Boosts: Lightning"
+    assert ui.resonance_line(TOWER_TYPES["barricade"]) == "Boosts: Mortar"
     assert ui.resonance_line(TOWER_TYPES["support"]) is None
     lightning = _tower("lightning", 0)
     assert ui.resonance_line(lightning) is None
