@@ -175,3 +175,41 @@ def test_preview_tower_carries_module_range_and_is_never_placed(game):
     probe = game.preview_tower(TOWER_TYPES["basic"], 0, 0)
     assert probe.effective_range() == pytest.approx(TOWER_TYPES["basic"].range * 1.2)
     assert probe not in game.towers and not game.grid.is_occupied(0, 0)
+
+
+# --- Tower-progression Events ---
+
+
+def _resolve(event_key, option_key, run, seed=1):
+    from run import events
+
+    option = next(o for o in events.EVENTS[event_key].options if o.key == option_key)
+    return events.resolve_event_option(run, option, random.Random(seed), damaging_types=DAMAGING)
+
+
+def test_abandoned_workshop_fits_a_module(game):
+    run = start_first_floor(game, seed=1)
+    run.shop_currency = 20
+    result = _resolve("abandoned_workshop", "salvage", run)
+    assert run.tower_modules == {result["module_tower"]: result["module"]}
+    assert run.shop_currency == 12
+
+
+def test_drill_instructor_trains_every_type_or_one(game):
+    run = start_first_floor(game, seed=1)
+    _resolve("drill_instructor", "full_drill", run)
+    assert all(run.tower_xp[name] == 40 for name in run.unlocked_towers)
+    before = dict(run.tower_xp)
+    result = _resolve("drill_instructor", "one_crew", run)
+    assert sum(run.tower_xp.values()) == sum(before.values()) + 50
+    assert result["tower_xp"] in run.unlocked_towers
+
+
+def test_tower_event_outcomes_read_well(game):
+    from presentation import ui
+    from run import events
+
+    lines = ui._describe_event_outcome(events.EVENTS["abandoned_workshop"].options[0],
+                                       {"module": "long_barrel", "module_tower": "cannon", "tower_xp": "basic, frost"})
+    assert "Fitted module: Long Barrel on your Cannon towers" in lines
+    assert "Experience for: Basic, Frost" in lines

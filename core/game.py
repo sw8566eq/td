@@ -1505,6 +1505,7 @@ class Game:
         )
         self.event_resolution = events.resolve_event_option(
             run, option, item_rng, meta_progression_path=self.meta_progression_path,
+            damaging_types=self._damaging_tower_types(),
         )
         # events.resolve_event_option grants its own relic/tower directly
         # onto `run` rather than routing through _grant_relic/

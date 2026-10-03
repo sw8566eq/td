@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Two tower Events: **Abandoned Workshop** (pay to fit a random module to a random tower type, or sell
+  it for parts) and **Drill Instructor** (veterancy experience for every tower type at the cost of a
+  life, or for one type for free).
 - The stats panel shows each placed tower's **live bonus** next to Damage/Range/Fire rate (e.g. `+18%`
   from veterancy, modules, relics, auras and placement), and its hover range ring now shows its real,
   boosted reach.
