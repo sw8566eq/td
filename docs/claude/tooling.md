@@ -119,3 +119,12 @@ not `pygame.quit()`: under SDL's dummy audio driver `pygame.mixer.quit()` blocks
 audio thread, which made a full run ~160s of mostly waiting; skipping it brings the suite to ~11s.
 `Game()`'s own `pygame.mixer.init()` is a no-op once the mixer is up, so no test observes the
 difference. Tests about the mixer's own init/failure paths still call `pygame.quit()` themselves.
+
+## Tower bench (`tools/tower_bench.py`)
+
+A dev-only balance check, excluded from coverage (`tools/*` in `[tool.coverage.run] omit`): each
+attacking tower type gets the same gold on the same floor at Act 1/2/3 depth, placed greedily by path
+coverage, then every wave runs headless (Game built via `tests/conftest.make_game` in a temp dir, so no
+real player files are touched). Prints leaks and damage per act; `--budget`, `--level`, `--towers`,
+`--extra`. It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
+fixed by stagger resistance (see enemies.md).

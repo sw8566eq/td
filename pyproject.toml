@@ -13,7 +13,7 @@ target-version = "py313"
 "entities/tower.py" = ["RUF012"]
 
 [tool.coverage.run]
-omit = ["tests/*", ".venv/*"]
+omit = ["tests/*", ".venv/*", "tools/*"]
 
 [tool.mypy]
 python_version = "3.13"
