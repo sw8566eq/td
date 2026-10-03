@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Counter relics**: Seismic Sensors (Spike Traps and Tar Pits can hit Burrowers) and Booby-Trapped
+  Walls (a Barricade that breaks explodes for its max hit points against nearby ground enemies).
 - **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
   20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
   stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).

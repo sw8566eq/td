@@ -296,3 +296,10 @@ tower as `relic_ground_fire` by `_construct_tower`; only `MortarTower.create_pro
 `effects.GroundFire` (`Game.ground_fires`, reset per floor), which `Game._update_ground_fires` ticks
 before enemies move: ground enemies (not flying, not burrowed) inside it take `dps * dt`, credited to
 the Mortar's `damage_dealt`/`kills`. Fires draw under towers and enemies.
+
+## Counter relics
+
+`traps_hit_burrowed` (Seismic Sensors) sets `HITS_BURROWED = True` on a path trap's instance in
+`_apply_construction_relics`. `barricade_burst_fraction` (Booby-Trapped Walls) makes
+`_hold_enemies_at_barricades` call `Game._barricade_burst` for a breaking Barricade: max hp x fraction
+to every ground enemy within `BARRICADE_BURST_RADIUS`, credited to the barricade.

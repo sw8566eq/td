@@ -568,6 +568,12 @@ class Relic:
     # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
     # damage_multiplier, set by Game._hold_enemies_at_barricades).
     held_damage_multiplier: float = 1.0
+    # Path traps can hit burrowing enemies (Game._apply_construction_relics
+    # sets the trap's HITS_BURROWED on the instance).
+    traps_hit_burrowed: bool = False
+    # A Barricade that breaks explodes for this fraction of its max hp, hitting
+    # ground enemies within BARRICADE_BURST_RADIUS (Game._hold_enemies_at_barricades).
+    barricade_burst_fraction: float = 0.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1116,6 +1122,15 @@ RELICS = {
         "incendiary_shells", "Incendiary Shells",
         "Mortar only: each shell leaves burning ground for 3s, hurting ground enemies that cross it.",
         mortar_ground_fire=(0.3, 3.0),
+    ),
+    "seismic_sensors": Relic(
+        "seismic_sensors", "Seismic Sensors", "Spike Traps and Tar Pits can hit Burrowers.",
+        traps_hit_burrowed=True,
+    ),
+    "booby_trapped_walls": Relic(
+        "booby_trapped_walls", "Booby-Trapped Walls",
+        "A Barricade that breaks explodes, dealing its max hit points as damage to nearby ground enemies.",
+        barricade_burst_fraction=1.0,
     ),
     "ambush": Relic(
         "ambush", "Ambush", "Enemies held at a Barricade take 25% more damage from everything.",

@@ -62,6 +62,8 @@ _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- key
 # A Barricade's damage taken per second from each enemy battering it, times
 # that enemy's own Enemy.BREACH_MULTIPLIER -- see _hold_enemies_at_barricades.
 BARRICADE_BREACH_DPS = 2.5
+# A Booby-Trapped Walls-style relic's blast radius when a Barricade breaks.
+BARRICADE_BURST_RADIUS = 80
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -2597,6 +2599,8 @@ class Game:
             tower.MIN_RANGE = type(tower).MIN_RANGE * dead_zone_multiplier
         if has_module:
             tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
+        if tower.PLACEMENT == "path" and any(relic.traps_hit_burrowed for relic in held):
+            tower.HITS_BURROWED = True
 
     def veterancy_rank(self, tower_name):
         """`tower_name`'s veterancy rank this run (run/veterancy.py),
@@ -2704,7 +2708,12 @@ class Game:
                     barricade.hp -= BARRICADE_BREACH_DPS * enemy.BREACH_MULTIPLIER * dt
                     enemy.take_damage(barricade.thorns_dps * dt)
                     break
+        burst = 0.0
+        if self.active_run is not None:
+            burst = sum(relics.RELICS[key].barricade_burst_fraction for key in self.active_run.relics)
         for barricade in barricades:
+            if barricade.hp <= 0 and burst:
+                self._barricade_burst(barricade, barricade.max_hp * burst)
             if barricade.hp <= 0:
                 self.towers.remove(barricade)
                 self.sold_towers.append(barricade)  # still listed in the floor's results
@@ -2713,6 +2722,21 @@ class Game:
                     self.selected_tower = None
                 self._recompute_tower_density_bonuses()
                 self.audio.play("tower_sold")
+
+    def _barricade_burst(self, barricade, damage):
+        """A Booby-Trapped Walls-style relic: a breaking Barricade blasts every
+        ground enemy within BARRICADE_BURST_RADIUS, credited to the barricade."""
+        for enemy in self.enemies:
+            if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False)
+                    or enemy.pos.distance_to(barricade.pos) > BARRICADE_BURST_RADIUS):
+                continue
+            barricade.damage_dealt += enemy.take_damage(damage) or 0.0
+            if enemy.is_dead:
+                barricade.kills += 1
+        self.impact_effects.append(effects.ExpandingRing(
+            barricade.pos, max_radius=BARRICADE_BURST_RADIUS, duration=0.5, color=settings.COLOR_GOLD,
+        ))
+        self.audio.play("enemy_hit_splash")
 
     def _footprint_for(self, tower_cls):
         """A ground tower's footprint (_current_footprint_subtiles); a path
