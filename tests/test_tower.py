@@ -1652,3 +1652,8 @@ def test_overload_cannon_defaults_to_last_targeting_and_others_to_first():
         expected = "last" if name == "overload_cannon" else "first"
         assert tower.targeting_mode == expected, name
         assert tower.targeting_mode in cls.TARGETING_MODES
+
+
+def test_every_tower_has_a_one_line_description():
+    for name, cls in TOWER_TYPES.items():
+        assert cls.description and len(cls.description) <= 100, name
