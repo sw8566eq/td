@@ -260,6 +260,9 @@ class InputHandler:
             elif keybindings.matches(game.keybindings["open_relics"], key, mods) and game.active_run is not None:
                 game.relics_return_state = GameState.PLAYING
                 game.state = GameState.RELICS
+            elif key == pygame.K_v:
+                # Fixed like the potion keys: toggle every tower's range ring.
+                game.show_coverage = not game.show_coverage
             elif key in POTION_HOTKEYS:
                 # Fixed, not remappable (the Keybinds screen has no room
                 # for three more rows) -- checked last, so a remapped

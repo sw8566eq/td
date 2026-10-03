@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Coverage overlay**: press `V` in a fight to show every tower's real range, Mortar dead zones and active resonance links.
 - Tower cards on reward and Shop screens show their resonance partners ("Pairs with:" / "Boosts:").
 - Burrowed enemies draw as a faded sprite on a dirt mound, so you can see when traps can't reach them.
 - **Marked Burrowers surface**: a Burrower (or Tunneling elite) that's Marked by a Beacon (or Marking

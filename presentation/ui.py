@@ -13,7 +13,7 @@ import os
 import pygame
 
 from entities.enemy import ENEMY_TYPES
-from entities.tower import RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
+from entities.tower import RESONANCE_RADIUS, RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveState
 from persistence.keybindings import ACTION_LABELS, ACTION_ORDER
 from progression.achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
@@ -1695,6 +1695,27 @@ OUTPOST_DRILL_XP_TEXT = 60  # mirrors core.game.OUTPOST_DRILL_XP -- checked by a
 RESONANCE_COLOR = (200, 150, 240)
 
 
+def draw_coverage_overlay(surface, towers):
+    """Every placed tower's real reach (and a Mortar's dead zone) as faint
+    rings, plus a link for each active resonance -- toggled with V."""
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    for tower in towers:
+        center = (int(tower.pos.x), int(tower.pos.y))
+        if tower.ATTACKS:
+            pygame.draw.circle(overlay, (255, 255, 255, 28), center, int(tower.effective_range()))
+            pygame.draw.circle(overlay, (255, 255, 255, 110), center, int(tower.effective_range()), width=1)
+        if tower.MIN_RANGE:
+            pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, int(tower.MIN_RANGE), width=1)
+    surface.blit(overlay, (0, 0))
+    owners = {key: tower for tower in towers for key in tower.resonance_keys}
+    for key, tower in owners.items():
+        partner_name = RESONANCES[key].partner
+        partners = [other for other in towers if TOWER_TYPE_NAMES.get(type(other)) == partner_name
+                    and other.pos.distance_to(tower.pos) <= RESONANCE_RADIUS]
+        for other in partners[:1]:
+            pygame.draw.line(surface, RESONANCE_COLOR, tower.pos, other.pos, width=2)
+
+
 def draw_resonance_links(surface, pos, partners):
     """Purple lines from a placement preview to each tower it would
     resonate with (entities.tower.resonance_partners)."""
@@ -2743,6 +2764,7 @@ HELP_LINES = [
     "At max level, Upgrade becomes two permanent Specialize choices",
     "Space (or the HUD button) starts the next wave or skips its countdown",
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
+    "V shows every tower's range (and resonance links) at once during a fight",
     "Q / W / E (or click a sidebar slot) drink potion 1 / 2 / 3 during a run's fight",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",

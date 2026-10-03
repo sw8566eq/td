@@ -405,6 +405,8 @@ class Game:
         self.overclock_timer = 0.0
         self.ground_fires = []
         self.floor_veterancy_gains = []
+        # V toggles every placed tower's range ring (ui.draw_coverage_overlay).
+        self.show_coverage = False
         # The highest Ascension this account has unlocked (run/ascension.py)
         # -- read once here and kept in step by _unlock_next_ascension, the
         # only thing that raises it, so the menu never re-reads the file

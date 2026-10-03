@@ -144,3 +144,25 @@ def test_active_resonances_feed_the_harmonist_counter(game):
     assert game.try_place_tower(*frost_spot)
     counters = achievements.load_achievements(game.achievements_path)["counters"]
     assert counters["resonances_active"] == 1
+
+
+def test_v_toggles_the_coverage_overlay(game):
+    from conftest import start_first_floor
+
+    start_first_floor(game, seed=1)
+    run = game.active_run
+    run.unlocked_towers += ["lightning", "mortar"]
+    game._rebuild_button_rects()
+    game.economy.gold = 2000
+    step = game.grid.subtiles_per_tile
+    spots = sorted((c, r) for c in range(0, game.grid.sub_cols, step) for r in range(0, game.grid.sub_rows, step)
+                   if game.grid.is_buildable(c, r))
+    for name, spot in zip(("lightning", "frost", "mortar"), spots, strict=False):
+        game.selected_tower_name = name
+        game.try_place_tower(*spot)
+    assert not game.show_coverage
+    game._handle_keydown(pygame.K_v)
+    assert game.show_coverage
+    game.render()
+    game._handle_keydown(pygame.K_v)
+    assert not game.show_coverage
