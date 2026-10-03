@@ -128,3 +128,11 @@ coverage, then every wave runs headless (Game built via `tests/conftest.make_gam
 real player files are touched). Prints leaks and damage per act; `--budget`, `--level`, `--towers`,
 `--extra`, `--reinvest` (spend kill gold on the cheapest upgrade, else another tower, every 0.5s). It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
 fixed by stagger resistance (see enemies.md).
+
+## Flow check (`tools/flow_check.py`)
+
+A dev-only, end-to-end state-machine check (excluded from coverage): a bot plays one whole run per
+Commander -- random map nodes, building/upgrading in fights, rewards, Shops, Events, Outposts
+(Rest/Forge/Drill/Move on), Armories, Treasures, occasional saves -- invulnerable in fights so it reaches
+every act and the endless final boss. Prints each run's outcome and screen counts; exits non-zero on a
+crash. Run it after changing node types, reward/act flow or save state.
