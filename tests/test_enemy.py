@@ -1408,3 +1408,31 @@ def test_enemy_update_still_works_with_no_enemies_argument():
     enemy = GruntEnemy(WAYPOINTS, wave_number=1)
     enemy.update(dt=0.1)
     assert enemy.distance_traveled > 0
+
+
+# --- Knockback stagger resistance ---
+
+
+def test_repeated_knockbacks_land_weaker_and_resistance_caps():
+    from entities.enemy import KNOCKBACK_RESISTANCE_CAP, KNOCKBACK_RESISTANCE_PER_SHOVE
+
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    enemy.distance_traveled = 500
+    enemy.apply_knockback(100)
+    assert enemy.knockback_remaining == pytest.approx(100)
+    enemy.apply_knockback(100)
+    assert enemy.knockback_remaining == pytest.approx(100 + 100 * (1 - KNOCKBACK_RESISTANCE_PER_SHOVE))
+    for _ in range(20):
+        enemy.apply_knockback(10)
+    assert enemy.knockback_resistance == pytest.approx(KNOCKBACK_RESISTANCE_CAP)
+
+
+def test_stagger_resistance_wears_off():
+    from entities.enemy import KNOCKBACK_RESISTANCE_DECAY
+
+    enemy = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(1000, 0)], wave_number=1)
+    enemy.knockback_resistance = 0.6
+    enemy.update(1.0)
+    assert enemy.knockback_resistance == pytest.approx(0.6 - KNOCKBACK_RESISTANCE_DECAY)
+    enemy.update(10.0)
+    assert enemy.knockback_resistance == 0.0

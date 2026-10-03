@@ -124,3 +124,19 @@ Swarming affix uses, so a mid-floor save keeps them) from `SAPPER_MIN_DEPTH` (Ac
 `Enemy.BURROWS` (Burrower): `Tower.HITS_BURROWED` is False on path traps, checked in `acquire_target`
 and passed into `Projectile(can_hit_burrowed=...)` so their splash skips it too; the barricade hold
 skips it. Trap and Mortar shots also pass `can_hit_flying` now (their splash used to touch flyers).
+
+## Knockback stagger resistance
+
+`Enemy.knockback_resistance` (0..`KNOCKBACK_RESISTANCE_CAP`) scales every `apply_knockback` distance by
+`1 - resistance`, then grows by `KNOCKBACK_RESISTANCE_PER_SHOVE`; `update()` decays it by
+`KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
+Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
+forever with zero leaks.
+
+## Knockback stagger resistance
+
+`Enemy.knockback_resistance` (0..`KNOCKBACK_RESISTANCE_CAP`) scales every `apply_knockback` distance by
+`1 - resistance`, then grows by `KNOCKBACK_RESISTANCE_PER_SHOVE`; `update()` decays it by
+`KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
+Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
+forever with zero leaks.
