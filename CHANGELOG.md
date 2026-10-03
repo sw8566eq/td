@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Balance -- Overload Cannon targets the newest arrival by default** ("last"): its 5-second charge
+  kept locking onto the enemy about to leave its range and fizzling; the bench measured ~3x the damage.
 - **Counter relics**: Seismic Sensors (Spike Traps and Tar Pits can hit Burrowers) and Booby-Trapped
   Walls (a Barricade that breaks explodes for its max hit points against nearby ground enemies).
 - **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
