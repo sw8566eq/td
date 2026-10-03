@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Burrowed enemies draw as a faded sprite on a dirt mound, so you can see when traps can't reach them.
 - **Marked Burrowers surface**: a Burrower (or Tunneling elite) that's Marked by a Beacon (or Marking
   Dust) comes up -- traps, Barricades and burning ground can reach it until the mark wears off.
 - **Outposts gain Drill**: give one tower type of your choice +60 veterancy experience (Move on is now

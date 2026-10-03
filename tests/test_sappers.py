@@ -113,3 +113,11 @@ def test_a_marked_burrower_surfaces_for_traps_and_barricades():
     assert trap.create_projectile(burrower)._can_hit(burrower)
     burrower.update(3.5)
     assert burrower.is_burrowed  # the mark wore off -- back underground
+
+
+def test_burrowed_and_surfaced_burrowers_both_draw(game):
+    surface, assets = game.screen, game.assets
+    burrower = _burrower_at(50)
+    burrower.draw(surface, assets)
+    burrower.apply_mark(1.2, 2.0)
+    burrower.draw(surface, assets)

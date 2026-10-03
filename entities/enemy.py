@@ -25,6 +25,8 @@ from support import settings
 
 # Knockback stagger resistance (Enemy.apply_knockback): every shove makes
 # the next one PER_SHOVE weaker, up to CAP, wearing off at DECAY per second.
+# The dirt mound a burrowed enemy draws under itself (Enemy.draw).
+BURROW_MOUND_COLOR = (110, 80, 50)
 KNOCKBACK_RESISTANCE_PER_SHOVE = 0.2
 KNOCKBACK_RESISTANCE_CAP = 0.8
 KNOCKBACK_RESISTANCE_DECAY = 0.3
@@ -407,6 +409,14 @@ class Enemy:
         size = (self.radius * 2, self.radius * 2)
         sprite = assets.get(self.sprite_name, size)
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
+        if self.is_burrowed:
+            # Underground: a dirt mound with the sprite faded into it, so it
+            # reads as out of reach of traps (a Mark brings it back up).
+            mound = pygame.Rect(0, 0, self.radius * 2 + 6, self.radius + 4)
+            mound.center = (int(self.pos.x), int(self.pos.y) + self.radius // 2)
+            pygame.draw.ellipse(surface, BURROW_MOUND_COLOR, mound)
+            sprite = sprite.copy()
+            sprite.set_alpha(110)
         surface.blit(sprite, rect)
         self._draw_health_bar(surface)
 
