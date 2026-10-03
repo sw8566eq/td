@@ -2823,16 +2823,20 @@ _RUN_GUIDE_NODE_TYPE_LINES = [
     f"{MAP_NODE_TYPE_NAMES[key]}: {MAP_NODE_TYPE_DESCRIPTIONS[key]}" for key in MAP_NODE_TYPE_NAMES
 ]
 _RUN_GUIDE_STATUS_LINES = [
-    "Marked: extra damage taken for a few seconds (Beacon Tower)",
-    "Slowed: reduced movement speed for a few seconds (Frost Tower)",
-    "Poisoned: damage over time, ticking every second (Poison Tower)",
-    "Shielded: absorbs damage before HP does (some enemies)",
-    "Knocked back: pushed backward along its route (Knockback Tower)",
+    "Statuses: Marked takes extra damage (Beacon), Slowed moves slower (Frost), Poisoned burns (Poison)",
+    "Shielded absorbs damage before HP; Knocked back slides back along its route (Knockback)",
+]
+# The run's tower-progression systems, one line each.
+_RUN_GUIDE_SYSTEM_LINES = [
+    "Towers grow: each type ranks up from its kills (veterancy) and takes one module (Elites, Shops)",
+    "Resonances: some tower pairs boost each other -- hover a build button to see its partners",
+    "Traps and Barricades go on the path itself -- deeper acts bring Sappers and Burrowers to counter them",
 ]
 RUN_GUIDE_LINES = [
     "Branching map: pick your path. Won fights offer a free tower, and sometimes a potion.",
     *_RUN_GUIDE_NODE_TYPE_LINES,
     *_RUN_GUIDE_STATUS_LINES,
+    *_RUN_GUIDE_SYSTEM_LINES,
     (f"Relics: {sum(not relic.is_curse and not relic.is_boss_relic for relic in RELICS.values())} across Economy/Offense/Status/"
      "Defense/Tower-exclusive/Potion categories -- "
      "press R in a run to see what you're holding"),
