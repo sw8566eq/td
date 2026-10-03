@@ -2706,7 +2706,9 @@ class Game:
                     enemy.held = True
                     enemy.held_damage_multiplier = ambush
                     barricade.hp -= BARRICADE_BREACH_DPS * enemy.BREACH_MULTIPLIER * dt
-                    enemy.take_damage(barricade.thorns_dps * dt)
+                    barricade.damage_dealt += enemy.take_damage(barricade.thorns_dps * dt) or 0.0
+                    if enemy.is_dead:
+                        barricade.kills += 1
                     break
         burst = 0.0
         if self.active_run is not None:
