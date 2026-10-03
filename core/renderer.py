@@ -331,6 +331,7 @@ class Renderer:
             forged_towers=game.active_run.forged_towers if game.active_run is not None else (),
             veterancy_ranks=({name: game.veterancy_rank(name) for name in game.active_run.unlocked_towers}
                              if game.active_run is not None else None),
+            moduled_towers=game.active_run.tower_modules if game.active_run is not None else (),
             endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
         )
         if game._show_first_placement_hint and not game.towers:

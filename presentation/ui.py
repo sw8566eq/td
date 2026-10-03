@@ -271,7 +271,8 @@ def _format_currency(value, unlimited):
 def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_rects,
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
-             floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0, veterancy_ranks=None):
+             floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0, veterancy_ranks=None,
+             moduled_towers=()):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -313,6 +314,8 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         # One pip per veterancy rank this tower type has earned this run.
         for pip in range((veterancy_ranks or {}).get(name, 0)):
             pygame.draw.circle(surface, settings.COLOR_GOLD, (rect.x + 6 + pip * 7, rect.y + 6), 2)
+        if name in moduled_towers:  # a module is fitted to this type
+            pygame.draw.circle(surface, MODULE_COLOR, (rect.right - 6, rect.bottom - 22), 3)
 
     # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
     # menu shows only its own drafted subset (see build_button_rects), and
