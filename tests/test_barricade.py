@@ -199,3 +199,14 @@ def test_seismic_sensors_let_traps_hit_burrowers(game):
     burrower.pos = pygame.Vector2(trap.pos)
     assert trap.HITS_BURROWED and trap.acquire_target([burrower]) is burrower
     assert type(trap).HITS_BURROWED is False  # the class stays untouched
+
+
+def test_thorns_damage_and_kills_are_credited_to_the_barricade(game):
+    barricade = _barricade(game)
+    grunt = _enemy_on(barricade)
+    game.enemies = [grunt]
+    game._hold_enemies_at_barricades(1.0)
+    assert barricade.damage_dealt == pytest.approx(barricade.thorns_dps)
+    grunt.hp = 0.5
+    game._hold_enemies_at_barricades(1.0)
+    assert grunt.is_dead and barricade.kills == 1
