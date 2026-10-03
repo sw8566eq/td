@@ -2719,7 +2719,7 @@ class Game:
         for fire in self.ground_fires:
             fire.time_left -= dt
             for enemy in self.enemies:
-                if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.BURROWS
+                if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed
                         or enemy.pos.distance_to(fire.pos) > fire.radius):
                     continue
                 multiplier = vs_slowed if enemy.slow_timer > 0 else 1.0
@@ -2746,7 +2746,7 @@ class Game:
             for key in self.active_run.relics:
                 ambush *= relics.RELICS[key].held_damage_multiplier
         for enemy in self.enemies:
-            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.BURROWS:
+            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed:
                 continue
             for barricade in barricades:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:

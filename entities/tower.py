@@ -790,7 +790,7 @@ class Tower:
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
             and (self.can_target_flying or not getattr(e, "is_flying", False))
             and (not self.MIN_RANGE or self.pos.distance_to(e.pos) >= self.MIN_RANGE)
-            and (self.HITS_BURROWED or not getattr(e, "BURROWS", False))
+            and (self.HITS_BURROWED or not getattr(e, "is_burrowed", False))
         ]
         if not candidates:
             return None

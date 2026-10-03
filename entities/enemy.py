@@ -339,6 +339,13 @@ class Enemy:
         self.poison_tick_interval = tick_interval
         self.poison_time_remaining = max(self.poison_time_remaining, duration)
 
+    @property
+    def is_burrowed(self):
+        """Under the path right now: a burrowing species (BURROWS) that isn't
+        Marked -- a Beacon-style mark drags it to the surface, where path
+        traps, Barricades and burning ground can reach it again."""
+        return self.BURROWS and self.mark_timer <= 0
+
     def apply_knockback(self, distance):
         """Queue `distance` pixels of backward path travel, animated over
         the next several update() calls at knockback_speed rather than

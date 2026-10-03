@@ -406,7 +406,8 @@ menu holds more than nine, it wraps into two rows.
   flyers pass over. Upgrading raises its hit points and fully repairs it. Unlocks after 12 floors.
   From Act 2 on, every run wave brings **Sappers** -- demolition troops that batter a Barricade five
   times as hard -- so a wall alone won't hold a deep run. A little deeper, **Burrowers** join them:
-  they tunnel under the path, so Spike Traps, Tar Pits and Barricades can't touch them. Two relics
+  they tunnel under the path, so Spike Traps, Tar Pits and Barricades can't touch them -- unless a
+  Beacon Marks them, which drags them to the surface until the mark wears off. Two relics
   answer back: **Seismic Sensors** (traps can hit Burrowers) and **Booby-Trapped Walls** (a breaking
   Barricade explodes for its max hit points).
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").

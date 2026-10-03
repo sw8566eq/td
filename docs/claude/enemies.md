@@ -148,3 +148,6 @@ fresh application or when the new tick is at least as strong; `update()` adds ea
 to its `damage_dealt` and a killing tick to its `kills` (so poison counts for results and veterancy).
 Projectiles pass `self.source`; Virulent Bloom's spread passes the dying enemy's source; potions pass
 none.
+
+`Enemy.is_burrowed` (BURROWS and not currently Marked) is what every burrow check reads -- trap
+targeting/splash, the barricade hold, ground fire -- so a Beacon-style mark surfaces a burrower.

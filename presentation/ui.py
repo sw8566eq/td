@@ -767,7 +767,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "elite": "A harder floor -- pays more Shop currency on clear.",
     "shop": "Spend Shop currency on new towers and relics.",
     "event": "A short encounter with a few fixed choices.",
-    "rest": "Rest to heal lives, or Forge a tower (placed at level 2).",
+    "rest": "Rest to heal, Forge a tower (placed at level 2), or Drill a crew.",
     "treasure": "A guaranteed relic, plus some Shop currency.",
     "boss": "The act's boss -- win a trophy relic and move on. Act 3's never ends.",
 }
