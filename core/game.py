@@ -700,9 +700,10 @@ class Game:
         self._enter_map()
 
     def _apply_daily_modifiers(self):
-        """A Daily Run's own twist (Slay the Spire's Daily Climb mods):
-        one boss relic and one curse, picked from the date seed so every
-        player gets the same pair today. Boss relics with a one-time lives
+        """A Daily Run's own twist: one trophy relic, one curse, and one
+        module fitted to a starter tower, picked from the date seed so every
+        player gets the same set today (the module drawn after the other two,
+        so they stay what they were before modules existed). Boss relics with a one-time lives
         cost are skipped -- the run's lives aren't captured until its first
         node loads, so that cost would silently vanish."""
         run = self.active_run
@@ -714,6 +715,13 @@ class Game:
         self._queue_toast(
             f"Daily modifiers: {relics.RELICS[boon].display_name} + {relics.RELICS[curse].display_name}",
         )
+        issued = modules.module_offer(rng, run, self._damaging_tower_types())
+        if issued is not None:
+            module_key, tower_name = issued
+            run.tower_modules[tower_name] = module_key
+            self._queue_toast(
+                f"Daily issue: {modules.MODULES[module_key].display_name} on your {TOWER_TYPES[tower_name].display_name}",
+            )
 
     def _floor_load_context(self, run, node):
         """The (relic_modifiers, escalation, rng) triple _load_level_object()

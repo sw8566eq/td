@@ -297,3 +297,18 @@ def test_on_hit_chain_mark_and_knockback_modules(game):
         field = {"arc_coupler": MODULES[key].chain_on_hit, "target_painter": MODULES[key].mark_on_hit,
                  "recoil_plate": MODULES[key].knockback_on_hit}[key]
         assert getattr(tower, chance_attr) == field[0] and getattr(tower, effect_attr) == field[1], key
+
+
+def test_a_daily_run_issues_one_module_the_same_for_everyone(game, tmp_path):
+    from conftest import make_game
+
+    game._start_daily_challenge()
+    issued = dict(game.active_run.tower_modules)
+    assert len(issued) == 1
+    (tower, module_key), = issued.items()
+    assert tower in game.active_run.unlocked_towers and module_key in MODULES
+    other = make_game(tmp_path, prefix="other_")
+    other._start_daily_challenge()
+    assert other.active_run.tower_modules == issued
+    game.start_new_run(seed=5)
+    assert game.active_run.tower_modules == {}

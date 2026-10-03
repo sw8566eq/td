@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Daily issue**: every Daily Run also fits one seed-chosen module to one of its starter towers, the
+  same for every player that day.
 - Three more tower modules: **Arc Coupler** (hits can chain), **Target Painter** (every hit Marks) and
   **Recoil Plate** (hits can knock back).
 - **Armory** map nodes: choose one of three tower modules (each for a different tower type you hold),
