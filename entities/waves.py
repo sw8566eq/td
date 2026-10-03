@@ -83,6 +83,10 @@ class WaveManager:
         # enemy in apply_spawn_multipliers. Defaults are no-ops.
         self.enemy_regen_fraction_per_second = 0.0
         self.enemy_damage_taken_multiplier = 1.0
+        # An Elite affix's tunneling (every ground enemy burrows -- Enemy.
+        # BURROWS) and siege strength (Enemy.BREACH_MULTIPLIER scaled).
+        self.enemy_burrows = False
+        self.enemy_breach_multiplier = 1.0
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -262,6 +266,10 @@ class WaveManager:
         enemy.gold_reward = round(enemy.gold_reward * self.enemy_gold_multiplier)
         enemy.regen_fraction_per_second = self.enemy_regen_fraction_per_second
         enemy.damage_taken_multiplier = self.enemy_damage_taken_multiplier
+        if self.enemy_burrows and not getattr(enemy, "is_flying", False):
+            enemy.BURROWS = True
+        if self.enemy_breach_multiplier != 1.0:
+            enemy.BREACH_MULTIPLIER = type(enemy).BREACH_MULTIPLIER * self.enemy_breach_multiplier
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
             enemy.max_shield *= self.enemy_hp_multiplier
             enemy.shield = enemy.max_shield

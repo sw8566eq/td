@@ -774,6 +774,8 @@ class Game:
         if affix is not None:
             self.wave_manager.enemy_regen_fraction_per_second = affix.regen_fraction_per_second
             self.wave_manager.enemy_damage_taken_multiplier = affix.damage_taken_multiplier
+            self.wave_manager.enemy_burrows = affix.burrows
+            self.wave_manager.enemy_breach_multiplier = affix.breach_multiplier
 
     def _level_for_node(self, run, node):
         """The Level `node` loads -- LEVELS' own entry, or a private copy

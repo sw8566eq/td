@@ -228,3 +228,26 @@ def test_a_lich_boss_regenerates_and_the_sidebar_names_it(game, monkeypatch):
     game._enter_node("1-0")
     assert game.wave_manager.enemy_regen_fraction_per_second == elite_affixes.BOSS_AFFIXES["lich"].regen_fraction_per_second
     assert "The Lich" in game.renderer._run_modifiers_text()
+
+
+def test_tunneling_and_siegebreakers_change_spawned_enemies(game):
+    import pygame
+    from test_run import _begin_run_with_map
+
+    from entities.enemy import FlyingEnemy, GruntEnemy
+    from run import elite_affixes
+
+    _begin_run_with_map(game, ["elite", "combat"])
+    for key, check in (("tunneling", "burrows"), ("siegebreakers", "breach")):
+        affix = elite_affixes.AFFIXES[key]
+        game._elite_affix = lambda _run, node, a=affix: a if node.node_type == "elite" else None
+        game._enter_node("0-0")
+        grunt = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(10, 0)], wave_number=1)
+        flyer = FlyingEnemy([pygame.Vector2(0, 0), pygame.Vector2(10, 0)], wave_number=1)
+        game.wave_manager.apply_spawn_multipliers(grunt)
+        game.wave_manager.apply_spawn_multipliers(flyer)
+        if check == "burrows":
+            assert grunt.BURROWS and not flyer.BURROWS
+        else:
+            assert grunt.BREACH_MULTIPLIER == 3.0 and not grunt.BURROWS
+        assert GruntEnemy.BURROWS is False and GruntEnemy.BREACH_MULTIPLIER == 1.0  # classes untouched
