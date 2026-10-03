@@ -1524,12 +1524,15 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
 # --- Commander select (right before a run starts) ---
 
 COMMANDER_CARD_HEIGHT = 320  # taller than a Shop card: kit lines plus two lock lines
+COMMANDER_CARD_HEIGHT_NARROW = 400
 
 
 def build_commander_card_rects(count):
     """Same centered row as build_draft_choice_rects, just taller cards."""
-    return [pygame.Rect(rect.x, rect.y, rect.width, COMMANDER_CARD_HEIGHT)
-            for rect in build_draft_choice_rects(count)]
+    # Six or more to a row are narrow, so their text wraps longer -- give
+    # them the extra height the screen has room for.
+    height = COMMANDER_CARD_HEIGHT_NARROW if count >= 6 else COMMANDER_CARD_HEIGHT
+    return [pygame.Rect(rect.x, rect.y, rect.width, height) for rect in build_draft_choice_rects(count)]
 
 
 COMMANDER_LOCK_TEXT = {
@@ -1561,7 +1564,11 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
         pygame.draw.rect(surface, border, rect, width=2, border_radius=8)
         x, y = rect.x + PANEL_PADDING, rect.y + PANEL_PADDING
         max_width = rect.width - 2 * PANEL_PADDING
-        name = font.render(commander.display_name, True, settings.COLOR_TEXT if unlocked else settings.COLOR_TEXT_DIM)
+        name_color = settings.COLOR_TEXT if unlocked else settings.COLOR_TEXT_DIM
+        # Six cards to a row are too narrow for the big title font -- one
+        # size for every card, so the row reads evenly.
+        title_font = small_font if rect.width < DRAFT_CARD_WIDTH_COMPACT else font
+        name = title_font.render(commander.display_name, True, name_color)
         surface.blit(name, (x, y))
         y += name.get_height() + 6
 
@@ -1583,7 +1590,8 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
             requirement = COMMANDER_LOCK_TEXT.get(unlock.counter, "{goal} " + unlock.counter).format(goal=unlock.goal)
             progress = min(counters.get(unlock.counter, 0), unlock.goal)
             bottom = rect.bottom - PANEL_PADDING
-            for text in (f"{requirement} ({progress}/{unlock.goal})", "Locked"):
+            # Bottom-up: the progress count, the requirement, then "Locked".
+            for text in (f"({progress}/{unlock.goal})", requirement, "Locked"):
                 lock = small_font.render(text, True, settings.COLOR_GOLD)
                 surface.blit(lock, lock.get_rect(midbottom=(rect.centerx, bottom)))
                 bottom -= PANEL_ROW_HEIGHT

@@ -58,4 +58,10 @@ COMMANDERS = {
         ("basic", "lightning", "frost"), starting_relics=("storm_core",), forged_towers=("lightning",),
     ),
 }
+COMMANDERS["trapmaster"] = Commander(
+    "trapmaster", "The Trapmaster",
+    "Turns the path itself into a weapon. Basic, Spike Trap and Tar Pit; Spike Trap starts forged, and "
+    "traps hit slowed enemies harder.",
+    ("basic", "spike_trap", "tar_pit"), starting_relics=("kill_corridor",), forged_towers=("spike_trap",),
+)
 COMMANDER_ORDER = list(COMMANDERS)
