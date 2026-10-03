@@ -1448,6 +1448,14 @@ def _draw_draft_card(surface, font, small_font, rect, name, hovered, purchased, 
     y = _draw_panel_header(surface, font, small_font, x, rect.y + PANEL_PADDING,
                             tower_cls, False, tower_cls, None)
     _draw_panel_stats(surface, small_font, x, y, tower_cls, tower_cls, False)
+    # Who it pairs with (Resonances), so a draft can build toward a pairing.
+    hint = resonance_line(tower_cls)
+    if hint is not None:
+        lines = _wrap_text(hint, small_font, rect.width - 2 * PANEL_PADDING)
+        y = rect.bottom - PANEL_PADDING - len(lines) * PANEL_ROW_HEIGHT
+        for line in lines:
+            surface.blit(small_font.render(line, True, RESONANCE_COLOR), (x, y))
+            y += PANEL_ROW_HEIGHT
 
 
 def _draw_relic_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
