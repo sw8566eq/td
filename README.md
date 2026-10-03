@@ -235,7 +235,7 @@ when one exists) continues a saved in-progress run.
 
 On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
 `Q` / `W` / `E` drink the potion in slot 1 / 2 / 3 (or click the slot in the
-sidebar).
+sidebar), and `V` toggles a coverage overlay of every tower's range.
 
 On the **map** screen, click any highlighted node to enter it; a legend explains what each node
 color means, and hovering a node shows a tooltip with its specific details (which level, how much a

@@ -282,6 +282,8 @@ class Renderer:
         game.grid.draw(game.screen, game.assets)
         for fire in game.ground_fires:
             fire.draw(game.screen)
+        if game.show_coverage:
+            ui.draw_coverage_overlay(game.screen, game.towers)
         for tower in game.towers:
             tower.draw(game.screen, game.assets, game.tiny_font)
         for enemy in game.enemies:
