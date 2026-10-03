@@ -170,3 +170,32 @@ def test_ambush_makes_held_enemies_take_more_damage(game):
     run.relics.remove("ambush")
     game._hold_enemies_at_barricades(0.0)
     assert held.held_damage_multiplier == 1.0
+
+
+def test_booby_trapped_walls_blast_nearby_ground_enemies_on_break(game):
+    from entities.enemy import FlyingEnemy
+
+    _run_with(game, ["booby_trapped_walls"])
+    barricade = _build(game, "barricade")
+    barricade.hp = 0.01
+    attacker, flyer = _enemy_on(barricade), _enemy_on(barricade, FlyingEnemy)
+    far = GruntEnemy([pygame.Vector2(0, 0), pygame.Vector2(10, 0)], wave_number=1)
+    far.pos = barricade.pos + pygame.Vector2(game_module.BARRICADE_BURST_RADIUS + 20, 0)
+    game.enemies = [attacker, flyer, far]
+    game._hold_enemies_at_barricades(1.0)
+    assert barricade not in game.towers
+    assert attacker.is_dead and barricade.kills == 1
+    assert flyer.hp == flyer.max_hp and far.hp == far.max_hp
+
+
+def test_seismic_sensors_let_traps_hit_burrowers(game):
+    from entities.enemy import BurrowerEnemy
+
+    run = _run_with(game, ["seismic_sensors"])
+    run.unlocked_towers.append("spike_trap")
+    game._rebuild_button_rects()
+    trap = _build(game, "spike_trap")
+    burrower = BurrowerEnemy([pygame.Vector2(trap.pos), pygame.Vector2(trap.pos.x + 500, trap.pos.y)], wave_number=1)
+    burrower.pos = pygame.Vector2(trap.pos)
+    assert trap.HITS_BURROWED and trap.acquire_target([burrower]) is burrower
+    assert type(trap).HITS_BURROWED is False  # the class stays untouched
