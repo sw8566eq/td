@@ -1677,6 +1677,14 @@ MODULE_COLOR = (120, 190, 230)
 RESONANCE_COLOR = (200, 150, 240)
 
 
+def draw_resonance_links(surface, pos, partners):
+    """Purple lines from a placement preview to each tower it would
+    resonate with (entities.tower.resonance_partners)."""
+    for other in partners:
+        pygame.draw.line(surface, RESONANCE_COLOR, pos, other.pos, width=2)
+        pygame.draw.circle(surface, RESONANCE_COLOR, (int(other.pos.x), int(other.pos.y)), 6, width=2)
+
+
 def resonance_line(subject):
     """The stats panel's resonance readout: a placed tower's active ones
     ("Resonance: Superconductor"), or, for a build-menu type, which tower
@@ -1686,7 +1694,10 @@ def resonance_line(subject):
     if inspect.isclass(subject):
         name = TOWER_TYPE_NAMES.get(subject)
         partners = [TOWER_TYPES[r.partner].display_name for r in RESONANCES.values() if r.tower == name]
-        return f"Pairs with: {', '.join(partners)}" if partners else None
+        if partners:
+            return f"Pairs with: {', '.join(partners)}"
+        helped = [TOWER_TYPES[r.tower].display_name for r in RESONANCES.values() if r.partner == name]
+        return f"Boosts: {', '.join(helped)}" if helped else None
     if not subject.resonance_keys:
         return None
     return "Resonance: " + ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)

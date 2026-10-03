@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Resonance previews (purple lines to every tower a placement would resonate with), "Boosts:" hints on
+  build buttons, and the **Harmonic Tuning** relic (resonance bonuses doubled).
 - **Resonances**: eight named tower pairings (Superconductor, Spotter, Fortified Battery, Sticky Spikes,
   Shock and Awe, Toxic Cloud, Power Relay, Overwatch) -- a tower with its partner type nearby gets a
   damage, range or fire-rate bonus. Shown in the sidebar and the Field Manual.

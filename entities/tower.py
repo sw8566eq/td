@@ -450,6 +450,8 @@ class Tower:
         self.resonance_damage_bonus = 0.0
         self.resonance_range_bonus = 0.0
         self.resonance_fire_rate_bonus = 0.0
+        # A Harmonic Tuning-style relic's scaling of every resonance bonus.
+        self.relic_resonance_multiplier = 1.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -1025,9 +1027,10 @@ class Tower:
             if any(other is not self and TOWER_TYPE_NAMES.get(type(other)) == resonance.partner
                    and self.pos.distance_squared_to(other.pos) <= radius_sq for other in towers):
                 self.resonance_keys.append(key)
-                self.resonance_damage_bonus += resonance.damage_bonus
-                self.resonance_range_bonus += resonance.range_bonus
-                self.resonance_fire_rate_bonus += resonance.fire_rate_bonus
+                scale = self.relic_resonance_multiplier
+                self.resonance_damage_bonus += resonance.damage_bonus * scale
+                self.resonance_range_bonus += resonance.range_bonus * scale
+                self.resonance_fire_rate_bonus += resonance.fire_rate_bonus * scale
 
     def effective_fire_rate(self):
         """self.fire_rate scaled by three independent multiplicative
@@ -2229,6 +2232,17 @@ TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}
 # `tower`; a pair that should help both ways lists two entries.
 
 RESONANCE_RADIUS = 110
+
+
+def resonance_partners(tower_name, pos, towers):
+    """Every tower in `towers` a `tower_name` tower at `pos` would resonate
+    with, either way round -- its own partners, and towers that count it as
+    theirs. What the placement preview draws lines to."""
+    names = {r.partner for r in RESONANCES.values() if r.tower == tower_name}
+    names |= {r.tower for r in RESONANCES.values() if r.partner == tower_name}
+    radius_sq = RESONANCE_RADIUS ** 2
+    return [other for other in towers
+            if TOWER_TYPE_NAMES.get(type(other)) in names and pos.distance_squared_to(other.pos) <= radius_sq]
 
 
 @dataclass(frozen=True)

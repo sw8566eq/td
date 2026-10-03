@@ -49,7 +49,8 @@ def test_resonance_panel_lines():
     from presentation import ui
 
     assert ui.resonance_line(TOWER_TYPES["lightning"]) == "Pairs with: Frost"
-    assert ui.resonance_line(TOWER_TYPES["frost"]) is None
+    assert ui.resonance_line(TOWER_TYPES["frost"]) == "Boosts: Lightning"
+    assert ui.resonance_line(TOWER_TYPES["support"]) is None
     lightning = _tower("lightning", 0)
     assert ui.resonance_line(lightning) is None
     lightning.set_nearby_tower_bonus([lightning, _tower("frost", 10)])
@@ -79,3 +80,43 @@ def test_resonance_updates_when_a_partner_is_sold(game):
     assert lightning.resonance_keys == []
     game.selected_tower = lightning
     game.render()
+
+
+def test_resonance_partners_work_both_ways_and_respect_reach():
+    from entities.tower import resonance_partners
+
+    lightning, far_lightning, basic = _tower("lightning", 50), _tower("lightning", 500), _tower("basic", 40)
+    partners = resonance_partners("frost", pygame.Vector2(0, 0), [lightning, far_lightning, basic])
+    assert partners == [lightning]  # Frost is Lightning's partner; out-of-reach and unrelated ones excluded
+
+
+def test_harmonic_tuning_doubles_resonances(game):
+    from test_barricade import _build, _run_with
+
+    run = _run_with(game, ["harmonic_tuning"])
+    run.unlocked_towers += ["lightning", "frost"]
+    game._rebuild_button_rects()
+    lightning = _build(game, "lightning")
+    assert lightning.relic_resonance_multiplier == 2.0
+    lightning.set_nearby_tower_bonus([lightning, _tower("frost", lightning.pos.x)])
+    assert lightning.resonance_damage_bonus == pytest.approx(0.5)
+
+
+def test_placement_preview_draws_resonance_links(game):
+    from conftest import clear_mouse_mock, mock_mouse_pos, start_first_floor
+
+    start_first_floor(game, seed=1)
+    game.active_run.unlocked_towers += ["lightning"]
+    game._rebuild_button_rects()
+    game.economy.gold = 1000
+    game.selected_tower_name = "lightning"
+    step = game.grid.subtiles_per_tile
+    spot = next((c, r) for r in range(0, game.grid.sub_rows, step) for c in range(0, game.grid.sub_cols, step)
+                if game.grid.is_buildable(c, r))
+    assert game.try_place_tower(*spot)
+    game.selected_tower_name = "frost"
+    try:
+        mock_mouse_pos(tuple(game.towers[0].pos + pygame.Vector2(0, 70)))
+        game.render()
+    finally:
+        clear_mouse_mock()
