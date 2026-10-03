@@ -370,7 +370,7 @@ class Projectile:
         getattr with a False default, same as Tower.acquire_target(), since
         not every enemy stand-in (tests, mainly) defines is_flying."""
         return ((self.can_hit_flying or not getattr(enemy, "is_flying", False))
-                and (self.can_hit_burrowed or not getattr(enemy, "BURROWS", False)))
+                and (self.can_hit_burrowed or not getattr(enemy, "is_burrowed", False)))
 
     def _find_chain_target(self, current, excluded, chain_range, enemies):
         """Nearest live, not-yet-`excluded` enemy within `chain_range` of

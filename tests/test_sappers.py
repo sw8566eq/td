@@ -97,3 +97,19 @@ def test_barricades_do_not_hold_burrowers(game):
     game.enemies = [burrower]
     game.update(dt=0.5)
     assert not burrower.held and barricade.hp == barricade.max_hp
+
+
+def test_a_marked_burrower_surfaces_for_traps_and_barricades():
+    import pygame
+
+    from entities.tower import SpikeTrapTower
+
+    burrower = _burrower_at(10)
+    trap = SpikeTrapTower(0, 0, pygame.Vector2(0, 0))
+    assert burrower.is_burrowed and trap.acquire_target([burrower]) is None
+    burrower.apply_mark(1.2, 3.0)
+    assert not burrower.is_burrowed
+    assert trap.acquire_target([burrower]) is burrower
+    assert trap.create_projectile(burrower)._can_hit(burrower)
+    burrower.update(3.5)
+    assert burrower.is_burrowed  # the mark wore off -- back underground
