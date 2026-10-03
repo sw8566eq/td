@@ -9,7 +9,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 ### Added
 
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.
-- Every tower has a one-line description, listed in a new Towers section of the Field Manual.
+- Every tower has a one-line description, listed (with every enemy) in new Towers and Enemies sections of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.
 - Two more named bosses: **The Undermine** (every ground enemy burrows) and **The Battering Ram** (enemies
   batter Barricades 4x as hard, +10% HP).
