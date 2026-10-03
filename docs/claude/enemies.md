@@ -132,3 +132,11 @@ skips it. Trap and Mortar shots also pass `can_hit_flying` now (their splash use
 `KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
 Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
 forever with zero leaks.
+
+## Knockback stagger resistance
+
+`Enemy.knockback_resistance` (0..`KNOCKBACK_RESISTANCE_CAP`) scales every `apply_knockback` distance by
+`1 - resistance`, then grows by `KNOCKBACK_RESISTANCE_PER_SHOVE`; `update()` decays it by
+`KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
+Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
+forever with zero leaks.
