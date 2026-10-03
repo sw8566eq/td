@@ -150,6 +150,15 @@ ACHIEVEMENTS = {
     "tinkerer": Achievement(
         "tinkerer", "Tinkerer", "Fit 5 tower modules.", "modules_fitted", 5,
     ),
+    "artillerist": Achievement(
+        "artillerist", "Artillerist", "Build 10 Mortars.", "mortar_built", 10,
+    ),
+    "hold_the_line": Achievement(
+        "hold_the_line", "Hold the Line", "Build 10 Barricades.", "barricade_built", 10,
+    ),
+    "trapper": Achievement(
+        "trapper", "Trapper", "Build 20 Spike Traps.", "spike_trap_built", 20,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),
