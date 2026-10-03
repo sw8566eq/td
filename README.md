@@ -148,8 +148,9 @@ a tower is placed or sold, and shown in each tower's damage.
 Every tower type has one **module** slot per run. Elite fights reward a module already paired with one
 of your tower types ("Rapid Loader, for your Frost towers") in place of their potion -- take it, and
 every tower of that type you build from then on carries it. Fitting a new module to a type replaces
-the old one. Every Shop also has a **module stand** selling one paired module per visit. Seven modules: Long Barrel (+range), Rapid Loader (+fire rate), Heavy Payload (big damage,
-slower), Cryo Coil (every hit slows), Venom Injector (every hit poisons), Targeting Chip (+crit) and
+the old one. Every Shop also has a **module stand** selling one paired module per visit. Ten modules: Long Barrel (+range), Rapid Loader (+fire rate), Heavy Payload (big damage,
+slower), Cryo Coil (every hit slows), Venom Injector (every hit poisons), Targeting Chip (+crit),
+Arc Coupler (hits can chain), Target Painter (every hit Marks), Recoil Plate (hits can knock back) and
 Overclocked Core (a little of everything, less range). The sidebar shows a type's fitted module.
 
 ## Path traps

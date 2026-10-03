@@ -283,3 +283,17 @@ def test_an_armory_with_no_towers_resolves_immediately(game):
     run.visited_node_ids = ["0-0"]
     game._enter_node("1-0")
     assert game.state == GameState.MAP and "1-0" in run.visited_node_ids
+
+
+def test_on_hit_chain_mark_and_knockback_modules(game):
+    run = start_first_floor(game, seed=1)
+    for key, chance_attr, effect_attr in (
+        ("arc_coupler", "relic_chain_chance", "relic_chain_effect"),
+        ("target_painter", "relic_mark_chance", "relic_mark_effect"),
+        ("recoil_plate", "relic_knockback_chance", "relic_knockback_effect"),
+    ):
+        run.tower_modules["basic"] = key
+        tower = _place(game)
+        field = {"arc_coupler": MODULES[key].chain_on_hit, "target_painter": MODULES[key].mark_on_hit,
+                 "recoil_plate": MODULES[key].knockback_on_hit}[key]
+        assert getattr(tower, chance_attr) == field[0] and getattr(tower, effect_attr) == field[1], key

@@ -35,6 +35,12 @@ class Module:
     # poison_effect -- or None.
     poison_on_hit: tuple[float, float, float] | None = None
     crit_chance_bonus: float = 0.0
+    # Further on-hit effects riding the tower's relic on-hit fields, each a
+    # (chance, effect) pair in that field's own effect shape: chain (damage
+    # fraction, range), mark (multiplier, seconds), knockback (seconds).
+    chain_on_hit: tuple[float, tuple[float, float]] | None = None
+    mark_on_hit: tuple[float, tuple[float, float]] | None = None
+    knockback_on_hit: tuple[float, float] | None = None
     # Damage-free towers (Support) gain nothing from a damage module, so
     # offers skip them for modules that only add damage.
     needs_damage: bool = True
@@ -60,6 +66,18 @@ MODULES = {
     ),
     "targeting_chip": Module(
         "targeting_chip", "Targeting Chip", "+12% chance to crit.", crit_chance_bonus=0.12,
+    ),
+    "arc_coupler": Module(
+        "arc_coupler", "Arc Coupler", "Hits have a 25% chance to arc to a nearby enemy for 50% damage.",
+        chain_on_hit=(0.25, (0.5, 70.0)),
+    ),
+    "target_painter": Module(
+        "target_painter", "Target Painter", "Every hit Marks its target: +10% damage taken for 2s.",
+        mark_on_hit=(1.0, (1.1, 2.0)), needs_damage=True,
+    ),
+    "recoil_plate": Module(
+        "recoil_plate", "Recoil Plate", "Hits have a 20% chance to knock their target back.",
+        knockback_on_hit=(0.2, 0.25),
     ),
     "overclocked_core": Module(
         "overclocked_core", "Overclocked Core", "+12% damage and +10% fire rate, but -10% range.",
@@ -100,3 +118,10 @@ def apply_module(tower: Any, module: Module) -> None:
     if module.poison_on_hit is not None:
         tower.relic_poison_chance = 1.0
         tower.relic_poison_effect = module.poison_on_hit
+    # Each takes over the field only if its chance beats a relic's.
+    if module.chain_on_hit is not None and module.chain_on_hit[0] > tower.relic_chain_chance:
+        tower.relic_chain_chance, tower.relic_chain_effect = module.chain_on_hit
+    if module.mark_on_hit is not None and module.mark_on_hit[0] > tower.relic_mark_chance:
+        tower.relic_mark_chance, tower.relic_mark_effect = module.mark_on_hit
+    if module.knockback_on_hit is not None and module.knockback_on_hit[0] > tower.relic_knockback_chance:
+        tower.relic_knockback_chance, tower.relic_knockback_effect = module.knockback_on_hit
