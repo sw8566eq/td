@@ -2475,11 +2475,14 @@ def run_history_lines(best_floors_cleared, records):
         parts = [f"#{number}", commander.display_name if commander else "Unknown",
                  f"Act {record.get('act', 1)}", f"{floors} floor{'' if floors == 1 else 's'}"]
         if record.get("ascension"):
-            parts.insert(2, f"A{record['ascension']}")
+            parts.insert(2, f"G{record['ascension']}")  # its Gauntlet level
         if record.get("final_boss_defeated"):
             parts.append("final boss slain")
         if record.get("endless_waves"):
             parts.append(f"+{record['endless_waves']} endless")
+        crew = TOWER_TYPES.get(record.get("top_crew", ""))
+        if crew is not None:
+            parts.append(f"top crew: {crew.display_name}")
         if record.get("daily"):
             parts.append("Daily")
         lines.append("  --  ".join(parts))

@@ -3708,7 +3708,7 @@ def test_run_history_lines_show_recorded_runs_or_fall_back_to_best_per_seed():
         {"seed": 1, "floors_cleared": 1, "commander": "nobody", "act": 1},
     ]
     lines = ui.run_history_lines({1: 1, 2: 9}, records)
-    assert lines[0] == "#2  --  The Alchemist  --  A3  --  Act 2  --  9 floors  --  final boss slain  --  Daily"
+    assert lines[0] == "#2  --  The Alchemist  --  G3  --  Act 2  --  9 floors  --  final boss slain  --  Daily"
     assert lines[1] == "#1  --  Unknown  --  Act 1  --  1 floor"
     assert ui.run_history_lines({1: 1}, []) == ["Seed 1 -- 1 floor cleared"]
 

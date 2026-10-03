@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Run History records and shows each run's top crew; its Gauntlet tag reads `G3` (was `A3`).
 - Build buttons show a blue dot for tower types with a module fitted.
 - **Daily issue**: every Daily Run also fits one seed-chosen module to one of its starter towers, the
   same for every player that day.

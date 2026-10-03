@@ -995,6 +995,8 @@ class Game:
             "commander": run.commander, "ascension": run.ascension, "act": run.act + 1,
             "daily": run.is_daily, "final_boss_defeated": run.boss_defeated,
             "endless_waves": run.endless_waves_cleared,
+            # The run's most experienced tower type (veterancy), if any.
+            "top_crew": max(run.tower_xp, key=run.tower_xp.get) if run.tower_xp else "",
         })
         self._record_meta_progress("runs_played")
         if self.active_run.is_final_floor:
