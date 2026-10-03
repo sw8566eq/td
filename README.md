@@ -160,6 +160,16 @@ and the **Tar Pit** (barely hurts, but bogs everything in its splash down). Both
 build around them: Serrated Spikes (+40% Spike Trap damage), Clinging Tar (Tar Pit hits also Mark) and
 Hair Trigger (traps strike 35% more often).
 
+## Resonances
+
+Some tower pairs work better together. A tower with its **partner** type within reach gets a named
+bonus: **Superconductor** (Lightning near Frost: +25% damage), **Spotter** (Sniper near Beacon: +20%
+range), **Fortified Battery** (Mortar near Barricade: +20% damage), **Sticky Spikes** (Spike Trap near Tar
+Pit: +25% fire rate), **Shock and Awe** (Cannon near Knockback: +15% fire rate), **Toxic Cloud** (Poison
+near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage) and **Overwatch** (Basic near
+Sniper: +10% damage). Hovering a build button shows what that tower pairs with; a placed tower lists its
+active resonances. The Field Manual has them all.
+
 ## Tower veterancy
 
 Your towers learn on the job. Every **tower type** in a run earns experience from the kills its towers

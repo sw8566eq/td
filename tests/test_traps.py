@@ -155,7 +155,8 @@ def test_hair_trigger_speeds_up_traps_but_not_towers(game):
     plain = _place_trap(game, "spike_trap").effective_fire_rate()
     _run_with(game, ["hair_trigger"])
     assert _place_trap(game, "tar_pit").effective_fire_rate() == pytest.approx(TarPitTower.fire_rate * 1.35)
-    assert _place_trap(game, "spike_trap").effective_fire_rate() == pytest.approx(plain * 1.35)
+    spike = _place_trap(game, "spike_trap")  # may sit by the Tar Pit -- Sticky Spikes counts too
+    assert spike.effective_fire_rate() == pytest.approx(plain * 1.35 * (1 + spike.resonance_fire_rate_bonus))
     _select(game, "basic")
     from conftest import find_buildable_anchor
 

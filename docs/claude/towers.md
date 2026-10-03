@@ -207,3 +207,13 @@ deals its `thorns_dps` back. A broken barricade moves to `sold_towers` and frees
 per tower (`_tower_to_dict` adds it only for towers that have one). `ATTACKS = False` also hides the
 attack stats/Targeting row and keeps it out of damage-module offers. `ui.build_button_rects` wraps into
 two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row.
+
+## Resonances
+
+`entities/tower.py`'s `RESONANCES` registry: `Resonance(display_name, tower, partner, description,
+damage_bonus/range_bonus/fire_rate_bonus)`, one-directional (boosts `tower` only). `Tower._resolve_
+resonances` runs inside `set_nearby_tower_bonus` (so on every placement/sale/restore, never per frame):
+a partner-type tower within `RESONANCE_RADIUS` adds the bonus to `resonance_damage_bonus` (additive in
+`effective_damage`), `resonance_range_bonus` (additive in `effective_range`) or `resonance_fire_rate_
+bonus` (a multiplier in `effective_fire_rate`), and records `resonance_keys`. `ui.resonance_line` shows a
+placed tower's active ones, or a build-menu type's partners.

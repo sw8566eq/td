@@ -13,7 +13,7 @@ import os
 import pygame
 
 from entities.enemy import ENEMY_TYPES
-from entities.tower import TOWER_TYPES
+from entities.tower import RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveState
 from persistence.keybindings import ACTION_LABELS, ACTION_ORDER
 from progression.achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
@@ -552,7 +552,8 @@ def draw_tower_range_preview(surface, tower):
 
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
                             upgrade_button_rect, specialize_button_rects, sell_button_rect,
-                            hovered_specialize_key=None, veterancy_line=None, module_line=None):
+                            hovered_specialize_key=None, veterancy_line=None, module_line=None,
+                            resonance_line=None):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -582,6 +583,9 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
     y = _draw_panel_header(surface, font, small_font, x, PANEL_PADDING, subject, is_placed,
                             tower_cls, hovered_specialize_key)
     _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed)
+    if resonance_line is not None:
+        surface.blit(small_font.render(resonance_line, True, RESONANCE_COLOR),
+                     (x, TARGETING_BUTTON_TOP - 3 * PANEL_ROW_HEIGHT - 4))
     if module_line is not None:
         surface.blit(small_font.render(module_line, True, MODULE_COLOR),
                      (x, TARGETING_BUTTON_TOP - 2 * PANEL_ROW_HEIGHT - 4))
@@ -1670,6 +1674,22 @@ def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, 
 
 
 MODULE_COLOR = (120, 190, 230)
+RESONANCE_COLOR = (200, 150, 240)
+
+
+def resonance_line(subject):
+    """The stats panel's resonance readout: a placed tower's active ones
+    ("Resonance: Superconductor"), or, for a build-menu type, which tower
+    types it pairs with ("Pairs with: Frost") -- None when there are none."""
+    if subject is None:
+        return None
+    if inspect.isclass(subject):
+        name = TOWER_TYPE_NAMES.get(subject)
+        partners = [TOWER_TYPES[r.partner].display_name for r in RESONANCES.values() if r.tower == name]
+        return f"Pairs with: {', '.join(partners)}" if partners else None
+    if not subject.resonance_keys:
+        return None
+    return "Resonance: " + ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)
 
 
 def _draw_module_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
@@ -2593,6 +2613,7 @@ def compendium_rows(small_font):
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
         ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
+        ("Resonances", [(r.display_name, r.description) for r in RESONANCES.values()]),
         ("Tower modules", [(m.display_name, m.description) for m in MODULES.values()]),
         ("Veterancy ranks", [(rank.name, f"{rank.xp_required} experience: one more rank of bonus for that tower type.")
                              for rank in VETERANCY_RANKS]),
