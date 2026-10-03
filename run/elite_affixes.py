@@ -98,6 +98,14 @@ BOSS_AFFIXES = {
         "golden_tyrant", "The Golden Tyrant", "Enemies have 20% more HP but drop double gold.",
         hp_multiplier=1.2, gold_multiplier=2.0,
     ),
+    "undermine": EliteAffix(
+        "undermine", "The Undermine", "Every ground enemy burrows under traps and Barricades -- Mark them to surface them.",
+        burrows=True,
+    ),
+    "battering_ram": EliteAffix(
+        "battering_ram", "The Battering Ram", "Enemies batter Barricades 4x as hard and have 10% more HP.",
+        breach_multiplier=4.0, hp_multiplier=1.1,
+    ),
 }
 BOSS_AFFIX_ORDER = list(BOSS_AFFIXES)
 

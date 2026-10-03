@@ -191,7 +191,8 @@ counts one rank higher) and Old Guard (Veteran-or-better types fire 15% faster).
 
 Every act's boss is one of five named bosses with its own twist: The Juggernaut (tougher enemies), The
 Broodmother (bigger swarms), The Warlord (faster enemies), The Lich (regenerating, slightly faster
-enemies) and The Golden Tyrant (sturdier enemies that drop double gold). The map title tells you which
+enemies) The Golden Tyrant (sturdier enemies that drop double gold), The Undermine (every ground enemy burrows)
+and The Battering Ram (wall-breakers). The map title tells you which
 one is waiting at the top of the act, so you can draft toward it.
 
 ## Gauntlet
