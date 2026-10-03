@@ -1,6 +1,6 @@
 """Elite affixes -- every Elite map node rolls one named modifier, so an
 Elite is a distinct threat to plan around rather than just "the same
-fight, harder" (Slay the Spire's Gremlin Nob vs. Lagavulin, in spirit).
+fight, harder".
 
 The roll is re-derived on demand from the node's own id (Game._elite_
 affix, via _run_rng), never stored on the map -- the same "no RNG state
@@ -79,7 +79,7 @@ AFFIX_ORDER = list(AFFIXES)
 
 # Boss nodes roll one of these instead -- the same EliteAffix shape (so
 # every consumer handles both), each a named boss with its own flavor, like
-# Slay the Spire's several bosses per act.
+# A named boss per act, so each act's climax plays differently.
 BOSS_AFFIXES = {
     "juggernaut": EliteAffix(
         "juggernaut", "The Juggernaut", "Enemies have 15% more HP and take 10% less damage.",

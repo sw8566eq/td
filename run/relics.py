@@ -525,7 +525,7 @@ class Relic:
     # healing), same plain-multiply shape as splitter_child_hp_multiplier
     # immediately above.
     healer_heal_rate_multiplier: float = 1.0
-    # A Curse (Slay the Spire's own term): a relic with only downsides,
+    # A Curse: a relic with only downsides,
     # never offered by relic_offer's default pool -- it's only ever forced
     # onto a run by an Event option's add_curse (events.py), and the Shop
     # sells its removal (Game._try_remove_curse). Composed exactly like any
@@ -539,7 +539,7 @@ class Relic:
     potion_slot_bonus: int = 0
     lives_per_potion: int = 0
     guaranteed_potion_drop: bool = False
-    # A Boss relic (Slay the Spire's own tier): only ever offered by an act
+    # A trophy relic (internally a boss relic): only ever offered by an act
     # boss's reward (boss_relic_offer), never the ordinary pool, and each
     # pairs a big upside with a real downside -- some through ordinary
     # fields (enemy_speed_multiplier, a negative starting_lives_bonus),
@@ -672,7 +672,7 @@ RELICS = {
         chain_chance=0.20, chain_damage_fraction=0.5, chain_range=70,
     ),
     # Bigger than prospectors_charm's flat +20 since it's conditional --
-    # closer to Slay the Spire's actual Maw Bank than a per-floor reset:
+    # closer to a growing bank than a per-floor reset:
     # one run-long deactivation (Game._spend_gold/RunState.has_spent_
     # gold), not something that comes back next floor.
     "misers_coffer": Relic(

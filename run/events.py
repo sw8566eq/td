@@ -519,7 +519,7 @@ EVENTS = {
     ),
 }
 
-# The run's opening blessing (Slay the Spire's Neow) -- shown once, right
+# The run's opening Orders from Command -- shown once, right
 # after the Commander is picked and before the map (Game._enter_blessing).
 # Deliberately not in EVENTS/_EVENT_ORDER, so pick_event can never draw it
 # for an ordinary Event node.

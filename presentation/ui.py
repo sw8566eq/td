@@ -307,8 +307,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         cost_rect = cost_text.get_rect(center=(rect.centerx, rect.bottom - 10))
         surface.blit(cost_text, cost_rect)
         if name in forged_towers:
-            # A forged type (see Game._forge_tower) -- Slay the Spire's own
-            # "+" for an upgraded card.
+            # A forged type (see Game._forge_tower) -- marked with a "+".
             plus = small_font.render("+", True, settings.COLOR_GOLD)
             surface.blit(plus, plus.get_rect(topright=(rect.right - 3, rect.y + 1)))
         # One pip per veterancy rank this tower type has earned this run.
@@ -720,7 +719,7 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
 
 # --- Run map screen (see run_map.py/Game._enter_map) ---
 #
-# Slay-the-Spire convention: the run's start (row 0) at the bottom, the boss
+# The run's start (row 0) at the bottom, the boss
 # (the final row) at the top. Full-screen, no side panel -- unlike gameplay,
 # this screen has no board/HUD/stats panel to share space with (see
 # GameState's own comment on why MAP is a full-screen state, not an overlay).

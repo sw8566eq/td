@@ -1,4 +1,4 @@
-"""Commanders -- Slay the Spire's characters, for a tower defense run.
+"""Commanders -- who you play a run as: a starting kit of towers and relics.
 
 Picked on the Commander select screen right before a run starts (Game.
 _enter_commander_select), a Commander decides what the run begins with:
