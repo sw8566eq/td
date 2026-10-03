@@ -120,3 +120,27 @@ def test_placement_preview_draws_resonance_links(game):
         game.render()
     finally:
         clear_mouse_mock()
+
+
+def test_active_resonances_feed_the_harmonist_counter(game):
+    from conftest import start_first_floor
+
+    from progression import achievements
+
+    start_first_floor(game, seed=1)
+    run = game.active_run
+    run.unlocked_towers += ["lightning"]
+    game._rebuild_button_rects()
+    game.economy.gold = 1000
+    step = game.grid.subtiles_per_tile
+    spots = sorted((c, r) for c in range(0, game.grid.sub_cols, step) for r in range(0, game.grid.sub_rows, step)
+                   if game.grid.is_buildable(c, r))
+    game.selected_tower_name = "lightning"
+    assert game.try_place_tower(*spots[0])
+    lightning = game.towers[-1]
+    game.selected_tower_name = "frost"
+    frost_spot = next(s for s in spots[1:] if game.grid.anchor_to_pixel_center(*s).distance_to(lightning.pos)
+                      <= RESONANCE_RADIUS)
+    assert game.try_place_tower(*frost_spot)
+    counters = achievements.load_achievements(game.achievements_path)["counters"]
+    assert counters["resonances_active"] == 1

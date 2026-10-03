@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Harmonist** achievement (4 resonances active at once).
 - Two Elite affixes that test the new defenses: **Tunneling** (every ground enemy burrows under traps and
   Barricades) and **Siegebreakers** (enemies batter Barricades 3x as hard, +10% HP).
 - Resonance previews (purple lines to every tower a placement would resonate with), "Boosts:" hints on

@@ -2792,6 +2792,9 @@ class Game:
         an unchanged answer 59 times out of 60."""
         for tower in self.towers:
             tower.set_nearby_tower_bonus(self.towers)
+        active = sum(len(tower.resonance_keys) for tower in self.towers)
+        if active:
+            self._record_achievement_max("resonances_active", active)
 
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --

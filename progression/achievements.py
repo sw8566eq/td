@@ -159,6 +159,9 @@ ACHIEVEMENTS = {
     "trapper": Achievement(
         "trapper", "Trapper", "Build 20 Spike Traps.", "spike_trap_built", 20,
     ),
+    "harmonist": Achievement(
+        "harmonist", "Harmonist", "Have 4 resonances active at once.", "resonances_active", 4,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),
