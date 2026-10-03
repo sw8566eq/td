@@ -213,3 +213,13 @@ ways a wrong-typed or out-of-range value used to pass validation and then crash 
 `test_corrupted_save_fields_are_not_resumable` keeps a representative sample. Type problems raise
 `TypeError`, range problems `ValueError` -- both are in `json_io`'s fallback set, so either way the
 save just reads as "nothing to resume".
+
+## Fields added for tower progression
+
+All optional on load (`.get` defaults), so older saves and histories still load:
+- `run.tower_xp` (`{tower type: number}`, veterancy) and `run.tower_modules` (`{tower type: module key}`)
+  -- validated against `TOWER_TYPES`/`modules.MODULES`, numbers range-checked.
+- A tower entry's `hp` -- written only for towers that have hit points (Barricade), restored clamped to
+  `[1, max_hp]` by `_tower_from_save_data`.
+- Run History records' `top_crew` (the run's most experienced tower type; `""` when none) -- validated as
+  a string by `_parse_run_records`, shown by `ui.run_history_lines`.
