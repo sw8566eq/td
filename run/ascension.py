@@ -1,4 +1,4 @@
-"""Ascension -- Slay the Spire's stacked, opt-in difficulty ladder.
+"""The Gauntlet (internally "ascension") -- a stacked, opt-in difficulty ladder.
 
 Defeating the run's boss at Ascension N unlocks Ascension N+1 account-wide
 (progression/meta_progression.py's own "highest_ascension" counter), up to

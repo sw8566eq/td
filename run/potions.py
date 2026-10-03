@@ -1,5 +1,5 @@
 """Potions -- single-use, mid-fight consumables a run carries between
-floors, Slay the Spire style. A run holds at most POTION_SLOTS of them
+floors. A run holds at most POTION_SLOTS of them
 (RunState.potions); they drop from post-combat rewards (see rewards.py)
 and are used by clicking a slot in the sidebar while a floor is being
 played (Game.use_potion).

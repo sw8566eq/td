@@ -1,11 +1,11 @@
-"""Post-combat rewards -- the Slay-the-Spire "card reward" screen a run
+"""Post-combat rewards -- the "Spoils of battle" screen a run
 shows after every cleared Combat/Elite floor (GameState.REWARD, entered
 from FLOOR_CLEARED; see Game._enter_reward_screen).
 
 Every reward is free and optional: pick at most one of `tower_choices`
 (a new tower card for the run's build menu) or skip them all, and -- on
 an Elite floor only -- also take one guaranteed relic, the same "elites
-drop relics" trade Slay the Spire makes for its own harder fights. The
+drop relics" trade harder fights make. The
 Shop (shop.py) is still where shop currency buys extra cards; this is
 the steady, every-fight trickle of new options a deckbuilder run grows
 from.
@@ -33,7 +33,7 @@ TOWER_REWARD_COUNT = 3
 # pick one of this many relics instead of the usual tower cards, Slay the
 # Spire's boss-relic choice.
 BOSS_RELIC_CHOICES = 3
-# Slay the Spire's upgraded card rewards: each new tower card has this
+# Pre-forged reward cards: each new tower card has this
 # chance per point of run depth (RunState.depth) to come pre-forged, capped
 # at FORGED_CARD_MAX_CHANCE -- so deeper fights offer better cards.
 FORGED_CARD_CHANCE_PER_DEPTH = 0.03

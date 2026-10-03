@@ -1080,7 +1080,7 @@ class Game:
     def _reward_card_available(self, index):
         """Whether reward card `index` can still be claimed -- not already
         taken, not a second tower (picking one forfeits the rest of the
-        tower row, same as Slay the Spire's own pick-one-card screen), and
+        tower row -- pick one), and
         for a potion, only while a potion slot is free. Shared by
         _take_reward_card (what's allowed) and the renderer (what's
         dimmed), so the two can't drift."""
@@ -1211,7 +1211,7 @@ class Game:
         self._record_achievement_max("ascension_reached", next_level)
         self.highest_ascension = next_level
         if self.selected_ascension == run.ascension:
-            self.selected_ascension = next_level  # climb by default, the way Slay the Spire does
+            self.selected_ascension = next_level  # climb by default
         self._queue_toast(f"Gauntlet {next_level} unlocked!")
 
     # --- The run's own branching map ---
@@ -1479,7 +1479,7 @@ class Game:
         self.state = GameState.EVENT
 
     def _enter_blessing(self):
-        """The run's opening blessing (events.BLESSING, Slay the Spire's
+        """The run's opening Orders from Command (events.BLESSING,
         Neow): shown on the Event screen right after a new run starts,
         before the map. No node is involved -- leaving it (_leave_event)
         goes straight to the map instead of marking anything visited."""
@@ -1555,7 +1555,7 @@ class Game:
         self.event_phase = "resolved"
 
     def _enter_rest_node(self, node):
-        """A Rest node offers Slay the Spire's campfire choice: Rest (heal
+        """An Outpost (a Rest node) offers its choice: Rest (heal
         run.lives by run_map.heal_amount_for_row(node.row)) or Smith (forge
         one held tower type -- see _forge_tower). Nothing happens until the
         player picks one (see _choose_rest_option)."""
@@ -1630,7 +1630,7 @@ class Game:
     def _forge_tower(self, name):
         """Forge `name` for the rest of the run: every copy placed from
         now on starts at level 2 for free (see try_place_tower) -- the
-        tower defense take on Slay the Spire's upgraded cards."""
+        tower defense take on an upgraded card."""
         self.active_run.forged_towers.append(name)
         self._record_achievement("towers_forged")
         self.rest_forged_tower = name

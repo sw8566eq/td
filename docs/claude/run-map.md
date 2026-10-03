@@ -2,7 +2,7 @@
 
 ## The run's branching map
 
-A run's map (`run/run_map.py`) is a Slay-the-Spire-style row-based DAG, generated once, up front (`Game.
+A run's map (`run/run_map.py`) is a row-based DAG, generated once, up front (`Game.
 start_new_run`), and shown to the player in full from the start -- not fog-of-war, not revealed
 fork-by-fork. `ROW_COUNT` rows (6, unchanged from the old flat sequence's own floor count, which
 keeps `run/run_escalation.py`'s tuned growth constants meaning the same thing they always did); edges
@@ -55,7 +55,7 @@ The seven node types:
   `_resolve_event_choice` apply the chosen option's effect (indexing into `event_options`, never the
   raw `current_event.options`) and show what happened; any further click/key then returns to the
   map.
-- **Rest**: `GameState.REST` -- Slay the Spire's campfire choice, three phases (`Game.rest_phase`):
+- **Rest**: `GameState.REST` -- the Outpost's choice, phases (`Game.rest_phase`):
   "choose" Rest (heal `run.lives` by `run_map.heal_amount_for_row(node.row)`) or Smith; "smith" picks a
   held, not-yet-forged tower (`Game._forgeable_towers`, a grid via `ui.build_smith_choice_rects`, plus
   Back); "resolved" then any key/click continues via `_finish_node`. Forging appends to
