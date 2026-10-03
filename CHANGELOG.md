@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Every tower has a one-line description, listed in a new Towers section of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.
 - Two more named bosses: **The Undermine** (every ground enemy burrows) and **The Battering Ram** (enemies
   batter Barricades 4x as hard, +10% HP).

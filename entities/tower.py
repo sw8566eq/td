@@ -62,6 +62,7 @@ class Tower:
     projectile_speed = 300.0
     sprite_name = ""
     display_name = "Tower"
+    description = ""
 
     # Logical audio.SOUND_MANIFEST name played once per successful shot
     # (see fired_this_frame below) -- same single-string-per-class shape as
@@ -1142,6 +1143,7 @@ class Tower:
 
 
 class BasicTower(Tower):
+    description = "Cheap, steady single-target shots with a chance to crit; scales hard with level."
     cost = 50
     range = 120
     damage = 10
@@ -1193,6 +1195,7 @@ class BasicTower(Tower):
 
 
 class CannonTower(Tower):
+    description = "Splash damage around each impact; can't hit flying enemies."
     cost = 100
     range = 100
     damage = 18
@@ -1255,6 +1258,7 @@ class CannonTower(Tower):
 
 
 class FrostTower(Tower):
+    description = "Light hits that slow their target."
     cost = 75
     range = 110
     damage = 4
@@ -1300,6 +1304,7 @@ class FrostTower(Tower):
 
 
 class KnockbackTower(Tower):
+    description = "Splash hits that shove enemies back along the path."
     cost = 90
     range = 90
     damage = 8
@@ -1353,6 +1358,7 @@ class KnockbackTower(Tower):
 
 
 class LightningTower(Tower):
+    description = "Hits its target, then arcs to nearby enemies."
     cost = 110
     range = 100
     damage = 8
@@ -1411,6 +1417,7 @@ class SniperTower(Tower):
     max_hp (a genuinely new condition, distinct from every other max-HP/
     route/slow-based check in this codebase -- see projectile.py's own
     docstring)."""
+    description = "Huge damage at long range, slowly; finishes off wounded enemies."
     cost = 130
     range = 220
     damage = 45
@@ -1456,6 +1463,7 @@ class PoisonTower(Tower):
     """Low direct hit, but leaves a damage-over-time effect behind -- see
     Projectile.poison_effect / Enemy.apply_poison, deliberately built as
     close a parallel to FrostTower's slow_effect as possible."""
+    description = "Light hits that leave damage over time."
     cost = 85
     range = 100
     damage = 3
@@ -1518,6 +1526,7 @@ class SiphonTower(Tower):
     create_projectile() below needs zero siphon-specific kwargs at all --
     the whole mechanic lives on the Tower side and is read directly off
     self.source (this tower) at credit time."""
+    description = "Turns part of the damage it deals into battle gold."
     cost = 70
     range = 105
     damage = 3
@@ -1581,6 +1590,7 @@ class BeamTower(Tower):
     while the fully-ramped ceiling (0.32) stays the roster's best sustained
     single-target option without dwarfing it, still rewarding the same
     stay-locked-on-one-target playstyle the mechanic is built around."""
+    description = "Rapid fire that ramps up the longer it stays on one target."
     cost = 150
     range = 130
     damage = 6
@@ -1658,6 +1668,7 @@ class BeaconTower(Tower):
     stays the class default True: a beacon flash is light-based, not a
     ground-impact blast, so it has no reason to exclude flying targets the
     way Cannon/Knockback do."""
+    description = "Marks enemies in a flash so every tower hits them harder; surfaces Burrowers."
     cost = 80
     range = 110
     damage = 1
@@ -1712,6 +1723,7 @@ class MortarTower(Tower):
     """Lobs heavy shells a long way -- but its high arc can't hit anything
     closer than MIN_RANGE, so it wants to sit back from the path, not on
     it. Big, slow splash; ground enemies only."""
+    description = "Very long range and a big splash, but can't fire into its dead zone."
     MIN_RANGE = 80
     cost = 120
     range = 230
@@ -1753,6 +1765,7 @@ class MortarTower(Tower):
 class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
+    description = "A trap on the path itself: splash damage to whatever walks over it."
     PLACEMENT = "path"
     HITS_BURROWED = False
     cost = 45
@@ -1795,6 +1808,7 @@ class SpikeTrapTower(Tower):
 class TarPitTower(Tower):
     """A sticky patch poured onto the path: barely hurts, but bogs down
     everything in its splash. Ground enemies only."""
+    description = "A trap on the path itself: bogs down everything in its splash."
     PLACEMENT = "path"
     HITS_BURROWED = False
     cost = 55
@@ -1845,6 +1859,7 @@ class BarricadeTower(Tower):
     it (Game._hold_enemies_at_barricades) until its hp runs out and it
     breaks -- no refund. Upgrading raises its max hp and fully repairs it.
     Never fires; flyers pass over."""
+    description = "A wall on the path: holds ground enemies until they break it."
     PLACEMENT = "path"
     ATTACKS = False
     BLOCKS_PATH = True
@@ -1935,6 +1950,7 @@ class SupportTower(Tower):
     buff_damage_multiplier instead of damage, so upgrade()'s generic
     rescale-from-base loop scales the actual buff strength, not a
     permanently-zero attack stat."""
+    description = "Never attacks; boosts the damage and range of towers around it."
     cost = 120
     range = 90
     damage = 0
@@ -2058,6 +2074,7 @@ class OverloadCannonTower(Tower):
     here would break that read. The existing generic "Fire rate" row
     already communicates cadence just fine: 1/fire_rate literally IS the
     charge time here too, just under a different display name."""
+    description = "Charges on one target for a while, then fires one massive burst."
     # Its long charge needs a target that stays in range: lock onto the
     # newest arrival, not the one about to walk out (tools/tower_bench.py
     # measured ~3x the damage).

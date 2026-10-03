@@ -2675,6 +2675,7 @@ def compendium_rows(small_font):
     from the live registries, so new content shows up here with no change
     to this screen."""
     sections = [
+        ("Towers", [(cls.display_name, cls.description) for cls in TOWER_TYPES.values()]),
         ("Relics", [(r.display_name, r.description) for r in RELICS.values()
                     if not r.is_curse and not r.is_boss_relic]),
         ("Trophy relics", [(r.display_name, r.description) for r in RELICS.values() if r.is_boss_relic]),
