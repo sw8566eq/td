@@ -222,6 +222,13 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.ARMORY and game.active_run is not None:
+            ui.draw_armory_screen(game.screen, game.font, game.small_font, game.armory_offers, game.armory_rects,
+                                  game._hovered_armory_offer(), game.shop_continue_button_rect)
+            self._draw_toasts()
+            pygame.display.flip()
+            return
+
         if game.state == GameState.COMMANDER_SELECT:
             ui.draw_commander_select_screen(
                 game.screen, game.font, game.small_font, game.commander_rects, game._hovered_commander(),

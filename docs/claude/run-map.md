@@ -208,3 +208,11 @@ unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_
 Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
 while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
 `relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).
+
+## Armory nodes
+
+An eighth node type (`"armory"`, weight 5 in `NODE_TYPE_WEIGHTS`, never forced). `Game._enter_armory_node`
+draws up to `ARMORY_OFFER_COUNT` `modules.module_offer` pairs for distinct tower types from
+`_run_rng(run, "armory", node.id)` into `GameState.ARMORY` (`ui.draw_armory_screen`); a click takes one
+(`_take_armory_offer`, which fits it and finishes the node), Skip/Enter finishes it empty, and no towers
+held resolves it on entry. Quitting mid-Armory forfeits it, like the Shop.

@@ -58,14 +58,14 @@ MIN_ROW_WIDTH, MAX_ROW_WIDTH = 2, 4
 MAX_COL_JUMP = 1
 EXTRA_EDGE_CHANCE = 0.3
 
-NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure", "boss")
+NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure", "armory", "boss")
 # Placeholder weights, tunable once there's real playtesting to tune
 # against (same "loose draft" spirit shop.py's own TOWER_PRICE/RELIC_PRICE
 # comment already documents) -- combat stays the most common node by a wide
 # margin, treasure the rarest. "boss" has no entry here at all -- it's never
 # drawn by the weighted mix, only forced onto the final row exactly like
 # "combat" is forced onto row 0 (see _assign_node_types).
-NODE_TYPE_WEIGHTS = {"combat": 45, "elite": 15, "shop": 12, "event": 16, "rest": 8, "treasure": 4}
+NODE_TYPE_WEIGHTS = {"combat": 45, "elite": 15, "shop": 12, "event": 16, "rest": 8, "treasure": 4, "armory": 5}
 # The final row's own dedicated level pool -- two boss-tier levels, distinct
 # from the ordinary "complex" tier every other late-row combat/elite node
 # draws from (see _level_pool_for_row), so the run's climactic fight is

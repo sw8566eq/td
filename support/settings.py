@@ -121,6 +121,7 @@ COLOR_NODE_SHOP = (80, 150, 205)
 COLOR_NODE_EVENT = (205, 165, 60)
 COLOR_NODE_REST = (90, 180, 110)
 COLOR_NODE_TREASURE = (215, 185, 90)
+COLOR_NODE_ARMORY = (120, 190, 230)
 # Darker/more ominous than COLOR_NODE_COMBAT -- the map's one boss node
 # should read as distinct from an ordinary Combat node at a glance.
 COLOR_NODE_BOSS = (90, 20, 30)

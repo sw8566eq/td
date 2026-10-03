@@ -738,13 +738,13 @@ MAP_COLS = 4
 
 MAP_NODE_TYPE_LABELS = {
     "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
-    "boss": "B",
+    "armory": "A", "boss": "B",
 }
 MAP_NODE_TYPE_COLORS = {
     "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
     "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
     "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
-    "boss": settings.COLOR_NODE_BOSS,
+    "armory": settings.COLOR_NODE_ARMORY, "boss": settings.COLOR_NODE_BOSS,
 }
 # Full names (unlike MAP_NODE_TYPE_LABELS' single in-circle glyph above) --
 # the map legend and a hovered node's own tooltip both use these instead of
@@ -754,7 +754,7 @@ MAP_NODE_TYPE_COLORS = {
 # what the player reads without a matching, deliberate edit here too.
 MAP_NODE_TYPE_NAMES = {
     "combat": "Combat", "elite": "Elite", "shop": "Shop", "event": "Event",
-    "rest": "Outpost", "treasure": "Treasure", "boss": "Boss",
+    "rest": "Outpost", "treasure": "Treasure", "armory": "Armory", "boss": "Boss",
 }
 # One honest, local sentence per node type -- what a hovered node's own
 # tooltip shows below its name (see _draw_map_node_tooltip). Describes only
@@ -769,6 +769,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "event": "A short encounter with a few fixed choices.",
     "rest": "Rest to heal, Forge a tower (placed at level 2), or Drill a crew.",
     "treasure": "A guaranteed relic, plus some Shop currency.",
+    "armory": "Choose one of three tower modules, free.",
     "boss": "The act's boss -- win a trophy relic and move on. Act 3's never ends.",
 }
 
@@ -1540,6 +1541,20 @@ def draw_draft_screen(surface, font, small_font, choices, draft_choice_rects, ho
     pygame.draw.rect(surface, settings.COLOR_BUTTON, continue_button_rect, border_radius=6)
     continue_label = small_font.render("Continue", True, settings.COLOR_GOLD)
     surface.blit(continue_label, continue_label.get_rect(center=continue_button_rect.center))
+
+
+def draw_armory_screen(surface, font, small_font, offers, card_rects, hovered_index, skip_rect):
+    """An Armory node: up to three (module, tower type) offers -- take one,
+    free, or skip."""
+    surface.fill(settings.COLOR_BG)
+    _draw_dim_overlay(surface)
+    title = font.render("Armory: choose one module for your towers", True, MODULE_COLOR)
+    surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
+    for index, (offer, rect) in enumerate(zip(offers, card_rects)):
+        _draw_module_card(surface, font, small_font, rect, offer, index == hovered_index, False, True, 0, "FREE")
+    pygame.draw.rect(surface, settings.COLOR_BUTTON, skip_rect, border_radius=6)
+    label = small_font.render("Skip", True, settings.COLOR_GOLD)
+    surface.blit(label, label.get_rect(center=skip_rect.center))
 
 
 # --- Commander select (right before a run starts) ---
@@ -2866,7 +2881,7 @@ _RUN_GUIDE_STATUS_LINES = [
 ]
 # The run's tower-progression systems, one line each.
 _RUN_GUIDE_SYSTEM_LINES = [
-    "Towers grow: each type ranks up from its kills (veterancy) and takes one module (Elites, Shops)",
+    "Towers grow: each type ranks up from its kills (veterancy) and takes one module (Elites, Shops, Armories)",
     "Resonances: some tower pairs boost each other -- hover a build button to see its partners",
     "Traps and Barricades go on the path itself -- deeper acts bring Sappers and Burrowers to counter them",
 ]
