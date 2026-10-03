@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Three more tower modules: **Arc Coupler** (hits can chain), **Target Painter** (every hit Marks) and
+  **Recoil Plate** (hits can knock back).
 - **Armory** map nodes: choose one of three tower modules (each for a different tower type you hold),
   free -- the one place you pick a module rather than take a random one.
 - **Coverage overlay**: press `V` in a fight to show every tower's real range, Mortar dead zones and active resonance links.
