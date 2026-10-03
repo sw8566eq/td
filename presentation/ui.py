@@ -1040,6 +1040,12 @@ def _describe_event_outcome(option, resolution):
         lines.append(f"Forged: {TOWER_TYPES[resolution['forged']].display_name} (now placed at level 2)")
     if resolution.get("potion"):
         lines.append(f"Gained potion: {POTIONS[resolution['potion']].display_name}")
+    if resolution.get("module"):
+        tower = TOWER_TYPES[resolution["module_tower"]].display_name
+        lines.append(f"Fitted module: {MODULES[resolution['module']].display_name} on your {tower} towers")
+    if resolution.get("tower_xp"):
+        names = ", ".join(TOWER_TYPES[name].display_name for name in resolution["tower_xp"].split(", "))
+        lines.append(f"Experience for: {names}")
     return lines or ["Nothing else happened."]
 
 

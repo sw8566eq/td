@@ -166,7 +166,7 @@ Experience is banked when a floor is cleared, and each type climbs four ranks --
 **Seasoned**, **Veteran**, **Legendary** -- each one making every tower of that type you build from
 then on stronger (the floor-cleared screen lists the experience each type earned): +6% damage per rank (Support: a stronger aura; Beacon: stronger marks). Gold pips on
 a build button show its rank; the sidebar shows the rank, its bonus, and experience to the next one.
-Three relics build around it: Drill Sergeant (+50% experience), Battlefield Commission (every type
+The Drill Instructor Event can train your crews too. Three relics build around it: Drill Sergeant (+50% experience), Battlefield Commission (every type
 counts one rank higher) and Old Guard (Veteran-or-better types fire 15% faster).
 
 ## Bosses

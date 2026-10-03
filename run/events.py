@@ -20,7 +20,7 @@ including why the given-up relic must be drawn before it's removed.
 import random
 from dataclasses import dataclass
 
-from run import card_pool, potions, relics
+from run import card_pool, modules, potions, relics
 from run.run_state import RunState
 
 _EVENT_ORDER = (
@@ -30,7 +30,7 @@ _EVENT_ORDER = (
     "crumbling_shrine", "traveling_collector", "stranded_caravan", "restless_veteran",
     "wandering_alchemist", "forbidden_tome", "gilded_coffer", "cleansing_spring",
     "ancient_forge", "potion_peddler", "fallen_champion", "field_hospital", "weapons_cache",
-    "brewing_contest",
+    "brewing_contest", "abandoned_workshop", "drill_instructor",
 )
 
 
@@ -81,6 +81,12 @@ class EventOption:
     # One boss relic (relics.boss_relic_offer) -- the strongest grant an
     # Event can make, so it always comes with a cost attached.
     grant_boss_relic: bool = False
+    # Tower progression (run/modules.py, run/veterancy.py): fit a random
+    # module to a random held tower type, or add veterancy experience to
+    # every held tower type (or, with xp_one_random_type, just one).
+    grant_module: bool = False
+    tower_xp: int = 0
+    xp_one_random_type: bool = False
 
 
 @dataclass(frozen=True)
@@ -464,6 +470,36 @@ EVENTS = {
                         shop_currency_delta=3),
         ),
     ),
+    "abandoned_workshop": Event(
+        "abandoned_workshop", "Abandoned Workshop",
+        "A field workshop, half looted. One rig on the bench still hums.",
+        options=(
+            EventOption(
+                "salvage", "Salvage the rig (-8 shop currency, fit a random module)",
+                "You bolt the rig onto one of your tower designs.",
+                shop_currency_delta=-8, grant_module=True,
+            ),
+            EventOption("scrap", "Strip it for parts (+10 shop currency)", "You sell what you can carry.",
+                        shop_currency_delta=10),
+        ),
+    ),
+    "drill_instructor": Event(
+        "drill_instructor", "Drill Instructor",
+        "A grizzled instructor offers to put your crews through their paces.",
+        options=(
+            EventOption(
+                "full_drill", "Full drill (-1 life, +40 experience for every tower type you hold)",
+                "Exhausting, but every crew comes out sharper.",
+                lives_delta=-1, tower_xp=40,
+            ),
+            EventOption(
+                "one_crew", "Train one crew (+50 experience for a random tower type)",
+                "One crew gets the instructor's full attention.",
+                tower_xp=50, xp_one_random_type=True,
+            ),
+            EventOption("decline", "Decline", "Your crews rest instead."),
+        ),
+    ),
     "ancient_forge": Event(
         "ancient_forge", "Ancient Forge",
         "A forge still burns in the ruins, hungry for fuel.",
@@ -573,6 +609,7 @@ def can_afford_option(option: EventOption, run: RunState, unlimited_currency: bo
 
 def resolve_event_option(
     run: RunState, option: EventOption, item_rng: random.Random, meta_progression_path: str | None = None,
+    damaging_types: frozenset[str] = frozenset(),
 ) -> dict:
     """Apply `option`'s effects directly onto `run`, returning a small
     {"relic": key} / {"tower": name} / {} dict describing what (if
@@ -646,6 +683,19 @@ def resolve_event_option(
             forged = item_rng.choice(candidates)
             run.forged_towers.append(forged)
             granted["forged"] = forged
+    if option.grant_module:
+        offer = modules.module_offer(item_rng, run, damaging_types)
+        if offer is not None:
+            module_key, tower_name = offer
+            run.tower_modules[tower_name] = module_key
+            granted["module"] = module_key
+            granted["module_tower"] = tower_name
+    if option.tower_xp and run.unlocked_towers:
+        targets = ([item_rng.choice(run.unlocked_towers)] if option.xp_one_random_type
+                   else list(run.unlocked_towers))
+        for tower_name in targets:
+            run.tower_xp[tower_name] = run.tower_xp.get(tower_name, 0.0) + option.tower_xp
+        granted["tower_xp"] = ", ".join(targets)
     if given_up_relic is not None:
         run.relics.remove(given_up_relic)
         granted["relic_given_up"] = given_up_relic
