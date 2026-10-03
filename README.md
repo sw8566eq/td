@@ -167,8 +167,10 @@ Some tower pairs work better together. A tower with its **partner** type within 
 bonus: **Superconductor** (Lightning near Frost: +25% damage), **Spotter** (Sniper near Beacon: +20%
 range), **Fortified Battery** (Mortar near Barricade: +20% damage), **Sticky Spikes** (Spike Trap near Tar
 Pit: +25% fire rate), **Shock and Awe** (Cannon near Knockback: +15% fire rate), **Toxic Cloud** (Poison
-near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage) and **Overwatch** (Basic near
-Sniper: +10% damage). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
+near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage), **Overwatch** (Basic near
+Sniper: +10% damage), **Static Charge** (Overload Cannon near Lightning: +20% damage), **Deep Freeze** (Frost
+near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate) and **Thermal Shock** (Mortar
+near Frost: +15% damage). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
 show which towers it would resonate with; a placed tower lists its active resonances. The **Harmonic
 Tuning** relic doubles every resonance. The Field Manual has them all.
 

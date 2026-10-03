@@ -21,8 +21,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   Barricades) and **Siegebreakers** (enemies batter Barricades 3x as hard, +10% HP).
 - Resonance previews (purple lines to every tower a placement would resonate with), "Boosts:" hints on
   build buttons, and the **Harmonic Tuning** relic (resonance bonuses doubled).
-- **Resonances**: eight named tower pairings (Superconductor, Spotter, Fortified Battery, Sticky Spikes,
-  Shock and Awe, Toxic Cloud, Power Relay, Overwatch) -- a tower with its partner type nearby gets a
+- **Resonances**: twelve named tower pairings (Superconductor, Spotter, Fortified Battery, Sticky Spikes,
+  Shock and Awe, Toxic Cloud, Power Relay, Overwatch, Static Charge, Deep Freeze, Bounty Link, Thermal Shock) -- a tower with its partner type nearby gets a
   damage, range or fire-rate bonus. Shown in the sidebar and the Field Manual.
 - A sixth Commander, **The Trapmaster** (Basic, Spike Trap, Tar Pit; Spike Trap starts forged; Kill
   Corridor), unlocked after 15 floors cleared. Commander cards fit six to a row.
