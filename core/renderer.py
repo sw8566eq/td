@@ -469,4 +469,5 @@ class Renderer:
         preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row, footprint_subtiles=footprint_subtiles)
         buildable = game._is_buildable_for(tower_cls, anchor_col, anchor_row)
         ui.draw_footprint_preview(game.screen, game.grid, anchor_col, anchor_row, buildable, footprint_subtiles=footprint_subtiles)
-        ui.draw_range_preview(game.screen, tower_cls, preview_pos)
+        probe = game.preview_tower(tower_cls, anchor_col, anchor_row)
+        ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)

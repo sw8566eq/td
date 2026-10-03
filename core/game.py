@@ -2740,6 +2740,12 @@ class Game:
         ))
         self.audio.play("enemy_hit_splash")
 
+    def preview_tower(self, tower_cls, anchor_col, anchor_row):
+        """A throwaway, never-registered `tower_cls` with every relic, module
+        and veterancy bonus applied -- what the placement preview measures
+        its range ring and dead zone from."""
+        return self._construct_tower(tower_cls, anchor_col, anchor_row)
+
     def _footprint_for(self, tower_cls):
         """A ground tower's footprint (_current_footprint_subtiles); a path
         trap always fills exactly one whole path tile."""
