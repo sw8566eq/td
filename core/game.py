@@ -66,6 +66,8 @@ OUTPOST_DRILL_XP = 60
 BARRICADE_BREACH_DPS = 2.5
 # A Booby-Trapped Walls-style relic's blast radius when a Barricade breaks.
 BARRICADE_BURST_RADIUS = 80
+_ARMORY_RNG_STREAM = "armory"  # an Armory node's module offers -- keyed on the node's own id
+ARMORY_OFFER_COUNT = 3
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
@@ -125,6 +127,8 @@ class GameState(Enum):
     # returns to HELP, not MENU, same "back to whichever screen this was
     # entered from" precedent KEYBINDS' own Esc (back to SETTINGS) sets.
     RUN_GUIDE = auto()
+    # An Armory map node: pick one of three tower modules (_enter_armory_node).
+    ARMORY = auto()
     # Reached from SETTINGS -- rebinding UI for keybindings.ACTION_ORDER's
     # curated subset of actions (see that module's own docstring for why
     # it's a subset, not every input_handler.py keydown check). Not folded
@@ -319,6 +323,8 @@ class Game:
         self.shop_module_rect = ui.build_shop_module_rect()
         self.shop_module = None
         self.shop_module_bought = False
+        self.armory_offers = []
+        self.armory_rects = []
         self.shop_potion = None
         self.shop_potion_bought = False
 
@@ -1271,6 +1277,8 @@ class Game:
             self._enter_rest_node(node)
         elif node.node_type == "treasure":
             self._enter_treasure_node(node)
+        elif node.node_type == "armory":
+            self._enter_armory_node(node)
 
     def _finish_node(self, node_id):
         """Shared terminal step for every non-combat node's own resolution
@@ -1621,6 +1629,37 @@ class Game:
         self.rest_phase = "resolved"
         self._commit_node(self.active_run.current_node_id)
         self.audio.play("tower_upgraded")
+
+    def _enter_armory_node(self, node):
+        """An Armory: up to ARMORY_OFFER_COUNT (module, tower type) offers,
+        each for a different held tower type, drawn from the node's own rng
+        -- take one free, or skip. Resolves straight away if there's nothing
+        to offer (no towers held)."""
+        run = self.active_run
+        rng = self._run_rng(run, _ARMORY_RNG_STREAM, node.id)
+        offers = []
+        for _ in range(ARMORY_OFFER_COUNT * 3):
+            offer = modules.module_offer(rng, run, self._damaging_tower_types())
+            if offer is not None and offer[1] not in {tower for _module, tower in offers}:
+                offers.append(offer)
+            if len(offers) == ARMORY_OFFER_COUNT:
+                break
+        if not offers:
+            self._finish_node(node.id)
+            return
+        self.armory_offers = offers
+        self.armory_rects = ui.build_draft_choice_rects(len(offers))
+        self.state = GameState.ARMORY
+
+    def _take_armory_offer(self, index):
+        module_key, tower_name = self.armory_offers[index]
+        self.active_run.tower_modules[tower_name] = module_key
+        self._record_achievement("modules_fitted")
+        self.audio.play("tower_upgraded")
+        self._finish_node(self.active_run.current_node_id)
+
+    def _hovered_armory_offer(self):
+        return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), self.armory_rects)
 
     def _enter_treasure_node(self, node):
         """A Treasure node auto-resolves the instant it's entered -- a

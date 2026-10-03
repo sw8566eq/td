@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Armory** map nodes: choose one of three tower modules (each for a different tower type you hold),
+  free -- the one place you pick a module rather than take a random one.
 - **Coverage overlay**: press `V` in a fight to show every tower's real range, Mortar dead zones and active resonance links.
 - Tower cards on reward and Shop screens show their resonance partners ("Pairs with:" / "Boosts:").
 - Burrowed enemies draw as a faded sprite on a dirt mound, so you can see when traps can't reach them.

@@ -4,6 +4,7 @@ Elite rewards pre-paired with a held tower type, applied at construction."""
 import itertools
 import random
 
+import pygame
 import pytest
 from conftest import find_buildable_anchor, start_first_floor
 
@@ -213,3 +214,72 @@ def test_tower_event_outcomes_read_well(game):
                                        {"module": "long_barrel", "module_tower": "cannon", "tower_xp": "basic, frost"})
     assert "Fitted module: Long Barrel on your Cannon towers" in lines
     assert "Experience for: Basic, Frost" in lines
+
+
+# --- Armory nodes ---
+
+
+def _armory(game):
+    from test_run import _begin_run_with_map
+
+    run = _begin_run_with_map(game, ["combat", "armory", "combat"])
+    game._enter_node("0-0")
+    from conftest import finish_all_waves
+
+    finish_all_waves(game)
+    game.update(dt=0.01)
+    game._enter_map()
+    game._enter_node("1-0")
+    return run
+
+
+def test_an_armory_offers_three_modules_for_different_tower_types(game):
+    from core.game import GameState
+
+    run = _armory(game)
+    assert game.state == GameState.ARMORY
+    towers = [tower for _module, tower in game.armory_offers]
+    assert len(game.armory_offers) == 3 and len(set(towers)) == 3
+    assert set(towers) <= set(run.unlocked_towers)
+    game.render()
+
+
+def test_taking_an_armory_offer_fits_it_and_returns_to_the_map(game):
+    from core.game import GameState
+
+    run = _armory(game)
+    module_key, tower = game.armory_offers[1]
+    game.input_handler._handle_armory_click(game.armory_rects[1].center)
+    assert run.tower_modules == {tower: module_key}
+    assert game.state == GameState.MAP and "1-0" in run.visited_node_ids
+
+
+def test_skipping_an_armory_takes_nothing(game):
+    from core.game import GameState
+
+    run = _armory(game)
+    game.input_handler._handle_armory_click(game.shop_continue_button_rect.center)
+    assert run.tower_modules == {} and game.state == GameState.MAP
+    run2 = _armory(game)
+    game._handle_keydown(pygame.K_RETURN)
+    assert run2.tower_modules == {} and game.state == GameState.MAP
+
+
+def test_armory_offers_are_deterministic_per_node(game):
+    _armory(game)
+    first = list(game.armory_offers)
+    _armory(game)
+    assert game.armory_offers == first
+
+
+def test_an_armory_with_no_towers_resolves_immediately(game):
+    from test_run import _begin_run_with_map
+
+    from core.game import GameState
+
+    run = _begin_run_with_map(game, ["combat", "armory", "combat"])
+    run.unlocked_towers = []
+    run.current_node_id = "0-0"
+    run.visited_node_ids = ["0-0"]
+    game._enter_node("1-0")
+    assert game.state == GameState.MAP and "1-0" in run.visited_node_ids

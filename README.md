@@ -71,6 +71,7 @@ node types:
   towers -- every copy of it you place for the rest of the run starts at level 2, for free (marked
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
+- **Armory** -- choose one of three tower modules, each for a different tower type you hold, free.
 
 The final row is always a single **Boss** node, and a run is **three acts** -- three maps back to
 back. Beating Act 1's or Act 2's boss clears it like any floor, then lets you
