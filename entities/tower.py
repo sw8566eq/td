@@ -8,6 +8,8 @@ needs to change -- ui.py's build menu and game.py's placement logic both
 iterate/index the registry rather than naming concrete classes.
 """
 
+from dataclasses import dataclass
+
 import pygame
 
 from entities.projectile import Projectile
@@ -442,6 +444,12 @@ class Tower:
         self.relic_variety_damage_bonus_per_type = 0.0
         self.relic_isolation_damage_bonus = 0.0
         self.placement_damage_bonus = 0.0
+        # Resonances (RESONANCES) this tower has with a partner nearby, and
+        # their summed bonuses -- recomputed by set_nearby_tower_bonus().
+        self.resonance_keys = []
+        self.resonance_damage_bonus = 0.0
+        self.resonance_range_bonus = 0.0
+        self.resonance_fire_rate_bonus = 0.0
         # Adrenaline Rush-style relic -- mirrors relic_last_stand_bonus_
         # multiplier/relic_last_stand_multiplier immediately above exactly,
         # just for fire rate instead of damage; both live values are set
@@ -848,6 +856,7 @@ class Tower:
             + (self.aura_range_multiplier - 1.0)
             + (self.relic_range_bonus_multiplier - 1.0)
             + (self.relic_last_stand_range_multiplier - 1.0)
+            + self.resonance_range_bonus
         )
 
     def relic_adjusted_range(self):
@@ -897,6 +906,7 @@ class Tower:
             + self.veterancy_damage_bonus
             + self.module_damage_bonus
             + self.placement_damage_bonus
+            + self.resonance_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):
@@ -988,6 +998,7 @@ class Tower:
             self.relic_tower_density_fire_rate_bonus_cap,
         )
         self.relic_tower_density_fire_rate_bonus_multiplier = 1.0 + fire_rate_bonus
+        self._resolve_resonances(towers)
         # Combined Arms / Lone Sentinel -- the same "only when the board
         # changes" recompute, skipped entirely without either relic.
         self.placement_damage_bonus = 0.0
@@ -1000,6 +1011,23 @@ class Tower:
             radius_sq = ISOLATION_RADIUS ** 2
             if not any(other is not self and self.pos.distance_squared_to(other.pos) <= radius_sq for other in towers):
                 self.placement_damage_bonus += self.relic_isolation_damage_bonus
+
+    def _resolve_resonances(self, towers):
+        """Which RESONANCES this tower has right now -- a partner of the
+        named type within RESONANCE_RADIUS -- and their summed bonuses."""
+        self.resonance_keys = []
+        self.resonance_damage_bonus = self.resonance_range_bonus = self.resonance_fire_rate_bonus = 0.0
+        my_name = TOWER_TYPE_NAMES.get(type(self))
+        radius_sq = RESONANCE_RADIUS ** 2
+        for key, resonance in RESONANCES.items():
+            if resonance.tower != my_name:
+                continue
+            if any(other is not self and TOWER_TYPE_NAMES.get(type(other)) == resonance.partner
+                   and self.pos.distance_squared_to(other.pos) <= radius_sq for other in towers):
+                self.resonance_keys.append(key)
+                self.resonance_damage_bonus += resonance.damage_bonus
+                self.resonance_range_bonus += resonance.range_bonus
+                self.resonance_fire_rate_bonus += resonance.fire_rate_bonus
 
     def effective_fire_rate(self):
         """self.fire_rate scaled by three independent multiplicative
@@ -1020,6 +1048,7 @@ class Tower:
             * self.relic_last_stand_fire_rate_multiplier
             * self.relic_tower_density_fire_rate_bonus_multiplier
             * self.potion_fire_rate_multiplier
+            * (1.0 + self.resonance_fire_rate_bonus)
         )
 
     def create_projectile(self, target):
@@ -2191,3 +2220,53 @@ TOWER_TYPES = {
 }
 # The reverse lookup -- a tower class's registry key.
 TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}
+
+
+# --- Resonances -------------------------------------------------------------
+# Named pairings: a `tower` with a `partner`-type tower within
+# RESONANCE_RADIUS gets the bonus (Tower._resolve_resonances, recomputed
+# whenever the board changes). One-directional -- each entry boosts only
+# `tower`; a pair that should help both ways lists two entries.
+
+RESONANCE_RADIUS = 110
+
+
+@dataclass(frozen=True)
+class Resonance:
+    display_name: str
+    tower: str
+    partner: str
+    description: str
+    damage_bonus: float = 0.0
+    range_bonus: float = 0.0
+    fire_rate_bonus: float = 0.0
+
+
+RESONANCES = {
+    "superconductor": Resonance(
+        "Superconductor", "lightning", "frost", "Lightning near a Frost tower: +25% damage.", damage_bonus=0.25,
+    ),
+    "spotter": Resonance(
+        "Spotter", "sniper", "beacon", "Sniper near a Beacon: +20% range.", range_bonus=0.20,
+    ),
+    "fortified_battery": Resonance(
+        "Fortified Battery", "mortar", "barricade", "Mortar near a Barricade: +20% damage.", damage_bonus=0.20,
+    ),
+    "sticky_spikes": Resonance(
+        "Sticky Spikes", "spike_trap", "tar_pit", "Spike Trap near a Tar Pit: +25% fire rate.",
+        fire_rate_bonus=0.25,
+    ),
+    "shock_and_awe": Resonance(
+        "Shock and Awe", "cannon", "knockback", "Cannon near a Knockback tower: +15% fire rate.",
+        fire_rate_bonus=0.15,
+    ),
+    "toxic_cloud": Resonance(
+        "Toxic Cloud", "poison", "cannon", "Poison near a Cannon: +20% range.", range_bonus=0.20,
+    ),
+    "power_relay": Resonance(
+        "Power Relay", "beam", "siphon", "Beam near a Siphon: +15% damage.", damage_bonus=0.15,
+    ),
+    "overwatch": Resonance(
+        "Overwatch", "basic", "sniper", "Basic near a Sniper: +10% damage.", damage_bonus=0.10,
+    ),
+}

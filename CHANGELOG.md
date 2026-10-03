@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Resonances**: eight named tower pairings (Superconductor, Spotter, Fortified Battery, Sticky Spikes,
+  Shock and Awe, Toxic Cloud, Power Relay, Overwatch) -- a tower with its partner type nearby gets a
+  damage, range or fire-rate bonus. Shown in the sidebar and the Field Manual.
 - A sixth Commander, **The Trapmaster** (Basic, Spike Trap, Tar Pit; Spike Trap starts forged; Kill
   Corridor), unlocked after 15 floors cleared. Commander cards fit six to a row.
 - Achievements for the new towers: Artillerist (10 Mortars), Hold the Line (10 Barricades), Trapper (20

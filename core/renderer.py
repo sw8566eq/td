@@ -332,6 +332,7 @@ class Renderer:
             game._hovered_specialize_key(panel_subject),
             veterancy_line=self._veterancy_line(panel_subject),
             module_line=self._module_line(panel_subject),
+            resonance_line=ui.resonance_line(panel_subject),
         )
         if game.active_run is not None:
             ui.draw_potion_belt(
