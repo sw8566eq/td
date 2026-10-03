@@ -183,6 +183,12 @@ so every affix consumer -- escalation, regen/damage-taken traits, Swarming-style
 species excluded), the map tooltip and `map_node_affixes`, the sidebar text -- handles
 bosses with no extra branches. The map title names the act's boss (`Boss: The Warlord`).
 
+
+`EliteAffix.burrows`/`breach_multiplier` (Tunneling, Siegebreakers) reach enemies through
+`WaveManager.enemy_burrows`/`enemy_breach_multiplier` (set by `_apply_affix_traits`) in
+`apply_spawn_multipliers`, which sets the *instance's* `BURROWS` (ground enemies only) and
+`BREACH_MULTIPLIER` -- the classes are never touched.
+
 ## Starting blessing
 
 `events.BLESSING` -- an `Event` kept out of `EVENTS`/`_EVENT_ORDER` so `pick_event` never draws it.

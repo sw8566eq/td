@@ -37,6 +37,11 @@ class EliteAffix:
     # and scale every hit taken.
     regen_fraction_per_second: float = 0.0
     damage_taken_multiplier: float = 1.0
+    # Every ground enemy burrows under path traps and Barricades, and/or
+    # batters Barricades this many times harder (WaveManager.enemy_burrows/
+    # enemy_breach_multiplier).
+    burrows: bool = False
+    breach_multiplier: float = 1.0
 
 
 AFFIXES = {
@@ -60,6 +65,14 @@ AFFIXES = {
     "armored": EliteAffix(
         "armored", "Armored", "Enemies take 25% less damage from every hit.",
         damage_taken_multiplier=0.75,
+    ),
+    "tunneling": EliteAffix(
+        "tunneling", "Tunneling", "Every ground enemy burrows: Spike Traps, Tar Pits and Barricades can't touch them.",
+        burrows=True,
+    ),
+    "siegebreakers": EliteAffix(
+        "siegebreakers", "Siegebreakers", "Enemies batter Barricades 3x as hard and have 10% more HP.",
+        breach_multiplier=3.0, hp_multiplier=1.1,
     ),
 }
 AFFIX_ORDER = list(AFFIXES)
