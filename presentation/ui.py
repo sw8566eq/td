@@ -33,6 +33,8 @@ from run.potions import POTIONS
 from run.relics import RELICS
 from run.shop import can_afford, price_for
 from run.veterancy import RANKS as VETERANCY_RANKS
+from run.veterancy import rank_for as veterancy_rank_for
+from run.veterancy import rank_name as veterancy_rank_name
 from support import settings
 from world.levels import LEVELS
 
@@ -2964,7 +2966,19 @@ def run_summary_lines(run):
     if run.ascension:
         identity.append(f"Gauntlet {run.ascension}")
     identity.append(f"{len(run.relics)} relic{'' if len(run.relics) == 1 else 's'}")
-    return [progress, ", ".join(identity)]
+    lines = [progress, ", ".join(identity)]
+    # The run's tower story: its most experienced crew, and modules fitted.
+    crew = []
+    if run.tower_xp:
+        best = max(run.tower_xp, key=run.tower_xp.get)
+        rank = veterancy_rank_for(run.tower_xp[best])
+        crew.append(f"Top crew: {TOWER_TYPES[best].display_name} ({veterancy_rank_name(rank)})")
+    if run.tower_modules:
+        count = len(run.tower_modules)
+        crew.append(f"{count} module{'' if count == 1 else 's'} fitted")
+    if crew:
+        lines.append(", ".join(crew))
+    return lines
 
 
 def draw_victory_screen(surface, font, small_font, has_next_level=False, results=None):
