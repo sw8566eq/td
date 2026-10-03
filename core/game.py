@@ -2600,8 +2600,11 @@ class Game:
             tower.MIN_RANGE = type(tower).MIN_RANGE * dead_zone_multiplier
         if has_module:
             tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
-        if tower.PLACEMENT == "path" and any(relic.traps_hit_burrowed for relic in held):
-            tower.HITS_BURROWED = True
+        if tower.PLACEMENT == "path":
+            if any(relic.traps_hit_burrowed for relic in held):
+                tower.HITS_BURROWED = True
+            for relic in held:
+                tower.relic_damage_vs_slowed_multiplier *= relic.trap_damage_vs_slowed_multiplier
 
     def veterancy_rank(self, tower_name):
         """`tower_name`'s veterancy rank this run (run/veterancy.py),
@@ -2671,13 +2674,18 @@ class Game:
         """Burn every ground (not flying, not burrowed) enemy standing in a
         live GroundFire, crediting the Mortar that left it, then drop the
         ones that have burnt out."""
+        vs_slowed = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                vs_slowed *= relics.RELICS[key].ground_fire_vs_slowed_multiplier
         for fire in self.ground_fires:
             fire.time_left -= dt
             for enemy in self.enemies:
                 if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.BURROWS
                         or enemy.pos.distance_to(fire.pos) > fire.radius):
                     continue
-                dealt = enemy.take_damage(fire.dps * dt)
+                multiplier = vs_slowed if enemy.slow_timer > 0 else 1.0
+                dealt = enemy.take_damage(fire.dps * multiplier * dt)
                 if fire.source is not None:
                     fire.source.damage_dealt += dealt or 0.0
                     if enemy.is_dead:

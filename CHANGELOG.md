@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Combo relics: **Flashpoint** (burning ground deals double damage to slowed enemies) and **Kill
+  Corridor** (Spike Traps and Tar Pits deal +50% damage to slowed enemies).
 - Two tower Events: **Abandoned Workshop** (pay to fit a random module to a random tower type, or sell
   it for parts) and **Drill Instructor** (veterancy experience for every tower type at the cost of a
   life, or for one type for free).

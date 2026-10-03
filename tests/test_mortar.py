@@ -97,3 +97,28 @@ def test_ground_fires_render_and_reset_on_reload(game):
     game.state = game.state.__class__.PAUSED
     game.reset()
     assert game.ground_fires == []
+
+
+def test_flashpoint_doubles_ground_fire_on_slowed_enemies(game):
+    from entities.effects import GroundFire
+
+    _mortar_run(game, ["incendiary_shells", "flashpoint"])
+    slowed, normal = _enemy_at(100), _enemy_at(100)
+    slowed.apply_slow(0.5, 5.0)
+    game.enemies = [slowed, normal]
+    game.ground_fires = [GroundFire(pygame.Vector2(100, 0), 40, 10.0, 3.0)]
+    game._update_ground_fires(1.0)
+    assert slowed.max_hp - slowed.hp == pytest.approx(20.0)
+    assert normal.max_hp - normal.hp == pytest.approx(10.0)
+
+
+def test_kill_corridor_boosts_only_path_traps_vs_slowed(game):
+    from test_barricade import _build, _run_with
+
+    run = _run_with(game, ["kill_corridor"])
+    run.unlocked_towers.append("spike_trap")
+    game._rebuild_button_rects()
+    trap = _build(game, "spike_trap")
+    basic = _build(game, "basic")
+    assert trap.relic_damage_vs_slowed_multiplier == pytest.approx(1.5)
+    assert basic.relic_damage_vs_slowed_multiplier == pytest.approx(1.0)
