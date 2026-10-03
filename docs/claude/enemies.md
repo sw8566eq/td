@@ -140,3 +140,11 @@ forever with zero leaks.
 `KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
 Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
 forever with zero leaks.
+
+## Poison credit
+
+`Enemy.poison_source` is the tower credited with poison ticks: `apply_poison(..., source=)` sets it on a
+fresh application or when the new tick is at least as strong; `update()` adds each tick's dealt damage
+to its `damage_dealt` and a killing tick to its `kills` (so poison counts for results and veterancy).
+Projectiles pass `self.source`; Virulent Bloom's spread passes the dying enemy's source; potions pass
+none.

@@ -109,6 +109,8 @@ class Enemy:
 
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
+        # The tower credited with active poison ticks (see apply_poison).
+        self.poison_source = None
         # Stagger resistance (0..KNOCKBACK_RESISTANCE_CAP): how much of the
         # next knockback this enemy shrugs off -- see apply_knockback.
         self.knockback_resistance = 0.0
@@ -167,7 +169,11 @@ class Enemy:
             self.poison_tick_timer -= dt
             if self.poison_tick_timer <= 0:
                 self.poison_tick_timer += self.poison_tick_interval
-                self.take_poison_damage(self.poison_damage_per_tick, self.poison_ignores_shield)
+                dealt = self.take_poison_damage(self.poison_damage_per_tick, self.poison_ignores_shield)
+                if self.poison_source is not None:
+                    self.poison_source.damage_dealt += dealt or 0.0
+                    if self.is_dead:
+                        self.poison_source.kills += 1
                 if self.is_dead:
                     return  # a killing tick -- don't also move the corpse this frame
             if self.poison_time_remaining <= 0:
@@ -297,7 +303,7 @@ class Enemy:
         self.mark_damage_multiplier = max(self.mark_damage_multiplier, multiplier)
         self.mark_timer = max(self.mark_timer, duration)
 
-    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False):
+    def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False, source=None):
         """Start (or refresh) a damage-over-time effect: damage_per_tick
         every tick_interval seconds, for duration seconds total -- see the
         per-frame handling in update(). Re-poisoning follows apply_slow's
@@ -319,6 +325,11 @@ class Enemy:
         top of an already-armed one."""
         if self.is_dead or self.reached_goal:
             return
+        # The tower credited with the poison's ticks (damage_dealt/kills, and
+        # so veterancy) -- whoever applied the strongest tick, or None for a
+        # sourceless poison (a potion).
+        if source is not None and (self.poison_time_remaining <= 0 or damage_per_tick >= self.poison_damage_per_tick):
+            self.poison_source = source
         if self.poison_time_remaining <= 0:
             self.poison_tick_timer = 0.0  # first tick fires on the very next update()
             self.poison_ignores_shield = ignore_shield

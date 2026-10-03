@@ -614,7 +614,7 @@ class Projectile:
         # should behave differently against a shield once the relic is
         # held.
         if self.poison_effect is not None:
-            enemy.apply_poison(*self.poison_effect, ignore_shield=self.relic_poison_ignores_shield)
+            enemy.apply_poison(*self.poison_effect, ignore_shield=self.relic_poison_ignores_shield, source=self.source)
         # A Venomous Coating-style relic's poison roll -- same "once per
         # enemy actually hit, independent of the tower's own poison_effect
         # above" shape as the crit roll. Enemy.apply_poison()'s own
@@ -632,7 +632,8 @@ class Projectile:
             self.relic_poison_chance and self.relic_poison_effect is not None
             and random.random() < self.relic_poison_chance
         ):
-            enemy.apply_poison(*self.relic_poison_effect, ignore_shield=self.relic_poison_ignores_shield)
+            enemy.apply_poison(*self.relic_poison_effect, ignore_shield=self.relic_poison_ignores_shield,
+                               source=self.source)
         # An Arcing Rounds-style relic's chain roll -- same "once per enemy
         # actually hit" shape as crit/poison above, but the resulting
         # bounce is a plain _apply_direct_damage() call, not a recursive
