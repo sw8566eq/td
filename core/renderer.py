@@ -35,7 +35,7 @@ import inspect
 
 import pygame
 
-from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES
+from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
 from presentation import ui
 from run import modules, potions, relics, shop, veterancy
 from support import settings
@@ -471,4 +471,7 @@ class Renderer:
         buildable = game._is_buildable_for(tower_cls, anchor_col, anchor_row)
         ui.draw_footprint_preview(game.screen, game.grid, anchor_col, anchor_row, buildable, footprint_subtiles=footprint_subtiles)
         probe = game.preview_tower(tower_cls, anchor_col, anchor_row)
+        if buildable:
+            ui.draw_resonance_links(game.screen, preview_pos,
+                                    resonance_partners(game.selected_tower_name, preview_pos, game.towers))
         ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)

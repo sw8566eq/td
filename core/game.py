@@ -2600,6 +2600,8 @@ class Game:
             tower.MIN_RANGE = type(tower).MIN_RANGE * dead_zone_multiplier
         if has_module:
             tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
+        for relic in held:
+            tower.relic_resonance_multiplier *= relic.resonance_multiplier
         if tower.PLACEMENT == "path":
             if any(relic.traps_hit_burrowed for relic in held):
                 tower.HITS_BURROWED = True
