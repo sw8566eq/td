@@ -247,3 +247,16 @@ def test_drill_text_matches_the_game_constant():
     from presentation import ui
 
     assert ui.OUTPOST_DRILL_XP_TEXT == game_module.OUTPOST_DRILL_XP
+
+
+def test_run_history_records_and_shows_the_top_crew(game):
+    from presentation import ui
+    from progression import run_history
+
+    run = start_first_floor(game, seed=1)
+    run.tower_xp = {"cannon": 120, "basic": 10}
+    game.economy.lives = 0
+    game.update(dt=0.01)
+    records = run_history.load_run_records(game.run_history_path)
+    assert records[0]["top_crew"] == "cannon"
+    assert "top crew: Cannon" in ui.run_history_lines({}, records)[0]
