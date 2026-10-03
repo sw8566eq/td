@@ -38,8 +38,9 @@ Press any unbound key at the main menu, then pick a **Commander**. Each
 one sets your three starter towers and a signature starting relic: **The Warden** (Basic, Cannon,
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
-**The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades) and **The
-Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) unlock as you play.
+**The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades), **The
+Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) and **The Trapmaster**
+(Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) unlock as you play.
 The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic and
 one curse, the same pair for everyone.
 

@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- A sixth Commander, **The Trapmaster** (Basic, Spike Trap, Tar Pit; Spike Trap starts forged; Kill
+  Corridor), unlocked after 15 floors cleared. Commander cards fit six to a row.
 - Achievements for the new towers: Artillerist (10 Mortars), Hold the Line (10 Barricades), Trapper (20
   Spike Traps).
 - Combo relics: **Flashpoint** (burning ground deals double damage to slowed enemies) and **Kill
