@@ -261,9 +261,10 @@ class Renderer:
         if game.state == GameState.REST and game.active_run is not None:
             ui.draw_rest_screen(
                 game.screen, game.font, game.small_font, game.rest_phase, game.rest_heal_amount,
-                game.active_run.lives, game.rest_option_rects, game.rest_smith_choices, game.rest_smith_rects,
+                game.active_run.lives, game.rest_option_rects, *game.rest_picker(),
                 game.rest_back_rect, game.rest_forged_tower, game._hovered_rest_rect_index(),
                 heal_blocked=game.rest_heal_blocked, moved_on=game.rest_moved_on,
+                can_drill=bool(game.rest_drill_choices), drilled_tower=game.rest_drilled_tower,
             )
             self._draw_toasts()
             pygame.display.flip()

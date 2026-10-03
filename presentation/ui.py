@@ -1168,7 +1168,8 @@ def _draw_option_box(surface, small_font, rect, label, description, enabled, hov
 
 
 def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, option_rects, smith_choices,
-                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False, moved_on=False):
+                     smith_rects, back_rect, forged_tower, hovered_index, heal_blocked=False, moved_on=False,
+                     can_drill=False, drilled_tower=None):
     """A Rest node's campfire (see Game._enter_rest_node), by `phase`:
     "choose" shows Rest and Smith as two Event-style options; "smith" a
     grid of `smith_choices` tower names to forge, plus Back; "resolved"
@@ -1188,10 +1189,14 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
         smith_text = ("Forge one of your towers: from now on it is always placed at level 2, for free."
                       if can_smith else "Every tower you hold is already forged.")
         _draw_option_box(surface, small_font, option_rects[1], "Forge", smith_text, can_smith, hovered_index == 1)
-        _draw_option_box(surface, small_font, option_rects[2], "Move on", "Leave the outpost as it is.", True,
+        _draw_option_box(surface, small_font, option_rects[2], "Drill",
+                         f"Train one tower type's crews: +{OUTPOST_DRILL_XP_TEXT} veterancy experience.", can_drill,
                          hovered_index == 2)
-    elif phase == "smith":
-        prompt = small_font.render("Choose a tower to forge", True, settings.COLOR_TEXT)
+        _draw_option_box(surface, small_font, option_rects[3], "Move on", "Leave the outpost as it is.", True,
+                         hovered_index == 3)
+    elif phase in ("smith", "drill"):
+        prompt_text = "Choose a tower to forge" if phase == "smith" else "Choose a crew to drill"
+        prompt = small_font.render(prompt_text, True, settings.COLOR_TEXT)
         surface.blit(prompt, prompt.get_rect(midtop=(center_x, SMITH_CHOICES_TOP - 50)))
         for index, name in enumerate(smith_choices):
             rect = smith_rects[index]
@@ -1206,6 +1211,8 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
     else:
         if moved_on:
             text = "You move on without stopping."
+        elif drilled_tower is not None:
+            text = f"Your {TOWER_TYPES[drilled_tower].display_name} crews drill hard: +{OUTPOST_DRILL_XP_TEXT} experience."
         elif forged_tower is None:
             text = f"You rest and recover {heal_amount} lives."
         else:
@@ -1676,6 +1683,7 @@ def _draw_potion_card(surface, font, small_font, rect, key, hovered, purchased, 
 
 
 MODULE_COLOR = (120, 190, 230)
+OUTPOST_DRILL_XP_TEXT = 60  # mirrors core.game.OUTPOST_DRILL_XP -- checked by a test
 RESONANCE_COLOR = (200, 150, 240)
 
 

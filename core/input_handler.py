@@ -687,9 +687,10 @@ class InputHandler:
         elif game.rest_back_rect.collidepoint(pos):
             game.rest_phase = "choose"
         else:
-            index = ui.get_clicked_draft_choice(pos, game.rest_smith_rects)
+            choices, rects = game.rest_picker()
+            index = ui.get_clicked_draft_choice(pos, rects)
             if index is not None:
-                game._forge_tower(game.rest_smith_choices[index])
+                (game._drill_tower if game.rest_phase == "drill" else game._forge_tower)(choices[index])
 
     def _handle_commander_select_click(self, pos):
         index = ui.get_clicked_draft_choice(pos, self.game.commander_rects)
