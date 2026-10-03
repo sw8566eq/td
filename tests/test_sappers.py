@@ -121,3 +121,29 @@ def test_burrowed_and_surfaced_burrowers_both_draw(game):
     burrower.draw(surface, assets)
     burrower.apply_mark(1.2, 2.0)
     burrower.draw(surface, assets)
+
+
+def test_enemy_tooltip_lines_show_traits_and_states(game):
+    from conftest import clear_mouse_mock, mock_mouse_pos, start_first_floor
+
+    from entities.enemy import ENEMY_TYPES
+    from presentation import ui
+
+    for name, cls in ENEMY_TYPES.items():
+        assert cls.display_name and cls.description, name
+    burrower = _burrower_at(100)
+    lines = ui.enemy_tooltip_lines(burrower)
+    assert lines[0] == "Burrower" and lines[-1] == "Burrowed"
+    burrower.apply_mark(1.2, 2.0)
+    burrower.apply_slow(0.5, 2.0)
+    assert ui.enemy_tooltip_lines(burrower)[-1] == "Marked, Slowed"
+    start_first_floor(game, seed=1)
+    game.enemies = [burrower]
+    try:
+        mock_mouse_pos((100, 0))
+        assert game._hovered_enemy() is burrower
+        game.render()
+        mock_mouse_pos((400, 400))
+        assert game._hovered_enemy() is None
+    finally:
+        clear_mouse_mock()

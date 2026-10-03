@@ -32,6 +32,8 @@ KNOCKBACK_RESISTANCE_CAP = 0.8
 KNOCKBACK_RESISTANCE_DECAY = 0.3
 
 class Enemy:
+    display_name = "Enemy"
+    description = ""
     # --- Per-wave scaling stats (all overridable per subclass) ---
     base_hp = 50
     hp_per_wave = 12
@@ -433,6 +435,8 @@ class Enemy:
 
 class GruntEnemy(Enemy):
     """The baseline species -- uses Enemy's base stats as-is."""
+    display_name = "Grunt"
+    description = "The baseline: average speed and health."
 
 
 class ScoutEnemy(Enemy):
@@ -442,6 +446,8 @@ class ScoutEnemy(Enemy):
     quick" at a glance. Also the most rewarding target for the knockback
     tower -- apply_knockback's distance scales with the enemy's own speed,
     so scouts get shoved back proportionally further than slower species."""
+    display_name = "Scout"
+    description = "Fast and fragile."
     base_hp = 18
     hp_per_wave = 4
     base_speed = 130.0
@@ -457,6 +463,8 @@ class SapperEnemy(Enemy):
     """Carries demolition charges: middling HP and speed, but tears through
     a Barricade five times faster than anything else. Joins run waves from
     Act 2 on (run_escalation.sapper_count_for_depth)."""
+    display_name = "Sapper"
+    description = "Batters Barricades five times as hard."
     base_hp = 45
     hp_per_wave = 9
     base_speed = 85.0
@@ -473,6 +481,8 @@ class BurrowerEnemy(Enemy):
     """Tunnels just under the path: Spike Traps, Tar Pits and Barricades
     can't touch it, but every ordinary tower can. Sturdy and steady. Joins
     run waves from deep in Act 2 (run_escalation.RUN_REINFORCEMENTS)."""
+    display_name = "Burrower"
+    description = "Tunnels under traps and Barricades until Marked."
     BURROWS = True
     base_hp = 60
     hp_per_wave = 11
@@ -490,6 +500,8 @@ class TankEnemy(Enemy):
     down, but gives towers plenty of time to line up shots -- and frost's
     slow effect turns an already-slow tank into a near-standstill. Larger
     sprite and a bigger gold reward to match the threat and effort."""
+    display_name = "Tank"
+    description = "Slow and heavily armored."
     base_hp = 140
     hp_per_wave = 30
     base_speed = 30.0
@@ -528,6 +540,8 @@ class BossEnemy(Enemy):
     *after* construction (see its own hasattr(enemy, "max_shield") patch-up
     for ShieldedEnemy, same reasoning), so a threshold computed at
     __init__ time would silently fire at the wrong HP on Easy/Hard."""
+    display_name = "Boss"
+    description = "Huge health; enrages and armors up as it weakens."
     BREACH_MULTIPLIER = 6.0  # a boss smashes a Barricade far faster
     base_hp = 500
     hp_per_wave = 50
@@ -610,6 +624,8 @@ class FinalBossEnemy(BossEnemy):
     Game.update()'s dead-enemy drain loop had to be generalized to drain
     *every* enemy's pending_spawns every frame (clearing the list right
     after), not just a dead one's -- see that method's own comment."""
+    display_name = "Final Boss"
+    description = "Summons reinforcements as it goes."
     base_hp = 900
     hp_per_wave = 70
     base_reward = 250
@@ -664,6 +680,8 @@ class FinalBossShieldedEnemy(BossEnemy):
     polymorphic dispatch) and silently keep hitting the pulse shield
     anyway, breaking that relic's own "always breaks through" text for
     this one boss specifically."""
+    display_name = "Shielded Final Boss"
+    description = "Pulses a shield that must be burned down."
     base_hp = 900
     hp_per_wave = 70
     base_reward = 250
@@ -727,6 +745,8 @@ class ShieldedEnemy(Enemy):
     a hit like any other -- take_damage() doesn't care where the damage
     came from -- so a poisoned shield still has to burn down before the
     poison actually reaches HP, same as a direct hit would."""
+    display_name = "Shielded"
+    description = "A regenerating shield absorbs damage first."
     base_hp = 40
     hp_per_wave = 10
     base_shield = 30
@@ -825,6 +845,8 @@ class FlyingEnemy(Enemy):
     tower.py; every current tower except Cannon and Knockback) can hit it
     at all, regardless of range/targeting mode. Fast and comparatively
     fragile, closer to Scout than Tank."""
+    display_name = "Flyer"
+    description = "Flies over the path; some towers can't hit it."
     is_flying = True
     base_hp = 25
     hp_per_wave = 5
@@ -851,6 +873,8 @@ class SplitterEnemy(Enemy):
     yet pruned (e.g. a splash/chain hit touching it more than once in the
     same frame): pending_spawns is only ever populated here, and a dead
     enemy's own take_damage() already no-ops before reaching this check."""
+    display_name = "Splitter"
+    description = "Splits into smaller enemies when killed."
     base_hp = 55
     hp_per_wave = 10
     base_speed = 70.0
@@ -878,6 +902,8 @@ class SplitterChildEnemy(Enemy):
     splitter (no further splitting). Deliberately left out of ENEMY_TYPES:
     WaveManager never spawns one directly, it only ever enters play via
     SplitterEnemy.pending_spawns."""
+    display_name = "Splitling"
+    description = "A fragment of a Splitter."
     base_hp = 20
     hp_per_wave = 4
     base_speed = 90.0
@@ -896,6 +922,8 @@ class HealerEnemy(Enemy):
     passively wash away. Mirrors SupportTower's aura on the tower side, but
     without a reset-before-update two-pass: see receive_heal()'s docstring
     for why plain additive healing doesn't need one."""
+    display_name = "Healer"
+    description = "Heals the enemies around it."
     base_hp = 45
     hp_per_wave = 8
     base_speed = 50.0

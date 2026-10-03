@@ -3315,6 +3315,15 @@ class Game:
                 return tower
         return None
 
+    def _hovered_enemy(self):
+        """The live enemy under the mouse (within its radius plus a little
+        slack), or None -- for the enemy tooltip."""
+        mouse = pygame.Vector2(pygame.mouse.get_pos())
+        for enemy in self.enemies:
+            if not enemy.is_dead and mouse.distance_to(enemy.pos) <= enemy.radius + 4:
+                return enemy
+        return None
+
     def _hovered_build_button_name(self):
         """The build-menu tower name currently under the mouse, or None --
         same "hover highlight uses the exact same lookup as the click
