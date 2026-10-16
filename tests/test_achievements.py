@@ -100,6 +100,7 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "towers_forged",  # every forging path: Rest Smith, reward forge/pre-forged cards, Events
         "waves_called_early",  # Game.call_next_wave, when it pays a bonus
         "towers_moved",  # Game.try_move_tower
+        "challenges_won",  # Game._advance_run_floor, a won Proving Grounds
         "ascension_reached", "curses_held_at_once", "veterancy_rank_reached", "resonances_active",  # max-only, via Game._record_achievement_max
     }
     for key, achievement in achievements.ACHIEVEMENTS.items():

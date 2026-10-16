@@ -165,6 +165,9 @@ ACHIEVEMENTS = {
     "eager_commander": Achievement(
         "eager_commander", "Eager Commander", "Call 50 waves early.", "waves_called_early", 50,
     ),
+    "proven": Achievement(
+        "proven", "Proven", "Win 5 Proving Grounds.", "challenges_won", 5,
+    ),
     "redeployment": Achievement(
         "redeployment", "Redeployment", "Move 20 towers.", "towers_moved", 20,
     ),

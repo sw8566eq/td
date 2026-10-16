@@ -1060,6 +1060,7 @@ class Game:
             bonus = challenges.bonus_shop_currency(run.depth_of(node.row))
             run.shop_currency += bonus
             self._queue_toast(f"Proving Grounds won: +{bonus} Shop currency and a relic choice")
+            self._record_achievement("challenges_won")
         self._record_meta_progress("total_floors_cleared")
         self._award_veterancy()
         self._record_service_floor_cleared(node)

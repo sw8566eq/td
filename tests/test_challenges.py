@@ -304,6 +304,8 @@ def test_a_won_challenge_pays_currency_and_offers_a_relic_choice(game):
     bonus = challenges.bonus_shop_currency(run.depth_of(0))
     assert run.shop_currency >= before + bonus
     assert any("Proving Grounds won" in toast.text for toast in game.achievement_toasts)
+    from progression import achievements
+    assert achievements.load_achievements(game.achievements_path)["counters"]["challenges_won"] == 1
     game._handle_keydown(pygame.K_SPACE)
     assert game.state == GameState.REWARD
     choices = game.reward.challenge_relic_choices

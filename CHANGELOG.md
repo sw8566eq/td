@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Proven** achievement: win 5 Proving Grounds.
 - **Proving Grounds**: a new map node (from each act's third row on) -- a fight under one constraint
   (Skeleton Crew, No Upgrades, Narrow Front, Double Time, Glass Gate or Fog of War), named in its map
   tooltip and shown in the sidebar during the fight. Keep the constraint to win a pick of 1 of 2 bonus
