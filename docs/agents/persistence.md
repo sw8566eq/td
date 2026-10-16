@@ -5,12 +5,12 @@ map-checkpoint autosaves, strict save validation and the newer optional save fie
 
 ## Small on-disk JSON state files
 
-Seven modules now follow the exact same shape for local player data: one JSON file, a defensive
+Nine modules now follow the exact same shape for local player data: one JSON file, a defensive
 `load_*()` that falls back to an empty/default state on a missing or corrupt file rather than
 crashing (same spirit as `AssetManager` falling back to a placeholder sprite), and a path that's
 always injectable (`Game.__init__`'s `progress_path`/`settings_path`/`achievements_path`/
-`save_path`/`meta_progression_path`/`run_history_path`/`keybindings_path` params) so tests never
-touch the real repo-root files. All seven are gitignored -- local player data, not shipped content,
+`save_path`/`meta_progression_path`/`run_history_path`/`keybindings_path`/`service_record_path`/
+`hints_path` params) so tests never touch the real repo-root files. All nine are gitignored -- local player data, not shipped content,
 same as `custom_levels/`. That shared shape isn't just convention --
 `json_io.load_json_with_fallback(path, transform, default)` is the one function every one of those
 `load_*()`s is ultimately built on (`achievements.load_achievements()`/`meta_progression.
@@ -21,8 +21,8 @@ check and `try`/`except` itself, and takes
 well-formed-but-semantically-invalid data, e.g. `save_state.load_run()`'s tower-type checks) and
 `default` (a zero-arg callable, not a plain value, so a mutable fallback like `dict`/`list` is never
 accidentally shared across calls) as the two places each module still supplies its own behavior.
-`json_io.module_relative_path(module_file, *parts)` factors out the other shape all nine
-on-disk-state modules share (the seven above, plus `persistence/persistence.py`'s `LEVELS_DIR` and `presentation/assets.py`'s
+`json_io.module_relative_path(module_file, *parts)` factors out the other shape all eleven
+on-disk-state modules share (the nine above, plus `persistence/persistence.py`'s `LEVELS_DIR` and `presentation/assets.py`'s
 `DEFAULT_ASSET_ROOT`): a path anchored to the calling module's own `__file__`, not the process's
 current working directory -- see [release.md](release.md) "Why `--onedir`, never `--onefile`" for why that distinction matters for a
 packaged build. Before this was factored out, each independently wrote the same
@@ -147,6 +147,45 @@ same schema version): one record per run (`details` = commander/ascension/act/da
 final_boss_defeated), newest first, capped at `MAX_RUN_RECORDS`; `save_run_history(best)` without
 `records` preserves the existing list. The Run History screen renders `ui.run_history_lines`, which
 falls back to the per-seed bests for a file written before records existed.
+
+### `progression/service_record.py`
+
+`progression/service_record.py` (pure, strict-mypy) keeps the Service Record's lifetime statistics:
+four sections of plain numbers -- `overall` (`OVERALL_STATS`, which is also the screen's label/order
+registry), `towers`, `enemies` and `commanders` (`{key: {stat: number}}`). Every write is an
+`Entry` tuple applied as an *add* (a running total) or a *raise* (a best-ever value that only goes
+up), in one load-mutate-save by `record()`. Loading keeps every well-formed number and drops a damaged
+section or value, rather than discarding the whole file.
+
+`Game` decides when to record, through `ProgressTracker._record_service` (sandbox-gated, like every
+other recorder):
+
+- `start_new_run`: `runs_started`, and the commander's `runs`.
+- `try_place_tower`: `towers_built`, and that type's `built`. A resume rebuilds towers without going
+  through here, so it never re-counts them.
+- `_advance_run_floor` -> `_record_service_floor_cleared`: `floors_cleared`, `acts_cleared` on an
+  act boss, `deepest_depth` and the commander's `best_depth` (1-based, `depth_of(row) + 1`), and each
+  of the run's tower types' `best_rank` (after `_award_veterancy`, so this floor's promotions count).
+- `_handle_boss_defeated`: `acts_cleared` (the final act's boss clears that act too).
+- `_record_run_permadeath`: `runs_ended`, plus the depth/endless-score bests; `_update_endless_score`
+  also raises `best_endless_score` per endless wave, which is safe because a raise is idempotent.
+- `_grant_relic` and an Event's relic grant: `relics_collected`; `use_potion`: `potions_used`.
+
+**Per-floor numbers are folded in once, never live.** `Game.service_tally` (a `FloorTally`) counts
+kills per enemy type and lives lost during the floor, and `Economy.gold_earned` counts battle gold
+earned (every `add_gold` except a sell refund, which passes `earned=False`). `_flush_service_tally`
+writes them and zeroes both; it runs at a floor's end and inside `save_run()`. A floor's end
+(`_record_service_floor_end`, from `update()`'s GAME_OVER and win-check branches) also adds each
+tower type's `damage`/`kills` from `self.towers + self.sold_towers`, the same set the results table
+uses.
+
+That is what keeps a resumed save from double counting. The tally covers only what happened since the
+last flush, and `_load_level_object` starts a fresh one, so Continue (even twice off the same save)
+re-counts nothing that was flushed at save time. Tower damage is read from the towers' own counters,
+which the save restores, so the floor's pre-save damage is counted exactly once, when the floor ends,
+and the floor-clear deletes the save so it can't be replayed. The cost is an undercount, never a
+double count: a floor abandoned without saving (quit to menu, a map-checkpoint replay, Restart) drops
+its unflushed tally. `test_service_record.py`'s `test_resuming_a_save_never_double_counts` pins this.
 
 ### `persistence/save_state.py`
 

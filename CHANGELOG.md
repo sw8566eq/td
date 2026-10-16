@@ -19,6 +19,10 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   the new **High** brush) give a tower standing mostly on them +20% range. Path traps never get it.
   The **Watchtowers** relic adds +15% damage for high-ground towers.
 - Achievements **Eager Commander** (call 50 waves early) and **Redeployment** (move 20 towers).
+- **Service Record** (`T` from the menu): lifetime statistics -- runs, floors and acts cleared, deepest
+  floor, best endless score, kills, battle gold, lives lost, relics and potions -- plus damage, kills,
+  towers built and best veterancy rank per tower, kills per enemy, and runs/best floor per Commander.
+  Saved to `service_record.json`; Practice never counts.
 - Three potions: **Tether Flare** (ground every flyer for 8s), **Field Promotion** (free level for your
   top-damage tower) and **Mortar Mix** (repair every Barricade). A potion that can't do anything yet is kept, with a toast.
 - Tempo relics: **Signal Horn** (calling a wave early pays double) and **Field Rails** (moving towers is free).

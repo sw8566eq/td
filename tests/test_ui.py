@@ -139,6 +139,7 @@ def test_menu_options_lists_every_key_in_documented_order():
         "R -- Run History",
         "U -- Unlocks",
         "K -- Field Manual",
+        "T -- Service Record",
     ]
 
 

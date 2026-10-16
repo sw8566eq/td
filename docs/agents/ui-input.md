@@ -116,6 +116,17 @@ caught text silently overflowing past both of them.
 Unlocks screen's layout constants, back button and `unlocks_max_scroll`, since it's the same shape
 of scrolling list.
 
+## Service Record screen
+
+`GameState.SERVICE_RECORD` (`T` from MENU) shows `progression/service_record.py`'s lifetime stats
+(see [persistence.md](persistence.md) "`progression/service_record.py`"). `Game._enter_service_record`
+re-reads the file and builds `ui.service_record_rows(record)`: `(kind, cells, bar)` rows in four
+sections (Overall, Towers sorted by damage, Enemies by kills, Commanders by runs), with display
+names read off the registries. It borrows the Field Manual's scrolling layout: the `UNLOCKS_*`
+constants, `unlocks_back_rect` and `unlocks_max_scroll`. Columns sit at fixed
+`SERVICE_RECORD_COLUMN_XS`; `test_service_record_columns_fit_on_screen` checks the longest display
+name and a nine-digit number still fit, so a much longer new tower/enemy name fails there first.
+
 ## Relics overlay from the map
 
 `GameState.RELICS` can be opened from PLAYING (R / HUD button) or MAP (R); `Game.relics_return_state`

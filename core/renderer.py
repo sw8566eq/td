@@ -105,6 +105,14 @@ class Renderer:
             pygame.display.flip()
             return
 
+        if game.state == GameState.SERVICE_RECORD:
+            ui.draw_service_record_screen(
+                game.screen, game.font, game.small_font, game.service_record_rows,
+                game.service_record_scroll_offset, game.unlocks_back_rect,
+            )
+            pygame.display.flip()
+            return
+
         if game.state == GameState.UNLOCKS:
             ui.draw_unlocks_screen(
                 game.screen, game.font, game.small_font,

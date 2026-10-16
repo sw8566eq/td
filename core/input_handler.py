@@ -80,6 +80,8 @@ class InputHandler:
                     self._handle_unlocks_click(event.pos)
                 elif game.state == GameState.COMPENDIUM:
                     game._handle_compendium_click(event.pos)
+                elif game.state == GameState.SERVICE_RECORD:
+                    game._handle_service_record_click(event.pos)
                 elif game.state == GameState.HELP:
                     self._handle_help_click(event.pos)
                 elif game.state == GameState.RUN_GUIDE:
@@ -124,6 +126,8 @@ class InputHandler:
                 self._scroll_unlocks(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.COMPENDIUM:
                 self._scroll_compendium(event.y)
+            elif event.type == pygame.MOUSEWHEEL and game.state == GameState.SERVICE_RECORD:
+                self._scroll_service_record(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.ACHIEVEMENTS:
                 self._scroll_achievements(event.y)
             elif event.type == pygame.VIDEORESIZE and not game.fullscreen:
@@ -189,6 +193,8 @@ class InputHandler:
                         game._enter_unlocks()
                     elif letter == "k":
                         game._enter_compendium()
+                    elif letter == "t":
+                        game._enter_service_record()
                 else:
                     game._enter_commander_select()
         elif game.state == GameState.COMMANDER_SELECT:
@@ -204,7 +210,8 @@ class InputHandler:
                 game.state = game.help_return_state
         elif game.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
                              GameState.CREDITS,
-                             GameState.RUN_HISTORY, GameState.UNLOCKS, GameState.COMPENDIUM):
+                             GameState.RUN_HISTORY, GameState.UNLOCKS, GameState.COMPENDIUM,
+                             GameState.SERVICE_RECORD):
             # These five share nothing but "Esc goes back to the menu" --
             # each is otherwise driven entirely by its own click handler
             # (Settings/Achievements have real buttons; Credits is fully
@@ -953,6 +960,13 @@ class InputHandler:
         max_scroll = ui.unlocks_max_scroll(len(game.compendium_rows))
         game.compendium_scroll_offset = self._scroll_list(
             wheel_y, game.compendium_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
+        )
+
+    def _scroll_service_record(self, wheel_y):
+        game = self.game
+        max_scroll = ui.unlocks_max_scroll(len(game.service_record_rows))
+        game.service_record_scroll_offset = self._scroll_list(
+            wheel_y, game.service_record_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
         )
 
     def _scroll_achievements(self, wheel_y):
