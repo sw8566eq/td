@@ -130,6 +130,20 @@ skips it. Trap and Mortar shots also pass `can_hit_flying` now (their splash use
 `Enemy.is_burrowed` (BURROWS and not currently Marked) is what every burrow check reads -- trap
 targeting/splash, the barricade hold, ground fire -- so a Beacon-style mark surfaces a burrower.
 
+## Grounded flyers (`is_airborne`)
+
+`Enemy.ground_timer`, set by `Enemy.apply_ground(duration)` (a Harpoon hit, via `Projectile.ground_duration`;
+refreshes with `max()` like Mark's timer, a no-op on non-flying species and the dead), decays in `update()`.
+`entities/enemy.py`'s module-level `is_airborne(enemy)` -- `is_flying` and not grounded, duck-typed with
+`getattr` defaults for test doubles -- is the one "can a ground-only attack touch this?" check: tower
+targeting (`acquire_target`), projectile splash/chain (`Projectile._can_hit`), burning ground, the
+Barricade hold and the Barricade burst all read it, so a grounded flyer is a ground enemy everywhere at
+once. Movement is unchanged (it keeps following its own waypoints). Two reads stay species-based on
+purpose: `damage_vs_flying_multiplier` (Flak Rounds still counts a grounded flyer as a flyer) and
+`WaveManager`'s Undermine burrowing, which happens at spawn. `ui.enemy_tooltip_lines` lists "Grounded"
+(`Enemy.is_grounded`) and `Enemy.draw` adds a shadow and tether under it. See [towers.md](towers.md)
+"Harpoon".
+
 ## Knockback stagger resistance
 
 `Enemy.knockback_resistance` (0..`KNOCKBACK_RESISTANCE_CAP`) scales every `apply_knockback` distance by

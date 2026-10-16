@@ -85,6 +85,11 @@ SOUND_MANIFEST = {
     "tower_fire_zap": ("sfx/tower_fire_zap.wav", (
         SynthSpec("square", frequency=(1200, 300), duration=0.06, volume=0.45, release=0.02),
     )),
+    # A Harpoon's launch: a short thunk, then the tether line twanging out.
+    "tower_fire_harpoon": ("sfx/tower_fire_harpoon.wav", (
+        SynthSpec("noise", duration=0.03, volume=0.4, attack=0.001, release=0.02),
+        SynthSpec("triangle", frequency=(700, 220), duration=0.1, volume=0.45, release=0.05),
+    )),
 
     # --- Combat feedback ---
     "enemy_hit_small": ("sfx/enemy_hit_small.wav", (

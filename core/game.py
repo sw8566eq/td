@@ -10,7 +10,7 @@ import pygame
 from core import input_handler, progress_tracker, renderer, settings_manager
 from core.editor import Editor
 from entities import effects
-from entities.enemy import ENEMY_TYPES
+from entities.enemy import ENEMY_TYPES, is_airborne
 from entities.tower import RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
@@ -2710,7 +2710,7 @@ class Game:
         return tower
 
     def _apply_construction_relics(self, tower, has_module):
-        """Earthworks / Forward Observer / Quick-Release Mounts -- Relic-only
+        """Earthworks / Forward Observer / Quick-Release Mounts / Barbed Tethers -- Relic-only
         fields applied to every tower a run builds; each is a no-op on a
         tower it doesn't concern."""
         held = [relics.RELICS[key] for key in self.active_run.relics]
@@ -2727,6 +2727,7 @@ class Game:
             tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
         for relic in held:
             tower.relic_resonance_multiplier *= relic.resonance_multiplier
+            tower.relic_harpoon_ground_bonus_multiplier *= relic.harpoon_ground_duration_multiplier
         if tower.PLACEMENT == "path":
             if any(relic.traps_hit_burrowed for relic in held):
                 tower.HITS_BURROWED = True
@@ -2808,7 +2809,7 @@ class Game:
         for fire in self.ground_fires:
             fire.time_left -= dt
             for enemy in self.enemies:
-                if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed
+                if (enemy.is_dead or enemy.reached_goal or is_airborne(enemy) or enemy.is_burrowed
                         or enemy.pos.distance_to(fire.pos) > fire.radius):
                     continue
                 multiplier = vs_slowed if enemy.slow_timer > 0 else 1.0
@@ -2835,7 +2836,7 @@ class Game:
             for key in self.active_run.relics:
                 ambush *= relics.RELICS[key].held_damage_multiplier
         for enemy in self.enemies:
-            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed:
+            if enemy.is_dead or enemy.reached_goal or is_airborne(enemy) or enemy.is_burrowed:
                 continue
             for barricade in barricades:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:
@@ -2865,7 +2866,7 @@ class Game:
         """A Booby-Trapped Walls-style relic: a breaking Barricade blasts every
         ground enemy within BARRICADE_BURST_RADIUS, credited to the barricade."""
         for enemy in self.enemies:
-            if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False)
+            if (enemy.is_dead or enemy.reached_goal or is_airborne(enemy)
                     or enemy.pos.distance_to(barricade.pos) > BARRICADE_BURST_RADIUS):
                 continue
             barricade.damage_dealt += enemy.take_damage(damage) or 0.0

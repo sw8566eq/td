@@ -1736,6 +1736,8 @@ def enemy_tooltip_lines(enemy):
         states.append("Burrowed")
     if getattr(enemy, "held", False):
         states.append("Held")
+    if getattr(enemy, "is_grounded", False):
+        states.append("Grounded")
     if enemy.mark_timer > 0:
         states.append("Marked")
     if enemy.slow_timer > 0:

@@ -24,7 +24,7 @@ spirit save_state.py already applies to `sold_towers` on an even older save.
 import json
 import os
 
-from entities.tower import TOWER_TYPES, Tower
+from entities.tower import TOWER_TYPES
 from entities.waves import WaveState
 from persistence.json_io import load_json_with_fallback, module_relative_path
 from persistence.persistence import level_from_dict, level_to_dict
@@ -324,8 +324,9 @@ def _parse_and_validate_save(data):
             raise ValueError(f"saved run references an unrecognized tower type {tower_data['type']!r}")
         # Tower.acquire_target() looks targeting_mode up in its strategy
         # table -- an unknown one loads fine but crashes mid-fight the
-        # first time that tower has an enemy in range.
-        if tower_data["targeting_mode"] not in Tower.TARGETING_MODES:
+        # first time that tower has an enemy in range. Checked against the
+        # tower type's own modes (a Harpoon adds "flying").
+        if tower_data["targeting_mode"] not in TOWER_TYPES[tower_data["type"]].TARGETING_MODES:
             raise ValueError(f"saved run references an unrecognized targeting mode {tower_data['targeting_mode']!r}")
         _validate_tower_data(tower_data)
     run_data = data.get("run")  # absent (older save) and explicit None both mean "no active run"

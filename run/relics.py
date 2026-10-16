@@ -565,6 +565,9 @@ class Relic:
     # Mortar only: each shell leaves burning ground -- (fraction of the
     # shell's damage dealt per second, seconds). See Game._update_ground_fires.
     mortar_ground_fire: tuple[float, float] | None = None
+    # Harpoon only: how much longer its hits keep a flyer Grounded
+    # (Game._apply_construction_relics -> HarpoonTower.create_projectile).
+    harpoon_ground_duration_multiplier: float = 1.0
     # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
     # damage_multiplier, set by Game._hold_enemies_at_barricades).
     held_damage_multiplier: float = 1.0
@@ -1254,6 +1257,12 @@ RELICS = {
     "bad_reputation": Relic(
         "bad_reputation", "Bad Reputation", "Curse: Shop prices are 20% higher.",
         shop_price_multiplier=1.2, is_curse=True,
+    ),
+    # Appended last, so the relic pool's existing order (and so every
+    # existing seed's earlier picks) moves as little as possible.
+    "barbed_tethers": Relic(
+        "barbed_tethers", "Barbed Tethers", "Harpoon only: flyers it hits stay grounded 60% longer.",
+        harpoon_ground_duration_multiplier=1.6,
     ),
 }
 
