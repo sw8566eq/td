@@ -29,7 +29,7 @@ game.achievement_toasts (via _queue_toast) plus game.audio.play(...).
 
 from entities import effects
 from entities.tower import TOWER_TYPES
-from progression import achievements, meta_progression, progress
+from progression import achievements, meta_progression, progress, service_record
 from run import relics
 from run.commanders import COMMANDERS
 from support import settings
@@ -122,6 +122,18 @@ class ProgressTracker:
         self._record_progress_counter(
             meta_progression.bump, game.meta_progression_path, self._queue_meta_unlock_toasts, counter_name, amount,
         )
+
+    def _record_service(self, adds, raises):
+        """Apply Service Record add/raise entries (see
+        progression/service_record.py) in one write -- sandbox-gated like
+        every other recorder here. No toasts: lifetime stats unlock
+        nothing."""
+        game = self.game
+        if game.sandbox:
+            return
+        adds, raises = list(adds), list(raises)
+        if adds or raises:
+            service_record.record(game.service_record_path, adds, raises)
 
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         """Same toast presentation _queue_achievement_toasts uses, for

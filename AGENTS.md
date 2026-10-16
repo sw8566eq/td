@@ -32,7 +32,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- CI gate
 
-mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py   # strict type check -- only the annotated modules; CI gate
+mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py   # strict type check -- only the annotated modules; CI gate
 
 python tools/flow_check.py         # end-to-end bot run per Commander; run after changing node types, reward/act flow or save state
 python tools/tower_bench.py        # dev-only tower balance bench
@@ -116,9 +116,9 @@ four (see [tooling.md](docs/agents/tooling.md) "Extending the strict list").
 | [enemies.md](docs/agents/enemies.md) | registries, boss mechanics, `IS_BOSS`, Mark, Corrosive Poison, Sappers/Burrowers, knockback resistance, poison credit |
 | [waves-difficulty.md](docs/agents/waves-difficulty.md) | `WaveManager` states, endless mode, difficulty, Sandbox/Practice, settings screen |
 | [grid-paths.md](docs/agents/grid-paths.md) | tile vs subtile coords, footprints, path topology (forest rule), `sample_route` |
-| [ui-input.md](docs/agents/ui-input.md) | keybindings, stats panel click-routing, HUD layout, Field Manual, relics overlay |
+| [ui-input.md](docs/agents/ui-input.md) | keybindings, stats panel click-routing, HUD layout, Field Manual, Service Record, relics overlay |
 | [editor.md](docs/agents/editor.md) | map editor, wave editor, custom level files, level browser |
-| [persistence.md](docs/agents/persistence.md) | `json_io`, progress/achievements/meta-progression/run history/save-state/keybindings files |
+| [persistence.md](docs/agents/persistence.md) | `json_io`, progress/achievements/meta-progression/run history/service record/save-state/keybindings files |
 | [presentation.md](docs/agents/presentation.md) | visual-effects drain idiom, audio/`SoundManager`, `AssetManager` |
 | [tooling.md](docs/agents/tooling.md) | ruff/coverage config, incremental mypy, test layout, dev tools |
 | [release.md](docs/agents/release.md) | PyInstaller `--onedir` release workflow |

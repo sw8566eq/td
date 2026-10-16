@@ -19,6 +19,11 @@ class Economy:
         # masking it -- ui.py shows "Lives: infinity" instead of a number
         # while this is set.
         self.invulnerable = invulnerable
+        # Battle gold this floor has *earned* (kills, relic income, bonuses
+        # -- never a sell refund), for the Service Record. Display-only like
+        # Tower.damage_dealt: Game reads and resets it (see
+        # Game._flush_service_tally); nothing here records progress.
+        self.gold_earned = 0
 
     def can_afford(self, cost: int) -> bool:
         return self.unlimited_gold or self.gold >= cost
@@ -30,8 +35,10 @@ class Economy:
             self.gold -= amount
         return True
 
-    def add_gold(self, amount: int) -> None:
+    def add_gold(self, amount: int, earned: bool = True) -> None:
         self.gold += amount
+        if earned:
+            self.gold_earned += amount
 
     def lose_life(self, amount: int = 1) -> None:
         if self.invulnerable:

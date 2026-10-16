@@ -46,6 +46,11 @@ run_history.json
 # progression/hints.py) -- local game data, same spirit as progress.json.
 hints.json
 
+# Lifetime statistics for the Service Record screen (see
+# progression/service_record.py) -- local game data, same spirit as
+# achievements.json.
+service_record.json
+
 # Claude Code local settings (machine/user-specific, not meant to be shared)
 .claude/
 CLAUDE.local.md

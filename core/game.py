@@ -16,7 +16,14 @@ from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
 from presentation import audio, ui
 from presentation.assets import AssetManager
-from progression import achievements, hints, meta_progression, progress, run_history
+from progression import (
+    achievements,
+    hints,
+    meta_progression,
+    progress,
+    run_history,
+    service_record,
+)
 from run import (
     ascension,
     commanders,
@@ -39,6 +46,10 @@ from world import spatial_index
 from world.economy import Economy
 from world.grid import Grid
 from world.levels import LEVELS
+
+# Enemy class -> ENEMY_TYPES key, for the Service Record's per-enemy kills
+# (same reverse-lookup shape as entities.tower.TOWER_TYPE_NAMES).
+ENEMY_TYPE_NAMES = {cls: name for name, cls in ENEMY_TYPES.items()}
 
 # Independently-derived rng streams within one roguelike run (see
 # Game._run_rng) -- distinct string labels, folded into the seed string
@@ -125,6 +136,8 @@ class GameState(Enum):
     # A read-only browser of every relic/boss relic/curse/potion/commander/
     # elite affix and what it does (ui.compendium_rows) -- K from MENU.
     COMPENDIUM = auto()
+    # Lifetime statistics (progression/service_record.py) -- T from MENU.
+    SERVICE_RECORD = auto()
     # Reached from a button on HELP, not a new top-level menu key (see
     # ui.RUN_GUIDE_ENTRY_BUTTON_WIDTH's own comment) -- a run-loop/status-
     # effect explainer deepening HELP's own controls-only reference. Esc
@@ -211,7 +224,7 @@ class Game:
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
                  achievements_path=None, save_path=None,
                  meta_progression_path=None, run_history_path=None, keybindings_path=None,
-                 hints_path=None):
+                 hints_path=None, service_record_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -300,6 +313,18 @@ class Game:
         self.unlocks_back_rect = ui.build_unlocks_back_rect()
         self.compendium_rows = []
         self.compendium_scroll_offset = 0
+        # Same injectable-path convention as the paths above. Written by
+        # _record_service (sandbox-gated) at the moments listed in
+        # docs/agents/persistence.md "`progression/service_record.py`";
+        # the cached copy is only for the Service Record screen and is
+        # re-read on entry, like unlocks_state.
+        self.service_record_path = service_record_path or service_record.SERVICE_RECORD_PATH
+        self.service_record_state = service_record.load_service_record(self.service_record_path)
+        self.service_record_rows = []
+        self.service_record_scroll_offset = 0
+        # This floor's live kills-by-enemy-type/lives-lost counts, flushed
+        # by _flush_service_tally (reset per floor in _load_level_object).
+        self.service_tally = service_record.FloorTally()
         # The active roguelike run, or None outside of one (classic/
         # Practice play, a map-editor playtest -- a Daily Run is still a
         # real run, see _start_daily_challenge). Same reset-inside-
@@ -716,6 +741,9 @@ class Game:
             relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
             forged_towers=list(chosen.forged_towers),
         )
+        self._record_service(adds=[
+            service_record.overall("runs_started", 1), service_record.commander(commander, "runs", 1),
+        ])
         if is_daily:
             self._apply_daily_modifiers()
         self._enter_map()
@@ -968,6 +996,7 @@ class Game:
             )
         self._record_meta_progress("total_floors_cleared")
         self._award_veterancy()
+        self._record_service_floor_cleared(node)
         if node.node_type == "boss":
             # An earlier act's boss -- a finite fight (only the last act's
             # is endless, see RunState.is_final_floor), so it clears like
@@ -1021,6 +1050,15 @@ class Game:
             "top_crew": max(run.tower_xp, key=run.tower_xp.get) if run.tower_xp else "",
         })
         self._record_meta_progress("runs_played")
+        depth = run.depth + 1
+        self._record_service(
+            adds=[service_record.overall("runs_ended", 1)],
+            raises=[
+                service_record.overall("deepest_depth", depth),
+                service_record.overall("best_endless_score", run.endless_waves_cleared),
+                service_record.commander(run.commander, "best_depth", depth),
+            ],
+        )
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
         if self.active_run.is_daily:
@@ -1036,6 +1074,7 @@ class Game:
             return
         authored = len(LEVELS[run.current_level_id].wave_specs)
         run.endless_waves_cleared = max(run.endless_waves_cleared, self.wave_manager.wave_index - authored)
+        self._record_service(raises=[service_record.overall("best_endless_score", run.endless_waves_cleared)])
 
     def _handle_boss_defeated(self):
         """The map's boss node just ran out of authored waves for the
@@ -1055,6 +1094,8 @@ class Game:
         self.active_run.boss_defeated = True
         self._record_meta_progress("bosses_defeated")
         self._unlock_next_ascension()
+        # The final act's boss falling clears that act, too.
+        self._record_service(adds=[service_record.overall("acts_cleared", 1)])
         self._record_achievement("bosses_defeated")
         self.audio.play("boss_defeated")
         self._queue_toast("Boss defeated! Fighting on for score...")
@@ -1203,6 +1244,7 @@ class Game:
         self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)
         self.audio.play("potion_used")
         self._record_achievement("potions_used")
+        self._record_service(adds=[service_record.overall("potions_used", 1)])
 
     @property
     def potion_slot_rects(self):
@@ -1491,6 +1533,7 @@ class Game:
         self.audio.play("relic_acquired")
         self._record_achievement("relics_collected")
         self.hints.notify("curse" if relics.RELICS[relic_key].is_curse else "relic")
+        self._record_service(adds=[service_record.overall("relics_collected", 1)])
 
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
@@ -1575,6 +1618,7 @@ class Game:
         if "relic" in self.event_resolution or "boss_relic" in self.event_resolution:
             self.audio.play("relic_acquired")
             self._record_achievement("relics_collected")
+            self._record_service(adds=[service_record.overall("relics_collected", 1)])
         elif "tower" in self.event_resolution:
             self.audio.play("tower_unlocked_shop")
         self._record_achievement("events_resolved")
@@ -1878,6 +1922,10 @@ class Game:
         # _tower_results() can still find it. Never touched otherwise; a
         # sold tower is already fully inert once off the grid.
         self.sold_towers = []
+        # A fresh floor (or a resumed save's restored wave) starts a fresh
+        # Service Record tally -- whatever an abandoned floor never flushed
+        # is dropped, never carried into this one.
+        self.service_tally = service_record.FloorTally()
         # render()'s own snapshot of _tower_results(), taken once by
         # _cache_tower_results() at the moment GAME_OVER/VICTORY/
         # FLOOR_CLEARED is actually entered -- reset to empty here purely
@@ -2074,6 +2122,9 @@ class Game:
         if not self.can_save_run():
             return False
         save_state.save_run(self, self.save_path)
+        # Everything up to this wave boundary is now on record; a resume
+        # starts a fresh tally from here, so nothing is counted twice.
+        self._flush_service_tally()
         self.has_saved_run = True
         return True
 
@@ -2539,6 +2590,20 @@ class Game:
     def _scroll_unlocks(self, wheel_y):
         return self.input_handler._scroll_unlocks(wheel_y)
 
+    def _enter_service_record(self):
+        """Re-read on entry (a run can have ended since) and reopened at
+        the top, like every other list screen."""
+        self.service_record_state = service_record.load_service_record(self.service_record_path)
+        self.service_record_rows = ui.service_record_rows(self.service_record_state)
+        self.service_record_scroll_offset = 0
+        self.state = GameState.SERVICE_RECORD
+
+    def _handle_service_record_click(self, pos):
+        return self.input_handler._handle_static_screen_back_click(pos, self.unlocks_back_rect)
+
+    def _scroll_service_record(self, wheel_y):
+        return self.input_handler._scroll_service_record(wheel_y)
+
     def _enter_compendium(self):
         """Built on entry (wrapping needs the live font), reopened scrolled
         to the top like every other list screen."""
@@ -2593,6 +2658,47 @@ class Game:
     def _record_meta_progress(self, counter_name, amount=1):
         return self.progress_tracker._record_meta_progress(counter_name, amount)
 
+    def _record_service(self, adds=(), raises=()):
+        return self.progress_tracker._record_service(adds, raises)
+
+    def _flush_service_tally(self):
+        """Write this floor's live tally (kills by enemy type, lives lost,
+        battle gold earned) into the Service Record and start it over --
+        at a floor's end, and when a mid-floor save is taken, so a resumed
+        save (which starts a fresh tally) can never count it twice."""
+        self._record_service(adds=self.service_tally.entries(self.economy.gold_earned))
+        self.service_tally = service_record.FloorTally()
+        self.economy.gold_earned = 0
+
+    def _record_service_floor_end(self):
+        """A floor just ended (cleared, lost, or a classic Victory): flush
+        the tally, and fold every tower's floor damage/kills -- placed and
+        sold alike, the same set _tower_results() reports -- into the
+        per-type totals. Once per floor, from the towers' own counters
+        (which a mid-floor save restores), so a resumed floor's pre-save
+        damage still counts exactly once."""
+        self._flush_service_tally()
+        self._record_service(adds=service_record.tower_floor_entries(
+            (TOWER_TYPE_NAMES[type(tower)], tower.damage_dealt, tower.kills)
+            for tower in self.towers + self.sold_towers
+        ))
+
+    def _record_service_floor_cleared(self, node):
+        """A run's Combat/Elite/boss floor just cleared (see
+        _advance_run_floor; runs after _award_veterancy, so the ranks read
+        here include this floor's promotions)."""
+        run = self.active_run
+        depth = run.depth_of(node.row) + 1
+        adds = [service_record.overall("floors_cleared", 1)]
+        if node.node_type == "boss":
+            adds.append(service_record.overall("acts_cleared", 1))
+        raises = [
+            service_record.overall("deepest_depth", depth),
+            service_record.commander(run.commander, "best_depth", depth),
+        ]
+        raises += [service_record.tower(name, "best_rank", self.veterancy_rank(name)) for name in run.tower_xp]
+        self._record_service(adds=adds, raises=raises)
+
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         return self.progress_tracker._queue_meta_unlock_toasts(newly_unlocked_keys)
 
@@ -2633,6 +2739,9 @@ class Game:
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
+        self._record_service(adds=[
+            service_record.overall("towers_built", 1), service_record.tower(self.selected_tower_name, "built", 1),
+        ])
         # Per-tower-type counter, generalized past just power_tap/
         # overcharged (the two achievements that currently key off it) --
         # self.selected_tower_name is already the exact TOWER_TYPES key
@@ -3111,7 +3220,7 @@ class Game:
         if tower not in self.towers:
             return False
 
-        self.economy.add_gold(tower.sell_value())
+        self.economy.add_gold(tower.sell_value(), earned=False)  # a refund, not battle income
         self.towers.remove(tower)
         self.sold_towers.append(tower)  # see _tower_results()
         self.grid.remove(tower.anchor_col, tower.anchor_row)
@@ -3163,7 +3272,9 @@ class Game:
         ):
             run.used_guardians_reprieve = True
             return
+        lives_before = self.economy.lives
         self.economy.lose_life()
+        self.service_tally.lives_lost += lives_before - self.economy.lives
         self.audio.play("life_lost")
         if 0 < self.economy.lives <= LOW_LIVES_HINT_THRESHOLD:
             self.hints.notify("low_lives")
@@ -3395,6 +3506,7 @@ class Game:
             if enemy.is_dead:
                 self.economy.add_gold(enemy.gold_reward)
                 kills_this_frame += 1
+                self.service_tally.add_kill(ENEMY_TYPE_NAMES.get(type(enemy)))
                 # A small death poof, same spot the killing blow's own
                 # damage number is spawned from -- reads enemy.pos before
                 # this enemy is dropped from self.enemies just below.
@@ -3471,6 +3583,7 @@ class Game:
             self.audio.play("game_over")
             self._cache_tower_results()
             self._delete_save_if_this_run_was_resumed()
+            self._record_service_floor_end()
             if self.active_run is not None:
                 # A Daily Run is still just self.active_run with is_daily
                 # set -- _record_run_permadeath() needs no special case for
@@ -3485,6 +3598,7 @@ class Game:
             # this used to live inline in the VICTORY branch alone, which a
             # run never reaches).
             self._record_level_cleared()
+            self._record_service_floor_end()
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
                 # the final act's boss node is always loaded endless=True

@@ -16,6 +16,7 @@ from entities.enemy import ENEMY_TYPES
 from entities.tower import RESONANCE_RADIUS, RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveState
 from persistence.keybindings import ACTION_LABELS, ACTION_ORDER
+from progression import service_record
 from progression.achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from progression.meta_progression import (
     COMMANDER_META_UNLOCKS,
@@ -2080,6 +2081,8 @@ MENU_KEY_HINTS = [
     ("r", "Run History"),
     ("u", "Unlocks"),
     ("k", "Field Manual"),
+    # "s" (Settings) and "r" (Run History) are taken -- "t" for sTats.
+    ("t", "Service Record"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -2790,6 +2793,131 @@ def draw_compendium_screen(surface, font, small_font, rows, scroll_offset, back_
             else:
                 surface.blit(small_font.render(name, True, settings.COLOR_GOLD), (COMPENDIUM_NAME_X, y))
                 surface.blit(small_font.render(detail, True, settings.COLOR_TEXT_DIM), (COMPENDIUM_DETAIL_X, y))
+        y += UNLOCKS_ROW_HEIGHT
+    surface.set_clip(previous_clip)
+
+    max_scroll = unlocks_max_scroll(len(rows))
+    if scroll_offset < max_scroll:
+        more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, UNLOCKS_BOTTOM - 4)))
+    if scroll_offset > 0:
+        more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, UNLOCKS_TOP + 4)))
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
+
+
+# --- Service Record screen ---
+#
+# Lifetime statistics (progression/service_record.py) -- the same scrolling
+# list shape as the Field Manual: UNLOCKS_* layout constants, its back
+# button and unlocks_max_scroll. Rows are (kind, cells, bar): a "header"
+# (one cell, the section title), "columns" (that table's column labels),
+# a data "row", or a dim "note" for an empty section. `bar` is the row's
+# share of its section's top value (0..1), drawn only on Towers/Enemies.
+
+SERVICE_RECORD_NAME_X = 120
+# Column x positions after the name -- room for the longest display name
+# (TOWER_TYPES/ENEMY_TYPES) at the small font, checked by test_ui.
+SERVICE_RECORD_COLUMN_XS = (430, 570, 680, 790)
+SERVICE_RECORD_BAR_X = 920
+SERVICE_RECORD_BAR_WIDTH = 180
+SERVICE_RECORD_BAR_HEIGHT = 10
+SERVICE_RECORD_OVERALL_VALUE_X = 520
+
+
+def _format_stat(value):
+    return f"{round(value):,}"
+
+
+def _display_name(registry, key):
+    entry = registry.get(key)
+    return entry.display_name if entry is not None else key
+
+
+def service_record_rows(record):
+    """[(kind, cells, bar), ...] for the Service Record screen -- built
+    from the record plus the registries' display names, so a new tower/
+    enemy/commander needs no change here."""
+    rows = [("header", ("Overall",), 0.0)]
+    for stat, label in service_record.OVERALL_STATS.items():
+        rows.append(("stat", (label, _format_stat(record.get(service_record.OVERALL, "", stat))), 0.0))
+
+    def table(title, columns, entries, empty_note, cells_for, bar_stat):
+        rows.append(("header", (title,), 0.0))
+        if not entries:
+            rows.append(("note", (empty_note,), 0.0))
+            return
+        rows.append(("columns", columns, 0.0))
+        top = max(stats.get(bar_stat, 0) for _key, stats in entries) if bar_stat else 0
+        for key, stats in entries:
+            bar = stats.get(bar_stat, 0) / top if top else 0.0
+            rows.append(("row", cells_for(key, stats), bar))
+
+    table(
+        "Towers", ("Tower", "Damage", "Kills", "Built", "Best rank"), service_record.tower_rows(record),
+        "No towers on record yet -- build some on a run.",
+        lambda key, stats: (
+            _display_name(TOWER_TYPES, key), _format_stat(stats.get("damage", 0)),
+            _format_stat(stats.get("kills", 0)), _format_stat(stats.get("built", 0)),
+            veterancy_rank_name(min(int(stats.get("best_rank", 0)), len(VETERANCY_RANKS))),  # clamp a hand-edited file
+        ),
+        "damage",
+    )
+    table(
+        "Enemies", ("Enemy", "Kills"), service_record.enemy_rows(record),
+        "No kills on record yet.",
+        lambda key, stats: (_display_name(ENEMY_TYPES, key), _format_stat(stats.get("kills", 0))),
+        "kills",
+    )
+    table(
+        "Commanders", ("Commander", "Runs", "Best floor"), service_record.commander_rows(record),
+        "No runs on record yet.",
+        lambda key, stats: (
+            _display_name(COMMANDERS, key), _format_stat(stats.get("runs", 0)),
+            _format_stat(stats.get("best_depth", 0)),
+        ),
+        None,
+    )
+    return rows
+
+
+def _draw_service_record_row(surface, font, small_font, kind, cells, bar, y):
+    if kind == "header":
+        surface.blit(font.render(cells[0], True, settings.COLOR_TEXT), (SERVICE_RECORD_NAME_X - 40, y))
+    elif kind == "note":
+        surface.blit(small_font.render(cells[0], True, settings.COLOR_TEXT_DIM), (SERVICE_RECORD_NAME_X, y))
+    elif kind == "stat":
+        surface.blit(small_font.render(cells[0], True, settings.COLOR_TEXT_DIM), (SERVICE_RECORD_NAME_X, y))
+        surface.blit(small_font.render(cells[1], True, settings.COLOR_GOLD), (SERVICE_RECORD_OVERALL_VALUE_X, y))
+    else:
+        color = settings.COLOR_TEXT_DIM if kind == "columns" else settings.COLOR_TEXT
+        name_color = settings.COLOR_TEXT_DIM if kind == "columns" else settings.COLOR_GOLD
+        surface.blit(small_font.render(cells[0], True, name_color), (SERVICE_RECORD_NAME_X, y))
+        for x, cell in zip(SERVICE_RECORD_COLUMN_XS, cells[1:]):
+            surface.blit(small_font.render(cell, True, color), (x, y))
+        if kind == "row" and bar > 0:
+            bar_y = y + (small_font.get_height() - SERVICE_RECORD_BAR_HEIGHT) // 2
+            pygame.draw.rect(surface, settings.COLOR_BUTTON, (
+                SERVICE_RECORD_BAR_X, bar_y, SERVICE_RECORD_BAR_WIDTH, SERVICE_RECORD_BAR_HEIGHT))
+            pygame.draw.rect(surface, settings.COLOR_GOLD, (
+                SERVICE_RECORD_BAR_X, bar_y, max(1, round(SERVICE_RECORD_BAR_WIDTH * bar)),
+                SERVICE_RECORD_BAR_HEIGHT))
+
+
+def draw_service_record_screen(surface, font, small_font, rows, scroll_offset, back_rect):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Service Record", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    viewport = pygame.Rect(0, UNLOCKS_ROWS_TOP, settings.SCREEN_WIDTH, UNLOCKS_ROWS_BOTTOM - UNLOCKS_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+    y = UNLOCKS_ROWS_TOP - scroll_offset
+    for kind, cells, bar in rows:
+        if pygame.Rect(0, y, settings.SCREEN_WIDTH, UNLOCKS_ROW_HEIGHT).colliderect(viewport):
+            _draw_service_record_row(surface, font, small_font, kind, cells, bar, y)
         y += UNLOCKS_ROW_HEIGHT
     surface.set_clip(previous_clip)
 
