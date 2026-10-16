@@ -111,3 +111,44 @@ permadeath's `runs_played` unlock), so `Game.update()` ages them on real, unscal
 own `state != PLAYING` early return, `Renderer._draw_toasts()` draws them on every full-screen run
 state (MAP/DRAFT/EVENT/REST/TREASURE) and on top of the board's overlays, and a floor load no longer
 clears them -- a toast queued on the map just keeps fading into the next fight.
+
+## Field Notes (first-time hints)
+
+`progression/hints.py` (pure, strict mypy) holds `HINTS`, a `{key: Hint(trigger, title, text)}`
+registry of short one-time hints, and `HintTracker`, the seen-set plus a one-at-a-time display queue.
+Game calls `self.hints.notify(trigger, ...)` at moments it already passes through; every hint
+registered for that trigger that this account hasn't seen yet is queued. A trigger with no hint is a
+no-op, so a new hint is one registry line, never a new branch. The triggers are:
+
+- `node_<node_type>` from `_enter_node` (one f-string covers every node type, combat has no hint);
+- `enemy_<ENEMY_TYPES key>` for whatever `WaveManager.update` spawned this frame (`update()`);
+- `built_<TOWER_TYPES key>` and `tower_built` from `try_place_tower`;
+- `fight_start`, `holding_potion` and `module_fitted` from the first PLAYING frame after a level load
+  (`_load_level_object` only sets `_fight_hints_pending`). `__init__` loads a level behind the menu,
+  and notifying there would spend "first fight" on a board nobody sees. Potions and modules come from
+  rewards, events, the Shop and the Armory, so checking the run once per fight covers all of them;
+- `wave_cleared`, `low_lives` (`_lose_a_life`, at `LOW_LIVES_HINT_THRESHOLD` or fewer but not on
+  the killing leak), `run_lost`, `reward`, `act_cleared`, `specialize_ready` (`try_upgrade_tower`),
+  `resonance`, `veterancy`, `relic`/`curse` (`_grant_relic`), `blessing`, `gauntlet_unlocked`.
+
+A hint is marked seen and written through to `hints.json` only when it becomes `current`, so one still
+queued at quit shows next session. Only one is ever shown; `HintTracker.update` (from `Game.update`,
+real dt, like toasts) times it out after `HINT_DISPLAY_SECONDS` and the next takes over. It only ages
+in `Game.HINT_STATES` (the board and the full-screen run screens). Menus, editors, PAUSED and
+COMMANDER_SELECT hold it undrawn, so a hint is never missed while the player is elsewhere.
+
+Presentation: `Renderer._draw_toasts` draws the panel first (toasts stay on top), via
+`Game._hint_panel_rect()`, which `InputHandler.handle_events` also uses: a left click on the panel
+dismisses it and is spent there, never passed through to the screen underneath. `Game._hint_placement`
+picks one of `ui.HINT_PANEL_WIDTHS`' three corners: `"board"` (play area bottom-right above the HUD,
+since the first-placement hint owns bottom-left and toasts the top), `"screen"` (bottom-right of
+Shop/Event/Outpost/Reward/Armory/Treasure, below their last button), `"map"` (a narrow column right of
+the last node column, because a wide panel would cover nodes). `test_game_hints.py`'s placement test
+checks every hint in every corner stays on screen and clear of map nodes.
+
+Settings: `player_settings.json`'s `hints_enabled` is the on/off switch (`Game.set_hints_enabled`,
+via `SettingsManager`). The seen-set is separate, so "Reset Hints" (`Game.reset_hints`) never flips
+it. Turning hints off drops the queue but marks nothing seen. Both buttons sit left of the Settings
+column (`ui.build_hint_settings_rects`), the same "inline extra" shape as Volume and Keybinds. Sandbox
+and Practice show hints too: they record no progress, but a hint isn't progress. The file follows
+[persistence.md](persistence.md) "Small on-disk JSON state files".

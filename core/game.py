@@ -16,7 +16,7 @@ from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
 from presentation import audio, ui
 from presentation.assets import AssetManager
-from progression import achievements, meta_progression, progress, run_history
+from progression import achievements, hints, meta_progression, progress, run_history
 from run import (
     ascension,
     commanders,
@@ -78,6 +78,10 @@ _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat 
 # looks like a mutable-default footgun to a linter, frozen or not.
 _DEFAULT_ESCALATION = run_escalation.FloorEscalation()
 _DEFAULT_RELIC_MODIFIERS = relics.RelicModifiers()
+# Lives at or below this show the "low_lives" Field Note.
+LOW_LIVES_HINT_THRESHOLD = 5
+# An enemy class's registry key, for its "enemy_<key>" Field Notes trigger.
+_ENEMY_TYPE_NAMES = {cls: name for name, cls in ENEMY_TYPES.items()}
 
 # Lives restored when a run moves on to its next act (Game._advance_act).
 ACT_HEAL_LIVES = 10
@@ -187,6 +191,14 @@ class GameState(Enum):
 
 
 class Game:
+    # Where a Field Notes hint is drawn (Renderer._draw_hint) and ages (update())
+    # -- the board and every run screen. Menus, editors and PAUSED hold it, so a
+    # hint is never missed while the player is away from the run.
+    HINT_STATES = frozenset({
+        GameState.PLAYING, GameState.FLOOR_CLEARED, GameState.GAME_OVER, GameState.VICTORY,
+        GameState.MAP, GameState.DRAFT, GameState.ARMORY, GameState.REWARD, GameState.EVENT,
+        GameState.REST, GameState.TREASURE,
+    })
     # Simulation speed multipliers cycled through by the HUD's speed button
     # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
     TIME_SCALES = (1.0, 2.0, 3.0)
@@ -198,7 +210,8 @@ class Game:
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
                  achievements_path=None, save_path=None,
-                 meta_progression_path=None, run_history_path=None, keybindings_path=None):
+                 meta_progression_path=None, run_history_path=None, keybindings_path=None,
+                 hints_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -435,6 +448,9 @@ class Game:
         # different from achievements_path/save_path/etc. just above.
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
         self.keybindings_path = keybindings_path or keybindings.BINDINGS_PATH
+        # Field Notes' seen-set (progression/hints.py) -- loaded by
+        # SettingsManager below, alongside the hints_enabled setting.
+        self.hints_path = hints_path or hints.HINTS_PATH
 
         pygame.init()
         # Constructed early, interleaved with pygame.init(), unlike
@@ -474,6 +490,7 @@ class Game:
         self.settings_rects = ui.build_settings_rects()
         self.volume_button_rects = ui.build_volume_button_rects()
         self.keybinds_entry_button_rect = ui.build_keybinds_entry_button_rect()
+        self.hint_settings_rects = ui.build_hint_settings_rects()
         self.keybind_row_rects = ui.build_keybind_row_rects()
         self.keybinds_reset_rect = ui.build_keybinds_reset_rect()
         self.keybinds_back_rect = ui.build_keybinds_back_rect()
@@ -960,6 +977,7 @@ class Game:
             self._record_achievement("bosses_defeated")
             self._record_achievement("acts_cleared")
             self.audio.play("boss_defeated")
+            self.hints.notify("act_cleared")
         # A save is only ever taken mid-floor (see can_save_run), so once
         # the floor it was taken on clears, it points back at progress
         # this clear has already credited. Left on disk, quitting now and
@@ -1067,6 +1085,7 @@ class Game:
         run.reward_pending = True
         self._autosave_run()
         self.state = GameState.REWARD
+        self.hints.notify("reward")
 
     def _reward_cards(self):
         """(kind, key) per reward card, in reward_rects' own order --
@@ -1223,6 +1242,7 @@ class Game:
         if self.selected_ascension == run.ascension:
             self.selected_ascension = next_level  # climb by default
         self._queue_toast(f"Gauntlet {next_level} unlocked!")
+        self.hints.notify("gauntlet_unlocked")
 
     # --- The run's own branching map ---
 
@@ -1285,6 +1305,7 @@ class Game:
         run.current_node_id = node_id
         self._autosave_run()
         node = run.map.node(node_id)
+        self.hints.notify(f"node_{node.node_type}")
         if node.node_type in ("combat", "elite", "boss"):
             self._load_combat_node(node)
         elif node.node_type == "shop":
@@ -1469,6 +1490,7 @@ class Game:
         self._apply_one_time_relic_bonus(relics.RELICS[relic_key])
         self.audio.play("relic_acquired")
         self._record_achievement("relics_collected")
+        self.hints.notify("curse" if relics.RELICS[relic_key].is_curse else "relic")
 
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
@@ -1503,6 +1525,7 @@ class Game:
         self.active_run.blessing_pending = True
         self._autosave_run()
         self.state = GameState.EVENT
+        self.hints.notify("blessing")
 
     def _leave_event(self):
         """Any key/click once an Event is resolved -- back to the map,
@@ -1878,6 +1901,10 @@ class Game:
         # _handle_panel_action_click for why clicks must use this instead
         # of re-deriving the subject from the click-time mouse position.
         self._last_panel_subject = None
+        # Field Notes for this fight -- notified from update()'s first
+        # PLAYING frame, not here: __init__ loads a level behind the menu,
+        # and a hint must never be spent on a board nobody is looking at.
+        self._fight_hints_pending = True
 
     # Settings/Display/Audio/Keybindings cluster -- extracted into
     # settings_manager.SettingsManager (the fourth game.py-decomposition
@@ -1903,6 +1930,12 @@ class Game:
 
     def set_window_size(self, size):
         return self.settings_manager.set_window_size(size)
+
+    def set_hints_enabled(self, value):
+        return self.settings_manager.set_hints_enabled(value)
+
+    def reset_hints(self):
+        return self.settings_manager.reset_hints()
 
     def _enter_keybinds(self):
         return self.settings_manager._enter_keybinds()
@@ -2607,6 +2640,7 @@ class Game:
         # free, and a future achievement can hang off any tower's own
         # counter without ever touching this call site again.
         self._record_achievement(f"{self.selected_tower_name}_built")
+        self.hints.notify("tower_built", f"built_{self.selected_tower_name}")
         self.audio.play("tower_placed")
         return True
 
@@ -2812,6 +2846,7 @@ class Game:
             if after > before:
                 self._queue_toast(f"{TOWER_TYPES[name].display_name} promoted: {veterancy.rank_name(after)}")
                 self._record_achievement_max("veterancy_rank_reached", after)
+                self.hints.notify("veterancy")
 
     def _apply_forge(self, tower):
         """A forged tower type's free head start (see _forge_tower): one
@@ -2959,6 +2994,7 @@ class Game:
         for key in {key for tower in self.towers for key in tower.resonance_keys} - self._announced_resonances:
             self._announced_resonances.add(key)
             self._queue_toast(f"Resonance: {RESONANCES[key].display_name}!")
+            self.hints.notify("resonance")
 
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --
@@ -2987,6 +3023,8 @@ class Game:
         # later no-op call.
         if tower.is_max_level:
             self._record_achievement("towers_maxed")
+        if tower.can_specialize:
+            self.hints.notify("specialize_ready")
         self.audio.play("tower_upgraded")
         return True
 
@@ -3126,6 +3164,8 @@ class Game:
             return
         self.economy.lose_life()
         self.audio.play("life_lost")
+        if 0 < self.economy.lives <= LOW_LIVES_HINT_THRESHOLD:
+            self.hints.notify("low_lives")
 
     def _spend_gold(self, amount):
         """The one choke point for actually spending gold -- every place
@@ -3166,9 +3206,24 @@ class Game:
         for toast in self.achievement_toasts:
             toast.update(dt)
         self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
+        # Field Notes age on real dt too, but only where one can be seen.
+        if self.state in self.HINT_STATES:
+            self.hints.update(dt)
 
         if self.state != GameState.PLAYING:
             return
+
+        if self._fight_hints_pending:
+            # The basics, plus whatever the run carries in (a potion or module
+            # may have come from a reward, an event, the Shop or the Armory --
+            # checked once here rather than at each of those).
+            self._fight_hints_pending = False
+            run = self.active_run
+            self.hints.notify(
+                "fight_start",
+                *(("holding_potion",) if run is not None and run.potions else ()),
+                *(("module_fitted",) if run is not None and run.tower_modules else ()),
+            )
 
         # Real wall-clock dt still drives self.clock.tick(FPS) in run(), so
         # frame pacing/FPS is unaffected -- only simulated time speeds up.
@@ -3390,7 +3445,10 @@ class Game:
         wave_number_before_update = self.wave_manager.current_wave_number
         wave_state_before_update = self.wave_manager.state
         boss_cleared_before = self.wave_manager.authored_waves_cleared
-        self.enemies.extend(self.wave_manager.update(dt, self.enemies))
+        spawned = self.wave_manager.update(dt, self.enemies)
+        self.enemies.extend(spawned)
+        if spawned:
+            self.hints.notify(*{f"enemy_{_ENEMY_TYPE_NAMES.get(type(enemy))}" for enemy in spawned})
         # Same before/after idiom as wave_number_before_update/
         # boss_cleared_before just below -- catches wave 1 (via
         # skip_delay()), every later authored wave, and every endless-
@@ -3401,6 +3459,7 @@ class Game:
             self.audio.play("wave_start")
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
+            self.hints.notify("wave_cleared")
             self._update_endless_score()
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
                 and self.active_run is not None and self.active_run.is_final_floor):
@@ -3417,6 +3476,7 @@ class Game:
                 # it, same reasoning _start_daily_challenge's own docstring
                 # gives.
                 self._record_run_permadeath()
+                self.hints.notify("run_lost")
         elif self.wave_manager.all_waves_complete and not self.enemies:
             # One level genuinely beaten, on either path below -- recorded
             # once, here, above the split, rather than duplicated into both
@@ -3511,6 +3571,20 @@ class Game:
         (smith phase) under the mouse, or None."""
         rects = self.rest_option_rects if self.rest_phase == "choose" else self.rest_picker()[1]
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), rects)
+
+    def _hint_placement(self):
+        """Which ui.HINT_PANEL_WIDTHS layout the hint panel uses here: on the
+        board, on the run map, or on another full-screen run screen."""
+        if self.state in (GameState.PLAYING, GameState.FLOOR_CLEARED, GameState.GAME_OVER, GameState.VICTORY):
+            return "board"
+        return "map" if self.state == GameState.MAP else "screen"
+
+    def _hint_panel_rect(self):
+        """The shown Field Notes panel's Rect, or None when none is visible
+        here -- what the renderer draws and a dismiss click tests against."""
+        if self.hints.current is None or self.state not in self.HINT_STATES:
+            return None
+        return ui.hint_panel_rect(self.small_font, hints.HINTS[self.hints.current], self._hint_placement())
 
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered

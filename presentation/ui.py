@@ -3838,3 +3838,109 @@ def _wrap_text(text, font, max_width):
     if current:
         lines.append(current)
     return lines
+
+
+# --- Field Notes (first-time hints, progression/hints.py) ---
+#
+# One small panel at a time, somewhere nothing clickable lives, chosen by
+# Game._hint_placement():
+# - "board": the play area's bottom-right, just above the HUD (the
+#   first-placement hint owns the bottom-left, toasts the top centre);
+# - "screen": a full-screen run screen's bottom-right, below every
+#   Shop/Event/Outpost/Reward/Armory/Treasure layout's last button;
+# - "map": the run map's right margin, a narrow column past MAP_COLS' last
+#   node column (a wide panel anywhere there would cover a node, and a
+#   click on the panel is spent on dismissing it).
+# A click on it dismisses it (InputHandler.handle_events); otherwise it
+# times out (HintTracker.update).
+HINT_PANEL_PADDING = 10
+HINT_PANEL_LINE_GAP = 2
+HINT_PANEL_MARGIN = 8
+HINT_DISMISS_TEXT = "click to dismiss"
+HINT_MAP_TOP = 80  # below the map's own title/info lines
+HINT_PANEL_WIDTHS = {
+    "board": 420,
+    "screen": 330,
+    # Everything right of the last node column's circles.
+    "map": settings.SCREEN_WIDTH - round(settings.SCREEN_WIDTH / (MAP_COLS + 1) * MAP_COLS)
+    - MAP_NODE_RADIUS - 2 * HINT_PANEL_MARGIN,
+}
+
+
+def _hint_panel_layout(small_font, hint, width):
+    """(body lines, whether "click to dismiss" fits beside the title)."""
+    lines = _wrap_text(hint.text, small_font, width - 2 * HINT_PANEL_PADDING)
+    title_width = small_font.size(f"Field Notes: {hint.title}")[0] + small_font.size(HINT_DISMISS_TEXT)[0]
+    return lines, title_width + 16 <= width - 2 * HINT_PANEL_PADDING
+
+
+def _hint_title_lines(hint, dismiss_inline):
+    return [f"Field Notes: {hint.title}"] if dismiss_inline else ["Field Notes:", hint.title]
+
+
+def hint_panel_rect(small_font, hint, placement):
+    """Where draw_hint_panel puts `hint` -- shared with the click handler,
+    so a dismiss click always hits exactly what was drawn."""
+    width = HINT_PANEL_WIDTHS[placement]
+    lines, dismiss_inline = _hint_panel_layout(small_font, hint, width)
+    line_count = len(_hint_title_lines(hint, dismiss_inline)) + len(lines) + (0 if dismiss_inline else 1)
+    line_height = small_font.get_linesize() + HINT_PANEL_LINE_GAP
+    rect = pygame.Rect(0, 0, width, 2 * HINT_PANEL_PADDING + line_height * line_count)
+    if placement == "board":
+        rect.bottomright = (settings.PLAY_WIDTH - HINT_PANEL_MARGIN,
+                            settings.SCREEN_HEIGHT - settings.HUD_HEIGHT - HINT_PANEL_MARGIN)
+    elif placement == "map":
+        rect.topright = (settings.SCREEN_WIDTH - HINT_PANEL_MARGIN, HINT_MAP_TOP)
+    else:
+        rect.bottomright = (settings.SCREEN_WIDTH - HINT_PANEL_MARGIN, settings.SCREEN_HEIGHT - HINT_PANEL_MARGIN)
+    return rect
+
+
+def draw_hint_panel(surface, small_font, hint, placement):
+    rect = hint_panel_rect(small_font, hint, placement)
+    lines, dismiss_inline = _hint_panel_layout(small_font, hint, rect.width)
+    backing = pygame.Surface(rect.size, pygame.SRCALPHA)
+    backing.fill((*settings.COLOR_HUD_BG, 235))
+    surface.blit(backing, rect)
+    pygame.draw.rect(surface, settings.COLOR_GOLD, rect, width=2, border_radius=6)
+    line_height = small_font.get_linesize() + HINT_PANEL_LINE_GAP
+    x, y = rect.left + HINT_PANEL_PADDING, rect.top + HINT_PANEL_PADDING
+    dismiss = small_font.render(HINT_DISMISS_TEXT, True, settings.COLOR_TEXT_DIM)
+    if dismiss_inline:
+        surface.blit(dismiss, dismiss.get_rect(topright=(rect.right - HINT_PANEL_PADDING, y)))
+    for title in _hint_title_lines(hint, dismiss_inline):
+        surface.blit(small_font.render(title, True, settings.COLOR_GOLD), (x, y))
+        y += line_height
+    for line in lines:
+        surface.blit(small_font.render(line, True, settings.COLOR_TEXT), (x, y))
+        y += line_height
+    if not dismiss_inline:
+        surface.blit(dismiss, (x, y))
+
+
+# Settings' two Field Notes buttons sit left of the stacked column, on the
+# Fullscreen and Sound rows -- the same "inline extra, not a row of its own"
+# shape as the Volume -/+ and Keybinds... buttons, since the column already
+# reaches the bottom of the canvas.
+HINT_SETTINGS_BUTTON_WIDTH = 200
+
+
+def build_hint_settings_rects():
+    """{"hints": Rect, "reset_hints": Rect}."""
+    rects = {}
+    for key, row_key in (("hints", "fullscreen"), ("reset_hints", "sound")):
+        row = _settings_button_rect(SETTINGS_OPTION_ORDER.index(row_key))
+        rects[key] = pygame.Rect(row.left - 24 - HINT_SETTINGS_BUTTON_WIDTH, row.top,
+                                 HINT_SETTINGS_BUTTON_WIDTH, SETTINGS_BUTTON_HEIGHT)
+    return rects
+
+
+def get_clicked_hint_settings_button(pos, hint_settings_rects):
+    return _key_of_rect_containing(pos, hint_settings_rects)
+
+
+def draw_hint_settings_buttons(surface, small_font, hint_settings_rects, hints_enabled, seen_count):
+    _draw_settings_button(surface, small_font, hint_settings_rects["hints"],
+                          f"Hints: {'On' if hints_enabled else 'Off'}", hints_enabled)
+    _draw_settings_button(surface, small_font, hint_settings_rects["reset_hints"],
+                          f"Reset Hints ({seen_count} seen)", False)

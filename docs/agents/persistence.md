@@ -204,6 +204,14 @@ repo-wide" for the actual registry/matching/conflict logic -- it follows this sa
 file, defensive-load, injectable-path shape, just with `(key, mods)` pairs as its values instead of
 a flat settings dict.
 
+### `progression/hints.py`
+
+`hints.json` holds `{"schema_version": 1, "seen": [hint keys]}`: which Field Notes this account has
+already been shown. `load_seen` drops non-string entries and falls back to an empty set, so the worst a
+corrupt file can do is show hints again. Injectable as `Game(hints_path=...)`; `tests/conftest.make_game`
+pins it. Whether hints show at all is `player_settings.json`'s `hints_enabled`, not this file. See
+[core-game.md](core-game.md) "Field Notes (first-time hints)".
+
 ## Map checkpoints (autosave)
 
 `save_state.save_map_checkpoint(run)` writes `{"kind": "map", "run": ...}` into the same single save

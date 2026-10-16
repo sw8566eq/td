@@ -38,6 +38,7 @@ import pygame
 from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
 from entities.waves import WaveState
 from presentation import ui
+from progression import hints
 from run import modules, potions, relics, shop, veterancy
 from support import settings
 
@@ -64,6 +65,8 @@ class Renderer:
                 game.fullscreen, game.sound_enabled, game.difficulty, game.window_size,
                 game.sound_volume, game.volume_button_rects, game.keybinds_entry_button_rect,
             )
+            ui.draw_hint_settings_buttons(game.screen, game.small_font, game.hint_settings_rects,
+                                          game.hints.enabled, len(game.hints.seen))
             pygame.display.flip()
             return
 
@@ -458,11 +461,19 @@ class Renderer:
                 parts.append(f"{affix.display_name} elite" if is_elite else affix.display_name)
         return ", ".join(parts) or None
 
+    def _draw_hint(self):
+        """The current Field Notes hint, if any (see Game._hint_panel_rect)."""
+        game = self.game
+        if game._hint_panel_rect() is not None:
+            ui.draw_hint_panel(game.screen, game.small_font, hints.HINTS[game.hints.current],
+                               game._hint_placement())
+
     def _draw_toasts(self):
         """Achievement/unlock toasts -- shared by the board and by every
         full-screen run state (MAP/DRAFT/EVENT/REST/TREASURE), since relic,
         event, and floor-clear unlocks are all queued from outside combat."""
         game = self.game
+        self._draw_hint()  # every caller of this also wants the hint, under the toasts
         for toast in game.achievement_toasts:
             # A dark backing plate, so a toast stays legible over whatever
             # screen title or map node it happens to land on.

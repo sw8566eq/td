@@ -59,7 +59,10 @@ class InputHandler:
             elif event.type == pygame.KEYDOWN:
                 self._handle_keydown(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if game.state == GameState.EDITOR:
+                hint_rect = game._hint_panel_rect()
+                if hint_rect is not None and hint_rect.collidepoint(event.pos):
+                    game.hints.dismiss()  # the click is spent on the hint, never passed through
+                elif game.state == GameState.EDITOR:
                     self._handle_editor_click(event.pos)
                 elif game.state == GameState.WAVE_EDITOR:
                     self._handle_wave_editor_click(event.pos)
@@ -620,6 +623,14 @@ class InputHandler:
         # ORDER entry.
         if ui.get_clicked_keybinds_entry_button(pos, game.keybinds_entry_button_rect):
             game._enter_keybinds()
+            return
+
+        hint_button = ui.get_clicked_hint_settings_button(pos, game.hint_settings_rects)
+        if hint_button == "hints":
+            game.set_hints_enabled(not game.hints.enabled)
+            return
+        if hint_button == "reset_hints":
+            game.reset_hints()
             return
 
         option = ui.get_clicked_settings_option(pos, game.settings_rects)

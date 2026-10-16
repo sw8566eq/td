@@ -1,4 +1,4 @@
-"""Persisted player preferences (fullscreen, difficulty, windowed size) across
+"""Persisted player preferences (fullscreen, difficulty, windowed size, hints) across
 sessions.
 
 Mirrors progress.py's own conventions closely: a single JSON file, defensive
@@ -23,6 +23,9 @@ DEFAULTS = {
     "sound_volume": 1.0,
     "difficulty": "normal",
     "window_size": [settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT],
+    # Field Notes (progression/hints.py) -- which hints were already seen
+    # lives in hints.json; this is only whether to show them at all.
+    "hints_enabled": True,
 }
 
 
@@ -33,6 +36,7 @@ def _merge_with_defaults(data):
     merged["sound_volume"] = _coerce_volume(data.get("sound_volume", DEFAULTS["sound_volume"]))
     merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
     merged["window_size"] = _coerce_window_size(data.get("window_size"))
+    merged["hints_enabled"] = bool(data.get("hints_enabled", DEFAULTS["hints_enabled"]))
     return merged
 
 
