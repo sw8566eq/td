@@ -7,8 +7,8 @@ own registry-and-bare-function shape.
 Every option's effect is expressed purely in terms of currency/lives/relics/
 tower unlocks that already exist and already persist appropriately on
 RunState -- never battle gold (Economy.gold), which doesn't exist yet before
-a floor loads and resets fresh every floor regardless (see CLAUDE.md's "Two
-currencies" section).
+a floor loads and resets fresh every floor regardless (see docs/agents/economy-shop.md "Two
+currencies: battle gold and the Shop").
 
 Relics/tower unlocks otherwise only ever flow one direction (granted, never
 spent) -- EventOption.relic_cost is the one exception, letting an option

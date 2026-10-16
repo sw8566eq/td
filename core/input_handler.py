@@ -1,6 +1,6 @@
 """Game's own raw-input dispatch, extracted into its own module -- the
 second cut of game.py's god-object decomposition (see renderer.py's own
-module docstring for the first, and CLAUDE.md's architecture section for
+module docstring for the first, and docs/agents/core-game.md for
 both).
 
 The boundary drawn here mirrors Renderer's: InputHandler owns "translate

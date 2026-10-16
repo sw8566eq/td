@@ -3,7 +3,7 @@ within one roguelike run -- lives, shop currency, drafted tower pool,
 relics, seed, and the run's own map/position within it. Battle gold
 (Economy.gold) is deliberately *not* one of these fields -- it resets fresh
 every floor instead of carrying forward; see game.py's _load_combat_node and
-CLAUDE.md's "Two currencies" section for the split this reflects.
+docs/agents/economy-shop.md "Two currencies" for the split this reflects.
 
 Everything else about a floor (Grid/Economy/WaveManager/towers/enemies) is
 fully rebuilt fresh by Game._load_level_object() on every combat/elite node
@@ -50,7 +50,7 @@ class RunState:
     # for why the run's first-ever node is the one exception to "the run's
     # own lives carry into a node load." There is no equivalent `gold`
     # field: battle gold (Economy.gold) resets fresh every floor now (see
-    # game.py's _load_combat_node and CLAUDE.md's "Two currencies" section)
+    # game.py's _load_combat_node and docs/agents/economy-shop.md "Two currencies")
     # and so has nothing left to carry -- only lives still survives a node
     # transition.
     lives: int = 0

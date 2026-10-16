@@ -1,7 +1,7 @@
 """Game's Settings/Display/Audio/Keybindings-persistence methods, extracted
 into their own module -- the fourth slice of game.py's own god-object
 decomposition (see renderer.py/input_handler.py/progress_tracker.py for the
-first three, and CLAUDE.md's own note on the shape this pattern follows).
+first three, and docs/agents/core-game.md's note on the shape this pattern follows).
 
 Same "only a real external caller or a direct test reference gets a
 Game-level delegator" rule progress_tracker.py's own docstring already

@@ -1,11 +1,11 @@
 """Game.render() and its one drawing helper, extracted into their own
 module -- the first cut of game.py's own god-object decomposition (see
-CLAUDE.md's own note on why `render()` was the slice picked to go
+docs/agents/core-game.md's note on why `render()` was the slice picked to go
 first). Both methods only ever read Game's state and delegate to ui.py's
 drawing functions; the only state either one ever *writes* is
 Game._last_panel_subject, a value Game._handle_panel_action_click (still
 on Game itself, since it also drives real gold-spending actions) reads
-back afterward -- see CLAUDE.md's "Stats panel subject resolution"
+back afterward -- see docs/agents/ui-input.md "Stats panel subject resolution"
 section for why that one field has to be set here, at render time, rather
 than recomputed at click time.
 
@@ -17,7 +17,7 @@ spelled out longhand, not less of it. Every hit-testing/query helper
 render() calls (_hovered_tower, _stats_panel_subject, ...) stays on Game
 itself rather than moving here, since Game._handle_click/
 _handle_panel_action_click read those exact same methods to resolve what
-a click should act on -- CLAUDE.md is explicit that the panel and its
+a click should act on -- docs/agents/ui-input.md is explicit that the panel and its
 action buttons must always agree on which tower they mean, which is only
 guaranteed by both sides sharing one method, not two copies kept in sync
 by hand.

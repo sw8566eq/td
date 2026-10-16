@@ -222,7 +222,7 @@ class Tower:
 
         # A same-frame flag in the spirit of Enemy.damage_events/
         # Projectile.impact_events's own drain-a-per-frame-event-list idiom
-        # (see CLAUDE.md's "Visual effects" section) -- set once per
+        # (see docs/agents/presentation.md "Visual effects") -- set once per
         # successful fire in update() below, read (and reset) into an
         # audio.SoundManager.play(FIRE_SOUND) call by Game.update()'s
         # existing two-pass tower loop. A plain bool, not a list, since one
@@ -547,7 +547,7 @@ class Tower:
         # direct_damage() and drained into real Economy.gold whole-gold-at-
         # a-time by Game.update() (the same drain-a-per-frame-accumulated-
         # value idiom fired_this_frame/impact_events/damage_events already
-        # establish -- see CLAUDE.md's "Visual effects" section). Harmless
+        # establish -- see docs/agents/presentation.md "Visual effects"). Harmless
         # on every non-Siphon tower, which never accumulates anything here
         # since siphon_gold_fraction is 0.0 for them. Deliberately never
         # reset to 0 by the drain -- only the whole-gold portion is removed
@@ -1519,8 +1519,7 @@ class SiphonTower(Tower):
     Tower nor Projectile has ever held a live Economy/Game reference, and
     this tower doesn't start now. Instead it reuses the exact drain-a-per-
     frame-accumulated-value idiom fired_this_frame/impact_events/
-    damage_events already establish (see CLAUDE.md's "Visual effects"
-    section) -- see pending_siphon_gold's own comment in __init__ above,
+    damage_events already establish (see docs/agents/presentation.md "Visual effects") -- see pending_siphon_gold's own comment in __init__ above,
     Projectile._apply_direct_damage() for where it's credited, and
     Game.update() for where it's actually drained into real gold.
     create_projectile() below needs zero siphon-specific kwargs at all --

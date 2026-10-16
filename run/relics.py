@@ -20,7 +20,7 @@ _enter_draft). Every relic's numeric effect is one of three shapes:
   starting_gold_multiplier *used* to need this same one-time treatment,
   back when battle gold carried forward across floors and "starting gold"
   only existed once, at floor 0 -- now that battle gold resets fresh every
-  floor instead (see CLAUDE.md's "Two currencies" section), it's just
+  floor instead (see docs/agents/economy-shop.md "Two currencies"), it's just
   another per-floor RelicModifiers field like gold_per_floor_bonus, applied
   by Game._load_level_object's own Economy construction on every floor,
   not a special case anymore.
@@ -1318,7 +1318,7 @@ class RelicModifiers:
     - starting_gold_multiplier: folded into Game._load_level_object's own
       Economy construction (the same _scaled_starting_gold() call every
       floor already uses), since battle gold is freshly constructed from
-      scratch every floor now -- see CLAUDE.md's "Two currencies" section.
+      scratch every floor now -- see docs/agents/economy-shop.md "Two currencies".
     - gold_per_floor_bonus: Game._load_floor adds it to self.economy.gold
       on every floor load, explicitly, on top of whatever starting_gold_
       multiplier above already produced -- a flat bonus and a multiplier

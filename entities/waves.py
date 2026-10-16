@@ -341,8 +341,8 @@ class WaveManager:
 
 # FinalBossEnemy/FinalBossShieldedEnemy each carry a live, periodically-
 # triggered, board-wide mechanic (reinforcement summons, a self-shield
-# pulse -- see enemy.py's own "Boss enemy mechanics" section in
-# CLAUDE.md) that doesn't compose the way a flat stat increase does: two
+# pulse -- see "Boss enemy mechanics" in
+# docs/agents/enemies.md) that doesn't compose the way a flat stat increase does: two
 # simultaneous copies isn't "twice as hard" the way double HP/speed
 # would be, it's two independent triggers piling up on top of each
 # other, growing chaotically rather than smoothly. Excluded from this

@@ -1,5 +1,8 @@
 # Core: folder layout and the decomposed `Game`
 
+Where the code lives, how `Game` drives a frame, and how `Game` was split into `Renderer`,
+`InputHandler` and `ProgressTracker`.
+
 ## Organized into folders
 
 Every source module lives in one of eight top-level package folders, grouped by domain rather than
@@ -36,6 +39,8 @@ directory directly -- it walks up two levels (package dir, then that dir's paren
 every caller now lives at this same, single level of nesting. A module moved any deeper would need
 that helper's own logic extended, not just its own call site fixed up.
 
+## `Game` and the level-load choke point
+
 `Game` (`core/game.py`) is the state machine and frame loop: it owns `Grid`, `Economy`, `WaveManager`,
 and the live `enemies`/`towers`/`projectiles` lists, and drives `handle_events()` ->
 `update(dt)` -> `render()` each frame. `_load_level_object()` rebuilds all of that from a `Level`
@@ -44,11 +49,13 @@ in one call -- it's the single choke point every way of starting a level funnels
 `_load_combat_node()` for a run's floor, `resume_saved_run()` for a save) -- so `reset()` /
 `advance_or_replay_level()` are just "call it again."
 
+## Slice 1: `Renderer`
+
 `Game.render()` itself is a one-line delegator to `renderer.Renderer.render()` (`core/renderer.py`) --
 the first cut of decomposing `Game` out of a single ~2900-line file, picked as the first slice
 because it was the most self-contained: it only ever reads `Game`'s state and delegates to `presentation/ui.py`'s
 drawing functions, the one exception being `_last_panel_subject` (written here, read back by
-`Game._handle_panel_action_click`, see "Stats panel subject resolution" below). `Renderer` holds a
+`Game._handle_panel_action_click`, see [ui-input.md](ui-input.md) "Stats panel subject resolution"). `Renderer` holds a
 `game` reference rather than a narrower set of parameters, since `render()` reads on the order of 40
 distinct `Game` attributes/methods across its own per-state dispatch -- a narrower interface would
 just be the same coupling spelled out longhand. The hit-testing/query helpers `render()` calls
@@ -57,6 +64,8 @@ just be the same coupling spelled out longhand. The hit-testing/query helpers `r
 -- moving them would split one shared source of truth into two copies that could drift. `core/renderer.py`
 imports `GameState` lazily, inside `render()` itself, to avoid a circular import (`core/game.py` ->
 `core/renderer.py` -> `core/game.py`) that a top-level import would hit before `GameState` is even defined.
+
+## Slice 2: `InputHandler`
 
 Input handling -- `handle_events`, `_handle_keydown`, the `_handle_*_click` family, and the two
 scroll handlers (`_scroll_level_select`/`_scroll_wave_unit_list`) -- is the second slice, moved into
@@ -77,6 +86,8 @@ sharp edge that fell out of this: three of `Game`'s own delegators (`_handle_edi
 own siblings -- each needed one small dedicated regression test calling the `Game`-level method by
 name to keep coverage honest (see `test_game.py`/`test_game_editor.py`'s own "called directly" tests).
 
+## Slice 3: `ProgressTracker`
+
 The achievement/meta-progression/toast-recording group (`_record_level_cleared`/
 `_record_progress_counter`/`_record_achievement`/`_queue_achievement_toasts`/`_record_meta_progress`/
 `_queue_meta_unlock_toasts`/`_queue_toast`) is the third slice, moved into
@@ -92,13 +103,11 @@ that moved here too) get no `Game`-level shim at all -- the same "private helper
 `core/renderer.py`'s own `_render_placement_preview` already established. No coverage was orphaned by this
 move, so unlike `InputHandler`'s slice, no new "called directly" regression tests were needed.
 
+## Toasts
+
 Toasts (`Game.achievement_toasts`) are the one per-frame effect list that is *not* PLAYING-scoped:
 most unlocks are queued off the board (a Shop/Treasure/Event relic, a floor clear's meta-unlock, a
 permadeath's `runs_played` unlock), so `Game.update()` ages them on real, unscaled `dt` *before* its
 own `state != PLAYING` early return, `Renderer._draw_toasts()` draws them on every full-screen run
 state (MAP/DRAFT/EVENT/REST/TREASURE) and on top of the board's overlays, and a floor load no longer
 clears them -- a toast queued on the map just keeps fading into the next fight.
-
-**The game is a roguelike deckbuilder, and the run loop is its primary loop.** A single level
-played on its own still works exactly as it always did, but that's now Practice, a side path; the
-main path is a run. Read the next section before anything else here.

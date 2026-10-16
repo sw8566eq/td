@@ -352,8 +352,8 @@ def _render_pcm(logical_name, spec_sequence, sample_rate, channels, encoder):
     shared `random` module -- deterministic/reproducible across runs and
     never perturbs any of this codebase's own seeded gameplay RNG streams,
     the same "derive a fresh Random from a string key" precedent Game.
-    _run_rng already sets for run-loop RNG (see CLAUDE.md's "run loop"
-    section)."""
+    _run_rng already sets for run-loop RNG (see docs/agents/run-loop.md
+    "Run RNG (`_run_rng`)")."""
     typecode, encode = encoder
     noise_rng = random.Random(f"td-sfx:{logical_name}")
     floats = []

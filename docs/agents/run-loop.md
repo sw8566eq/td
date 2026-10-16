@@ -1,14 +1,17 @@
 # The roguelike run loop
 
+`RunState`, how a run starts and moves between nodes, how it ends, how run RNG is derived, and the
+Daily Run, acts, Ascension (player-facing: Gauntlet) and Commanders.
+
 ## The roguelike run loop is the primary loop
 
-A **run** is a seeded, full branching map of nodes (see "The run's branching map" below), shown to
+A **run** is a seeded, full branching map of nodes (see [run-map.md](run-map.md) "The run's branching map"), shown to
 the player from the very start, each combat/elite node one full `_load_level_object()` pass on one
 `Level` -- the same complete `Grid`/`Economy`/`WaveManager`/towers/enemies reset a level load always
 did. What's new is `RunState` (`run/run_state.py`), the small bundle that survives *across* those resets:
 seed, `map`, `current_node_id`, `visited_node_ids`, `difficulty`, lives, `shop_currency`,
 `unlocked_towers`, and `relics`. Battle gold (`Economy.gold`) is deliberately *not* one of these --
-see "Two currencies: battle gold and the Shop" below for the split this reflects. Placed towers and
+see [economy-shop.md](economy-shop.md) "Two currencies: battle gold and the Shop" for the split this reflects. Placed towers and
 the grid stay floor-scoped, deliberately -- a deckbuilder doesn't carry
 board state between combats, only your deck and your HP. `Game.active_run` holds it, and is reset to
 `None` inside `_load_level_object()` itself (not at each call site), so any loader that doesn't know
@@ -18,7 +21,7 @@ about runs -- `resume_saved_run()` for a classic save, say -- structurally can't
 The pieces, each a small module in this codebase's registry-or-bare-function style:
 
 - `run/run_map.py` -- `generate_run_map(rng)`: the whole branching map, generated once, up front (see
-  "The run's branching map" below for the full shape). Combat/elite level ids are still sampled from
+  [run-map.md](run-map.md) "The run's branching map" for the full shape). Combat/elite level ids are still sampled from
   `LEVELS`, but no longer read as a single flat ascending ramp the way the old, retired
   `run_floors.sample_floor_sequence` did -- see that section for what replaced it.
 - `run/card_pool.py` -- a "card" is, for v1, exactly a `TOWER_TYPES` key. `STARTER_TOWERS` is what every
@@ -34,14 +37,16 @@ The pieces, each a small module in this codebase's registry-or-bare-function sty
   half of the risk/reward trade an Elite node offers; see `shop.income_for_floor`'s own
   `ELITE_INCOME_MULTIPLIER` for the reward half.
 - `run/events.py` -- `EVENTS`, a registry of Random Event nodes (a short prompt plus 2-3 options), plus
-  `pick_event()` (deterministic per node) and `resolve_event_option()`. See "The run's branching map"
-  below for the full node-type writeup.
-- `progression/meta_progression.py` / `progression/run_history.py` -- cross-run persistence; see the on-disk-state section.
+  `pick_event()` (deterministic per node) and `resolve_event_option()`. See [run-map.md](run-map.md) "Node types"
+  for the full node-type writeup.
+- `progression/meta_progression.py` / `progression/run_history.py` -- cross-run persistence; see [persistence.md](persistence.md) "Small on-disk JSON state files".
+
+## Starting a run and entering nodes
 
 `Game.start_new_run(seed=None, is_daily=False)` builds the `RunState` (map generated once, up front,
 via `run_map.generate_run_map`) and calls `_enter_map()` -- unlike the old flat sequence, a run no
 longer auto-loads its first floor; the player's first act is picking one of the map's row-0 nodes
-(always Combat, see below) themselves. `Game._enter_node(node_id)` sets `run.current_node_id` and
+(always Combat, see [run-map.md](run-map.md) "The run's branching map") themselves. `Game._enter_node(node_id)` sets `run.current_node_id` and
 dispatches on that node's own type; for a Combat/Elite node that's `_load_combat_node(node)`, which
 composes *three* independent extra factors into the one `_load_level_object()` call -- the run's
 snapshotted `difficulty`, `escalation_for_floor(node.row)` (bumped further by
@@ -50,24 +55,30 @@ snapshotted `difficulty`, `escalation_for_floor(node.row)` (bumped further by
 own rule. The run's very first resolved node is the one asymmetric case for lives: `RunState` starts
 with `lives=0` as a placeholder and *captures* that node's freshly-loaded `Economy`'s lives (checked
 via `not run.visited_node_ids`), while every node after that *restores* into it instead. Battle gold
-has no such asymmetry -- see "Two currencies" below, it's rebuilt fresh from the same construction on
+has no such asymmetry -- see [economy-shop.md](economy-shop.md) "Two currencies: battle gold and the Shop", it's rebuilt fresh from the same construction on
 every floor, the first node included.
+
+## Floor clears
 
 Clearing a Combat/Elite floor goes `update()`'s win-check -> `_advance_run_floor()` -> `GameState.
 FLOOR_CLEARED` -> (any key) `_enter_map()` -> (a click on an available node) `_handle_map_click()` ->
 `_enter_node()`. `_advance_run_floor` appends the cleared node's own id onto `run.visited_node_ids`
-(what `RunState.floors_cleared` counts from -- see below) and converts leftover battle gold into shop
-currency (`shop.income_for_floor`, with an Elite bonus -- see above). One detail worth knowing: the
+(what `RunState.floors_cleared` counts from -- see "A run ends only by permadeath") and converts leftover battle gold into shop
+currency (`shop.income_for_floor`, with an Elite bonus). One detail worth knowing: the
 next node isn't loaded until the player picks it from the map, which is what leaves `self.towers`/
 `self.economy` intact for `FLOOR_CLEARED` to render real results from.
 
-A run is `run_map.ACT_COUNT` (3) acts -- see "Acts" below. A run ends **only** by permadeath. The final
+## A run ends only by permadeath
+
+A run is `run_map.ACT_COUNT` (3) acts -- see "Acts". A run ends **only** by permadeath. The final
 act's boss node (the sole node in its final row) always loads `endless=True`, so `all_waves_complete` structurally can never fire for it, and `update()`'s win-check
 routes a run to `_advance_run_floor()` rather than `VICTORY` regardless -- there is no "you won the
 run" event by construction, not by a missing branch. `_record_run_permadeath()` writes the outcome to
 `progression/run_history.py` and bumps the meta-progression counters; `RunState.floors_cleared` (what both of
 those read) counts only visited Combat/Elite nodes, not every node stopped at -- a Shop/Event/Rest/
 Treasure detour doesn't inflate the score.
+
+## Run RNG (`_run_rng`)
 
 Every rng a node needs (its own enemy routing, its Shop offer, a Random Event's own pick and its
 chosen option's item grant, a Treasure's own relic pick) is re-derived on demand via `Game._run_rng
@@ -85,17 +96,25 @@ and a Random Event's own item grant fold in one further piece of identity on top
 node id alone identifies *which visit*, not *which purchase* or *which option* -- see
 `Game._enter_shop_node`/`_resolve_event_choice`).
 
-A Daily Run ignores the account's meta-progression gating so it really is the same for everyone:
-`Game._run_level_pool(is_daily)` draws from every level, `card_pool.draft_offer`/`relics.relic_offer`
-use the full tower/relic registries when `run.is_daily` (no explicit pool passed), and `shop.build_offer`
-always opens the 3rd relic slot. (Before this, a fresh and a veteran account got different shops,
-rewards and blessing relics for the same Daily seed.) A Daily Run also gets `Game._apply_daily_modifiers` (one boss relic without a one-time lives cost,
-plus one curse, from `_run_rng(run, "daily-mods", "start")`), applied inside `start_new_run`. A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
-`start_new_run(seed=todays_seed(), is_daily=True)`. `is_daily` changes exactly one thing -- the run
-snapshots `"normal"` instead of the player's sticky difficulty preference, so scores are comparable.
-`progression/run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a date-derived seed
-needs no special handling anywhere. The whole map is generated from that same date-derived seed, so
-every player sees the identical branching map (and Shop/Event offers) on a given day too.
+## Daily Run
+
+A **Daily Run** is not a separate mode: `_start_daily_challenge()` is
+`start_new_run(seed=todays_seed(), is_daily=True)`. The whole map is generated from that date-derived
+seed, so every player sees the identical branching map (and Shop/Event offers) on a given day.
+`progression/run_history.py` already tracks `{seed: best_floors_cleared}` for any seed, so a
+date-derived seed needs no special handling anywhere.
+
+`is_daily` changes only what it must for scores to be comparable:
+
+- The run snapshots `"normal"` instead of the player's sticky difficulty preference, Ascension is
+  forced to 0 and the Commander to `DEFAULT_COMMANDER`.
+- It ignores the account's meta-progression gating so it really is the same for everyone:
+  `Game._run_level_pool(is_daily)` draws from every level, `card_pool.draft_offer`/`relics.relic_offer`
+  use the full tower/relic registries when `run.is_daily` (no explicit pool passed), and
+  `shop.build_offer` always opens the 3rd relic slot. (Before this, a fresh and a veteran account got
+  different shops, rewards and blessing relics for the same Daily seed.)
+- `Game._apply_daily_modifiers` (applied inside `start_new_run`) adds one boss relic without a one-time
+  lives cost, plus one curse, from `_run_rng(run, "daily-mods", "start")`.
 
 ## Ascension
 

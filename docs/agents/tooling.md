@@ -1,18 +1,24 @@
 # Tooling: lint, coverage, type checking, tests
 
+Lint/coverage config, the incremental strict-mypy list, how the test suite is laid out, and the
+dev-only tools under `tools/`.
+
+## Lint and coverage
+
 `ruff` (lint) and `pytest-cov` are configured in `pyproject.toml`'s `[tool.ruff]`/`[tool.coverage.run]`
 sections -- no formatter yet (a real `ruff format` pass on this codebase's own established style
 reformats 73 of the ~82 tracked files, since its compact one-line registry entries rely on trailing
 commas ruff format's line-fitting logic doesn't preserve; not worth that scale of mechanical churn).
-`pytest-cov`'s own floor (`--cov-fail-under=98` above) was picked with real headroom below the
+`pytest-cov`'s own floor (`--cov-fail-under=98`, see AGENTS.md's Commands) was picked with real headroom below the
 measured 98.68% -- 99% already fails today with zero slack -- enough that ordinary future work
 shouldn't flake CI while still catching a genuine coverage regression. `entities/tower.py`'s
 per-file `RUF012` ignore is deliberate: every `Tower` subclass's class-level `EXTRA_STATS`/
-`SPECIALIZATIONS` dicts are read-only content tables (see "Content is registries, not conditionals"
-below), never mutated at runtime, which is exactly what that rule can't tell apart from a genuine
+`SPECIALIZATIONS` dicts are read-only content tables (see [enemies.md](enemies.md) "Content is registries, not conditionals"), never mutated at runtime, which is exactly what that rule can't tell apart from a genuine
 mutable-default footgun.
 
-**Type checking is incremental, not repo-wide.** `[tool.mypy]` in `pyproject.toml` is deliberately
+## Type checking is incremental, not repo-wide
+
+`[tool.mypy]` in `pyproject.toml` is deliberately
 permissive project-wide (`disallow_untyped_defs`/`check_untyped_defs` both `false`) since most of
 this codebase -- pygame-facing code especially -- has no type hints yet; a `[[tool.mypy.overrides]]`
 block opts specific modules into strict checking (`disallow_untyped_defs`/`disallow_incomplete_defs`/
@@ -39,13 +45,24 @@ all three of `relics.relic_offer`/`run_map.generate_run_map`/`card_pool.draft_of
 fully typed too, via a PEP 695 generic (`def sample_up_to[T](...)`, not `typing.TypeVar`,
 since `ruff`'s `UP047` prefers the newer syntax at this project's `target-version = "py313"`): left
 untyped, every annotated caller's own `return sample_up_to(...)` would still resolve to `Any`
-regardless of how carefully the caller itself was annotated, defeating the point. To extend this
-list, annotate the new module, add it to both the `pyproject.toml` override's `module` list and this
-file's Commands block/CI step above, and expect any function it calls into that isn't itself
-annotated to need the same "would this call silently launder into `Any`" check `sample_up_to` needed
-here.
+regardless of how carefully the caller itself was annotated, defeating the point.
 
-A second pass added five more modules: `support/rng_sampling.py` (already fully typed per the paragraph
+### Extending the strict list
+
+1. Annotate the module fully (`disallow_untyped_defs` etc. apply to it once listed).
+2. Add it to all four copies of the list: `pyproject.toml`'s `[[tool.mypy.overrides]]` `module`
+   list, AGENTS.md's Commands block, `.github/workflows/tests.yml`, and
+   `.github/workflows/release.yml`. `tests/test_agent_docs.py` fails if they disagree.
+3. Expect any unannotated helper whose result the module returns directly to need typing too (a
+   `warn_return_any` / `no-any-return` error), the same way `sample_up_to` and
+   `json_io.load_json_with_fallback` did. `follow_imports = "silent"` hides an unannotated callee's
+   *own* errors, not that.
+
+### History of the strict passes
+
+The first pass is described above; the later ones, kept for the bugs they caught:
+
+**Second pass.** It added five more modules: `support/rng_sampling.py` (already fully typed per the paragraph
 above, just missing from the override list until now -- zero new annotation work), `run/difficulty.py`
 (a typed `@dataclass DifficultyMode` already; just needed `DIFFICULTY_MODES`/`DIFFICULTY_ORDER`/
 `DEFAULT_DIFFICULTY` themselves annotated), `world/economy.py` (plain `int`/`bool` signatures throughout,
@@ -62,7 +79,7 @@ Callable[[], T]) -> T`) for the same reason -- whenever a newly-annotated module
 expression is directly the result of calling an unannotated shared helper, expect to have to type
 that helper too, not just the module on top.
 
-A third pass added `progression/threshold_unlocks.py`/`progression/meta_progression.py`/`run/run_state.py`/`run/card_pool.py` --
+**Third pass.** It added `progression/threshold_unlocks.py`/`progression/meta_progression.py`/`run/run_state.py`/`run/card_pool.py` --
 this one edited already-strict files too, not just added new ones. `progression/threshold_unlocks.py` is generic
 across `achievements.Achievement`/`progression/meta_progression.py`'s `MetaUnlock`/`RelicMetaUnlock`/
 `LevelMetaUnlock`, none of which it can import without a cycle (`progression/achievements.py` already imports
@@ -86,7 +103,7 @@ clear assertion). Once `run/run_state.py` itself was annotated, `run/relics.py`/
 cycle actually exists (`run/run_state.py` only reaches `run/run_map.py`/`world/levels.py`/`support/rng_sampling.py`), so all
 three now import `RunState` for real, same as any other cross-module type.
 
-A fourth pass added `run/run_escalation.py`/`progression/progress.py`/`progression/achievements.py` -- all three pygame-free and
+**Fourth pass.** It added `run/run_escalation.py`/`progression/progress.py`/`progression/achievements.py` -- all three pygame-free and
 each needing only bare-function annotations, no dataclass fixes this time: `run/run_escalation.py`
 already had a typed `@dataclass FloorEscalation`, so its four bare functions
 (`_early_grace_factor`/`escalation_for_floor`/`apply_elite_multiplier`/`apply_boss_multiplier`) just
@@ -98,6 +115,12 @@ mechanics). `progression/achievements.py`'s one unannotated import, `levels.LEVE
 `len(levels.LEVELS)` for the `campaign_complete` achievement's own goal), needed no attention: `len()`
 always resolves to a concrete `int` regardless of its argument's own inferred type, unlike
 `progression/run_history.py`'s old problem where an untyped call's return value was forwarded directly.
+
+Later passes (`run/rewards.py`, `run/potions.py`, `run/ascension.py`, `run/commanders.py`,
+`run/elite_affixes.py`, `run/veterancy.py`, `run/modules.py`) joined later, all small and pygame-free;
+their reasoning lives in the commits that added them.
+
+## Headless tests and suite layout
 
 `Game()` and some `AssetManager` tests open a real pygame window, so the SDL dummy video driver is
 forced before pygame is ever imported (`os.environ.setdefault("SDL_VIDEODRIVER", "dummy")`) --
@@ -126,8 +149,9 @@ A dev-only balance check, excluded from coverage (`tools/*` in `[tool.coverage.r
 attacking tower type gets the same gold on the same floor at Act 1/2/3 depth, placed greedily by path
 coverage, then every wave runs headless (Game built via `tests/conftest.make_game` in a temp dir, so no
 real player files are touched). Prints leaks and damage per act; `--budget`, `--level`, `--towers`,
-`--extra`, `--reinvest` (spend kill gold on the cheapest upgrade, else another tower, every 0.5s). It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
-fixed by stagger resistance (see enemies.md).
+`--extra`, `--reinvest` (spend kill gold on the cheapest upgrade, else another tower, every 0.5s).
+It's a crude mono-tower model for spotting outliers -- it found the Knockback stun-lock
+fixed by stagger resistance (see [enemies.md](enemies.md) "Knockback stagger resistance").
 
 ## Flow check (`tools/flow_check.py`)
 

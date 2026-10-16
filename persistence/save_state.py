@@ -69,7 +69,7 @@ def _tower_to_dict(tower):
         "specialization": tower.specialization,
         "targeting_mode": tower.targeting_mode,
         "forged": tower.forged,
-        # Lifetime stats, purely for display (see CLAUDE.md's "Post-level
+        # Lifetime stats, purely for display (see docs/agents/towers.md "Post-level
         # results") -- without these, every tower reconstructed on resume
         # would show 0 shots/damage/kills even after real combat history.
         "shots_fired": tower.shots_fired,
@@ -347,7 +347,7 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     KeyError reaching for a "map" key that was never written (one of
     json_io's own fallback-triggering exceptions), and load_run() falls all
     the way back to "nothing to resume" -- see this module's own docstring
-    and CLAUDE.md's run-loop section for why a clean break, not a
+    and docs/agents/persistence.md for why a clean break, not a
     migration, is the right call here."""
     _require_int(run_data["seed"], "run seed")
     _require_int(run_data["lives"], "run lives", 0, _SANE_MAX)

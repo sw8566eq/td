@@ -1,5 +1,9 @@
 # Towers
 
+Tower leveling and specialization, the Support two-pass update, Overload Cannon, Siphon, the
+targeting spatial index, the results table, then the run-era additions: veterancy, path traps,
+modules, Mortar's minimum range, Barricade and resonances.
+
 ## Tower progression is two separate axes
 
 1. **Leveling** (1 -> `MAX_LEVEL`, currently 3): generic on the `Tower` base class.
@@ -72,7 +76,7 @@ Needing its own `update()` override (its cadence doesn't match the base class's 
 loop) meant it also needs its own copy of the ~20-line relic-tagging block `Tower.update()` uses to
 copy every `relic_*` field onto a freshly-fired projectile -- a deliberate, accepted duplication
 rather than a shared-helper extraction, so that every other session adding a relic field to the base
-class's copy (as the nineteenth relic batch above already had to) only has to remember to mirror the
+class's copy (as the triple-status `overwhelming_affliction` relic already had to) only has to remember to mirror the
 same two lines into this tower's own copy, not refactor a shared call site every batch touches.
 Cross-referencing comments live at both sites; `test_tower.py`'s own dedicated regression test
 diffs the two blocks' actual output (via real fired projectiles, not a hardcoded field list) rather
@@ -88,7 +92,7 @@ a kill-gold-only relic, not a tower mechanic). It deliberately introduces **no**
 `Economy`/`Game` coupling -- neither class has ever held a live reference to the other, and this
 tower doesn't start now. Instead it extends the exact "drain a per-frame/accumulated value in
 `Game.update()`" idiom `fired_this_frame`/`impact_events`/`damage_events` already establish (see
-"Visual effects" below) to a non-visual use for the first time: `Tower.pending_siphon_gold`
+[presentation.md](presentation.md) "Visual effects: the drain-a-per-frame-event-list idiom") to a non-visual use for the first time: `Tower.pending_siphon_gold`
 accumulates in `Projectile._apply_direct_damage()` -- the one true per-hit damage-attribution choke
 point, right next to the existing `damage_dealt`/`kills` bookkeeping, so an Arcing Rounds-style chain
 bounce or an Overkill-style carry-over hit generates Siphon gold too, for free -- and `Game.update()`
@@ -174,7 +178,8 @@ path rule: every footprint cell must be path). The click handler, the placement 
 `try_place_tower` and `_construct_tower` all use them, so the rest of the tower lifecycle (save/resume,
 sell, upgrade, veterancy) is unchanged. Traps fire ordinary splash projectiles from their own tile, so
 relics, kill credit and stats all work as for any tower. HUD build buttons are 40px with 6px gaps to
-fit 14 towers next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`).
+fit the build menu next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`;
+current sizes are `ui.BUTTON_SIZE`/`BUTTON_MARGIN`, see "Barricade and the two-row build menu").
 
 ## Modules
 
@@ -194,8 +199,7 @@ Continue via `ui.build_shop_module_rect`) is rolled last from the visit's rng, o
 ## Minimum range (Mortar)
 
 `Tower.MIN_RANGE` (0 by default) is a dead zone `acquire_target` filters out; `MortarTower` sets it to
-80. Both range previews draw it as a red ring. HUD build buttons are now 36px with 5px gaps (15 towers);
-icons are `BUTTON_SIZE - 14`.
+80. Both range previews draw it as a red ring. Build-menu icons are `BUTTON_SIZE - 14`.
 
 ## Barricade and the two-row build menu
 
@@ -206,7 +210,8 @@ statuses), drains `BARRICADE_BREACH_DPS` per enemy (x`BARRICADE_BOSS_BREACH_MULT
 deals its `thorns_dps` back. A broken barricade moves to `sold_towers` and frees its tile. `hp` is saved
 per tower (`_tower_to_dict` adds it only for towers that have one). `ATTACKS = False` also hides the
 attack stats/Targeting row and keeps it out of damage-module offers. `ui.build_button_rects` wraps into
-two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row.
+two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row. Current
+sizes: 40px buttons with 6px gaps, 9 per row (`ui.BUTTON_SIZE`/`BUTTON_MARGIN`/`BUTTONS_PER_ROW`).
 
 ## Resonances
 

@@ -781,7 +781,7 @@ def test_clicking_a_scrolled_wave_unit_row_still_adjusts_the_right_species(game)
 
 
 def test_clicking_an_action_button_is_not_intercepted_by_an_overflowing_wave_unit_row(game):
-    # Regression guard for the exact bug class CLAUDE.md documents for the
+    # Regression guard for the exact bug class docs/agents/editor.md documents for the
     # level browser: even unscrolled, today's real ENEMY_ORDER registry (8
     # species) overflows the sidebar's fixed vertical budget, so the last
     # row's raw Rect spills past WAVE_UNIT_ROWS_BOTTOM into the action-
@@ -899,7 +899,7 @@ def test_render_paused_on_a_custom_level_does_not_crash(game):
 def _write_external_level_file(tmp_path, name="Imported Level"):
     """A small, valid, standalone level JSON file sitting somewhere other
     than custom_levels/ -- standing in for "a file someone else handed
-    you," the way sharing a level actually works today (see CLAUDE.md)."""
+    you," the way sharing a level actually works today (see docs/agents/editor.md)."""
     level = Level(
         id="external",
         name=name,

@@ -1,5 +1,8 @@
 # Waves, difficulty, Sandbox/Practice, settings
 
+`WaveManager`'s state machine and endless mode, difficulty multipliers, Sandbox and Practice, and
+the Settings screen.
+
 ## Waves
 
 `WaveManager` (`entities/waves.py`) is a small state machine: `AWAITING_START` -> `BETWEEN_WAVES` ->
@@ -23,7 +26,7 @@ singleton for a built-in level -- `Game._load_level_object` sidesteps this with
 endless run gets its own private wave list to grow. `Game.level_select_endless_armed` (toggled by
 `V` while browsing to play, reset every time the browser reopens) is what threads `endless=True`
 into whichever level gets picked next; it's independent of, and combinable with, Sandbox mode (see
-below).
+"Difficulty modes, Sandbox/Practice mode, and player settings").
 
 ## Difficulty modes, Sandbox/Practice mode, and player settings
 
@@ -43,7 +46,7 @@ until the next level load, the same "applies on next load" precedent `unlimited_
 `--unlimited-gold` debug flag, threaded through `load_level`/`load_custom_level`/
 `_load_level_object` exactly parallel to `endless` above (a sticky `self.sandbox`). It used to be
 its own independent level-select toggle (`B`, alongside `V`'s endless toggle); the run loop's
-Practice mode (below) absorbed that entirely -- picking any level to play always loads
+Practice mode (see the next paragraph) absorbed that entirely -- picking any level to play always loads
 `sandbox=True` now, unconditionally, so there is no `B` key or `level_select_sandbox_armed` flag
 left to arm it separately. It sets both `Economy.unlimited_gold` and a new `Economy.invulnerable`
 (`lose_life()` becomes a no-op, `is_out_of_lives` stays `False` regardless of `self.lives`,
@@ -63,10 +66,10 @@ loads `sandbox=True`. That's a deliberate design position, not an implementation
 progress comes only from playing a run, so a standalone level is explicitly a place to experiment
 and earns nothing. It's also what retired `progress.is_unlocked()`: with no progress to gate on and
 no gate to apply it to, sequential campaign unlocking was removed outright rather than left
-half-wired (see the `progression/progress.py` bullet below for what survived).
+half-wired (see [persistence.md](persistence.md) "`progression/progress.py`" for what survived).
 
 The `GameState.SETTINGS` screen (`S` from the menu) is where `fullscreen` and `difficulty` actually
 get changed (`ui.draw_settings_screen`/`get_clicked_settings_option`); both persist immediately on
 change via `player_settings.save_settings()` rather than only on quit, the same "write through
 immediately" choice `progress.mark_level_cleared()` and the achievement/meta-progression/save-state
-modules below all make too.
+modules all make too (see [persistence.md](persistence.md)).

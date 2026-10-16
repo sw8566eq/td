@@ -136,7 +136,7 @@ class Enemy:
 
         # Enemies this one wants added to the live Game.enemies list --
         # same drain-a-per-frame-event-list idiom as damage_events above
-        # (see CLAUDE.md's "Visual effects" section), just applied to
+        # (see docs/agents/presentation.md "Visual effects"), just applied to
         # spawning entities instead of floating text. Empty for every
         # species except SplitterEnemy (populated once, at death) and
         # FinalBossEnemy (populated repeatedly, while still alive, by its

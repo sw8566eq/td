@@ -1,11 +1,14 @@
 # Grid and paths
 
+The two coordinate systems (tiles for paths, subtiles for tower footprints) and why a level's path
+is a forest-shaped graph sampled per enemy.
+
 ## Grid has two coordinate systems
 
 `Grid` (`world/grid.py`) tracks the map at two granularities at once:
 - **Coarse tile coords** (`col, row`; unit = `TILE_SIZE`, 64px) -- path, blocked cells, and the
   rendered mosaic. Comes straight from a `Level`'s `path_cells`/`spawn_cells`/`goal_cells`/
-  `blocked_cells` (see "Paths are a graph, not a route" below).
+  `blocked_cells` (see "Paths are a graph, not a route").
 - **Subtile coords** (`anchor_col, anchor_row`; unit = `SUBTILE_SIZE`, `TILE_SIZE /
   SUBTILES_PER_TILE`) -- tower placement. A tower's footprint is normally one tile's worth of area
   (`SUBTILES_PER_TILE x SUBTILES_PER_TILE` subtiles, currently 8x8) but can be *anchored* at any

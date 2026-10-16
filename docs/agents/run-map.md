@@ -1,5 +1,8 @@
 # The run's branching map
 
+The map's shape and node types, the map screen, and what happens around a node: post-combat rewards,
+potions, the threat readout, elite affixes/named bosses, the opening blessing and Armory nodes.
+
 ## The run's branching map
 
 A run's map (`run/run_map.py`) is a row-based DAG, generated once, up front (`Game.
@@ -12,7 +15,8 @@ only ever run from one row to the next, never skip a row or point backward, whic
 fact (tests still verify it via BFS over many seeds anyway). Row 0 is a fixed-width, all-Combat
 choice (which of `START_ROW_WIDTH` same-difficulty layouts to open the run on, not a difficulty
 choice at all) -- the run's very first resolved node is always guaranteed to be a real level load,
-keeping the lives-capture special case above simple. The final row is always exactly one node of its
+keeping the lives-capture special case (see [run-loop.md](run-loop.md) "Starting a run and entering
+nodes") simple. The final row is always exactly one node of its
 own dedicated `"boss"` type (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps
 `is_final_floor`/`endless=True` trivial, no "did every path converge" check needed.
 
@@ -33,16 +37,18 @@ rows -- not a hardcoded id list, so it stays self-maintaining as levels are adde
 freely across all of `LEVELS`, preserving the same corridor-then-multi-lane authored ramp the old
 flat, ascending `floor_sequence` used to give for free. The final row's own boss node is a further
 special case on top of that tiering, not just "whichever multi-lane level a late row would otherwise
-draw" -- see the Boss bullet below.
+draw" -- see the Boss bullet under "Node types".
 
-The seven node types:
+## Node types
+
+The node types:
 - **Combat**: a normal floor, exactly what a run's only node type used to be.
 - **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
   escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
   `ELITE_INCOME_MULTIPLIER`) -- risk/reward, not "harder for its own sake."
-- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `run/shop.py` verbatim, only
-  reached via a map node now rather than automatically after every floor clear (see "Two currencies"
-  below for what this replaced).
+- **Shop**: `GameState.DRAFT` (the code's legacy name for the Shop screen) -- reuses `run/shop.py` verbatim, only
+  reached via a map node now rather than automatically after every floor clear (see [economy-shop.md](economy-shop.md) "Two currencies: battle gold and the Shop"
+  for what this replaced).
 - **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`run/events.py`), each a fixed,
   honestly-described delta (shop currency, lives, a relic grant, a tower unlock, or -- since the
   gaps-and-synergies batch -- giving up a relic already held, `EventOption.relic_cost`) rather than
@@ -85,7 +91,8 @@ The seven node types:
   existed. That same drain also runs every child/summon through `WaveManager.apply_spawn_multipliers()`
   (the post-construction difficulty/escalation/relic scaling `_spawn_enemy` applies to every wave
   spawn) before Fracture Rounds/Containment Charges touch it -- these enemies are constructed by their
-  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
+  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see [run-loop.md](run-loop.md) "A run ends only by
+  permadeath"), there is no "you defeated
   the boss, run over" screen -- `WaveManager.authored_waves_cleared` (a new flag, distinct from
   `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
   before/after check reads to detect the boss node's authored waves running out for the first time,
@@ -97,6 +104,13 @@ The seven node types:
   `RunState.boss_defeated` (guarded the same one-shot way `used_guardians_reprieve` is) is what stops
   a mid-boss-fight Restart -- which rebuilds a fresh `WaveManager` whose own `authored_waves_cleared`
   starts `False` again -- from double-counting `bosses_defeated` a second time.
+- **Armory**: `GameState.ARMORY` -- pick one tower module; see "Armory nodes".
+
+Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
+while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
+`relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).
+
+## Map screen and node dispatch
 
 `Game._enter_map()` (re-)shows the map screen, rebuilding `self.map_node_rects` fresh every time
 (`ui.build_map_node_rects`) -- the same "computed fresh, not a persistent cache" spirit
@@ -111,6 +125,8 @@ chosen option, Rest/Treasure's auto-resolve) routes through -- mark the node vis
 map. A Combat/Elite node's own clear already appends its own id in `_advance_run_floor`, so it never
 goes through `_finish_node` -- there's no separate "leave the results screen" step distinct from
 pressing any key on `FLOOR_CLEARED`, which goes straight to `_enter_map()`.
+
+## Run screens are full-screen states
 
 `GameState.MAP`/`DRAFT`/`EVENT`/`REST`/`TREASURE` are all full-screen states (like `LEVEL_SELECT`/
 `EDITOR` -- see `render()`'s early-return block), not overlays drawn atop a frozen board the way
@@ -134,6 +150,12 @@ reward screen (`Continue`/`Skip`, or Enter) calls `_enter_map()` directly, never
 boss node never reaches this screen (it's endless, so it never fires FLOOR_CLEARED). Quitting on this
 screen forfeits the reward, same as quitting mid-Shop forfeits the shop.
 
+Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower card rolls
+`min(FORGED_CARD_MAX_CHANCE, FORGED_CARD_CHANCE_PER_DEPTH * run.depth)` to come pre-forged) and
+`forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
+pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
+unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).
+
 ## Potions
 
 `run/potions.py` -- `POTIONS` registry of single-use consumables, each entry carrying its own `use(game)`
@@ -147,6 +169,13 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
 
+Potions can also be drunk with the fixed (non-remappable) `Q`/`W`/`E` hotkeys
+(`input_handler.POTION_HOTKEYS`, checked after every remappable PLAYING action so a rebinding onto
+those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion`, rolled in
+`_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
+unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
+(`_can_buy_shop_potion` is shared by the click and the renderer).
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
@@ -154,7 +183,7 @@ Elite/Boss bump, Ascension, affix); `_floor_load_context` uses it for the real l
 (times the run's difficulty mode) for `Game.map_node_threats`, shown in the map tooltip -- so the
 readout is exactly what the fight applies on top of per-wave scaling.
 
-## Elite affixes
+## Elite affixes and named bosses
 
 `run/elite_affixes.py` -- `AFFIXES` registry of plain multipliers (hp/speed/gold, plus
 `count_multiplier`, plus enemy-side traits `regen_fraction_per_second`/`damage_taken_multiplier`,
@@ -169,20 +198,11 @@ without re-deriving). Shown in the sidebar above the potion belt (`Renderer._run
 together with the run's Ascension) rather than on the HUD's Wave line, which has no width left with a
 12-tower build menu (`test_hud_gold_lives_wave_text_fits_before_the_play_area_edge`).
 
-Potions can also be drunk with the fixed (non-remappable) `Q`/`W`/`E` hotkeys
-(`input_handler.POTION_HOTKEYS`, checked after every remappable PLAYING action so a rebinding onto
-those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion`, rolled in
-`_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
-unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
-(`_can_buy_shop_potion` is shared by the click and the renderer).
-
-
-**Named bosses**: `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
+**Named bosses.** `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
 returns one for a Boss node (`roll_boss_affix` on the same `"affix"` rng stream, keyed by the node id),
 so every affix consumer -- escalation, regen/damage-taken traits, Swarming-style count scaling (boss
 species excluded), the map tooltip and `map_node_affixes`, the sidebar text -- handles
 bosses with no extra branches. The map title names the act's boss (`Boss: The Warlord`).
-
 
 `EliteAffix.burrows`/`breach_multiplier` (Tunneling, Siegebreakers) reach enemies through
 `WaveManager.enemy_burrows`/`enemy_breach_multiplier` (set by `_apply_affix_traits`) in
@@ -198,16 +218,6 @@ setting `event_is_blessing`; the item rng key is `"blessing:<option>"`. Every Ev
 through `Game._leave_event`, which returns to the map for the blessing (no node to mark visited) and
 calls `_finish_node` otherwise. `EventOption.extra_relic` gives the dark bargain its second relic.
 `ui.build_event_option_rects` compresses its column for 4+ options.
-
-Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower card rolls
-`min(FORGED_CARD_MAX_CHANCE, FORGED_CARD_CHANCE_PER_DEPTH * run.depth)` to come pre-forged) and
-`forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
-pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
-unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).
-
-Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
-while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
-`relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).
 
 ## Armory nodes
 

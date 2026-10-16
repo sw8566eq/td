@@ -1,5 +1,8 @@
 # Visual effects, audio, assets
 
+The drain-a-per-frame-event-list idiom that keeps simulation code free of presentation, then audio
+(`SoundManager`) and sprites (`AssetManager`).
+
 ## Visual effects: the drain-a-per-frame-event-list idiom
 
 `entities/effects.py` holds small, short-lived, data-parametrized visual effects -- `FloatingText` (a
@@ -18,12 +21,14 @@ being silently dropped. Adding a new transient visual effect anywhere in this co
 following this same three-step shape: a class in `entities/effects.py`, a per-frame event list on whatever
 produces the event, and one drain site in `Game.update()` -- never a new effect spawned directly
 from inside `Enemy`/`Projectile`/`Tower`, which would couple simulation logic to rendering. The
-idiom generalizes past rendering too: `SiphonTower.pending_siphon_gold` (see that tower's own
-section above) is the same three-step shape applied to a real gameplay value instead of a visual
+idiom generalizes past rendering too: `SiphonTower.pending_siphon_gold` (see [towers.md](towers.md)
+"Siphon Tower's damage-to-gold mechanic") is the same three-step shape applied to a real gameplay value instead of a visual
 one -- a per-tower accumulator populated with zero knowledge of `Economy`, drained by `Game.update()`
 into `self.economy.add_gold()` every frame.
 
 ## Audio
+
+### `SoundManager`: logical names, files or synthesis
 
 `presentation/audio.py` mirrors `presentation/assets.py` closely (read that module's own docstring first): every sound is
 referenced elsewhere by a logical name (`"tower_placed"`, `"enemy_killed"`, ...), never a file
@@ -53,6 +58,8 @@ times over, with no use for a warm cache; folding preloading into construction i
 every one of those pay the full ~100ms manifest-wide synthesis cost too, for no benefit any of them
 can use -- measured to nearly triple the whole test suite's wall time for exactly that reason.
 
+### Mixer format, missing devices and channel count
+
 Unlike a placeholder `Surface`, a synthesized sound's raw bytes are coupled to the mixer's *actual*
 initialized sample format -- `pygame.mixer.get_init()`'s own return (frequency/size/channels), not
 necessarily what `Game.__init__` requested it with -- so `SoundManager` reads that back once at
@@ -72,6 +79,8 @@ firing, several projectiles resolving, and an enemy dying all in the same frame,
 simply drops a cue rather than stealing a channel once every one is already busy, so every
 `SoundManager` gets this fix for free regardless of construction path (`Game.__init__`, a test, ...)
 rather than needing each caller to remember the extra call.
+
+### Which events play sounds
 
 `Tower.FIRE_SOUND` (a single logical-name string, the same shape as `sprite_name`, not a registry
 like `EXTRA_STATS`/`SPECIALIZATIONS`, since a tower only ever has one fire cue) names which cue a
@@ -109,6 +118,8 @@ bug. Every failure path (an unaffordable purchase, an unbuildable placement, ...
 silent as it already was -- no new "denied" sound anywhere, mirroring each of those methods'
 existing silent-no-op precedent.
 
+### Sound settings
+
 `GameState.SETTINGS`'s "Sound: On/Off" row is `self.sound_enabled`, persisted via
 `persistence/player_settings.py` exactly like `fullscreen` (`Game.set_sound_enabled()` mirrors
 `set_fullscreen()`'s own shape: mutate, apply -- `self.audio.set_enabled()` -- save). A "Volume: N%"
@@ -124,7 +135,7 @@ Every sprite is referenced elsewhere by a logical name (`"tower_basic"`, `"enemy
 never a file path. `AssetManager` (`presentation/assets.py`) looks the name up in `SPRITE_MANIFEST` for a
 relative path + fallback color/shape; if the file exists under `asset_root` (default
 `DEFAULT_ASSET_ROOT`, an `assets/` folder resolved relative to `presentation/assets.py`'s own location, not the
-process's current working directory -- see "Release binary" below for why that distinction matters
+process's current working directory -- see [release.md](release.md) "Why `--onedir`, never `--onefile`" for why that distinction matters
 for a packaged build) it loads and scales that, otherwise it synthesizes a placeholder (rounded
 rect / circle with an outline at normal sizes, a plain flat fill below ~12px so tiny sprites like
 the map's subtile mosaic don't collapse into a dot). Dropping in real art is a files-only change --

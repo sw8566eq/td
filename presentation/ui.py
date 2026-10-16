@@ -2017,8 +2017,8 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 
 # Single source of truth for every letter GameState.MENU routes to
 # something other than the default "start playing" catch-all -- paired
-# with its on-screen hint label, in the same order the README/CLAUDE.md
-# list them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
+# with its on-screen hint label, in the same order the README
+# lists them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
 # branch checks membership in MENU_KEY_LETTERS (derived below) before
 # dispatching a letter to its own behavior, so a key can never end up
 # routable there without also appearing in menu_options()'s hint list --
@@ -2281,7 +2281,7 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
 # captured as that action's new binding (see input_handler.py's own
 # _handle_keybinds_keydown for the capture/cancel/reject logic -- this
 # module only ever draws whatever Game already resolved, same "renderer
-# reads state, never decides" boundary CLAUDE.md's architecture section
+# reads state, never decides" boundary docs/agents/core-game.md
 # draws everywhere else). KEYBIND_ROW_WIDTH is wider than Settings' own
 # SETTINGS_BUTTON_WIDTH since a row's label ("Editor Undo: Ctrl+Z") runs
 # longer than any Settings option's own.

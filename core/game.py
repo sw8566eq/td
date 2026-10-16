@@ -152,7 +152,7 @@ class GameState(Enum):
     # screen alongside it) used to be a single free pick from exactly one
     # card type, entered automatically after every floor clear. It's now a
     # priced, multi-purchase Shop offering both tower and relic cards
-    # together (see shop.py/CLAUDE.md's "Two currencies" section), only
+    # together (see shop.py and docs/agents/economy-shop.md "Two currencies"), only
     # entered when the player picks a Shop node on the map (see Game.
     # _enter_shop_node) -- but renaming this whole family of identifiers
     # would touch this module, ui.py, and every test that exercises the
@@ -862,7 +862,7 @@ class Game:
         via _load_level_object's own construction (relic-adjustable via
         starting_gold_multiplier the same as any other floor), same as if
         this were the very first floor of the run every time; see
-        CLAUDE.md's "Two currencies" section for why. The map's boss node
+        docs/agents/economy-shop.md "Two currencies" for why. The map's boss node
         (the only node in its final row) always loads endless=True (see
         WaveManager's own endless tail) -- a run only ever ends by
         permadeath, never by "finishing" the boss floor; see update()'s
@@ -1021,7 +1021,7 @@ class Game:
         first time this run (see update()'s own before/after check on
         WaveManager.authored_waves_cleared) -- the run keeps going
         (endless=True, so the fight continues; there is no "you won the
-        run" screen, see CLAUDE.md's run-loop section), but this is still a
+        run" screen, see docs/agents/run-loop.md), but this is still a
         real, one-time-per-run moment worth recording and celebrating.
         Guarded on RunState.boss_defeated (a one-shot-per-run flag, same
         shape as used_guardians_reprieve) rather than firing every time
@@ -1958,7 +1958,7 @@ class Game:
             # player a standalone, run-less level whose win still records
             # level progress/achievements/meta-progression -- exactly what
             # Practice mode's "standalone play earns nothing" rule exists
-            # to prevent (see CLAUDE.md's Practice mode section).
+            # to prevent (see docs/agents/waves-difficulty.md on Practice mode).
             sandbox = self.sandbox or self.active_run is not None
             if self.current_level_id is None:
                 # custom level: nothing in LEVELS to re-look-up

@@ -1,11 +1,11 @@
 """Game's achievement/meta-progression/toast-recording methods, extracted
 into their own module -- the third slice of game.py's own god-object
 decomposition (see renderer.py/input_handler.py for the first two, and
-CLAUDE.md's own note on the shape this pattern follows).
+docs/agents/core-game.md's note on the shape this pattern follows).
 
 Unlike input_handler.py's own extraction, which orphaned 3 delegators
 because every caller of a moved method had itself also moved (see
-CLAUDE.md's own documented gotcha), this slice's real callers --
+docs/agents/core-game.md's documented gotcha), this slice's real callers --
 Game.try_place_tower/try_upgrade_tower/try_specialize_tower, update()'s own
 kill/wave/level-clear hooks, _advance_run_floor, _record_run_permadeath,
 _handle_boss_defeated -- all stay on Game. So Game keeps a one-line

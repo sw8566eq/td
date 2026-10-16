@@ -1,6 +1,6 @@
 """Persisted, player-rebindable key bindings -- but only for a curated
 subset of actions, not every hardcoded pygame.K_* check in
-input_handler.py. See CLAUDE.md's "Key bindings are curated, not
+input_handler.py. See docs/agents/ui-input.md "Key remapping is curated, not
 repo-wide" for the actual reasoning; the short version: several keys
 (Escape, and the state-dependent meaning of R/P/S) already carry
 different logical roles depending on game state, and untangling every one

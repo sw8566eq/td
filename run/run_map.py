@@ -1,6 +1,6 @@
 """A roguelike run's branching map: a row-based DAG of nodes (Combat/Elite/
 Shop/Event/Rest/Treasure), generated once per run and shown to the player in
-full from the start -- see CLAUDE.md's run-loop section. Replaces the old
+full from the start -- see docs/agents/run-map.md. Replaces the old
 run_floors.py's flat, ascending floor_sequence: instead of one fixed path
 through LEVELS, a run now picks its own route through a graph of choices,
 converging on a single boss node at the top.
@@ -94,7 +94,7 @@ MAX_SAME_TYPE_PER_ROW_FRACTION = 0.5
 MIN_ELITE_ROW = 3
 # This row always has at least one Rest node, forced onto it after the
 # weighted draw if it didn't produce one on its own -- unlike Shop (left
-# purely to chance, a deliberate design choice, see CLAUDE.md), a run should
+# purely to chance, a deliberate design choice, see docs/agents/run-map.md), a run should
 # never be able to go the *entire* back half with zero chances to recover
 # lost lives.
 GUARANTEED_REST_ROW = ROW_COUNT - 2

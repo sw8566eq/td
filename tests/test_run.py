@@ -111,7 +111,7 @@ def _enter_run_shop(game, seed=1, **run_overrides):
     """Navigate `game` to a Shop screen via a controlled, guaranteed-shop
     map (row 0 combat -> row 1 shop -> row 2 boss combat) -- a real seeded
     map doesn't guarantee a Shop node is reachable at any particular row
-    (see CLAUDE.md's "Shop cadence" design note), so tests exercising the
+    (see docs/agents/run-map.md "The run's branching map"), so tests exercising the
     shop screen's own mechanics use this fixed layout instead of hunting
     for a seed that happens to produce one. `**run_overrides` passes
     straight through to _begin_run_with_map (e.g. relics=[...]) for tests
@@ -183,7 +183,7 @@ def test_clicking_off_any_node_does_nothing(game):
 
 def test_start_new_run_captures_its_first_floors_starting_lives(game):
     # No equivalent gold assertion -- battle gold is never captured onto
-    # RunState at all any more (see CLAUDE.md's "Two currencies" section).
+    # RunState at all any more (see docs/agents/economy-shop.md "Two currencies").
     start_first_floor(game, seed=1)
 
     assert game.active_run.lives == game.economy.lives
@@ -279,8 +279,8 @@ def test_first_placement_hint_is_not_shown_once_a_tower_has_ever_been_placed(gam
 
 
 def test_first_placement_hint_is_not_shown_in_sandbox_practice_play(game):
-    # Practice always loads sandbox=True (see CLAUDE.md's own "Practice
-    # mode" section) -- a standalone level was never part of a real run,
+    # Practice always loads sandbox=True (see docs/agents/waves-difficulty.md on Practice
+    # mode) -- a standalone level was never part of a real run,
     # so it shouldn't gate or satisfy this hint either way.
     game.load_level(1, sandbox=True)
     assert game._show_first_placement_hint is False
@@ -406,8 +406,8 @@ def test_floor_clear_enters_floor_cleared_and_captures_lives_and_shop_currency(g
     # Distinct from whatever this floor's own authored starting_lives
     # happens to be -- proves this came from the run, not from
     # _load_level_object's usual per-level defaults. Battle gold is
-    # deliberately NOT carried the same way (see CLAUDE.md's "Two
-    # currencies" section) -- instead it converts into shop currency (see
+    # deliberately NOT carried the same way (see docs/agents/economy-shop.md "Two
+    # currencies") -- instead it converts into shop currency (see
     # shop.income_for_floor), asserted below via that exact formula rather
     # than a hardcoded number, so this test doesn't silently drift from
     # shop.py's own tuning.
@@ -712,8 +712,8 @@ def test_restarting_mid_run_reloads_the_current_floor_without_discarding_the_run
 def test_restarting_mid_run_restores_the_floors_own_starting_gold_and_lives(playing_game):
     # A restart discards whatever was spent/earned since this floor began,
     # same as any other "Restart Level" -- reloading a floor recomputes its
-    # own starting gold fresh every time now (see CLAUDE.md's "Two
-    # currencies" section: battle gold never carries between floor loads at
+    # own starting gold fresh every time now (see docs/agents/economy-shop.md "Two
+    # currencies": battle gold never carries between floor loads at
     # all any more), and restores lives from the run's own carried-forward
     # value, not the level's raw starting_lives a classic reload would use.
     run = _begin_run_with_map(playing_game, ["combat", "combat"])
@@ -2887,8 +2887,8 @@ def test_resuming_a_saved_run_restores_active_run(game):
     game.active_run.unlocked_towers.append("sniper")  # a drafted card, carried across floors
     game.active_run.shop_currency = 42  # a run-level field, distinct from economy.gold below
     # economy.gold is never re-synced onto RunState at all now -- battle
-    # gold doesn't carry between floors any more (see CLAUDE.md's "Two
-    # currencies" section) -- so a save taken mid-floor genuinely captures
+    # gold doesn't carry between floors any more (see docs/agents/economy-shop.md "Two
+    # currencies") -- so a save taken mid-floor genuinely captures
     # numbers from two unrelated places here: economy.gold (gold_before_
     # spend + 200 after this) is what a resume should restore live play
     # to; active_run.shop_currency (42) is this run's own separately-
@@ -3306,7 +3306,7 @@ def test_render_map_with_nothing_left_to_pick_does_not_crash(game):
     # Defensive-only branch: normal play never actually returns to the map
     # screen sitting on a node with no outgoing edges (only the final,
     # always-endless boss node has none, and _advance_run_floor never
-    # fires for an endless floor -- see CLAUDE.md's "A run ends only by
+    # fires for an endless floor -- see docs/agents/run-loop.md "A run ends only by
     # permadeath"), but ui.draw_map_screen's own "nothing left to pick"
     # hint text still deserves real coverage, not just an inline default.
     _begin_run_with_map(game, ["combat", "boss"], current_node_id="1-0")

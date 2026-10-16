@@ -1,5 +1,7 @@
 # Release binary
 
+How `.github/workflows/release.yml` builds the Linux binary, and why it must be `--onedir`.
+
 ## Release binary
 
 `.github/workflows/release.yml` builds a standalone Linux binary with PyInstaller and publishes it
@@ -9,10 +11,12 @@ setup command that covers running, testing, *and* packaging the game. Linux only
 this project has never had a Windows/macOS build, and nothing about the packaging step below has
 been verified on either.
 
+## Why `--onedir`, never `--onefile`
+
 It's `--onedir`, never `--onefile`, and that's load-bearing rather than a style preference:
 `--onefile` re-extracts every bundled file into a *fresh* temp directory on every single launch and
 deletes it again on exit. `progression/progress.py`/`progression/achievements.py`/`persistence/player_settings.py`/`persistence/save_state.py` (see
-"Small on-disk JSON state files" above) all resolve their JSON file's path relative to their own
+[persistence.md](persistence.md) "Small on-disk JSON state files") all resolve their JSON file's path relative to their own
 module's `__file__` -- under `--onefile` that's a different, vanishing directory every run, so none
 of progress/achievements/settings/a saved run would actually survive being closed and reopened,
 even though every one of those features works perfectly when run from source. `--onedir` keeps that
@@ -31,14 +35,17 @@ under PyInstaller's `--onedir`, that resolves to the bundled `assets/` folder si
 the module itself regardless of launch directory, which is also why the release build step passes
 `--add-data "assets:assets"` to put it there in the first place.
 
+## The release gate
+
 The workflow runs the exact same 3-step gate `tests.yml` runs on every push/PR (`ruff check .`, the
 strict-mode `mypy` module list, `pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98`)
 before building, not just a bare `pytest -q` -- a tag push used to skip straight to the test suite
 with no lint/type/coverage-floor check of its own, so a release build's only quality gate was
 whatever `tests.yml` happened to already run on that commit, never structurally guaranteed (nothing
 stops tagging an arbitrary/local commit that skipped it). This makes the mypy module list a 4th
-copy across the repo (`pyproject.toml`'s override list, this file's Commands block, `tests.yml`,
-and now `release.yml`) -- the same manual-sync tradeoff already accepted above, not a new one. Once
+copy across the repo (`pyproject.toml`'s override list, AGENTS.md's Commands block, `tests.yml`,
+and now `release.yml`) -- the same manual-sync tradeoff [tooling.md](tooling.md) "Extending the strict
+list" already accepts, now checked by `tests/test_agent_docs.py`. Once
 the gate passes, the workflow tars up `dist/td` (a directory, not a single file -- `--onedir`'s
 whole point) and attaches it to the release via `gh release create`, using the pushed tag itself as
 both the release name and the archive's version suffix.
