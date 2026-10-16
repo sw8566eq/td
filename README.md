@@ -559,6 +559,12 @@ nothing.
 "Sound" above), and **Difficulty** (Easy/Normal/Hard, see above) -- all three take effect and save to
 disk immediately, so they're still set the same way the next time you launch the game.
 
+**Field Notes** are short hints shown once the first time you meet a system: a new node type on
+the map, the reward screen, a potion or module, a resonance, a flyer or burrower, low lives, and so
+on. They appear one at a time in a corner panel. Click one to dismiss it, or let it fade after 10
+seconds. **Hints: On/Off** in Settings turns them off, and **Reset Hints** shows them all again. The
+hints you've already seen are kept in `hints.json` next to the game's other local files.
+
 ## Post-level results
 
 The Floor Cleared, Victory, and Game Over screens all show a compact table of every tower you built

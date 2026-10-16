@@ -37,7 +37,7 @@ from world.levels import Level
 def make_game(tmp_path, prefix="", **kwargs):
     """Construct a real Game() with every injectable path pinned under
     `tmp_path` -- progress/settings/achievements/save/meta_progression/
-    run_history/keybindings, all seven, always together. Game writes real
+    run_history/keybindings/hints, all eight, always together. Game writes real
     progress on any non-sandbox level/floor clear (see progress.py), real
     settings on set_fullscreen()/set_difficulty() (see player_settings.py),
     real achievement counters on nearly every tower/kill/wave/level event
@@ -46,7 +46,8 @@ def make_game(tmp_path, prefix="", **kwargs):
     roguelike-run event (see meta_progression.py), a real run outcome on
     a run's game-over, Daily Run included (see run_history.py), and a real
     rebound keybinding on rebind_action()/reset_keybindings() (see
-    keybindings.py) -- missing even one of the seven here silently falls
+    keybindings.py), and the Field Notes hints seen so far (see
+    hints.py) -- missing even one of the eight here silently falls
     back to that module's real repo-root file, which is exactly the bug
     this factory exists to make impossible to write by hand. `prefix`
     distinguishes two instances sharing one `tmp_path` (e.g.
@@ -62,6 +63,7 @@ def make_game(tmp_path, prefix="", **kwargs):
         meta_progression_path=tmp_path / f"{prefix}meta_progression.json",
         run_history_path=tmp_path / f"{prefix}run_history.json",
         keybindings_path=tmp_path / f"{prefix}keybindings.json",
+        hints_path=tmp_path / f"{prefix}hints.json",
         **kwargs,
     )
 

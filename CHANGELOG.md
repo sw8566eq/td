@@ -8,6 +8,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Field Notes**: short one-time hints the first time you meet a system -- each map node type, the
+  reward screen, potions and modules, resonances, veterancy, Barricades and Harpoons, flyers/shields/
+  burrowers/sappers, calling waves early, moving towers, low lives, curses, trophy relics, the Gauntlet.
+  One at a time in a corner panel; click to dismiss, or it fades after 10 seconds. Settings has
+  **Hints: On/Off** and **Reset Hints**. Seen hints are kept in a new local `hints.json`.
 - A seventh Commander, **The Skywatch** (Basic, Harpoon, Cannon; Harpoon starts forged; Barbed
   Tethers), unlocked after 25 floors cleared. Commander cards fit seven to a row.
 - **High ground**: raised tiles on eleven of the built-in maps (and paintable in the map editor with
