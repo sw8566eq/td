@@ -39,8 +39,9 @@ one sets your three starter towers and a signature starting relic: **The Warden*
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
 **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades), **The
-Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) and **The Trapmaster**
-(Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) unlock as you play.
+Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder), **The Trapmaster**
+(Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) and **The Skywatch**
+(Basic, Harpoon, Cannon; Harpoon starts forged, grounded flyers stay down longer) unlock as you play.
 The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
 one curse, and one module fitted to a starter tower, the same for everyone.
 
