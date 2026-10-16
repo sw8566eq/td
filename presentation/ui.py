@@ -246,13 +246,23 @@ def build_specialize_button_rects():
     return _action_button_rect(top_a), _action_button_rect(top_b)
 
 
+def build_move_button_rect():
+    """Rect for the stats panel's Move button -- the right half of the Sell
+    row (see build_sell_button_rect, the left half)."""
+    sell = build_sell_button_rect()
+    return pygame.Rect(sell.right + ACTION_BUTTON_GAP, sell.top,
+                       ACTION_BUTTON_WIDTH - sell.width - ACTION_BUTTON_GAP, ACTION_BUTTON_HEIGHT)
+
+
 def build_sell_button_rect():
     """Rect for the stats panel's 'Sell' button -- fixed position within
     the panel (see SELL_BUTTON_TOP), horizontally centered, so it stays
     put regardless of which tower's stats are currently shown above it.
     Only meaningful (and only drawn/clickable) while the panel's subject
     is a placed tower -- see draw_tower_stats_panel and Game._handle_click."""
-    return _action_button_rect(SELL_BUTTON_TOP)
+    full = _action_button_rect(SELL_BUTTON_TOP)
+    full.width = (ACTION_BUTTON_WIDTH - ACTION_BUTTON_GAP) // 2  # Move takes the right half
+    return full
 
 
 def _format_currency(value, unlimited):
@@ -561,7 +571,7 @@ def draw_tower_range_preview(surface, tower):
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
                             upgrade_button_rect, specialize_button_rects, sell_button_rect,
                             hovered_specialize_key=None, veterancy_line=None, module_line=None,
-                            resonance_line=None):
+                            resonance_line=None, move_button_rect=None, move_label=None, move_enabled=False):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -606,7 +616,8 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
         if tower_cls.ATTACKS and not tower_cls.IS_SUPPORT:
             _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
         _draw_panel_action_buttons(surface, small_font, subject, economy,
-                                    upgrade_button_rect, specialize_button_rects, sell_button_rect)
+                                    upgrade_button_rect, specialize_button_rects, sell_button_rect,
+                                    move_button_rect, move_label, move_enabled)
 
 
 def _draw_targeting_row(surface, small_font, subject, targeting_button_rect):
@@ -1943,7 +1954,8 @@ def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_cou
 
 
 def _draw_panel_action_buttons(surface, small_font, subject, economy,
-                                upgrade_button_rect, specialize_button_rects, sell_button_rect):
+                                upgrade_button_rect, specialize_button_rects, sell_button_rect,
+                                move_button_rect=None, move_label=None, move_enabled=False):
     """Upgrade (below MAX_LEVEL) or two Specialize choices (at MAX_LEVEL,
     unspecialized) -- never both, see ACTION_AREA_TOP -- plus Sell,
     always. `subject` is assumed to be a placed Tower instance."""
@@ -1961,7 +1973,9 @@ def _draw_panel_action_buttons(surface, small_font, subject, economy,
         for rect, (key, spec) in zip(specialize_button_rects, subject.SPECIALIZATIONS.items()):
             action_button(rect, f"{spec['display_name']} ({cost}g)", economy.can_afford(cost))
 
-    action_button(sell_button_rect, f"Sell (+{subject.sell_value()}g)", True)
+    action_button(sell_button_rect, f"Sell +{subject.sell_value()}g", True)
+    if move_button_rect is not None and move_label is not None:
+        action_button(move_button_rect, move_label, move_enabled)
 
 
 _dim_overlay_cache = {}

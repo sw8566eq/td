@@ -347,6 +347,9 @@ class Renderer:
             veterancy_line=self._veterancy_line(panel_subject),
             module_line=self._module_line(panel_subject),
             resonance_line=ui.resonance_line(panel_subject),
+            move_button_rect=game.move_button_rect,
+            move_label=self._move_label(panel_subject),
+            move_enabled=self._move_enabled(panel_subject),
         )
         if game.active_run is not None:
             ui.draw_potion_belt(
@@ -469,8 +472,45 @@ class Renderer:
                 game.screen.blit(backing, plate)
             toast.draw(game.screen, game.small_font)
 
+    def _move_label(self, subject):
+        """The panel's Move button text for a placed tower: its fee, "free"
+        before the first wave, "Cancel" while it's the one being moved."""
+        game = self.game
+        if subject not in game.towers:
+            return None
+        if game.moving_tower is subject:
+            return "Cancel"
+        fee = game.move_fee(subject)
+        return f"Move {fee}g" if fee else "Move free"
+
+    def _move_enabled(self, subject):
+        game = self.game
+        if subject not in game.towers:
+            return False
+        if game.moving_tower is subject:
+            return True
+        return game.can_move_towers() and game.economy.can_afford(game.move_fee(subject))
+
+    def _render_move_preview(self):
+        """Footprint and range ring where the tower being moved would land."""
+        game = self.game
+        tower = game.moving_tower
+        mouse_pos = pygame.mouse.get_pos()
+        if mouse_pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT or mouse_pos[0] >= settings.PLAY_WIDTH:
+            return
+        anchor_col, anchor_row = game.placement_anchor_at(*mouse_pos, type(tower))
+        buildable = game._is_buildable_for_move(tower, anchor_col, anchor_row)
+        ui.draw_footprint_preview(game.screen, game.grid, anchor_col, anchor_row, buildable,
+                                  footprint_subtiles=tower.footprint_subtiles)
+        preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row,
+                                                       footprint_subtiles=tower.footprint_subtiles)
+        ui.draw_range_preview(game.screen, type(tower), preview_pos, tower.effective_range(), tower.MIN_RANGE)
+
     def _render_placement_preview(self):
         game = self.game
+        if game.moving_tower is not None:
+            self._render_move_preview()
+            return
         if game.selected_tower_name is None:
             return
         mouse_pos = pygame.mouse.get_pos()

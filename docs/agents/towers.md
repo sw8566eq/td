@@ -213,6 +213,22 @@ attack stats/Targeting row and keeps it out of damage-module offers. `ui.build_b
 two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row. Current
 sizes: 40px buttons with 6px gaps, 9 per row (`ui.BUTTON_SIZE`/`BUTTON_MARGIN`/`BUTTONS_PER_ROW`).
 
+## Relocating a tower
+
+`Game.try_move_tower(tower, anchor_col, anchor_row)` moves a placed tower in place (same object, so
+level, specialization, targeting, veterancy and lifetime stats all survive). It is allowed only
+between waves (`Game.can_move_towers()`, the same gate as `can_save_run()`), costs `Game.move_fee()`
+(free in `AWAITING_START`, else `settings.MOVE_FEE_FRACTION` of `total_invested`, min 1, spent via
+`_spend_gold`), and re-runs `_recompute_tower_density_bonuses()` so density, placement relics and
+resonances follow the new spot. `_is_buildable_for_move` lifts the tower off the grid for the check, so
+a nudge overlapping its own old footprint is legal; a path trap still needs path tiles.
+
+The panel's Sell row is split: Sell on the left half (`ui.build_sell_button_rect`), Move on the right
+(`ui.build_move_button_rect`). Move sets `Game.moving_tower`; the next board click in
+`InputHandler._handle_click` tries the move, and right-click, Move again, picking a build button,
+selling it, or a wave starting (checked at the top of `Game.update`) clears it. `Renderer.
+_render_move_preview` replaces the placement preview while moving.
+
 ## Resonances
 
 `entities/tower.py`'s `RESONANCES` registry: `Resonance(display_name, tower, partner, description,

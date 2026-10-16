@@ -257,7 +257,10 @@ build-menu type, or click empty ground with nothing selected. The pinned/hovered
 actually shoots at), **Upgrade** and **Sell** buttons (in addition to the small "+cost" badge in the
 tower's tile corner, which still works too), and at max level, Upgrade is replaced by two
 **Specialize** buttons -- see "Tower levels & specialization" below. Selling refunds a fraction of
-everything spent on that tower and frees its space immediately.
+everything spent on that tower and frees its space immediately. **Move** (next to Sell) picks a placed
+tower up so the next click puts it down somewhere else, keeping its level, specialization and
+experience: free before a floor's first wave, 15% of what you've spent on it between waves, and never
+mid-wave. Right-click (or Move again) cancels.
 
 The HUD's top strip shows a countdown to the next wave and a button that reads "Start" before the
 first wave -- it waits for you rather than auto-starting, so you get a beat to place towers first --

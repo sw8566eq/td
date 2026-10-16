@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Move towers**: a Move button next to Sell relocates a placed tower, keeping its level and
+  experience -- free before a floor's first wave, 15% of its cost between waves, never mid-wave.
 - **Early-call bonus**: skipping a between-wave countdown pays 3 battle gold per second skipped (the
   HUD shows the amount next to the Skip button).
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.

@@ -485,6 +485,9 @@ class Game:
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
         self.sell_button_rect = ui.build_sell_button_rect()
+        self.move_button_rect = ui.build_move_button_rect()
+        # The placed tower being relocated (Game.try_move_tower), or None.
+        self.moving_tower = None
 
         # The editor instance persists for the whole session (not just
         # while GameState.EDITOR/WAVE_EDITOR is active) so leaving it to
@@ -1865,6 +1868,7 @@ class Game:
         self.overclock_timer = 0.0
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
+        self.moving_tower = None
         # Whatever the stats panel showed as of the last render() -- see
         # _handle_panel_action_click for why clicks must use this instead
         # of re-deriving the subject from the click-time mouse position.
@@ -2955,6 +2959,65 @@ class Game:
         self.audio.play("tower_upgraded")
         return True
 
+    def can_move_towers(self):
+        """Towers can only be relocated between waves, never mid-wave."""
+        return self.wave_manager.state in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES)
+
+    def move_fee(self, tower):
+        """Gold to relocate `tower`: free before the floor's first wave (still
+        planning the layout), else settings.MOVE_FEE_FRACTION of what it cost."""
+        if self.wave_manager.state == WaveState.AWAITING_START:
+            return 0
+        return max(1, int(tower.total_invested * settings.MOVE_FEE_FRACTION))
+
+    def begin_moving_tower(self, tower):
+        """Pick `tower` up to relocate it (the panel's Move button). The next
+        click on the board tries to put it down; right-click cancels."""
+        if tower not in self.towers or not self.can_move_towers():
+            return False
+        if not self.economy.can_afford(self.move_fee(tower)):
+            return False
+        self.moving_tower = tower
+        self.selected_tower_name = None
+        return True
+
+    def _is_buildable_for_move(self, tower, anchor_col, anchor_row):
+        """Whether `tower` could stand at the new anchor, ignoring the space
+        it occupies itself (so a short nudge that overlaps its old footprint
+        is allowed)."""
+        self.grid.remove(tower.anchor_col, tower.anchor_row)
+        try:
+            return self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=tower.footprint_subtiles,
+                                          on_path=tower.PLACEMENT == "path")
+        finally:
+            self.grid.occupy(tower.anchor_col, tower.anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
+
+    def try_move_tower(self, tower, anchor_col, anchor_row):
+        """Relocate a placed tower, keeping its level, specialization,
+        targeting, veterancy and lifetime stats. Between waves only; costs
+        move_fee(). Neighbor-dependent bonuses (density, placement relics,
+        resonances) are recomputed for the whole board afterward."""
+        if tower not in self.towers or not self.can_move_towers():
+            return False
+        if (anchor_col, anchor_row) == (tower.anchor_col, tower.anchor_row):
+            return False
+        if not self._is_buildable_for_move(tower, anchor_col, anchor_row):
+            return False
+        fee = self.move_fee(tower)
+        if not self.economy.can_afford(fee):
+            return False
+        if fee:
+            self._spend_gold(fee)
+        self.grid.remove(tower.anchor_col, tower.anchor_row)
+        tower.anchor_col, tower.anchor_row = anchor_col, anchor_row
+        tower.pos = pygame.Vector2(self.grid.anchor_to_pixel_center(
+            anchor_col, anchor_row, footprint_subtiles=tower.footprint_subtiles))
+        self.grid.occupy(anchor_col, anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
+        self._recompute_tower_density_bonuses()
+        self.moving_tower = None
+        self.audio.play("tower_placed")
+        return True
+
     def try_sell_tower(self, tower):
         if tower not in self.towers:
             return False
@@ -2966,6 +3029,8 @@ class Game:
         self._recompute_tower_density_bonuses()  # a removed neighbor may affect others' counts too
         if self.selected_tower is tower:
             self.selected_tower = None
+        if self.moving_tower is tower:
+            self.moving_tower = None
         self.audio.play("tower_sold")
         return True
 
@@ -3058,6 +3123,9 @@ class Game:
         # Real wall-clock dt still drives self.clock.tick(FPS) in run(), so
         # frame pacing/FPS is unaffected -- only simulated time speeds up.
         dt = dt * self.time_scale
+
+        if self.moving_tower is not None and not self.can_move_towers():
+            self.moving_tower = None  # the next wave started mid-move
 
         self._hold_enemies_at_barricades(dt)
         self._update_ground_fires(dt)

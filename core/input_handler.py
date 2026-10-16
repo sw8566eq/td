@@ -411,6 +411,7 @@ class InputHandler:
             return
         game.selected_tower_name = None
         game.selected_tower = None
+        game.moving_tower = None
 
     def _handle_editor_undo_redo_keydown(self, key):
         """Ctrl+Z/Ctrl+Y by default (rebindable -- see keybindings.
@@ -775,6 +776,7 @@ class InputHandler:
         if clicked_button is not None:
             game.selected_tower_name = None if clicked_button == game.selected_tower_name else clicked_button
             game.selected_tower = None  # switching to build mode drops any pinned placed-tower panel
+            game.moving_tower = None
             return
 
         if game.skip_button_rect.collidepoint(pos):
@@ -804,6 +806,12 @@ class InputHandler:
 
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return  # click landed in the HUD area but not on a button
+
+        if game.moving_tower is not None:
+            tower = game.moving_tower
+            anchor_col, anchor_row = game.placement_anchor_at(*pos, type(tower))
+            game.try_move_tower(tower, anchor_col, anchor_row)
+            return
 
         for tower in game.towers:
             if tower.contains_upgrade_badge(pos):
@@ -874,6 +882,14 @@ class InputHandler:
         if game.sell_button_rect.collidepoint(pos):
             if is_tower:
                 game.try_sell_tower(subject)
+            return True
+
+        if game.move_button_rect.collidepoint(pos):
+            if is_tower:
+                if game.moving_tower is subject:
+                    game.moving_tower = None  # clicking Move again puts it back down where it was
+                else:
+                    game.begin_moving_tower(subject)
             return True
 
         return False
