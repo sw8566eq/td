@@ -360,7 +360,7 @@ def _place(game, name):
     game.selected_tower_name = name
     if TOWER_TYPES[name].PLACEMENT == "path":
         n = game.grid.subtiles_per_tile
-        col, row = sorted(set(game.level.path_cells) - set(game.level.spawn_cells) - set(game.level.goal_cells))[0]
+        col, row = min(set(game.level.path_cells) - set(game.level.spawn_cells) - set(game.level.goal_cells))
         assert game.try_place_tower(col * n, row * n)
     else:
         assert game.try_place_tower(*find_buildable_anchor(game))
