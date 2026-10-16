@@ -158,12 +158,20 @@ class WaveManager:
         """Let the player start the first wave early (from
         AWAITING_START) or skip the between-waves countdown early (from
         BETWEEN_WAVES) -- both just zero out the countdown and let the
-        normal update() flow begin the wave on the next tick."""
+        normal update() flow begin the wave on the next tick.
+
+        Returns the seconds of a real between-waves countdown that were
+        skipped (0.0 for wave 1's AWAITING_START, which has no countdown),
+        so Game can pay its early-call bonus -- WaveManager itself never
+        touches Economy."""
         if self.state == WaveState.AWAITING_START:
             self.state = WaveState.BETWEEN_WAVES
             self.between_wave_timer = 0.0
         elif self.state == WaveState.BETWEEN_WAVES:
+            skipped = max(0.0, self.between_wave_timer)
             self.between_wave_timer = 0.0
+            return skipped
+        return 0.0
 
     def update(self, dt, active_enemies):
         """Advance timers/state. Returns a list of newly-spawned Enemy

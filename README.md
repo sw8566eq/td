@@ -261,8 +261,9 @@ everything spent on that tower and frees its space immediately.
 
 The HUD's top strip shows a countdown to the next wave and a button that reads "Start" before the
 first wave -- it waits for you rather than auto-starting, so you get a beat to place towers first --
-and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space` does the
-same thing as clicking it. The same strip also has a button that cycles the simulation speed
+and "Skip" for every wave after that, forcing the between-wave delay to end early. Skipping pays an
+**early-call bonus** of 3 battle gold per second cut from the countdown (shown next to the button,
+e.g. "skip: +12g"). `Space` does the same thing as clicking it. The same strip also has a button that cycles the simulation speed
 (`1x`/`2x`/`3x`, or press `1`/`2`/`3` directly) -- real time still drives the frame rate, only the
 simulated world speeds up -- and, during a run, a "Relics: N" button. `R` opens a read-only overlay
 of your currently-held relics (a run only); any key closes it.

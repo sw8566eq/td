@@ -688,3 +688,13 @@ def test_healer_heal_rate_multiplier_scales_a_healer_enemys_heal_rate():
     spawned = _drive_to_completion(manager)
 
     assert spawned[0].heal_rate == pytest.approx(unscaled.heal_rate * 0.7)
+
+
+def test_skip_delay_reports_the_seconds_of_countdown_it_skipped():
+    manager = WaveManager(make_level([{"grunt": 1}, {"grunt": 1}]), cell_to_pixel)
+    assert manager.skip_delay() == 0.0  # wave 1's Start: no countdown
+    manager.state = WaveState.BETWEEN_WAVES
+    manager.between_wave_timer = 3.5
+    assert manager.skip_delay() == 3.5
+    manager.state = WaveState.SPAWNING
+    assert manager.skip_delay() == 0.0

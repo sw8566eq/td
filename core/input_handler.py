@@ -252,7 +252,7 @@ class InputHandler:
             if key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
                 game.state = GameState.PAUSED
             elif keybindings.matches(game.keybindings["skip_wave"], key, mods):
-                game.wave_manager.skip_delay()
+                game.call_next_wave()
             elif keybindings.matches(game.keybindings["time_scale_1"], key, mods):
                 game.set_time_scale(1.0)
             elif keybindings.matches(game.keybindings["time_scale_2"], key, mods):
@@ -778,7 +778,7 @@ class InputHandler:
             return
 
         if game.skip_button_rect.collidepoint(pos):
-            game.wave_manager.skip_delay()
+            game.call_next_wave()
             return
 
         if game.speed_button_rect.collidepoint(pos):

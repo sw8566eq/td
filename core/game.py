@@ -1904,6 +1904,28 @@ class Game:
     def reset_keybindings(self):
         return self.settings_manager.reset_keybindings()
 
+    def call_next_wave(self):
+        """The HUD's Start/Skip button and the skip_wave key: start the next
+        wave now. Skipping part of a real between-waves countdown pays an
+        early-call bonus in battle gold (settings.EARLY_CALL_GOLD_PER_SECOND
+        per second skipped, rounded down), shown as a rising gold label over
+        the Skip button. Wave 1's "Start" pays nothing -- there's no
+        countdown to cut short."""
+        skipped = self.wave_manager.skip_delay()
+        bonus = int(skipped * settings.EARLY_CALL_GOLD_PER_SECOND)
+        if bonus <= 0:
+            return 0
+        self.economy.add_gold(bonus)
+        self.damage_numbers.append(
+            effects.FloatingText(
+                (self.skip_button_rect.centerx, self.skip_button_rect.top - 8),
+                f"+{bonus} gold",
+                lifetime=1.2,
+                color=settings.COLOR_GOLD,
+            )
+        )
+        return bonus
+
     def set_time_scale(self, scale):
         return self.settings_manager.set_time_scale(scale)
 

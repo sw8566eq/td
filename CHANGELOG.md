@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Early-call bonus**: skipping a between-wave countdown pays 3 battle gold per second skipped (the
+  HUD shows the amount next to the Skip button).
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.
 - Every tower has a one-line description, listed (with every enemy) in new Towers and Enemies sections of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.
@@ -54,9 +56,6 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   kept locking onto the enemy about to leave its range and fizzling; the bench measured ~3x the damage.
 - **Counter relics**: Seismic Sensors (Spike Traps and Tar Pits can hit Burrowers) and Booby-Trapped
   Walls (a Barricade that breaks explodes for its max hit points against nearby ground enemies).
-- **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
-  20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
-  stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).
 - **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
   20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
   stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).

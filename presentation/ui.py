@@ -493,7 +493,11 @@ def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect)
         button_label, clickable = "Start", True
     elif wave_manager.state == WaveState.BETWEEN_WAVES:
         seconds_left = max(0, math.ceil(wave_manager.between_wave_timer))
-        countdown_text = font.render(f"Next wave in {seconds_left}s", True, settings.COLOR_TEXT)
+        # Mirrors Game.call_next_wave's early-call bonus, so the reward for
+        # skipping is visible before the player commits to it.
+        bonus = int(max(0.0, wave_manager.between_wave_timer) * settings.EARLY_CALL_GOLD_PER_SECOND)
+        caption = f"Next wave in {seconds_left}s" + (f" (skip: +{bonus}g)" if bonus > 0 else "")
+        countdown_text = font.render(caption, True, settings.COLOR_TEXT)
         button_label, clickable = "Skip", True
     else:
         countdown_text = font.render("Wave in progress", True, settings.COLOR_TEXT_DIM)

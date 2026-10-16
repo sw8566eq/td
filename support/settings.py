@@ -57,6 +57,9 @@ WINDOW_TITLE = "Tower Defense"
 # --- Waves ---
 SPAWN_INTERVAL = 0.8  # seconds between individual enemy spawns within a wave
 BETWEEN_WAVE_DELAY = 5.0  # seconds of downtime before the next wave starts
+# Battle gold per second of between-waves countdown skipped by calling the
+# next wave early (Game.call_next_wave) -- up to 15 gold a wave at the default delay.
+EARLY_CALL_GOLD_PER_SECOND = 3
 
 # --- Economy ---
 # Fraction of a tower's total investment (its base cost plus any upgrades
