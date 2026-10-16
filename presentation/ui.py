@@ -1795,18 +1795,39 @@ def draw_enemy_tooltip(surface, small_font, enemy):
         y += PANEL_ROW_HEIGHT
 
 
+# The coverage overlay's ring layer and the key it was drawn for -- see
+# draw_coverage_overlay.
+_coverage_overlay_cache = {}
+
+
 def draw_coverage_overlay(surface, towers):
     """Every placed tower's real reach (and a Mortar's dead zone) as faint
-    rings, plus a link for each active resonance -- toggled with V."""
-    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    for tower in towers:
-        center = (int(tower.pos.x), int(tower.pos.y))
-        if tower.ATTACKS:
-            pygame.draw.circle(overlay, (255, 255, 255, 28), center, int(tower.effective_range()))
-            pygame.draw.circle(overlay, (255, 255, 255, 110), center, int(tower.effective_range()), width=1)
-        if tower.MIN_RANGE:
-            pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, int(tower.MIN_RANGE), width=1)
-    surface.blit(overlay, (0, 0))
+    rings, plus a link for each active resonance -- toggled with V.
+
+    The ring layer is a full-screen SRCALPHA surface, rebuilt only when
+    what it draws changes: _coverage_overlay_cache keeps the last one with
+    its key, every tower's (center, ring radius, dead-zone radius) in
+    order plus the target size. An aura, relic or placement that changes
+    any ring's integer radius changes the key, so a stale layer can't be
+    shown."""
+    rings = tuple(
+        ((int(tower.pos.x), int(tower.pos.y)),
+         int(tower.effective_range()) if tower.ATTACKS else None,
+         int(tower.MIN_RANGE) if tower.MIN_RANGE else None)
+        for tower in towers
+    )
+    key = (surface.get_size(), rings)
+    if _coverage_overlay_cache.get("key") != key:
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        for center, reach, dead_zone in rings:
+            if reach is not None:
+                pygame.draw.circle(overlay, (255, 255, 255, 28), center, reach)
+                pygame.draw.circle(overlay, (255, 255, 255, 110), center, reach, width=1)
+            if dead_zone is not None:
+                pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, dead_zone, width=1)
+        _coverage_overlay_cache["key"] = key
+        _coverage_overlay_cache["surface"] = overlay
+    surface.blit(_coverage_overlay_cache["surface"], (0, 0))
     owners = {key: tower for tower in towers for key in tower.resonance_keys}
     for key, tower in owners.items():
         partner_name = RESONANCES[key].partner

@@ -141,8 +141,28 @@ class ExpandingRing:
         # SRCALPHA surface sized just for this ring and blit that, same
         # workaround FloatingText avoids needing only because font.render()
         # already returns an alpha-capable Surface.
-        diameter = radius * 2 + self.width
+        ring_surface = _ring_surface(radius, self.width, self.color, alpha)
+        surface.blit(ring_surface, ring_surface.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+
+
+# Drawn ring surfaces, keyed by (radius, width, color, alpha) -- everything
+# _ring_surface draws from, so a hit is pixel-identical to a fresh draw.
+# Rings of one kind share a duration and frames share a dt, so the same
+# keys recur constantly. Never drawn onto after creation; cleared wholesale
+# at the limit, like _text_cache.
+_RING_CACHE_LIMIT = 2048
+_ring_cache = {}
+
+
+def _ring_surface(radius, width, color, alpha):
+    key = (radius, width, color, alpha)
+    ring_surface = _ring_cache.get(key)
+    if ring_surface is None:
+        if len(_ring_cache) >= _RING_CACHE_LIMIT:
+            _ring_cache.clear()
+        diameter = radius * 2 + width
         ring_surface = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
         center = (diameter // 2, diameter // 2)
-        pygame.draw.circle(ring_surface, (*self.color, alpha), center, radius, width=self.width)
-        surface.blit(ring_surface, ring_surface.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+        pygame.draw.circle(ring_surface, (*color, alpha), center, radius, width=width)
+        _ring_cache[key] = ring_surface
+    return ring_surface
