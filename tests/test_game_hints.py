@@ -367,3 +367,19 @@ def test_panel_draws_in_its_corner_for_every_state(game, state, placement):
         for node_rect in game.map_node_rects.values():
             assert not rect.colliderect(node_rect)
     game.render()
+
+
+def test_building_on_high_ground_shows_its_hint_once(game):
+    game.load_level(2, sandbox=True)
+    game.state = GameState.PLAYING
+    game.update(0.0)
+    drain(game)
+    n = game.grid.subtiles_per_tile
+    col, row = min(game.level.high_ground_cells)
+    game.selected_tower_name = "basic"
+    assert game.try_place_tower(col * n, row * n)
+    assert game.towers[-1].on_high_ground
+    assert "high_ground" in queued(game)
+    drain(game)
+    place(game)  # off high ground, and already seen anyway
+    assert "high_ground" not in queued(game)

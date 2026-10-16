@@ -79,6 +79,10 @@ HINTS: dict[str, Hint] = {
         "A Barricade sits on the path and holds ground enemies until they break it. "
         "Sappers and bosses batter it much faster.",
     ),
+    "high_ground": Hint(
+        "high_ground", "High ground",
+        "Raised tiles give a tower standing mostly on them +20% range. Path traps can't use them.",
+    ),
     "harpoon": Hint(
         "built_harpoon", "Harpoon",
         "Each Harpoon hit Grounds a flyer for a few seconds. While grounded, ground-only "

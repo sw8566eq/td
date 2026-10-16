@@ -2640,7 +2640,8 @@ class Game:
         # free, and a future achievement can hang off any tower's own
         # counter without ever touching this call site again.
         self._record_achievement(f"{self.selected_tower_name}_built")
-        self.hints.notify("tower_built", f"built_{self.selected_tower_name}")
+        self.hints.notify("tower_built", f"built_{self.selected_tower_name}",
+                          *(("high_ground",) if tower.on_high_ground else ()))
         self.audio.play("tower_placed")
         return True
 
