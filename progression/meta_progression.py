@@ -226,6 +226,7 @@ COMMANDER_META_UNLOCKS: dict[str, CommanderMetaUnlock] = {
     "unlock_engineer": CommanderMetaUnlock("unlock_engineer", "engineer", "bosses_defeated", 1),
     "unlock_stormcaller": CommanderMetaUnlock("unlock_stormcaller", "stormcaller", "runs_reached_endless", 1),
     "unlock_trapmaster": CommanderMetaUnlock("unlock_trapmaster", "trapmaster", "total_floors_cleared", 15),
+    "unlock_skywatch": CommanderMetaUnlock("unlock_skywatch", "skywatch", "total_floors_cleared", 25),
 }
 
 

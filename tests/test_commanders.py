@@ -140,7 +140,7 @@ def test_commander_cards_fit_on_screen():
 
     for rect in ui.build_commander_card_rects(len(commanders.COMMANDER_ORDER)):
         assert 0 <= rect.left and rect.right <= settings.SCREEN_WIDTH
-        assert rect.height in (ui.COMMANDER_CARD_HEIGHT, ui.COMMANDER_CARD_HEIGHT_NARROW)
+        assert rect.height in (ui.COMMANDER_CARD_HEIGHT, ui.COMMANDER_CARD_HEIGHT_NARROW, ui.COMMANDER_CARD_HEIGHT_SEVEN)
         assert rect.bottom < settings.SCREEN_HEIGHT - 60
 
 

@@ -64,4 +64,10 @@ COMMANDERS["trapmaster"] = Commander(
     "traps hit slowed enemies harder.",
     ("basic", "spike_trap", "tar_pit"), starting_relics=("kill_corridor",), forged_towers=("spike_trap",),
 )
+COMMANDERS["skywatch"] = Commander(
+    "skywatch", "The Skywatch",
+    "Brings the sky down to earth. Basic, Harpoon and Cannon; Harpoon starts forged, and grounded flyers "
+    "stay down longer.",
+    ("basic", "harpoon", "cannon"), starting_relics=("barbed_tethers",), forged_towers=("harpoon",),
+)
 COMMANDER_ORDER = list(COMMANDERS)

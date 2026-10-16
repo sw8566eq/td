@@ -1577,12 +1577,21 @@ def draw_armory_screen(surface, font, small_font, offers, card_rects, hovered_in
 
 COMMANDER_CARD_HEIGHT = 320  # taller than a Shop card: kit lines plus two lock lines
 COMMANDER_CARD_HEIGHT_NARROW = 400
+COMMANDER_CARD_HEIGHT_SEVEN = 440
 
 
 def build_commander_card_rects(count):
     """Same centered row as build_draft_choice_rects, just taller cards."""
     # Six or more to a row are narrow, so their text wraps longer -- give
     # them the extra height the screen has room for.
+    if count >= 7:
+        # Seven or more: shrink each card to fit the row (the Shop's own
+        # widths stop at six), and give the extra-narrow text more height.
+        gap = 10
+        width = (settings.SCREEN_WIDTH - 24 - (count - 1) * gap) // count
+        start_x = (settings.SCREEN_WIDTH - (count * width + (count - 1) * gap)) // 2
+        return [pygame.Rect(start_x + i * (width + gap), DRAFT_CARDS_TOP, width, COMMANDER_CARD_HEIGHT_SEVEN)
+                for i in range(count)]
     height = COMMANDER_CARD_HEIGHT_NARROW if count >= 6 else COMMANDER_CARD_HEIGHT
     return [pygame.Rect(rect.x, rect.y, rect.width, height) for rect in build_draft_choice_rects(count)]
 
@@ -1591,7 +1600,7 @@ COMMANDER_LOCK_TEXT = {
     "runs_played": "Finish {goal} run",
     "total_floors_cleared": "Clear {goal} floors",
     "bosses_defeated": "Defeat {goal} boss",
-    "runs_reached_endless": "Reach the last boss",
+    "runs_reached_endless": "Reach final boss",
 }
 
 
