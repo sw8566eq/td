@@ -290,6 +290,10 @@ cap are module constants in `entities/tower.py` (`VARIETY_RADIUS`, `VARIETY_BONU
 read by `Game._apply_construction_relics` at the end of `_construct_tower` (after modules): it calls
 `Tower.scale_structure_hp` (a no-op except on `BarricadeTower`), shrinks an instance's `MIN_RANGE`
 (never the class's), and boosts fire rate for a type that has a module fitted.
+`high_ground_damage_bonus` (Watchtowers) is summed into `Tower.high_ground_damage_bonus`, an additive
+`effective_damage()` source, by `Game._apply_high_ground` (not `_apply_construction_relics`, since a
+moved tower re-runs it), only for a tower that stands `on_high_ground` (see
+[grid-paths.md](grid-paths.md) "High ground"). It does nothing on a level without high ground.
 
 ## Ground fire (Incendiary Shells)
 

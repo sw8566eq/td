@@ -36,6 +36,7 @@ from run.veterancy import RANKS as VETERANCY_RANKS
 from run.veterancy import rank_for as veterancy_rank_for
 from run.veterancy import rank_name as veterancy_rank_name
 from support import settings
+from world.grid import draw_high_ground_tile
 from world.levels import LEVELS
 
 ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
@@ -1818,9 +1819,13 @@ def resonance_line(subject):
             return f"Pairs with: {', '.join(partners)}"
         helped = [TOWER_TYPES[r.tower].display_name for r in RESONANCES.values() if r.partner == name]
         return f"Boosts: {', '.join(helped)}" if helped else None
+    # A placed tower on high ground says so here too -- the Range row's
+    # bonus tag shows the +20%, this line says where it comes from.
+    high_ground = "High ground" if subject.on_high_ground else None
     if not subject.resonance_keys:
-        return None
-    return "Resonance: " + ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)
+        return f"{high_ground} (+{round(settings.HIGH_GROUND_RANGE_BONUS * 100)}% range)" if high_ground else None
+    names = ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)
+    return f"{high_ground}; {names}" if high_ground else "Resonance: " + names
 
 
 def _draw_module_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
@@ -3195,6 +3200,7 @@ EDITOR_TOOL_LABELS = {
     "line": "Line",
     "rect": "Rect",
     "select": "Select",
+    "high_ground": "High",
 }
 EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
 
@@ -3277,6 +3283,8 @@ def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None, pe
             name = "tile_path" if cell in editor.path_cells else "tile_grass"
             sprite = assets.get(name, (editor.tile_size, editor.tile_size))
             surface.blit(sprite, (col * editor.tile_size, row * editor.tile_size))
+    for col, row in editor.high_ground_cells:
+        draw_high_ground_tile(surface, col, row, editor.tile_size, editor.high_ground_cells)
 
     if pending_shape_cells:
         overlay = pygame.Surface((editor.tile_size, editor.tile_size), pygame.SRCALPHA)
@@ -3701,6 +3709,10 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
     surface.fill(settings.COLOR_THUMBNAIL_GROUND)
     cell_w = width / settings.GRID_COLS
     cell_h = height / settings.GRID_ROWS
+
+    for col, row in level.high_ground_cells:
+        cell_rect = pygame.Rect(round(col * cell_w), round(row * cell_h), math.ceil(cell_w), math.ceil(cell_h))
+        surface.fill(settings.COLOR_THUMBNAIL_HIGH_GROUND, cell_rect)
 
     for col, row in level.path_cells:
         cell_rect = pygame.Rect(round(col * cell_w), round(row * cell_h), math.ceil(cell_w), math.ceil(cell_h))

@@ -24,10 +24,35 @@ Two coordinate systems coexist:
 
 import pygame
 
+from support import settings
+
+
+def draw_high_ground_tile(surface, col, row, tile_size, high_ground_cells):
+    """Raise high-ground tile (col, row) over whatever is already drawn
+    there: a light wash, then a lit edge on each top/left side and a shadow
+    on each bottom/right side that borders lower ground -- so a block of
+    adjacent high-ground tiles reads as one plateau rather than a grid of
+    separately outlined squares. Shared by Grid's cached background and the
+    map editor's grid preview (ui._draw_editor_grid)."""
+    x0, y0 = col * tile_size, row * tile_size
+    wash = pygame.Surface((tile_size, tile_size), pygame.SRCALPHA)
+    wash.fill(settings.COLOR_HIGH_GROUND_TINT)
+    surface.blit(wash, (x0, y0))
+    x1, y1 = x0 + tile_size - 1, y0 + tile_size - 1
+    for (dc, dr), color, start, end in (
+        ((0, -1), settings.COLOR_HIGH_GROUND_EDGE, (x0, y0), (x1, y0)),
+        ((-1, 0), settings.COLOR_HIGH_GROUND_EDGE, (x0, y0), (x0, y1)),
+        ((0, 1), settings.COLOR_HIGH_GROUND_SHADOW, (x0, y1), (x1, y1)),
+        ((1, 0), settings.COLOR_HIGH_GROUND_SHADOW, (x1, y0), (x1, y1)),
+    ):
+        if (col + dc, row + dr) not in high_ground_cells:
+            pygame.draw.line(surface, color, start, end, 3)
+
 
 class Grid:
     def __init__(self, cols, rows, tile_size, path_cells, spawn_cells, goal_cells,
-                 blocked_cells=None, subtiles_per_tile=8, subtile_gap=1, subtile_gap_alpha=60):
+                 blocked_cells=None, subtiles_per_tile=8, subtile_gap=1, subtile_gap_alpha=60,
+                 high_ground_cells=None):
         # (defaults match settings.SUBTILE_GAP / SUBTILE_GAP_ALPHA)
         if tile_size % subtiles_per_tile != 0:
             raise ValueError(
@@ -52,6 +77,9 @@ class Grid:
         self.spawn_cells = tuple(spawn_cells)
         self.goal_cells = tuple(goal_cells)
         self.blocked_cells = set(blocked_cells or ())
+        # Raised tiles (Level.high_ground_cells) -- buildable as normal; see
+        # high_ground_fraction() and Game._construct_tower for the bonus.
+        self.high_ground_cells = frozenset(high_ground_cells or ())
 
         self.subtiles_per_tile = subtiles_per_tile
         self.subtile_size = subtile_size
@@ -86,6 +114,9 @@ class Grid:
 
     def is_blocked(self, col, row):
         return (col, row) in self.blocked_cells
+
+    def is_high_ground(self, col, row):
+        return (col, row) in self.high_ground_cells
 
     def tile_to_pixel_center(self, col, row):
         return pygame.Vector2(
@@ -173,6 +204,29 @@ class Grid:
                 return False
         return True
 
+    def high_ground_fraction(self, anchor_col, anchor_row, footprint_subtiles=None):
+        """The share (0.0-1.0) of the footprint anchored at (anchor_col,
+        anchor_row) whose subtiles lie on high-ground tiles -- the footprint
+        can straddle up to four coarse tiles, so this counts subtiles rather
+        than asking about one tile. 0.0 for a non-positive size."""
+        size = self.resolve_footprint_size(footprint_subtiles)
+        if size <= 0 or not self.high_ground_cells:
+            return 0.0
+        raised = sum(
+            1 for sub_col, sub_row in self._footprint_subtiles(anchor_col, anchor_row, size)
+            if self.is_high_ground(sub_col // self.subtiles_per_tile, sub_row // self.subtiles_per_tile)
+        )
+        return raised / (size * size)
+
+    def is_on_high_ground(self, anchor_col, anchor_row, footprint_subtiles=None,
+                          min_fraction=settings.HIGH_GROUND_MIN_FOOTPRINT_FRACTION):
+        """True if at least `min_fraction` of the footprint is on high
+        ground (half, by default -- see settings.HIGH_GROUND_MIN_FOOTPRINT_
+        FRACTION). The one rule both placement and the preview read."""
+        if not self.high_ground_cells:
+            return False
+        return self.high_ground_fraction(anchor_col, anchor_row, footprint_subtiles) >= min_fraction
+
     def occupy(self, anchor_col, anchor_row, tower, footprint_subtiles=None):
         size = self.resolve_footprint_size(footprint_subtiles)
         for cell in self._footprint_subtiles(anchor_col, anchor_row, size):
@@ -232,6 +286,8 @@ class Grid:
                     self._blit_solid_tile(background, assets, name, pos)
                 else:
                     self._blit_subtile_mosaic(background, assets, name, pos, gap_tint)
+                if self.is_high_ground(col, row):
+                    draw_high_ground_tile(background, col, row, self.tile_size, self.high_ground_cells)
 
         return background
 

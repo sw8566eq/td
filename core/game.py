@@ -1789,6 +1789,7 @@ class Game:
             subtiles_per_tile=settings.SUBTILES_PER_TILE,
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
+            high_ground_cells=level.high_ground_cells,
         )
         # escalation/relic_modifiers both default to a no-op (safe as literal
         # defaults -- both are frozen/immutable) unless a caller passes a
@@ -2712,7 +2713,37 @@ class Game:
             if module_key is not None:
                 modules.apply_module(tower, modules.MODULES[module_key])
             self._apply_construction_relics(tower, module_key is not None)
+        self._apply_high_ground(tower)
         return tower
+
+    def _high_ground_range_bonus_at(self, tower_cls, anchor_col, anchor_row, footprint_subtiles):
+        """settings.HIGH_GROUND_RANGE_BONUS if a `tower_cls` anchored here
+        would stand on high ground, else 0.0 -- a path trap never does."""
+        if tower_cls.PLACEMENT == "path" or not self.grid.is_on_high_ground(
+                anchor_col, anchor_row, footprint_subtiles=footprint_subtiles):
+            return 0.0
+        return settings.HIGH_GROUND_RANGE_BONUS
+
+    def _apply_high_ground(self, tower):
+        """Set `tower`'s high-ground fields from where it stands now (docs/
+        agents/grid-paths.md "High ground") -- at construction and again
+        after try_move_tower, never per frame. The damage term is a
+        Watchtowers-style relic's (Relic.high_ground_damage_bonus)."""
+        bonus = self._high_ground_range_bonus_at(type(tower), tower.anchor_col, tower.anchor_row,
+                                                 tower.footprint_subtiles)
+        tower.on_high_ground = bonus > 0
+        tower.high_ground_range_bonus = bonus
+        tower.high_ground_damage_bonus = 0.0
+        if tower.on_high_ground and self.active_run is not None:
+            tower.high_ground_damage_bonus = sum(
+                relics.RELICS[key].high_ground_damage_bonus for key in self.active_run.relics)
+
+    def move_preview_range(self, tower, anchor_col, anchor_row):
+        """`tower`'s effective range if moved to this anchor -- its current
+        reach with the high-ground term swapped for the destination's."""
+        destination = self._high_ground_range_bonus_at(type(tower), anchor_col, anchor_row,
+                                                       tower.footprint_subtiles)
+        return tower.effective_range() + tower.range * (destination - tower.high_ground_range_bonus)
 
     def _apply_construction_relics(self, tower, has_module):
         """Earthworks / Forward Observer / Quick-Release Mounts / Barbed Tethers -- Relic-only
@@ -3030,6 +3061,7 @@ class Game:
         tower.pos = pygame.Vector2(self.grid.anchor_to_pixel_center(
             anchor_col, anchor_row, footprint_subtiles=tower.footprint_subtiles))
         self.grid.occupy(anchor_col, anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
+        self._apply_high_ground(tower)
         self._recompute_tower_density_bonuses()
         self.moving_tower = None
         self._record_achievement("towers_moved")

@@ -443,6 +443,13 @@ class Tower:
         self.veterancy_damage_bonus = 0.0
         # A fitted module's damage bonus (run/modules.py) -- set at construction.
         self.module_damage_bonus = 0.0
+        # High ground (Level.high_ground_cells) -- set once at construction
+        # by Game._construct_tower from where the tower stands: an additive
+        # effective_range() term, plus a Watchtowers-style relic's additive
+        # effective_damage() term (Game._apply_construction_relics).
+        self.on_high_ground = False
+        self.high_ground_range_bonus = 0.0
+        self.high_ground_damage_bonus = 0.0
         # Placement relics (Relic.variety_damage_bonus_per_type/isolation_
         # damage_bonus): the per-type/flat amounts set at construction, and
         # the live bonus set_nearby_tower_bonus() resolves from them.
@@ -871,6 +878,7 @@ class Tower:
             + (self.relic_range_bonus_multiplier - 1.0)
             + (self.relic_last_stand_range_multiplier - 1.0)
             + self.resonance_range_bonus
+            + self.high_ground_range_bonus
         )
 
     def relic_adjusted_range(self):
@@ -884,8 +892,9 @@ class Tower:
         tower's own update() in list order, all sharing one frame), an
         order-dependent chain reaction with no equivalent before relics
         existed -- a Support tower's own reach was always immune to
-        aura buffs, only ever widened by a relic held all run."""
-        return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
+        aura buffs, only ever widened by a relic held all run (or by
+        standing on high ground, which is just as persistent)."""
+        return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0) + self.high_ground_range_bonus)
 
     def effective_damage(self):
         """self.damage scaled by five independent bonus sources, stacked
@@ -921,6 +930,7 @@ class Tower:
             + self.module_damage_bonus
             + self.placement_damage_bonus
             + self.resonance_damage_bonus
+            + self.high_ground_damage_bonus
         )
 
     def _relic_family_damage_bonus(self):
