@@ -580,6 +580,10 @@ class Relic:
     # A Barricade that breaks explodes for this fraction of its max hp, hitting
     # ground enemies within BARRICADE_BURST_RADIUS (Game._hold_enemies_at_barricades).
     barricade_burst_fraction: float = 0.0
+    # Tempo relics -- Relic-only, read straight off RELICS by Game:
+    # call_next_wave's early-call bonus, and move_fee (relocating towers).
+    early_call_bonus_multiplier: float = 1.0
+    free_tower_moves: bool = False
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1216,6 +1220,15 @@ RELICS = {
         "Trophy: +20% damage and +10% fire rate for every tower, but lose 5 lives now.",
         tower_damage_multiplier=1.2, tower_fire_rate_multiplier=1.1, starting_lives_bonus=-5,
         is_boss_relic=True,
+    ),
+    # --- Tempo relics -- see Relic.early_call_bonus_multiplier. ---
+    "signal_horn": Relic(
+        "signal_horn", "Signal Horn", "Calling the next wave early pays double gold.",
+        early_call_bonus_multiplier=2.0,
+    ),
+    "field_rails": Relic(
+        "field_rails", "Field Rails", "Moving a tower between waves is always free.",
+        free_tower_moves=True,
     ),
     # --- Curses (is_curse=True) -- see Relic.is_curse. ---
     "rusted_gears": Relic(

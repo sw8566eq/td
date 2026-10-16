@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Tempo relics: **Signal Horn** (calling a wave early pays double) and **Field Rails** (moving towers is free).
 - **Move towers**: a Move button next to Sell relocates a placed tower, keeping its level and
   experience -- free before a floor's first wave, 15% of its cost between waves, never mid-wave.
 - **Early-call bonus**: skipping a between-wave countdown pays 3 battle gold per second skipped (the

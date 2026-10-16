@@ -1908,6 +1908,16 @@ class Game:
     def reset_keybindings(self):
         return self.settings_manager.reset_keybindings()
 
+    def early_call_bonus(self, seconds):
+        """Battle gold for cutting `seconds` off a between-waves countdown --
+        shared by call_next_wave (the payout) and the HUD caption (the
+        preview), so they can't disagree. Signal Horn-style relics multiply."""
+        multiplier = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                multiplier *= relics.RELICS[key].early_call_bonus_multiplier
+        return int(max(0.0, seconds) * settings.EARLY_CALL_GOLD_PER_SECOND * multiplier)
+
     def call_next_wave(self):
         """The HUD's Start/Skip button and the skip_wave key: start the next
         wave now. Skipping part of a real between-waves countdown pays an
@@ -1915,8 +1925,7 @@ class Game:
         per second skipped, rounded down), shown as a rising gold label over
         the Skip button. Wave 1's "Start" pays nothing -- there's no
         countdown to cut short."""
-        skipped = self.wave_manager.skip_delay()
-        bonus = int(skipped * settings.EARLY_CALL_GOLD_PER_SECOND)
+        bonus = self.early_call_bonus(self.wave_manager.skip_delay())
         if bonus <= 0:
             return 0
         self.economy.add_gold(bonus)
@@ -2967,6 +2976,8 @@ class Game:
         """Gold to relocate `tower`: free before the floor's first wave (still
         planning the layout), else settings.MOVE_FEE_FRACTION of what it cost."""
         if self.wave_manager.state == WaveState.AWAITING_START:
+            return 0
+        if self.active_run is not None and any(relics.RELICS[key].free_tower_moves for key in self.active_run.relics):
             return 0
         return max(1, int(tower.total_invested * settings.MOVE_FEE_FRACTION))
 

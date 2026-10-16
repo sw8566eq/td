@@ -166,3 +166,26 @@ def test_move_label_and_preview_render(playing_game):
         playing_game.render()
     finally:
         clear_mouse_mock()
+
+
+def test_field_rails_makes_moves_free(playing_game):
+    playing_game.start_new_run(seed=1)
+    playing_game._enter_node(playing_game.active_run.map.start_node_ids[0])
+    tower = _place(playing_game)
+    _between_waves(playing_game)
+    assert playing_game.move_fee(tower) > 0
+    playing_game.active_run.relics.append("field_rails")
+    assert playing_game.move_fee(tower) == 0
+
+
+def test_signal_horn_doubles_the_early_call_bonus_and_its_preview(playing_game):
+    playing_game.start_new_run(seed=1)
+    playing_game._enter_node(playing_game.active_run.map.start_node_ids[0])
+    base = playing_game.early_call_bonus(4.0)
+    playing_game.active_run.relics.append("signal_horn")
+    assert playing_game.early_call_bonus(4.0) == 2 * base
+    _between_waves(playing_game)
+    gold = playing_game.economy.gold
+    assert playing_game.call_next_wave() == playing_game.early_call_bonus(3.0)
+    assert playing_game.economy.gold == gold + 2 * base * 3 // 4
+    playing_game.render()

@@ -36,6 +36,7 @@ import inspect
 import pygame
 
 from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
+from entities.waves import WaveState
 from presentation import ui
 from run import modules, potions, relics, shop, veterancy
 from support import settings
@@ -336,6 +337,8 @@ class Renderer:
                              if game.active_run is not None else None),
             moduled_towers=game.active_run.tower_modules if game.active_run is not None else (),
             endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
+            early_call_bonus=(game.early_call_bonus(game.wave_manager.between_wave_timer)
+                              if game.wave_manager.state == WaveState.BETWEEN_WAVES else 0),
         )
         if game._show_first_placement_hint and not game.towers:
             ui.draw_first_placement_hint(game.screen, game.small_font)

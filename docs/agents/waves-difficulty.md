@@ -33,7 +33,8 @@ into whichever level gets picked next; it's independent of, and combinable with,
 `WaveManager.skip_delay()` returns the seconds of a real between-waves countdown it cut short (0.0 for
 wave 1's `AWAITING_START`, which has no countdown, and while a wave is spawning). The Skip button and
 the `skip_wave` key both go through `Game.call_next_wave()`, which pays
-`int(seconds * settings.EARLY_CALL_GOLD_PER_SECOND)` battle gold and shows it as a gold `FloatingText`
+`Game.early_call_bonus(seconds)` battle gold (`int(seconds * settings.EARLY_CALL_GOLD_PER_SECOND)`, times any
+Signal Horn-style relic) and shows it as a gold `FloatingText`
 over the Skip button. WaveManager never touches `Economy` itself. The HUD caption
 (`ui._draw_wave_countdown_and_skip`) computes the same number so the reward shows before the click.
 Calling `skip_delay()` directly (tests, `tools/`) pays nothing.

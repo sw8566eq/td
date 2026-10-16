@@ -282,7 +282,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
              floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0, veterancy_ranks=None,
-             moduled_towers=()):
+             moduled_towers=(), early_call_bonus=0):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -379,7 +379,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     surface.blit(lives_text, (info_x, hud_rect.y + 64))
     surface.blit(wave_text, (info_x, hud_rect.y + 92))
 
-    _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
+    _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect, early_call_bonus)
 
 
 FIRST_PLACEMENT_HINT_TEXT = "Click a tower below, then click the grid to place it."
@@ -491,7 +491,7 @@ def draw_relics_overlay(surface, font, small_font, relic_keys, width=settings.PL
                             settings.COLOR_TEXT, width=width)
 
 
-def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
+def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect, early_call_bonus=0):
     if wave_manager.all_waves_complete:
         return  # nothing left to skip to/start
 
@@ -503,10 +503,9 @@ def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect)
         button_label, clickable = "Start", True
     elif wave_manager.state == WaveState.BETWEEN_WAVES:
         seconds_left = max(0, math.ceil(wave_manager.between_wave_timer))
-        # Mirrors Game.call_next_wave's early-call bonus, so the reward for
-        # skipping is visible before the player commits to it.
-        bonus = int(max(0.0, wave_manager.between_wave_timer) * settings.EARLY_CALL_GOLD_PER_SECOND)
-        caption = f"Next wave in {seconds_left}s" + (f" (skip: +{bonus}g)" if bonus > 0 else "")
+        # early_call_bonus is Game.early_call_bonus(timer) -- what Skip would
+        # pay right now -- so the reward is visible before the player commits.
+        caption = f"Next wave in {seconds_left}s" + (f" (skip: +{early_call_bonus}g)" if early_call_bonus > 0 else "")
         countdown_text = font.render(caption, True, settings.COLOR_TEXT)
         button_label, clickable = "Skip", True
     else:

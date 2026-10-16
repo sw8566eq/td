@@ -146,6 +146,10 @@ straight off `self.relic_modifiers` in `Game.update()`'s dead-enemy drain loop:
   and is a no-op under `Economy.invulnerable` (Sandbox has nothing to save).
 - `emergency_reserves` is a one-time-per-run gold refund checked inside `Game._spend_gold()`, gated on
   `RunState.used_emergency_reserves`.
+- Tempo relics: `signal_horn` (`early_call_bonus_multiplier`, multiplied in `Game.early_call_bonus`,
+  which both the payout and the HUD caption read) and `field_rails` (`free_tower_moves`, read by
+  `Game.move_fee`). See [waves-difficulty.md](waves-difficulty.md) "Calling the next wave early" and
+  [towers.md](towers.md) "Relocating a tower".
 - Potion, trophy, construction and counter relics also use Relic-only fields; see their own sections
   below.
 
