@@ -37,6 +37,13 @@ MIN_TOWER_FOOTPRINT_SUBTILES = 4
 SUBTILE_GAP = 1
 SUBTILE_GAP_ALPHA = 60
 
+# High ground (Level.high_ground_cells): a ground tower with at least
+# HIGH_GROUND_MIN_FOOTPRINT_FRACTION of its footprint on high-ground tiles
+# gets HIGH_GROUND_RANGE_BONUS as one more additive term in
+# Tower.effective_range(). See docs/agents/grid-paths.md "High ground".
+HIGH_GROUND_RANGE_BONUS = 0.20
+HIGH_GROUND_MIN_FOOTPRINT_FRACTION = 0.5
+
 # --- Window ---
 # 96px for the toolbar/button row itself, plus a 32px strip above it (see
 # ui.HUD_TOP_STRIP_HEIGHT) reserved for HUD content that's independent of
@@ -118,6 +125,14 @@ COLOR_EDITOR_JUNCTION = (120, 160, 220)
 # --- Level-select map thumbnails ---
 COLOR_THUMBNAIL_GROUND = (44, 54, 40)
 COLOR_THUMBNAIL_PATH = (150, 130, 90)
+COLOR_THUMBNAIL_HIGH_GROUND = (96, 118, 82)
+
+# --- High ground (Grid/editor/thumbnail drawing) -- a translucent light
+# wash over the grass mosaic, a bright lit edge on its top/left sides and a
+# dark shadow on its bottom/right ones, so the tile reads as raised.
+COLOR_HIGH_GROUND_TINT = (230, 240, 200, 70)
+COLOR_HIGH_GROUND_EDGE = (225, 235, 190)
+COLOR_HIGH_GROUND_SHADOW = (20, 30, 18)
 
 # --- Run map screen (see run_map.py/ui.draw_map_screen) -- one color per
 # node type, plus a dimmed color for a node that isn't reachable yet.

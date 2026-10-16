@@ -130,3 +130,14 @@ whose geometry can extend into the title/hint areas, so without that fence a cli
 a row that isn't actually visible. `ui.draw_level_select_screen` mirrors this on the drawing side with
 an actual `surface.set_clip()` around the row loop, plus a "more above"/"more below" hint whenever
 `level_select_max_scroll(...)` is nonzero.
+
+## High Ground brush
+
+`EditorTool.HIGH_GROUND` ("High" in the toolbar, last in `TOOL_ORDER`) paints and erases
+`Editor.high_ground_cells` (see [grid-paths.md](grid-paths.md) "High ground"). A stroke's first cell
+decides its mode: starting on plain ground raises every cell the drag crosses, starting on high ground
+lowers them (`_high_ground_stroke_raises`, reset by `end_stroke()`). Path cells are skipped. The Erase
+tool also clears high ground. `validate()` drops any high ground the path now covers, so painting,
+stamping a Line/Rect or pasting path over a raised cell flattens it, the same rule
+`Level.__post_init__` enforces. High ground is part of the undo snapshot, the copy/paste clipboard
+(`"high_ground"` offsets), `clear()`, `load_level()` and `to_level()`.

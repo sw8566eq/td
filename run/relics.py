@@ -562,6 +562,10 @@ class Relic:
     structure_hp_multiplier: float = 1.0
     dead_zone_multiplier: float = 1.0
     module_fire_rate_bonus: float = 0.0
+    # Extra damage (an additive effective_damage() term) for a tower built
+    # on high ground (Level.high_ground_cells) -- Game._apply_construction_
+    # relics, Relic-only like the three fields above.
+    high_ground_damage_bonus: float = 0.0
     # Mortar only: each shell leaves burning ground -- (fraction of the
     # shell's damage dealt per second, seconds). See Game._update_ground_fires.
     mortar_ground_fire: tuple[float, float] | None = None
@@ -1130,6 +1134,10 @@ RELICS = {
     "quick_release_mounts": Relic(
         "quick_release_mounts", "Quick-Release Mounts", "Towers whose type has a module fitted fire 10% faster.",
         module_fire_rate_bonus=0.10,
+    ),
+    "watchtowers": Relic(
+        "watchtowers", "Watchtowers", "Towers built on high ground deal 15% more damage.",
+        high_ground_damage_bonus=0.15,
     ),
     "incendiary_shells": Relic(
         "incendiary_shells", "Incendiary Shells",

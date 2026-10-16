@@ -8,6 +8,9 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **High ground**: raised tiles on eleven of the built-in maps (and paintable in the map editor with
+  the new **High** brush) give a tower standing mostly on them +20% range. Path traps never get it.
+  The **Watchtowers** relic adds +15% damage for high-ground towers.
 - Achievements **Eager Commander** (call 50 waves early) and **Redeployment** (move 20 towers).
 - Three potions: **Tether Flare** (ground every flyer for 8s), **Field Promotion** (free level for your
   top-damage tower) and **Mortar Mix** (repair every Barricade). A potion that can't do anything yet is kept, with a toast.

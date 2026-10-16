@@ -130,7 +130,8 @@ potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion)
 ## Construction relics
 
 **Earthworks** (Barricades get 50% more hit points), **Forward Observer** (the Mortar's dead zone is
-half as wide) and **Quick-Release Mounts** (towers whose type has a module fire 10% faster).
+half as wide), **Quick-Release Mounts** (towers whose type has a module fire 10% faster) and
+**Watchtowers** (towers on high ground deal 15% more damage).
 
 **Ambush** makes enemies held at a Barricade take 25% more damage from everything, and **Incendiary
 Shells** makes every Mortar shell leave burning ground for 3 seconds. Pair those with slows: **Flashpoint**
@@ -367,6 +368,15 @@ The map itself renders each buildable tile as that same 8x8 mosaic of individual
 with a thin, soft-edged gap between them (`Grid._build_background`, cached once per level rather than
 redrawn every frame), so the placement grid is visible at a glance without being visually harsh. The
 path renders as one unbroken tile -- no seams -- since it's never buildable anyway.
+
+**High ground.** Some maps have raised tiles: lighter, with a bright top/left edge and a shadow on
+the bottom/right. A tower with at least half its footprint on high ground gets **+20% range**
+(`settings.HIGH_GROUND_RANGE_BONUS`). It stacks with range relics and Support auras, and a Support
+tower up there also buffs a wider area. High ground sits inside bends and beside merges, so one tower
+there can cover two stretches of path. The placement preview's ring already shows the bigger range
+when you hover high ground, and a placed tower's panel says "High ground". Path traps never get the
+bonus, and a moved tower gains or loses it at its new spot. The **Watchtowers** relic adds +15% damage
+to high-ground towers.
 
 ## Towers
 
@@ -617,6 +627,11 @@ closed loop -- erase one edge tile to open it into a valid path). **Copy**/**Pas
 whatever's in your current selection -- path, spawns, and goals -- somewhere else on the map; a
 pasted spawn doesn't carry over any wave data, since it's a genuinely new spawn point, not a copy
 of the original's.
+
+The **High** tool paints high ground (the +20%-range raised tiles, see "Tower placement"). Start a
+drag on plain ground to raise tiles, or on high ground to lower them. High ground can't go on the
+path: painting path over a raised tile flattens it, and Erase clears it too. It's saved in the level
+file, copied by Copy/Paste and covered by Undo/Redo. Older level files without it still load.
 
 **Load Map...**, also in the sidebar, reopens a previously saved custom
 level for further editing -- it's the same level browser `L` uses, just

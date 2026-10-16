@@ -46,6 +46,10 @@ class Level:
     # Per-branch routing weight, keyed (from_cell, to_cell); a pair missing
     # here defaults to 1.0 (uniform) -- see pathing.sample_route.
     branch_weights: dict = field(default_factory=dict)
+    # Raised, buildable tiles -- a ground tower standing mostly on them gets
+    # settings.HIGH_GROUND_RANGE_BONUS (see Game._construct_tower). Never on
+    # the path; optional (empty) for every level that doesn't use it.
+    high_ground_cells: frozenset = field(default_factory=frozenset)
 
     def __post_init__(self):
         if not self.wave_specs:
@@ -112,6 +116,16 @@ class Level:
                     f"Level {self.id!r} has an invalid branch weight {weight!r} for {edge!r} "
                     f"(must be a non-negative number)"
                 )
+        self.high_ground_cells = frozenset(self.high_ground_cells)
+        for cell in self.high_ground_cells:
+            # A hand-edited custom level file could carry anything here; a
+            # bad cell fails clearly now instead of crashing the Grid later.
+            if (not isinstance(cell, tuple) or len(cell) != 2
+                    or any(isinstance(v, bool) or not isinstance(v, int) for v in cell)
+                    or not (0 <= cell[0] < settings.GRID_COLS and 0 <= cell[1] < settings.GRID_ROWS)):
+                raise ValueError(f"Level {self.id!r} has an invalid high ground cell {cell!r}")
+            if cell in self.path_cells:
+                raise ValueError(f"Level {self.id!r} has high ground on the path at {cell!r}")
         problems = pathing.validate_topology(
             self.path_cells, self.spawn_cells, self.goal_cells,
             settings.GRID_COLS, settings.GRID_ROWS,
@@ -147,7 +161,8 @@ def generate_default_waves(spawn_cell, total_waves, enemy_type="grunt", base_cou
     return _single_spawn_waves(spawn_cell, flat)
 
 
-def _corridor_level(level_id, name, corners, wave_specs, starting_gold=150, starting_lives=20):
+def _corridor_level(level_id, name, corners, wave_specs, starting_gold=150, starting_lives=20,
+                    high_ground_cells=frozenset()):
     """Build a Level for the shape every hand-authored level below except
     Confluence shares: a single spawn (the corner list's first corner), a
     single goal (its last), and a path traced straight from the corners.
@@ -164,6 +179,7 @@ def _corridor_level(level_id, name, corners, wave_specs, starting_gold=150, star
         wave_specs=wave_specs,
         starting_gold=starting_gold,
         starting_lives=starting_lives,
+        high_ground_cells=frozenset(high_ground_cells),
     )
 
 
@@ -235,8 +251,27 @@ LEVEL_5_WAVE_SPECS = [
     {"grunt": 12, "scout": 10, "tank": 8, "shielded": 6, "flying": 6, "boss": 2},
 ]
 
+# High ground (Level.high_ground_cells) -- a few raised tiles per level, each
+# tucked inside a bend or beside a merge/branch so a tower there covers two
+# legs of the path at once, with the +20% range making the overlap real.
+# Levels 1, 4, 7, 12, 13 and 15 deliberately have none: the opening level
+# stays a plain introduction, and the rest keep some maps where placement is
+# judged on path geometry alone.
+LEVEL_2_HIGH_GROUND = frozenset({(5, 2), (8, 4), (8, 5)})  # first bend; inside the U
+LEVEL_3_HIGH_GROUND = frozenset({(4, 6), (9, 4), (9, 5)})  # first bend; inside the big loop
+LEVEL_5_HIGH_GROUND = frozenset({(3, 6), (4, 6), (6, 2), (7, 2)})  # inside each peak's turn
+LEVEL_6_HIGH_GROUND = frozenset({(5, 4), (7, 3), (7, 5)})  # around the merge
+LEVEL_8_HIGH_GROUND = frozenset({(4, 4), (7, 5), (10, 4)})  # merge, trunk, branch
+LEVEL_9_HIGH_GROUND = frozenset({(5, 3), (5, 5), (7, 3)})  # around the three-way merge
+LEVEL_10_HIGH_GROUND = frozenset({(3, 3), (7, 4), (11, 5)})  # inside three hairpins
+LEVEL_11_HIGH_GROUND = frozenset({(5, 2), (8, 3), (8, 5)})  # merge bend; between merge and branch
+LEVEL_14_HIGH_GROUND = frozenset({(3, 1), (3, 7), (5, 5)})  # between paired spawns; by the spur
+LEVEL_16_HIGH_GROUND = frozenset({(7, 3), (7, 5), (9, 3)})  # around the boss-tier merge
+LEVEL_17_HIGH_GROUND = frozenset({(5, 4), (8, 5), (11, 4)})  # merge, trunk, branch
+
+
 def _multi_lane_level(level_id, name, lane_corner_lists, spawn_cells, goal_cells, wave_specs,
-                       starting_gold=150, starting_lives=20):
+                       starting_gold=150, starting_lives=20, high_ground_cells=frozenset()):
     """Build a Level whose path is the union of several straight-segment
     corner chains (see pathing.path_cells_from_corners) -- the shape any
     branching/merging level beyond a single corridor needs, since
@@ -260,6 +295,7 @@ def _multi_lane_level(level_id, name, lane_corner_lists, spawn_cells, goal_cells
         wave_specs=wave_specs,
         starting_gold=starting_gold,
         starting_lives=starting_lives,
+        high_ground_cells=frozenset(high_ground_cells),
     )
 
 
@@ -288,15 +324,18 @@ LEVELS = {
     1: _corridor_level(1, "Winding Road", LEVEL_1_CORNERS,
                         _single_spawn_waves(LEVEL_1_CORNERS[0], LEVEL_1_WAVE_SPECS)),
     2: _corridor_level(2, "Serpentine Pass", LEVEL_2_CORNERS,
-                        _single_spawn_waves(LEVEL_2_CORNERS[0], LEVEL_2_WAVE_SPECS)),
+                        _single_spawn_waves(LEVEL_2_CORNERS[0], LEVEL_2_WAVE_SPECS),
+                        high_ground_cells=LEVEL_2_HIGH_GROUND),
     3: _corridor_level(3, "Broken Switchback", LEVEL_3_CORNERS,
-                        _single_spawn_waves(LEVEL_3_CORNERS[0], LEVEL_3_WAVE_SPECS)),
+                        _single_spawn_waves(LEVEL_3_CORNERS[0], LEVEL_3_WAVE_SPECS),
+                        high_ground_cells=LEVEL_3_HIGH_GROUND),
     # Already in the nested shape -- generate_default_waves() (see
     # LEVEL_4_WAVE_SPECS above) returns it directly, no _single_spawn_waves()
     # wrap needed here.
     4: _corridor_level(4, "Straight Cut", LEVEL_4_CORNERS, LEVEL_4_WAVE_SPECS),
     5: _corridor_level(5, "Twin Peaks", LEVEL_5_CORNERS,
-                        _single_spawn_waves(LEVEL_5_CORNERS[0], LEVEL_5_WAVE_SPECS)),
+                        _single_spawn_waves(LEVEL_5_CORNERS[0], LEVEL_5_WAVE_SPECS),
+                        high_ground_cells=LEVEL_5_HIGH_GROUND),
     # Confluence doesn't fit _corridor_level's single-spawn/single-goal
     # shape -- built via _multi_lane_level instead, same as Levels 7-9
     # below.
@@ -307,6 +346,7 @@ LEVELS = {
         wave_specs=LEVEL_6_WAVE_SPECS,
         starting_gold=180,
         starting_lives=20,
+        high_ground_cells=LEVEL_6_HIGH_GROUND,
     ),
 }
 
@@ -386,6 +426,7 @@ LEVELS[8] = _multi_lane_level(
     wave_specs=LEVEL_8_WAVE_SPECS,
     starting_gold=190,
     starting_lives=20,
+    high_ground_cells=LEVEL_8_HIGH_GROUND,
 )
 
 LEVELS[9] = _multi_lane_level(
@@ -401,6 +442,7 @@ LEVELS[9] = _multi_lane_level(
     wave_specs=LEVEL_9_WAVE_SPECS,
     starting_gold=200,
     starting_lives=20,
+    high_ground_cells=LEVEL_9_HIGH_GROUND,
 )
 
 # Level 10: "Hairpin Gauntlet" -- the densest single-spawn corridor yet:
@@ -429,6 +471,7 @@ LEVELS[10] = _corridor_level(
     _single_spawn_waves(LEVEL_10_CORNERS[0], LEVEL_10_WAVE_SPECS),
     starting_gold=170,
     starting_lives=20,
+    high_ground_cells=LEVEL_10_HIGH_GROUND,
 )
 
 # Level 11: "Grand Delta" -- the campaign's hardest and most complex
@@ -476,6 +519,7 @@ LEVELS[11] = _multi_lane_level(
     wave_specs=LEVEL_11_WAVE_SPECS,
     starting_gold=210,
     starting_lives=20,
+    high_ground_cells=LEVEL_11_HIGH_GROUND,
 )
 
 # Level 12: "Twin Corridors" -- the simplest possible complex level: two
@@ -595,6 +639,7 @@ LEVELS[14] = _multi_lane_level(
     wave_specs=LEVEL_14_WAVE_SPECS,
     starting_gold=230,
     starting_lives=20,
+    high_ground_cells=LEVEL_14_HIGH_GROUND,
 )
 
 # Level 15: "Double Confluence" -- two independent Confluence-style 2-spawn
@@ -702,6 +747,7 @@ LEVELS[16] = _multi_lane_level(
     wave_specs=LEVEL_16_WAVE_SPECS,
     starting_gold=240,
     starting_lives=20,
+    high_ground_cells=LEVEL_16_HIGH_GROUND,
 )
 
 LEVEL_17_SPAWN_TOP = (0, 1)
@@ -744,4 +790,5 @@ LEVELS[17] = _multi_lane_level(
     wave_specs=LEVEL_17_WAVE_SPECS,
     starting_gold=250,
     starting_lives=20,
+    high_ground_cells=LEVEL_17_HIGH_GROUND,
 )

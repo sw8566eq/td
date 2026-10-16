@@ -507,7 +507,8 @@ class Renderer:
                                   footprint_subtiles=tower.footprint_subtiles)
         preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row,
                                                        footprint_subtiles=tower.footprint_subtiles)
-        ui.draw_range_preview(game.screen, type(tower), preview_pos, tower.effective_range(), tower.MIN_RANGE)
+        ui.draw_range_preview(game.screen, type(tower), preview_pos,
+                              game.move_preview_range(tower, anchor_col, anchor_row), tower.MIN_RANGE)
 
     def _render_placement_preview(self):
         game = self.game
