@@ -160,6 +160,11 @@ HINTS: dict[str, Hint] = {
         "The Armory fits a module to one tower type for the rest of the run. Take one, or "
         "skip if none fit your plan.",
     ),
+    "node_challenge": Hint(
+        "node_challenge", "Proving Grounds",
+        "This fight has one constraint (shown in the side panel). Keep it to win a relic choice "
+        "and bonus shop currency; break it and the fight just carries on.",
+    ),
     "reward": Hint(
         "reward", "Rewards",
         "Pick one tower card to add it to your build menu for the rest of the run. Relic and "

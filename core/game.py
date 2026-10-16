@@ -26,6 +26,7 @@ from progression import (
 )
 from run import (
     ascension,
+    challenges,
     commanders,
     daily_challenge,
     difficulty,
@@ -69,6 +70,7 @@ _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's o
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
+_CHALLENGE_RNG_STREAM = "challenge"  # a Proving Grounds node's constraint -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
 # Veterancy experience an Outpost's Drill gives the chosen tower type.
 OUTPOST_DRILL_XP = 60
@@ -379,6 +381,13 @@ class Game:
         # Each fight node's (enemy HP, speed) multipliers, for the map
         # tooltip (see _node_threat) -- rebuilt by _enter_map.
         self.map_node_threats = {}
+        # Each Proving Grounds node's constraint summary line, for the map
+        # tooltip (see _node_challenge) -- rebuilt by _enter_map.
+        self.map_node_challenges = {}
+        # The current fight's challenges.ChallengeRoll, or None -- set by
+        # _apply_node_challenge on every run fight load/resume, cleared by
+        # every _load_level_object. What every enforcement site reads.
+        self.active_challenge = None
         # A Random Event node's own two-phase state (see _enter_event_node/
         # _handle_event_click): "choose" while the options are still on
         # offer, "resolved" once one's been picked -- current_event/
@@ -809,6 +818,9 @@ class Game:
         affix = self._elite_affix(run, node)
         if affix is not None:
             escalation = elite_affixes.apply_to_escalation(escalation, affix)
+        roll = self._node_challenge(run, node)
+        if roll is not None:
+            escalation = challenges.apply_to_escalation(escalation, roll.challenge)
         return escalation
 
     def _node_threat(self, run, node):
@@ -816,7 +828,7 @@ class Game:
         get on top of their own per-wave scaling -- escalation times the
         run's difficulty mode -- for the map tooltip. None for a node
         that isn't a fight."""
-        if node.node_type not in ("combat", "elite", "boss"):
+        if node.node_type not in run_map.FIGHT_NODE_TYPES:
             return None
         escalation = self._node_escalation(run, node)
         mode = difficulty.DIFFICULTY_MODES[run.difficulty]
@@ -835,6 +847,49 @@ class Game:
         if node.node_type != "elite":
             return None
         return elite_affixes.AFFIXES[elite_affixes.roll_affix(self._run_rng(run, _AFFIX_RNG_STREAM, node.id))]
+
+    def _node_challenge(self, run, node):
+        """`node`'s challenges.ChallengeRoll if it's a Proving Grounds node,
+        else None. Re-derived from the node id every time (like
+        _elite_affix), never stored, so the map tooltip, the floor load and
+        a resumed save all agree. Narrow Front-style picks draw from the
+        run's held damaging tower types, sorted for a stable order."""
+        if node.node_type != "challenge":
+            return None
+        damaging = self._damaging_tower_types()
+        candidates = sorted(name for name in run.unlocked_towers if name in damaging)
+        return challenges.roll_for_node(self._run_rng(run, _CHALLENGE_RNG_STREAM, node.id), candidates)
+
+    def _challenge_summary(self, roll):
+        """The one-line constraint text the map tooltip, sidebar and
+        refusal toasts share."""
+        return roll.summary(self._tower_display_names())
+
+    @staticmethod
+    def _tower_display_names():
+        return {name: cls.display_name for name, cls in TOWER_TYPES.items()}
+
+    def _apply_node_challenge(self, run, node):
+        """Arm `node`'s challenge (or none) for the fight just loaded --
+        shared by a node load and a resume, like _apply_affix_traits."""
+        self.active_challenge = self._node_challenge(run, node)
+
+    def _challenge_won(self):
+        """Whether the run is standing on a Proving Grounds fight whose
+        constraint hasn't been broken -- read at the floor clear (bonus
+        currency) and the reward screen (relic choice). Reads the node type
+        and RunState.challenge_failed, never active_challenge, so a reward
+        screen reopened from a map checkpoint still knows."""
+        run = self.active_run
+        return run.map.node(run.current_node_id).node_type == "challenge" and not run.challenge_failed
+
+    def _refuse_for_challenge(self, reason):
+        """A challenge just blocked a player action: say why, once per
+        reason while its toast is still on screen (a held click can't
+        stack a column of identical toasts)."""
+        if not any(toast.text == reason and not toast.dead for toast in self.achievement_toasts):
+            self._queue_toast(reason)
+        return False
 
     def _apply_affix_traits(self, run, node):
         """Copy `node`'s Elite affix's enemy-side traits (regeneration,
@@ -951,6 +1006,10 @@ class Game:
         )
         self.current_level_id = node.level_id
         self._apply_affix_traits(run, node)
+        # Every fight load (a restart included) starts its challenge clean.
+        run.challenge_leaks = 0
+        run.challenge_failed = False
+        self._apply_node_challenge(run, node)
         if not run.lives_captured:
             # run.lives so far is only pre-fight bonuses (see RunState.
             # lives_captured) -- added on, not overwritten. Flagged so a
@@ -994,6 +1053,13 @@ class Game:
             run.shop_currency += shop.income_for_floor(
                 run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
             )
+        if self._challenge_won():
+            # A won Proving Grounds pays its bonus like a Treasure does --
+            # a reward, not floor income, so Ransom-style income blocks
+            # don't touch it. Its relic choice waits on the reward screen.
+            bonus = challenges.bonus_shop_currency(run.depth_of(node.row))
+            run.shop_currency += bonus
+            self._queue_toast(f"Proving Grounds won: +{bonus} Shop currency and a relic choice")
         self._record_meta_progress("total_floors_cleared")
         self._award_veterancy()
         self._record_service_floor_cleared(node)
@@ -1117,6 +1183,7 @@ class Game:
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
             tower_count=tower_count, is_boss=node.node_type == "boss",
             damaging_types=self._damaging_tower_types(),
+            challenge_relic_count=challenges.RELIC_CHOICE_COUNT if self._challenge_won() else 0,
         )
         if self.reward.is_empty:
             self._leave_reward_screen()
@@ -1139,6 +1206,7 @@ class Game:
         if self.reward.module is not None:
             cards.append(("module", self.reward.module))
         cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
+        cards.extend(("challenge_relic", key) for key in self.reward.challenge_relic_choices)
         if self.reward.potion is not None:
             cards.append(("potion", self.reward.potion))
         return cards
@@ -1154,7 +1222,7 @@ class Game:
             return False
         cards = self._reward_cards()
         kind = cards[index][0]
-        if kind in ("tower", "forge", "boss_relic"):
+        if kind in ("tower", "forge", "boss_relic", "challenge_relic"):
             # Pick-one rows: claiming one forfeits the rest of its row --
             # new towers and forge cards share one row.
             row = ("tower", "forge") if kind in ("tower", "forge") else (kind,)
@@ -1211,7 +1279,7 @@ class Game:
             self.active_run.forged_towers.append(key)
             self._record_achievement("towers_forged")
             self.audio.play("tower_upgraded")
-        elif kind in ("relic", "boss_relic"):
+        elif kind in ("relic", "boss_relic", "challenge_relic"):
             self._grant_relic(key)
         elif kind == "module":
             module_key, tower_name = key
@@ -1315,7 +1383,12 @@ class Game:
         }
         self.map_node_threats = {
             node.id: self._node_threat(run, node)
-            for row in run.map.rows for node in row if node.node_type in ("combat", "elite", "boss")
+            for row in run.map.rows for node in row if node.node_type in run_map.FIGHT_NODE_TYPES
+        }
+        self.map_node_challenges = {
+            node.id: self._challenge_summary(roll)
+            for row in run.map.rows for node in row
+            if (roll := self._node_challenge(run, node)) is not None
         }
         self._map_is_first_run = (
             meta_progression.load_meta_progression(self.meta_progression_path)["counters"].get("runs_played", 0) == 0
@@ -1348,7 +1421,7 @@ class Game:
         self._autosave_run()
         node = run.map.node(node_id)
         self.hints.notify(f"node_{node.node_type}")
-        if node.node_type in ("combat", "elite", "boss"):
+        if node.node_type in run_map.FIGHT_NODE_TYPES:
             self._load_combat_node(node)
         elif node.node_type == "shop":
             self._enter_shop_node(node)
@@ -1831,6 +1904,9 @@ class Game:
         # menu the first time, no separate "narrow it back down" pass
         # needed anywhere.
         self.active_run = active_run
+        # No challenge unless the run fight loader arms one afterward
+        # (_apply_node_challenge) -- Practice and classic play never have one.
+        self.active_challenge = None
         # Resets the build menu to active_run's own drafted pool, or every
         # registered tower when there's no run (classic/Practice play, a
         # map-editor playtest) -- see _active_tower_names(). Centralizing
@@ -2205,6 +2281,9 @@ class Game:
         self.current_level_id = save_data["current_level_id"]
         if run is not None:
             self._apply_affix_traits(run, run.map.node(run.current_node_id))
+            # The leak count/failure ride on the RunState itself, so a
+            # mid-floor resume keeps them; only the roll is re-derived.
+            self._apply_node_challenge(run, run.map.node(run.current_node_id))
         self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
         self.economy.gold = save_data["gold"]
         self.economy.lives = save_data["lives"]
@@ -2728,6 +2807,13 @@ class Game:
         tower_cls = TOWER_TYPES[self.selected_tower_name]
         if not self._is_buildable_for(tower_cls, anchor_col, anchor_row):
             return False
+        if self.active_challenge is not None:
+            # A Proving Grounds placement gate (Skeleton Crew, Narrow Front).
+            reason = challenges.placement_refusal(
+                self.active_challenge, self.selected_tower_name, len(self.towers), self._tower_display_names(),
+            )
+            if reason is not None:
+                return self._refuse_for_challenge(reason)
 
         if not self.economy.can_afford(tower_cls.cost):
             return False
@@ -3121,7 +3207,11 @@ class Game:
         if tower not in self.towers:
             return False
         cost = tower.upgrade_cost()
-        if cost is None or not self.economy.can_afford(cost):
+        if cost is None:
+            return False
+        if self._upgrade_refused():
+            return False
+        if not self.economy.can_afford(cost):
             return False
 
         self._spend_gold(cost)
@@ -3143,6 +3233,8 @@ class Game:
             return False
         if not tower.can_specialize or key not in tower.SPECIALIZATIONS:
             return False
+        if self._upgrade_refused():
+            return False
         cost = tower.specialization_cost()
         if not self.economy.can_afford(cost):
             return False
@@ -3151,6 +3243,17 @@ class Game:
         tower.specialize(key)
         self._record_achievement("towers_specialized")
         self.audio.play("tower_upgraded")
+        return True
+
+    def _upgrade_refused(self):
+        """A Proving Grounds upgrade gate (No Upgrades) -- True (after
+        saying why) if this fight's challenge blocks upgrading/specializing."""
+        if self.active_challenge is None:
+            return False
+        reason = challenges.upgrade_refusal(self.active_challenge)
+        if reason is None:
+            return False
+        self._refuse_for_challenge(reason)
         return True
 
     def can_move_towers(self):
@@ -3263,8 +3366,22 @@ class Game:
         call (not once per frame) correctly handles several enemies
         leaking on the same frame: the first one that would actually zero
         lives out consumes the charge, any others that frame proceed
-        normally against the still-nonzero lives."""
+        normally against the still-nonzero lives.
+
+        A Proving Grounds leak_limit (Glass Gate) is checked first: every
+        leak counts against it, and one past the limit costs no life but
+        breaks the challenge (RunState.challenge_failed)."""
         run = self.active_run
+        leak_limit = self.active_challenge.challenge.leak_limit if self.active_challenge is not None else None
+        if run is not None and leak_limit is not None:
+            run.challenge_leaks += 1
+            if run.challenge_leaks > leak_limit:
+                if not run.challenge_failed:
+                    run.challenge_failed = True
+                    self._queue_toast(
+                        f"{self.active_challenge.challenge.display_name} broken -- the Proving Grounds bonus is lost",
+                    )
+                return
         if (
             run is not None and "guardians_reprieve" in run.relics
             and not run.used_guardians_reprieve and not self.economy.invulnerable

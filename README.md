@@ -73,6 +73,12 @@ node types:
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
 - **Armory** -- choose one of three tower modules, each for a different tower type you hold, free.
+- **Proving Grounds** -- an optional fight under one constraint, shown on the map before you commit:
+  **Skeleton Crew** (at most 4 towers), **No Upgrades**, **Narrow Front** (only two of your tower
+  types may be built), **Double Time** (enemies 35% faster, 50% more gold), **Glass Gate** (only 3
+  lives at stake -- a 4th leak costs nothing but fails the challenge) or **Fog of War** (no wave
+  preview, no range rings). Win without breaking it for a pick of 1 of 2 bonus relics plus extra
+  shop currency; break it and the fight carries on as a normal one. Never on a run's first rows.
 
 The final row is always a single **Boss** node, and a run is **three acts** -- three maps back to
 back. Beating Act 1's or Act 2's boss clears it like any floor, then lets you

@@ -756,13 +756,14 @@ MAP_COLS = 4
 
 MAP_NODE_TYPE_LABELS = {
     "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
-    "armory": "A", "boss": "B",
+    "armory": "A", "challenge": "!", "boss": "B",
 }
 MAP_NODE_TYPE_COLORS = {
     "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
     "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
     "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
-    "armory": settings.COLOR_NODE_ARMORY, "boss": settings.COLOR_NODE_BOSS,
+    "armory": settings.COLOR_NODE_ARMORY, "challenge": settings.COLOR_NODE_CHALLENGE,
+    "boss": settings.COLOR_NODE_BOSS,
 }
 # Full names (unlike MAP_NODE_TYPE_LABELS' single in-circle glyph above) --
 # the map legend and a hovered node's own tooltip both use these instead of
@@ -772,7 +773,8 @@ MAP_NODE_TYPE_COLORS = {
 # what the player reads without a matching, deliberate edit here too.
 MAP_NODE_TYPE_NAMES = {
     "combat": "Combat", "elite": "Elite", "shop": "Shop", "event": "Event",
-    "rest": "Outpost", "treasure": "Treasure", "armory": "Armory", "boss": "Boss",
+    "rest": "Outpost", "treasure": "Treasure", "armory": "Armory",
+    "challenge": "Proving Grounds", "boss": "Boss",
 }
 # One honest, local sentence per node type -- what a hovered node's own
 # tooltip shows below its name (see _draw_map_node_tooltip). Describes only
@@ -788,6 +790,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "rest": "Rest to heal, Forge a tower (placed at level 2), or Drill a crew.",
     "treasure": "A guaranteed relic, plus some Shop currency.",
     "armory": "Choose one of three tower modules, free.",
+    "challenge": "A fight under one constraint -- keep it to win a relic choice and bonus Shop currency.",
     "boss": "The act's boss -- win a trophy relic and move on. Act 3's never ends.",
 }
 
@@ -859,7 +862,30 @@ MAP_TOOLTIP_MAX_WIDTH = 220
 MAP_TOOLTIP_GAP = 6  # clearance between the node's own circle and the box
 
 
-def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, threat=None):
+def map_node_tooltip_lines(small_font, node, affix=None, threat=None, challenge_text=None):
+    """(title, body lines) for a hovered map node -- split out of
+    _draw_map_node_tooltip so the text itself is testable."""
+    body_lines = []
+    if node.level_id is not None:
+        body_lines.append(LEVELS[node.level_id].name)
+    body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if threat is not None:
+        # Game._node_threat: how much tougher this fight's enemies are than
+        # the level's own baseline -- the same numbers the floor load uses.
+        body_lines.append(f"Enemy HP x{threat[0]:.2f}, speed x{threat[1]:.2f}")
+    if affix is not None:
+        # An Elite's own affix (elite_affixes.py) -- shown up front, same
+        # "nothing hidden" reasoning as the level name above.
+        body_lines.extend(_wrap_text(f"{affix.display_name}: {affix.description}", small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if challenge_text is not None:
+        # A Proving Grounds node's constraint (Game._challenge_summary),
+        # known before committing, like an Elite's affix.
+        body_lines.extend(_wrap_text(challenge_text, small_font, MAP_TOOLTIP_MAX_WIDTH))
+    title_text = MAP_NODE_TYPE_NAMES[node.node_type] + (f" ({affix.display_name})" if affix is not None else "")
+    return title_text, body_lines
+
+
+def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, threat=None, challenge_text=None):
     """The hovered node's own type name, the specific level name for a
     Combat/Elite/Boss node (LEVELS[node.level_id] -- naming it ahead of
     time reveals nothing a player couldn't already infer from the node's
@@ -875,20 +901,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
     would run off the top of the screen (true for most of the boss row,
     which sits right at MAP_TOP) -- and clamped horizontally so an edge
     column's own tooltip never draws off the left/right of the screen."""
-    body_lines = []
-    if node.level_id is not None:
-        body_lines.append(LEVELS[node.level_id].name)
-    body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
-    if threat is not None:
-        # Game._node_threat: how much tougher this fight's enemies are than
-        # the level's own baseline -- the same numbers the floor load uses.
-        body_lines.append(f"Enemy HP x{threat[0]:.2f}, speed x{threat[1]:.2f}")
-    if affix is not None:
-        # An Elite's own affix (elite_affixes.py) -- shown up front, same
-        # "nothing hidden" reasoning as the level name above.
-        body_lines.extend(_wrap_text(f"{affix.display_name}: {affix.description}", small_font, MAP_TOOLTIP_MAX_WIDTH))
-
-    title_text = MAP_NODE_TYPE_NAMES[node.node_type] + (f" ({affix.display_name})" if affix is not None else "")
+    title_text, body_lines = map_node_tooltip_lines(small_font, node, affix, threat, challenge_text)
     title_surface = small_font.render(title_text, True, settings.COLOR_TEXT)
     body_surfaces = [small_font.render(line, True, settings.COLOR_TEXT_DIM) for line in body_lines]
     all_surfaces = [title_surface] + body_surfaces
@@ -914,7 +927,8 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R"):
+                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R",
+                     node_challenges=None):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -1001,7 +1015,8 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     # near.
     if hovered_node_id is not None:
         _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id],
-                               (node_affixes or {}).get(hovered_node_id), (node_threats or {}).get(hovered_node_id))
+                               (node_affixes or {}).get(hovered_node_id), (node_threats or {}).get(hovered_node_id),
+                               (node_challenges or {}).get(hovered_node_id))
 
 
 # --- Random Event / Rest / Treasure screens (the run map's other three
@@ -1666,7 +1681,7 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
                        available, continue_button_rect, is_elite=False, is_boss=False, forged_names=(),
-                       potion_unavailable_tag="FULL"):
+                       potion_unavailable_tag="FULL", challenge_note=None):
     """The free post-combat reward (see rewards.py/Game._enter_reward_
     screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
     as `card_rects`; `available[i]` is Game._reward_card_available(i).
@@ -1682,6 +1697,8 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
     else:
         title_text = "Spoils of battle: choose one tower to add to your run"
         subtitle_text = "Elite bonus: a free relic and a tower module" if is_elite else None
+    if challenge_note is not None:  # a Proving Grounds fight: won (relic choice) or failed
+        subtitle_text = challenge_note
     title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
     if subtitle_text is not None:
@@ -1857,6 +1874,7 @@ _REWARD_CARD_DRAWERS = {
     "relic": _draw_relic_card,
     "potion": _draw_potion_card,
     "boss_relic": _draw_relic_card,
+    "challenge_relic": _draw_relic_card,
 }
 
 
@@ -1883,7 +1901,10 @@ POTION_BELT_LABEL_GAP = 24
 # The floor's run modifiers (ascension, elite affix), one line above the
 # belt's own label; the hovered-potion description box sits above that.
 RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
-POTION_DESCRIPTION_BOTTOM = RUN_MODIFIERS_Y - 8
+# A Proving Grounds fight's own two status lines, just above that.
+CHALLENGE_STATUS_Y = RUN_MODIFIERS_Y - 2 * PANEL_ROW_HEIGHT
+POTION_DESCRIPTION_BOTTOM = CHALLENGE_STATUS_Y - 8
+CHALLENGE_STATUS_COLOR = settings.COLOR_NODE_CHALLENGE
 
 
 def build_potion_slot_rects(count):
@@ -1900,7 +1921,7 @@ def build_potion_slot_rects(count):
 
 
 def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
-                     run_modifiers_text=None):
+                     run_modifiers_text=None, challenge_text=None):
     """The run's potion slots -- a filled slot shows its potion's initials
     on its own color, an empty one just an outline. Hovering a filled slot
     shows that potion's name and description above the belt; a running
@@ -1913,6 +1934,10 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
     surface.blit(label, (x, POTION_BELT_TOP - POTION_BELT_LABEL_GAP))
     if run_modifiers_text is not None:
         surface.blit(small_font.render(run_modifiers_text, True, settings.COLOR_LIVES), (x, RUN_MODIFIERS_Y))
+    if challenge_text is not None:  # a Proving Grounds fight: [header, live status]
+        for index, line in enumerate(challenge_text):
+            surface.blit(small_font.render(line, True, CHALLENGE_STATUS_COLOR),
+                         (x, CHALLENGE_STATUS_Y + index * PANEL_ROW_HEIGHT))
 
     for index, rect in enumerate(slot_rects):
         if index < len(potion_keys):

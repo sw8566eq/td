@@ -105,6 +105,13 @@ The node types:
   a mid-boss-fight Restart -- which rebuilds a fresh `WaveManager` whose own `authored_waves_cleared`
   starts `False` again -- from double-counting `bosses_defeated` a second time.
 - **Armory**: `GameState.ARMORY` -- pick one tower module; see "Armory nodes".
+- **Proving Grounds** (`"challenge"`): a fight under one constraint for a better reward; see
+  "Proving Grounds".
+
+`run_map.FIGHT_NODE_TYPES` (`combat`/`elite`/`challenge`/`boss`) is the one tuple every "is this a
+fight?" check reads -- map generation's level draw, `Game._enter_node`'s dispatch, the threat
+readout, `RunState.floors_cleared`, `save_state`'s fight-node validation. A new fight type joins it
+there rather than being added to scattered literal tuples.
 
 Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
 while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
@@ -226,3 +233,50 @@ draws up to `ARMORY_OFFER_COUNT` `modules.module_offer` pairs for distinct tower
 `_run_rng(run, "armory", node.id)` into `GameState.ARMORY` (`ui.draw_armory_screen`); a click takes one
 (`_take_armory_offer`, which fits it and finishes the node), Skip/Enter finishes it empty, and no towers
 held resolves it on entry. Quitting mid-Armory forfeits it, like the Shop.
+
+## Proving Grounds
+
+A ninth node type (`"challenge"`, player-facing **Proving Grounds**, weight 6 in `NODE_TYPE_WEIGHTS`,
+never forced). `run_map.MIN_ROW_FOR_TYPE` gates it to `MIN_CHALLENGE_ROW` (2) onward -- the same table
+now holds Elite's `MIN_ELITE_ROW`, so `_assign_node_types` has no per-type branch. It's a
+`FIGHT_NODE_TYPES` member: it draws a level like Combat, loads through `Game._load_combat_node`, and
+escalates and pays floor income like Combat (no Elite bump) -- the constraint is the difficulty.
+
+`run/challenges.py` -- `CHALLENGES` registry of `Challenge` entries, plain data whose fields are each
+read generically by the one place that enforces them, so `Game` never branches on a challenge key:
+
+| Field | Enforced by |
+|---|---|
+| `max_towers` (Skeleton Crew: 4) | `Game.try_place_tower` via `challenges.placement_refusal` |
+| `allowed_tower_count` (Narrow Front: 2) | same placement gate, against `ChallengeRoll.allowed_towers` |
+| `allows_upgrades` (No Upgrades) | `Game._upgrade_refused`, called by `try_upgrade_tower`/`try_specialize_tower` |
+| `enemy_speed_multiplier`/`enemy_gold_multiplier` (Double Time: 1.35/1.5) | `challenges.apply_to_escalation`, folded in last by `Game._node_escalation` -- so the map's threat readout shows it too |
+| `leak_limit` (Glass Gate: 3) | `Game._lose_a_life`: every leak counts in `RunState.challenge_leaks`; one past the limit costs no life and sets `RunState.challenge_failed` |
+| `hides_intel` (Fog of War) | `Renderer._hides_intel`: no HUD wave preview, no range rings (placed, placement, move preview) and no coverage overlay |
+
+**Rolling.** `Game._node_challenge(run, node)` re-derives a `challenges.ChallengeRoll` from
+`_run_rng(run, "challenge", node.id)` every time, never stored (the Elite-affix rule, see "Elite
+affixes and named bosses"): the challenge is the stream's first draw, then Narrow Front-style picks
+sample the run's held damaging tower types (sorted) on the same rng. Fewer candidates than the limit
+leaves the build list open. The map tooltip (`Game.map_node_challenges`, built in `_enter_map`, via
+`ui.map_node_tooltip_lines`), the floor load and a resume all call it, so they agree. Since the pick
+reads `run.unlocked_towers`, a Narrow Front node's allowed list can change between map visits as the
+run gains towers -- what the tooltip shows on the visit you enter it from is what you get.
+
+**During the fight.** `Game.active_challenge` is cleared by every `_load_level_object` (Practice and
+classic play never have one) and armed by `_apply_node_challenge`, called next to
+`_apply_affix_traits` in both `_load_combat_node` and `resume_saved_run`. `_load_combat_node` also
+resets `challenge_leaks`/`challenge_failed`, so a Restart retries the challenge clean; a mid-floor
+resume keeps them (they ride on the RunState). A refused action queues a toast saying why
+(`_refuse_for_challenge`, de-duplicated while the same toast is still showing), and the sidebar shows
+two lines above the run-modifiers line (`ui.CHALLENGE_STATUS_Y`): "Proving Grounds" and
+`challenges.status_line` (towers used, leaks so far, or FAILED).
+
+**Reward.** `Game._challenge_won()` (the current node is a challenge and `challenge_failed` is false --
+never `active_challenge`, so a reward screen reopened from a map checkpoint still knows) gates both
+halves: `_advance_run_floor` adds `challenges.bonus_shop_currency(depth)` (20 + 2 per depth, a reward
+like Treasure's, so `blocks_shop_income` doesn't touch it), and `_enter_reward_screen` asks
+`rewards.build_combat_reward` for `challenge_relic_count=RELIC_CHOICE_COUNT` (2) relics, drawn after
+every older pick so other fights' offers are unchanged. They're a pick-one `"challenge_relic"` row on
+the ordinary reward screen, whose subtitle says won or failed. A failed challenge still clears and
+rewards like a normal Combat floor.

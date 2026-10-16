@@ -11,10 +11,13 @@ from collections import deque
 
 from run.run_map import (
     BOSS_LEVEL_IDS,
+    FIGHT_NODE_TYPES,
     GUARANTEED_REST_ROW,
     GUARANTEED_TREASURE_ROW,
     MAX_SAME_TYPE_PER_ROW_FRACTION,
+    MIN_CHALLENGE_ROW,
     MIN_ELITE_ROW,
+    NODE_TYPE_WEIGHTS,
     NODE_TYPES,
     ROW_COUNT,
     START_ROW_WIDTH,
@@ -133,6 +136,21 @@ def test_no_elite_node_before_min_elite_row():
             assert all(node.node_type != "elite" for node in game_map.rows[row_index])
 
 
+def test_proving_grounds_only_appear_from_their_minimum_row_and_never_on_the_boss_row():
+    seen = 0
+    for seed in range(300):
+        game_map = generate_run_map(random.Random(seed))
+        for row in game_map.rows:
+            for node in row:
+                if node.node_type == "challenge":
+                    seen += 1
+                    assert MIN_CHALLENGE_ROW <= node.row < game_map.final_row_index
+                    assert node.level_id in LEVELS  # a real fight
+    assert MIN_CHALLENGE_ROW >= 1  # never the forced all-combat row 0
+    assert seen > 0  # actually drawn by the weighted mix
+    assert 0 < NODE_TYPE_WEIGHTS["challenge"] < NODE_TYPE_WEIGHTS["combat"]  # a modest weight
+
+
 def test_guaranteed_rest_row_always_has_at_least_one_rest_node():
     for seed in _SEEDS:
         game_map = generate_run_map(random.Random(seed))
@@ -163,7 +181,7 @@ def test_combat_and_elite_and_boss_nodes_have_a_real_level_id_from_the_right_tie
         game_map = generate_run_map(random.Random(seed))
         for row in game_map.rows:
             for node in row:
-                if node.node_type in ("combat", "elite", "boss"):
+                if node.node_type in FIGHT_NODE_TYPES:
                     assert node.level_id in LEVELS
                     assert node.level_id in _level_pool_for_row(node.row, LEVELS)
                 else:

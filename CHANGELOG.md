@@ -8,6 +8,10 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Proving Grounds**: a new map node (from each act's third row on) -- a fight under one constraint
+  (Skeleton Crew, No Upgrades, Narrow Front, Double Time, Glass Gate or Fog of War), named in its map
+  tooltip and shown in the sidebar during the fight. Keep the constraint to win a pick of 1 of 2 bonus
+  relics plus 20 + 2 per depth extra shop currency; a blocked action says why in a toast.
 - **Field Notes**: short one-time hints the first time you meet a system -- each map node type, the
   reward screen, potions and modules, resonances, veterancy, Barricades and Harpoons, flyers/shields/
   burrowers/sappers, calling waves early, moving towers, low lives, curses, trophy relics, the Gauntlet.
