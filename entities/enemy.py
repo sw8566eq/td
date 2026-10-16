@@ -168,7 +168,7 @@ class Enemy:
     def _scale(base, per_wave, wave_number):
         return base + per_wave * (wave_number - 1)
 
-    def update(self, dt, enemies=None):
+    def update(self, dt, enemies=None, enemy_index=None):
         if self.is_dead or self.reached_goal:
             return
 
@@ -635,8 +635,8 @@ class BossEnemy(Enemy):
             self.armor_timer = self.ARMOR_DURATION
         return applied
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         if self.armor_timer > 0:
@@ -686,8 +686,8 @@ class FinalBossEnemy(BossEnemy):
         super().__init__(waypoints_px, wave_number)
         self.summon_timer = self.SUMMON_INTERVAL
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         self.summon_timer -= dt
@@ -767,8 +767,8 @@ class FinalBossShieldedEnemy(BossEnemy):
         # take_poison_damage() already establishes for its own shield.
         return BossEnemy.take_damage(self, amount)
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         self.shield_pulse_timer -= dt
@@ -858,8 +858,8 @@ class ShieldedEnemy(Enemy):
             return 0.0
         return Enemy.take_damage(self, amount)
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         if self.shield < self.max_shield:
@@ -984,8 +984,8 @@ class HealerEnemy(Enemy):
     heal_range = 90
     heal_rate = 6.0  # hp/sec granted to each enemy in range
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         # No is_dead/reached_goal check on `other` here -- receive_heal()
@@ -993,11 +993,18 @@ class HealerEnemy(Enemy):
         # apply_knockback are already trusted to self-guard everywhere
         # else in this file. Mirrors SupportTower.update()'s aura loop
         # (tower.py), which likewise only filters "is this me".
+        #
+        # `enemy_index` (a spatial_index.MovingEnemyIndex, from Game.update())
+        # narrows the scan to nearby enemies without changing who gets
+        # healed: the exact distance check below still decides, and each
+        # enemy's heal is independent of the others', so visiting order
+        # doesn't matter. Without one (tests), the raw list is scanned.
         heal_amount = self.heal_rate * dt
-        for other in (enemies or ()):
-            if other is self:
-                continue
-            if self.pos.distance_to(other.pos) <= self.heal_range:
+        heal_range = self.heal_range
+        pos = self.pos
+        pool = enemy_index.near(pos, heal_range) if enemy_index is not None else (enemies or ())
+        for other in pool:
+            if other is not self and pos.distance_to(other.pos) <= heal_range:
                 other.receive_heal(heal_amount)
 
 
