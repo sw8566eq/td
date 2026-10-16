@@ -1857,6 +1857,9 @@ POTION_COLORS = {
     "overclock_elixir": (250, 250, 140),
     "smoke_bomb": (170, 170, 185),
     "venom_vial": (150, 210, 60),
+    "tether_flare": (90, 220, 210),
+    "field_promotion": (240, 170, 90),
+    "mortar_mix": (190, 150, 110),
 }
 POTION_SLOT_SIZE = 56
 POTION_SLOT_GAP = 12

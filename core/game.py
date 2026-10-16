@@ -1175,6 +1175,10 @@ class Game:
         if potions.POTIONS[run.potions[slot]].needs_enemies and not self.enemies:
             self._queue_toast("No enemies to use that on yet")
             return
+        potion = potions.POTIONS[run.potions[slot]]
+        if potion.usable is not None and not potion.usable(self):
+            self._queue_toast(potion.unusable_message)
+            return
         key = run.potions.pop(slot)
         potions.POTIONS[key].use(self)
         self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)

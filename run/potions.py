@@ -46,6 +46,7 @@ SMOKE_BOMB_KNOCKBACK = 120.0
 VENOM_VIAL_HP_FRACTION_PER_TICK = 0.04
 VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK = 0.01
 VENOM_VIAL_DURATION = 6.0
+TETHER_FLARE_DURATION = 8.0
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,10 @@ class Potion:
     # Only affects enemies on the field -- Game.use_potion refuses it (and
     # keeps the potion) while there are none, rather than wasting it.
     needs_enemies: bool = True
+    # Any other precondition: Game.use_potion refuses (keeping the potion,
+    # toasting unusable_message) while this returns False.
+    usable: Callable[[Any], bool] | None = None
+    unusable_message: str = ""
 
 
 def _fire_bomb(game: Any) -> None:
@@ -100,6 +105,38 @@ def _venom_vial(game: Any) -> None:
     for enemy in game.enemies:
         fraction = VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK if enemy.IS_BOSS else VENOM_VIAL_HP_FRACTION_PER_TICK
         enemy.apply_poison(enemy.max_hp * fraction, 1.0, VENOM_VIAL_DURATION)
+
+
+def _tether_flare(game: Any) -> None:
+    for enemy in game.enemies:
+        enemy.apply_ground(TETHER_FLARE_DURATION)
+
+
+def _any_flyer(game: Any) -> bool:
+    return any(enemy.is_flying for enemy in game.enemies)
+
+
+def _promotion_candidate(game: Any) -> Any:
+    """The tower Field Promotion levels up: the placed, not-yet-maxed tower
+    that has dealt the most damage this floor (earliest placed on a tie)."""
+    candidates = [tower for tower in game.towers if not tower.is_max_level]
+    return max(candidates, key=lambda tower: tower.damage_dealt, default=None)
+
+
+def _field_promotion(game: Any) -> None:
+    tower = _promotion_candidate(game)
+    if tower is not None:
+        tower.upgrade()
+
+
+def _damaged_structures(game: Any) -> list[Any]:
+    return [tower for tower in game.towers
+            if getattr(tower, "max_hp", None) is not None and tower.hp < tower.max_hp]
+
+
+def _mortar_mix(game: Any) -> None:
+    for tower in _damaged_structures(game):
+        tower.hp = tower.max_hp
 
 
 def _overclock(game: Any) -> None:
@@ -151,6 +188,23 @@ POTIONS = {
         f"Poison every enemy for {round(VENOM_VIAL_HP_FRACTION_PER_TICK * 100)}% of its max HP per second "
         f"for {VENOM_VIAL_DURATION:g}s ({round(VENOM_VIAL_BOSS_HP_FRACTION_PER_TICK * 100)}% vs bosses).",
         _venom_vial,
+    ),
+    "tether_flare": Potion(
+        "tether_flare", "Tether Flare",
+        f"Ground every flyer on the field for {TETHER_FLARE_DURATION:g}s -- ground towers can hit it.",
+        _tether_flare, usable=_any_flyer, unusable_message="No flyers to ground",
+    ),
+    "field_promotion": Potion(
+        "field_promotion", "Field Promotion",
+        "Your top-damage tower that isn't maxed gains a level for free.",
+        _field_promotion, needs_enemies=False,
+        usable=lambda game: _promotion_candidate(game) is not None, unusable_message="No tower left to promote",
+    ),
+    "mortar_mix": Potion(
+        "mortar_mix", "Mortar Mix",
+        "Repair every damaged Barricade to full hit points.",
+        _mortar_mix, needs_enemies=False,
+        usable=lambda game: bool(_damaged_structures(game)), unusable_message="No damaged Barricade to repair",
     ),
 }
 

@@ -8,6 +8,8 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Three potions: **Tether Flare** (ground every flyer for 8s), **Field Promotion** (free level for your
+  top-damage tower) and **Mortar Mix** (repair every Barricade). A potion that can't do anything yet is kept, with a toast.
 - Tempo relics: **Signal Horn** (calling a wave early pays double) and **Field Rails** (moving towers is free).
 - **Move towers**: a Move button next to Sell relocates a placed tower, keeping its level and
   experience -- free before a floor's first wave, 15% of its cost between waves, never mid-wave.

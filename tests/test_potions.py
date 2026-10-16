@@ -11,6 +11,7 @@ from conftest import clear_mouse_mock, mock_mouse_pos, spy_on_audio, start_first
 
 from core.game import GameState
 from entities.enemy import BossEnemy, GruntEnemy
+from entities.tower import TOWER_TYPES
 from persistence import save_state
 from progression import achievements
 from run import potions
@@ -334,5 +335,60 @@ def test_enemy_potions_are_kept_with_a_toast_when_the_field_is_empty(game):
 
 def test_needs_enemies_flags_match_what_each_potion_touches():
     assert {key for key, potion in POTIONS.items() if not potion.needs_enemies} == {
-        "liquid_gold", "mending_salve", "overclock_elixir",
+        "liquid_gold", "mending_salve", "overclock_elixir", "field_promotion", "mortar_mix",
     }
+
+
+def test_tether_flare_grounds_flyers_and_is_refused_without_one(game):
+    from entities.enemy import FlyingEnemy
+
+    run = _floor_with_potions(game, ["tether_flare"])
+    game.enemies = [_enemy()]
+    game.use_potion(0)
+    assert run.potions == ["tether_flare"]  # no flyer: kept, not wasted
+    flyer = _enemy(FlyingEnemy)
+    game.enemies.append(flyer)
+    game.use_potion(0)
+    assert run.potions == []
+    assert flyer.is_grounded
+    assert flyer.ground_timer == potions.TETHER_FLARE_DURATION
+
+
+def _place(game, name):
+    from conftest import find_buildable_anchor
+
+    game.selected_tower_name = name
+    if TOWER_TYPES[name].PLACEMENT == "path":
+        n = game.grid.subtiles_per_tile
+        col, row = sorted(set(game.level.path_cells) - set(game.level.spawn_cells) - set(game.level.goal_cells))[0]
+        assert game.try_place_tower(col * n, row * n)
+    else:
+        assert game.try_place_tower(*find_buildable_anchor(game))
+    return game.towers[-1]
+
+
+def test_field_promotion_levels_up_the_top_damage_tower(game):
+    run = _floor_with_potions(game, ["field_promotion"])
+    game.use_potion(0)
+    assert run.potions == ["field_promotion"]  # no tower yet: kept
+    game.economy.gold = 10_000
+    weak, strong = _place(game, "basic"), _place(game, "basic")
+    strong.damage_dealt = 500
+    game.use_potion(0)
+    assert run.potions == []
+    assert strong.level == 2 and weak.level == 1
+
+
+def test_mortar_mix_repairs_barricades_only_when_damaged(game):
+    run = _floor_with_potions(game, ["mortar_mix"])
+    game.economy.gold = 10_000
+    if "barricade" not in game._active_tower_names():
+        game.active_run.unlocked_towers.append("barricade")
+        game._rebuild_button_rects()
+    wall = _place(game, "barricade")
+    game.use_potion(0)
+    assert run.potions == ["mortar_mix"]  # full health: kept
+    wall.hp = 1
+    game.use_potion(0)
+    assert run.potions == []
+    assert wall.hp == wall.max_hp
