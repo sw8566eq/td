@@ -140,3 +140,29 @@ for a packaged build) it loads and scales that, otherwise it synthesizes a place
 rect / circle with an outline at normal sizes, a plain flat fill below ~12px so tiny sprites like
 the map's subtile mosaic don't collapse into a dot). Dropping in real art is a files-only change --
 no code changes unless filenames differ from the manifest.
+
+## Render caches
+
+A few things drawn in large numbers every frame are cached. Each cache's key covers everything its
+drawing reads, so a cache hit gives exactly the pixels a fresh draw would. `tests/test_render_caches.py`
+compares the bytes, and `tools/perf_bench.py`'s `frame` hash checks a whole board (see
+[tooling.md](tooling.md) "Performance bench (`tools/perf_bench.py`)").
+
+- **Damage-number and toast text** (`effects._text_cache`): `FloatingText`'s rendered surface is keyed
+  by `(font, text, color)` and shared between labels. Nothing invalidates an entry, because a label's
+  text never changes. The surface is shared, so `draw()` sets its alpha right before each blit and
+  nothing may draw onto it. The key holds the `Font` object itself, not `id(font)`, so a font from an
+  earlier `Game` can't alias a new one. The whole cache is cleared once it reaches `_TEXT_CACHE_LIMIT`
+  entries.
+- **Impact rings** (`effects._ring_cache`): `ExpandingRing`'s per-frame ring surface is keyed by
+  `(radius, width, color, alpha)`. Rings of one kind share a duration and frames share a dt, so keys
+  recur. The cache is cleared at `_RING_CACHE_LIMIT`.
+- **Coverage overlay** (`ui._coverage_overlay_cache`): the V overlay's full-screen ring layer is kept with
+  its key: the target surface size plus every tower's `(center, int(effective_range()) or None,
+  int(MIN_RANGE) or None)` in list order. The layer is redrawn when that key changes, which happens when a
+  tower is placed, sold or moved, or an aura, relic or high-ground bonus changes a ring's integer radius.
+  The resonance link lines are drawn on top every frame, uncached.
+- **Dim overlays** (`ui._dim_overlay_cache`, older): the solid backdrop behind menus, keyed by size.
+
+Colors in these keys must be hashable (tuples, as every `settings.COLOR_*` is). A `pygame.Color` would
+raise.

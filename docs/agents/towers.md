@@ -132,6 +132,31 @@ chiefly the whole test suite, needed no changes; `SupportTower.update()` accepts
 for call-signature parity with `Game.update()`'s uniform per-tower call but never reads it, since it
 never attacks and so never calls `acquire_target()` at all.
 
+### The other enemy-vs-enemies scans use it too
+
+The same index narrows every other "which enemies are near this point" scan, each with an
+index-free fallback (`None`, used by most tests) that scans the raw list, and each still applying its
+own exact distance check. `tests/test_frame_index_paths.py` asserts the two paths agree:
+
+- **Splash, chain hops, Arcing Rounds bounces, Overkill carry-over** (`Projectile._resolve_hit`/
+  `_find_chain_target`) get the tower loop's index through `Projectile.update(..., enemy_index)`. It is
+  still exact there because nothing moves an enemy between the tower loop and the projectile loop (a
+  knockback only queues a slide for the next `Enemy.update()`). If you add something that moves an
+  enemy *during* the tower or projectile loop, these callers need a fresh index.
+- **Visiting order matters for these callers**, so they use `near_in_order()`, which sorts candidates
+  back into the raw list's order: each splash hit rolls crits and relic procs off the shared `random`
+  stream, a chain hop's distance tie goes to the earlier enemy, and a damage credit is a float sum
+  whose rounding depends on order. Plain `near()` is fine only where order can't matter (tower
+  targeting, a Healer's heals).
+- **Burning ground and Healer heals** (`Game._update_ground_fires`, `HealerEnemy.update`) run
+  *before* the tower loop's index exists, and heals happen while enemies are still moving one by one.
+  They share a lazily-built `spatial_index.MovingEnemyIndex`: a snapshot taken on the first query.
+  After the snapshot, `Game.update()` reports each enemy's displacement (`note_moved`) and every query
+  is widened by the largest displacement so far, so an enemy that has moved since the snapshot is
+  still a candidate. Every enemy update takes an `enemy_index` parameter for this, the same
+  call-signature parity reason `SupportTower.update()` takes one. A frame with no Healer and no fire
+  never builds the snapshot.
+
 ## Post-level results
 
 Every `Tower` tracks its own lifetime `shots_fired`/`shots_hit`/`damage_dealt`/`kills` purely for

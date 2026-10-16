@@ -216,7 +216,8 @@ def main(argv=None):
           f"{len(game.projectiles)} projectiles, {len(game.impact_effects)} rings, "
           f"{len(game.damage_numbers)} damage numbers, {len(game.ground_fires)} ground fires, wave {game.wave_manager.current_wave_number}")
     for label, samples in (("update", update_ms), ("render", render_ms)):
-        print(f"{label:7} mean {statistics.fmean(samples):7.2f} ms   p95 {_percentile(samples, 0.95):7.2f} ms")
+        print(f"{label:7} mean {statistics.fmean(samples):7.2f} ms   median {statistics.median(samples):7.2f} ms   "
+              f"p95 {_percentile(samples, 0.95):7.2f} ms")
     if profiler:
         pstats.Stats(profiler).sort_stats("cumulative").print_stats(args.top)
         pstats.Stats(profiler).sort_stats("tottime").print_stats(args.top)

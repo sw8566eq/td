@@ -160,3 +160,47 @@ Commander -- random map nodes, building/upgrading in fights, rewards, Shops, Eve
 (Rest/Forge/Drill/Move on), Armories, Treasures, occasional saves -- invulnerable in fights so it reaches
 every act and the endless final boss. Prints each run's outcome and screen counts; exits non-zero on a
 crash. Run it after changing node types, reward/act flow or save state.
+
+## Performance bench (`tools/perf_bench.py`)
+
+A dev-only frame-time bench, excluded from coverage. It builds the heaviest board the game realistically
+reaches: the final act's endless boss floor (level 9 by default, three spawns), 80 towers placed
+round-robin over every type nearest the path, each upgraded to max and every other one specialized,
+`unlimited_gold`, near-infinite lives, and the live enemy count topped up to `--enemies` (300) every
+frame from every non-final-boss species. After `--warmup` frames (600) it times `--frames` frames
+(300) of `Game.update(1/60)` and `Game.render()` separately and prints mean/median/p95 ms.
+`--relics` holds every non-curse relic (crit, chain, overkill, poison spread, burning ground);
+`--coverage` turns on the V overlay; `--profile update|render|both` dumps cProfile's top functions.
+
+**Determinism check.** The global `random` module and the run are seeded, so every run of the same
+arguments builds the same board. The last line prints two hashes: `fingerprint` (every enemy's
+type/hp/position, every tower's damage/kills/shots, projectile positions, gold, lives, wave, effect
+counts, and the `random` state) and `frame` (the last rendered frame's pixels). A performance change
+must leave both unchanged for every flag combination. To compare, extract the old commit with
+`git archive <sha> | tar -x -C <dir>`, copy the current `tools/perf_bench.py` into it, and run both
+with `--check`.
+
+**Numbers from the first optimization pass.** Best of five alternating runs (median ms per frame), on a
+6-core machine under load, so treat them as relative:
+
+| Scenario | update before | update after | render before | render after |
+|---|---|---|---|---|
+| default (300 enemies) | 2.56 | 2.03 | 4.49 | 3.77 |
+| `--enemies 500` | 6.03 | 4.14 | 6.14 | 5.15 |
+| `--relics` | 3.07 | 2.59 | 8.68 | 6.15 |
+| `--coverage` | 3.15 | 2.30 | 8.96 | 5.09 |
+
+What changed, with each step's measured effect on the default scenario (means, quieter machine):
+
+- Damage-number text surfaces cached instead of `font.render()` per label per frame: render 4.79 -> 3.92 ms.
+  This was the top render cost, since late boards keep 500-5000 labels alive.
+- Healer heals, ground fires, splash hits and chain/bounce/overkill hops query the spatial index instead
+  of scanning every enemy: update 2.88 -> 2.51 ms. `EnemySpatialIndex.near()` returning a list instead of a
+  generator: 2.51 -> 2.13 ms. The healer loop was the top update cost, O(healers x enemies).
+- Impact-ring surfaces cached: most of the `--relics` render gain (which has about 100 rings alive).
+- The coverage overlay's full-screen ring layer is redrawn only when a ring changes: `--coverage` render
+  roughly halved.
+
+Still on the table, not done: the per-kill-frame `achievements.json` write (`_record_achievement("kills")`
+does a load-mutate-save on every frame with a kill, about one frame in four on this bench) and the blits
+themselves, which now dominate render.

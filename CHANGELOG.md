@@ -216,6 +216,14 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 - A real MIT license (see `LICENSE`) and a real Credits screen, replacing a long-standing
   "License: TBD." placeholder -- Credits now also properly attributes the bundled Kenney CC0 art.
 
+### Changed
+
+- Performance -- late endless boards run faster with identical results: Healer heals, splash hits,
+  chain hops and burning ground now look up nearby enemies through the spatial index instead of
+  scanning every enemy, and damage numbers, impact rings and the V coverage overlay reuse cached
+  surfaces instead of redrawing them every frame. On a 300-enemy, 80-tower bench, update is ~21%
+  faster and render ~16% faster (~43% with the coverage overlay on). New `tools/perf_bench.py`.
+
 ### Fixed
 
 - Poison damage-over-time is now credited to the tower that applied it, so Poison towers' damage and
