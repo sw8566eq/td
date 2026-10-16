@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Achievements **Eager Commander** (call 50 waves early) and **Redeployment** (move 20 towers).
 - Three potions: **Tether Flare** (ground every flyer for 8s), **Field Promotion** (free level for your
   top-damage tower) and **Mortar Mix** (repair every Barricade). A potion that can't do anything yet is kept, with a toast.
 - Tempo relics: **Signal Horn** (calling a wave early pays double) and **Field Rails** (moving towers is free).

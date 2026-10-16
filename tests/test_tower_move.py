@@ -189,3 +189,15 @@ def test_signal_horn_doubles_the_early_call_bonus_and_its_preview(playing_game):
     assert playing_game.call_next_wave() == playing_game.early_call_bonus(3.0)
     assert playing_game.economy.gold == gold + 2 * base * 3 // 4
     playing_game.render()
+
+
+def test_moves_and_early_calls_count_toward_achievements(playing_game):
+    from progression import achievements
+
+    tower = _place(playing_game)
+    playing_game.try_move_tower(tower, *_free_anchor(playing_game, tower))
+    _between_waves(playing_game)
+    playing_game.call_next_wave()
+    counters = achievements.load_achievements(playing_game.achievements_path)["counters"]
+    assert counters["towers_moved"] == 1
+    assert counters["waves_called_early"] == 1

@@ -162,6 +162,12 @@ ACHIEVEMENTS = {
     "harmonist": Achievement(
         "harmonist", "Harmonist", "Have 4 resonances active at once.", "resonances_active", 4,
     ),
+    "eager_commander": Achievement(
+        "eager_commander", "Eager Commander", "Call 50 waves early.", "waves_called_early", 50,
+    ),
+    "redeployment": Achievement(
+        "redeployment", "Redeployment", "Move 20 towers.", "towers_moved", 20,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),

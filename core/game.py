@@ -1933,6 +1933,7 @@ class Game:
         if bonus <= 0:
             return 0
         self.economy.add_gold(bonus)
+        self._record_achievement("waves_called_early")
         self.damage_numbers.append(
             effects.FloatingText(
                 (self.skip_button_rect.centerx, self.skip_button_rect.top - 8),
@@ -3031,6 +3032,7 @@ class Game:
         self.grid.occupy(anchor_col, anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
         self._recompute_tower_density_bonuses()
         self.moving_tower = None
+        self._record_achievement("towers_moved")
         self.audio.play("tower_placed")
         return True
 
