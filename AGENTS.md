@@ -32,7 +32,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- CI gate
 
-mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py   # strict type check -- only the annotated modules; CI gate
+mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py run/challenges.py   # strict type check -- only the annotated modules; CI gate
 
 python tools/flow_check.py         # end-to-end bot run per Commander; run after changing node types, reward/act flow or save state
 python tools/tower_bench.py        # dev-only tower balance bench
@@ -109,7 +109,7 @@ four (see [tooling.md](docs/agents/tooling.md) "Extending the strict list").
 |---|---|
 | [core-game.md](docs/agents/core-game.md) | folder layout, `Game`, its `Renderer`/`InputHandler`/`ProgressTracker` slices, toasts, Field Notes hints |
 | [run-loop.md](docs/agents/run-loop.md) | `RunState`, `start_new_run`, node flow, floor clear/permadeath, `_run_rng`, Daily Run, acts, Ascension, Commanders |
-| [run-map.md](docs/agents/run-map.md) | `run/run_map.py`, node types (Combat/Elite/Shop/Event/Rest/Treasure/Boss/Armory), map screen, rewards, potions, elite affixes, the opening blessing |
+| [run-map.md](docs/agents/run-map.md) | `run/run_map.py`, node types (Combat/Elite/Shop/Event/Rest/Treasure/Boss/Armory/Proving Grounds), map screen, rewards, potions, elite affixes, the opening blessing |
 | [relics.md](docs/agents/relics.md) | `run/relics.py`: effect shapes, `compose_relic_modifiers` stacking rules, tower-exclusive relics, curses, boss relics |
 | [economy-shop.md](docs/agents/economy-shop.md) | battle gold vs shop currency, `run/shop.py`, `--unlimited-gold` |
 | [towers.md](docs/agents/towers.md) | leveling/specialization, Support two-pass update, Overload Cannon, Siphon, targeting index, results table, veterancy, traps, modules, Barricade, resonances |

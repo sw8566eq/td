@@ -3,7 +3,8 @@
 A bot plays whole runs headless (one per Commander): it picks map nodes at
 random, builds and upgrades towers in fights, takes rewards, shops, resolves
 Events, uses Outposts (Rest/Forge/Drill/Move on), Armories and Treasures,
-and saves now and then -- invulnerable in fights, since this checks that the
+fights Proving Grounds under their constraint (tallied per challenge, plus
+whether each was won), and saves now and then -- invulnerable in fights, since this checks that the
 run's state machine never crashes or gets stuck (act transitions, trophy
 rewards, the endless final boss), not balance. Dev-only, excluded from
 coverage; writes nothing outside a temp directory.
@@ -54,6 +55,8 @@ def play(seed, commander):
         elif st == GameState.PLAYING:
             game.economy.invulnerable = True  # exercise the flow, not the balance
             game.economy.gold += 50
+            if not game.towers and game.active_challenge is not None:
+                seen[f"challenge:{game.active_challenge.challenge.key}"] += 1
             if not game.towers:
                 path_points = [game.grid.tile_to_pixel_center(*c) for c in game.grid.path_cells]
                 names = [n for n in game._active_tower_names() if TOWER_TYPES[n].ATTACKS]
@@ -71,6 +74,8 @@ def play(seed, commander):
             if game.active_run.is_final_floor and game.wave_manager.wave_index > 12:
                 return seen, f"reached endless, act {game.active_run.act+1}"
         elif st == GameState.FLOOR_CLEARED:
+            if game.active_run.map.node(game.active_run.current_node_id).node_type == "challenge":
+                seen["challenge won" if game._challenge_won() else "challenge failed"] += 1
             game._handle_keydown(pygame.K_SPACE)
         elif st == GameState.REWARD:
             cards = game._reward_cards()

@@ -16,7 +16,7 @@ the starter tower pool a run begins with.
 
 from dataclasses import dataclass, field
 
-from run.run_map import ACT_COUNT, ROW_COUNT, RunMap
+from run.run_map import ACT_COUNT, FIGHT_NODE_TYPES, ROW_COUNT, RunMap
 
 
 @dataclass
@@ -152,6 +152,13 @@ class RunState:
     # taken there), which the capture adds on top of the level's own
     # starting lives rather than overwriting.
     lives_captured: bool = False
+    # The current fight's Proving Grounds bookkeeping (run/challenges.py):
+    # leaks counted against a Glass Gate-style leak_limit, and whether the
+    # challenge has been broken (its bonus reward forfeit). Reset by every
+    # fight load (Game._load_combat_node); kept on the run so a mid-floor
+    # save and a pending reward screen both remember them.
+    challenge_leaks: int = 0
+    challenge_failed: bool = False
 
     @property
     def current_level_id(self) -> object:
@@ -202,5 +209,5 @@ class RunState:
         visited."""
         return self.floors_cleared_prior_acts + sum(
             1 for node_id in self.visited_node_ids
-            if self.map.node(node_id).node_type in ("combat", "elite", "boss")
+            if self.map.node(node_id).node_type in FIGHT_NODE_TYPES
         )

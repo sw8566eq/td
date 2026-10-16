@@ -39,7 +39,7 @@ from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
 from entities.waves import WaveState
 from presentation import ui
 from progression import hints
-from run import modules, potions, relics, shop, veterancy
+from run import challenges, modules, potions, relics, shop, veterancy
 from support import settings
 
 
@@ -194,6 +194,7 @@ class Renderer:
                 node_affixes=game.map_node_affixes, relic_count=len(run.relics), node_threats=game.map_node_threats,
                 relics_key_label=ui.binding_display_string(game.keybindings["open_relics"]),
                 potion_names=[potions.POTIONS[key].display_name for key in run.potions],
+                node_challenges=game.map_node_challenges,
             )
             if relics_over_map:
                 ui.draw_relics_overlay(game.screen, game.font, game.small_font, run.relics,
@@ -260,6 +261,7 @@ class Renderer:
                 forged_names=game.reward.forged_tower_choices,
                 # Sealed Cask blocks new potions outright -- "FULL" would be a lie.
                 potion_unavailable_tag="SEALED" if potions.potions_blocked(game.active_run) else "FULL",
+                challenge_note=self._challenge_reward_note(node),
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -301,7 +303,7 @@ class Renderer:
         game.grid.draw(game.screen, game.assets)
         for fire in game.ground_fires:
             fire.draw(game.screen)
-        if game.show_coverage:
+        if game.show_coverage and not self._hides_intel():
             ui.draw_coverage_overlay(game.screen, game.towers)
         for tower in game.towers:
             tower.draw(game.screen, game.assets, game.tiny_font)
@@ -321,7 +323,7 @@ class Renderer:
         hovered_tower = game._hovered_tower()
         panel_subject = game._stats_panel_subject(hovered_tower)
         game._last_panel_subject = panel_subject  # see _handle_panel_action_click
-        if panel_subject in game.towers:  # a placed tower (hovered, or pinned via selected_tower)
+        if panel_subject in game.towers and not self._hides_intel():  # a placed tower (hovered, or pinned)
             ui.draw_tower_range_preview(game.screen, panel_subject)
 
         # "Floor N/M" -- same 1-based node.row+1 / final_row_index+1 shape
@@ -337,7 +339,7 @@ class Renderer:
             game.economy, game.wave_manager, game.button_rects,
             game.skip_button_rect, game.selected_tower_name,
             game.time_scale, game.speed_button_rect,
-            game.wave_manager.next_wave_preview(),
+            None if self._hides_intel() else game.wave_manager.next_wave_preview(),
             shop_currency=game.active_run.shop_currency if game.active_run is not None else None,
             relics_button_rect=game.relics_button_rect,
             relic_count=len(game.active_run.relics) if game.active_run is not None else None,
@@ -369,6 +371,7 @@ class Renderer:
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
+                challenge_text=self._challenge_status_text(),
             )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
@@ -476,6 +479,31 @@ class Renderer:
             ui.draw_hint_panel(game.screen, game.small_font, hints.HINTS[game.hints.current],
                                game._hint_placement())
 
+    def _challenge_status_text(self):
+        """The fight's Proving Grounds readout for the sidebar -- a header
+        line plus the live status line -- or None."""
+        game = self.game
+        if game.active_challenge is None:
+            return None
+        run = game.active_run
+        return ["Proving Grounds", challenges.status_line(
+            game.active_challenge, len(game.towers), run.challenge_leaks, run.challenge_failed,
+        )]
+
+    def _challenge_reward_note(self, node):
+        """The reward screen's subtitle after a Proving Grounds fight -- won
+        (its relic choice is on the screen) or failed -- else None."""
+        if node.node_type != "challenge":
+            return None
+        if self.game._challenge_won():
+            return f"Proving Grounds won: pick 1 of {challenges.RELIC_CHOICE_COUNT} bonus relics"
+        return "Proving Grounds failed: no bonus this time"
+
+    def _hides_intel(self):
+        """A Fog of War-style challenge: no wave preview, no range rings."""
+        challenge = self.game.active_challenge
+        return challenge is not None and challenge.challenge.hides_intel
+
     def _draw_toasts(self):
         """Achievement/unlock toasts -- shared by the board and by every
         full-screen run state (MAP/DRAFT/EVENT/REST/TREASURE), since relic,
@@ -526,8 +554,9 @@ class Renderer:
                                   footprint_subtiles=tower.footprint_subtiles)
         preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row,
                                                        footprint_subtiles=tower.footprint_subtiles)
-        ui.draw_range_preview(game.screen, type(tower), preview_pos,
-                              game.move_preview_range(tower, anchor_col, anchor_row), tower.MIN_RANGE)
+        if not self._hides_intel():
+            ui.draw_range_preview(game.screen, type(tower), preview_pos,
+                                  game.move_preview_range(tower, anchor_col, anchor_row), tower.MIN_RANGE)
 
     def _render_placement_preview(self):
         game = self.game
@@ -551,4 +580,5 @@ class Renderer:
         if buildable:
             ui.draw_resonance_links(game.screen, preview_pos,
                                     resonance_partners(game.selected_tower_name, preview_pos, game.towers))
-        ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)
+        if not self._hides_intel():
+            ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)

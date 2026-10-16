@@ -290,3 +290,12 @@ All optional on load (`.get` defaults), so older saves and histories still load:
   `[1, max_hp]` by `_tower_from_save_data`.
 - Run History records' `top_crew` (the run's most experienced tower type; `""` when none) -- validated as
   a string by `_parse_run_records`, shown by `ui.run_history_lines`.
+
+## Fields added for the Proving Grounds
+
+`run.challenge_leaks` (int, `0.._SANE_MAX`) and `run.challenge_failed` (bool) -- optional on load
+(`.get` defaults 0/False), validated by `_parse_and_validate_active_run`. They ride on the RunState so
+a mid-floor save keeps a Glass Gate's leak count and a reward screen reopened from a map checkpoint
+still knows whether the challenge was won; the challenge itself is never stored, only re-derived from
+its node id (see [run-map.md](run-map.md) "Proving Grounds"). `"challenge"` is a `NODE_TYPES` and
+`FIGHT_NODE_TYPES` member, so a challenge node must carry a level and is resumable mid-PLAYING.

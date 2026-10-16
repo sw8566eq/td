@@ -29,7 +29,7 @@ import pygame
 import pytest
 
 from core.game import Game, GameState
-from run.run_map import MapNode, RunMap
+from run.run_map import FIGHT_NODE_TYPES, MapNode, RunMap
 from support import settings
 from world.levels import Level
 
@@ -155,7 +155,7 @@ def make_linear_run_map(node_types, level_id=1):
     rows = tuple(
         (MapNode(
             f"{row}-0", row=row, col=0, node_type=node_type,
-            level_id=level_id if node_type in ("combat", "elite", "boss") else None,
+            level_id=level_id if node_type in FIGHT_NODE_TYPES else None,
         ),)
         for row, node_type in enumerate(node_types)
     )
