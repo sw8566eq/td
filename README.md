@@ -171,8 +171,9 @@ range), **Fortified Battery** (Mortar near Barricade: +20% damage), **Sticky Spi
 Pit: +25% fire rate), **Shock and Awe** (Cannon near Knockback: +15% fire rate), **Toxic Cloud** (Poison
 near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage), **Overwatch** (Basic near
 Sniper: +10% damage), **Static Charge** (Overload Cannon near Lightning: +20% damage), **Deep Freeze** (Frost
-near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate) and **Thermal Shock** (Mortar
-near Frost: +15% damage). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
+near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate), **Thermal Shock** (Mortar
+near Frost: +15% damage), **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line**
+(Harpoon near Cannon: +20% range). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
 show which towers it would resonate with; a placed tower lists its active resonances. The **Harmonic
 Tuning** relic doubles every resonance. The Field Manual has them all.
 
@@ -253,7 +254,7 @@ how that works.
 Hover any placed tower to see its live stats and range in the sidebar; **click** it instead and that
 stays pinned open even once the mouse moves away, until you click a different tower, pick a
 build-menu type, or click empty ground with nothing selected. The pinned/hovered panel shows a
-**Targeting** row (click to cycle first/last/strongest/closest -- which in-range enemy the tower
+**Targeting** row (click to cycle first/last/strongest/closest/weakest, plus flying on a Harpoon -- which in-range enemy the tower
 actually shoots at), **Upgrade** and **Sell** buttons (in addition to the small "+cost" badge in the
 tower's tile corner, which still works too), and at max level, Upgrade is replaced by two
 **Specialize** buttons -- see "Tower levels & specialization" below. Selling refunds a fraction of
@@ -416,6 +417,11 @@ menu holds more than nine, it wraps into two rows.
   answer back: **Seismic Sensors** (traps can hit Burrowers) and **Booby-Trapped Walls** (a breaking
   Barricade explodes for its max hit points).
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
+- **Harpoon** -- middling damage on a slow reload, but every hit **Grounds** a flyer for a few seconds:
+  dragged down, it can be hit by ground-only towers (Cannon, Mortar, Knockback, traps, burning ground)
+  and stopped by a Barricade. It starts on the **Flying** targeting mode, aiming at flyers that are
+  still airborne first. Specializes into Deep Anchor (grounds far longer) or Reel In (hits also slow).
+  The **Barbed Tethers** relic makes grounding last 60% longer. Unlocks after 6 floors cleared.
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.
 

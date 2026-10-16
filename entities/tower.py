@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from entities.enemy import is_airborne
 from entities.projectile import Projectile
 from run import veterancy
 
@@ -293,6 +294,9 @@ class Tower:
         self.relic_tar_pit_marks = False
         # An Incendiary Shells-style relic -- read only by MortarTower.
         self.relic_ground_fire = None
+        # A Barbed Tethers-style relic -- read only by HarpoonTower, scaling
+        # how long its hits keep a flyer Grounded.
+        self.relic_harpoon_ground_bonus_multiplier = 1.0
         # Aerial Targeting Array-style relic -- Cannon's first fully
         # exclusive relic (heavy_ordnance immediately above is shared
         # 50/50 with Knockback), boolean OR-composed the same shape as
@@ -771,10 +775,9 @@ class Tower:
         shot at an enemy that's already effectively gone -- and since
         "furthest along the path" is the whole ranking for the default
         mode, a just-arrived enemy would usually *win* that ranking over
-        every real threat still on the path. Also excludes a flying enemy
-        (see enemy.py) from a tower whose can_target_flying is False --
-        checked via getattr rather than a bare attribute access, since not
-        every enemy stand-in (tests, mainly) defines is_flying.
+        every real threat still on the path. Also excludes an airborne enemy
+        (enemy.is_airborne: flying and not currently Grounded by a Harpoon)
+        from a tower whose can_target_flying is False.
 
         `enemy_index` (an `EnemySpatialIndex`, see spatial_index.py) is an
         optional broad-phase narrowing of `enemies` down to whatever's near
@@ -789,7 +792,7 @@ class Tower:
         candidates = [
             e for e in pool
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
-            and (self.can_target_flying or not getattr(e, "is_flying", False))
+            and (self.can_target_flying or not is_airborne(e))
             and (not self.MIN_RANGE or self.pos.distance_to(e.pos) >= self.MIN_RANGE)
             and (self.HITS_BURROWED or not getattr(e, "is_burrowed", False))
         ]
@@ -812,6 +815,13 @@ class Tower:
     def _target_closest(self, candidates):
         return min(candidates, key=lambda e: self.pos.distance_to(e.pos))
 
+    def _target_flying(self, candidates):
+        """Airborne flyers first (furthest along), else "first" -- a
+        Harpoon's default, so it spends its shots grounding flyers that
+        aren't grounded yet."""
+        airborne = [e for e in candidates if is_airborne(e)]
+        return self._target_first(airborne or candidates)
+
     def cycle_targeting_mode(self):
         """Advance to the next TARGETING_MODES entry, wrapping around --
         the stats panel's "Targeting: ..." row calls this on click."""
@@ -827,6 +837,7 @@ class Tower:
         "strongest": _target_strongest,
         "closest": _target_closest,
         "weakest": _target_weakest,
+        "flying": _target_flying,
     }
 
     def in_range(self, enemy, effective_range=None):
@@ -1761,6 +1772,59 @@ class MortarTower(Tower):
         )
 
 
+class HarpoonTower(Tower):
+    """Fires a tethered harpoon that drags a flyer down: every hit Grounds
+    it for ground_duration seconds (Enemy.apply_ground), and while grounded
+    it counts as not flying (enemy.is_airborne), so Cannons, Mortars,
+    Knockback, traps, burning ground and Barricades can all reach it.
+    Middling damage on a slow reload -- its value is the opening it makes
+    for the rest of the defense. Starts on the "flying" targeting mode
+    (airborne flyers first), which only it offers."""
+    description = "Harpoons flyers and drags them down, so ground-only towers can hit them."
+    cost = 85
+    range = 130
+    damage = 12
+    fire_rate = 0.7
+    projectile_speed = 420.0
+    ground_duration = 3.0
+    # How hard a Reel In harpoon slows what it hits (1.0 = no slow until
+    # specialized), for REEL_SLOW_DURATION seconds.
+    reel_slow_factor = 1.0
+    REEL_SLOW_DURATION = 1.5
+    sprite_name = "tower_harpoon"
+    display_name = "Harpoon"
+    FIRE_SOUND = "tower_fire_harpoon"
+    TARGETING_MODES = ("flying",) + Tower.TARGETING_MODES
+    DEFAULT_TARGETING_MODE = "flying"
+    EXTRA_STATS = (
+        ("Grounds for", "ground_duration", _format_seconds),
+        ("Reel slow", "reel_slow_factor", _format_slow_percent),
+    )
+    SPECIALIZATIONS = {
+        "deep_anchor": {
+            "display_name": "Deep Anchor",
+            "description": "Grounds flyers far longer.",
+            "stat_multipliers": {"ground_duration": 1.7},
+        },
+        "reel_in": {
+            "display_name": "Reel In",
+            "description": "Hits slow, and hit harder.",
+            "stat_multipliers": {"reel_slow_factor": 0.6, "damage": 1.15},
+        },
+    }
+
+    def create_projectile(self, target):
+        slow = None
+        if self.reel_slow_factor < 1.0:
+            slow = (self.reel_slow_factor, self.REEL_SLOW_DURATION)
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(), slow_effect=slow,
+            ground_duration=self.ground_duration * self.relic_harpoon_ground_bonus_multiplier,
+            sprite_name="projectile_harpoon", source=self,
+        )
+
+
 class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
@@ -2236,6 +2300,7 @@ TOWER_TYPES = {
     "barricade": BarricadeTower,
     "spike_trap": SpikeTrapTower,
     "tar_pit": TarPitTower,
+    "harpoon": HarpoonTower,
 }
 # The reverse lookup -- a tower class's registry key.
 TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}
@@ -2311,5 +2376,11 @@ RESONANCES = {
     ),
     "thermal_shock": Resonance(
         "Thermal Shock", "mortar", "frost", "Mortar near a Frost tower: +15% damage.", damage_bonus=0.15,
+    ),
+    "grounded_barrage": Resonance(
+        "Grounded Barrage", "mortar", "harpoon", "Mortar near a Harpoon: +15% fire rate.", fire_rate_bonus=0.15,
+    ),
+    "anchor_line": Resonance(
+        "Anchor Line", "harpoon", "cannon", "Harpoon near a Cannon: +20% range.", range_bonus=0.20,
     ),
 }

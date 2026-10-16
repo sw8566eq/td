@@ -30,6 +30,21 @@ BURROW_MOUND_COLOR = (110, 80, 50)
 KNOCKBACK_RESISTANCE_PER_SHOVE = 0.2
 KNOCKBACK_RESISTANCE_CAP = 0.8
 KNOCKBACK_RESISTANCE_DECAY = 0.3
+# The shadow and tether a grounded flyer draws under itself (Enemy.draw).
+GROUNDED_SHADOW_COLOR = (30, 30, 30)
+GROUNDED_TETHER_COLOR = (200, 200, 210)
+
+
+def is_airborne(enemy):
+    """Whether `enemy` is out of reach of ground-only attacks right now: a
+    flying species (is_flying) that isn't currently Grounded (a Harpoon hit
+    -- see Enemy.apply_ground). Every "can this touch a flyer?" check reads
+    this -- tower targeting, projectile splash, burning ground, Barricade
+    holds -- so the Grounded rule applies everywhere at once. Duck-typed
+    with getattr defaults, since not every enemy stand-in (tests, mainly)
+    defines is_flying or ground_timer."""
+    return getattr(enemy, "is_flying", False) and getattr(enemy, "ground_timer", 0.0) <= 0
+
 
 class Enemy:
     display_name = "Enemy"
@@ -97,6 +112,10 @@ class Enemy:
         # unlike slow_factor (see FrostTower's own note on that).
         self.mark_damage_multiplier = 1.0
         self.mark_timer = 0.0
+        # Grounded (a Harpoon hit -- see apply_ground()/is_airborne()):
+        # seconds a flying enemy is still dragged down within reach of
+        # ground-only towers. Always 0 on a non-flying species.
+        self.ground_timer = 0.0
 
         # Damage-over-time state -- see apply_poison(). damage_per_tick/
         # tick_interval describe the currently-active poison (meaningless
@@ -167,6 +186,9 @@ class Enemy:
             if self.mark_timer <= 0:
                 self.mark_timer = 0.0
                 self.mark_damage_multiplier = 1.0
+
+        if self.ground_timer > 0:
+            self.ground_timer = max(0.0, self.ground_timer - dt)
 
         if self.poison_time_remaining > 0:
             self.poison_time_remaining -= dt
@@ -307,6 +329,22 @@ class Enemy:
         self.mark_damage_multiplier = max(self.mark_damage_multiplier, multiplier)
         self.mark_timer = max(self.mark_timer, duration)
 
+    def apply_ground(self, duration):
+        """Ground a flyer for `duration` seconds (a Harpoon hit): while
+        grounded it counts as not flying (is_airborne), so ground-only
+        towers, splash, burning ground and Barricades can reach it. It keeps
+        following its own waypoints. Refreshes via max(), like apply_mark's
+        timer -- a shorter grounding never cuts a longer one short. A no-op
+        on a non-flying species, which is already on the ground."""
+        if self.is_dead or self.reached_goal or not self.is_flying:
+            return
+        self.ground_timer = max(self.ground_timer, duration)
+
+    @property
+    def is_grounded(self):
+        """A flyer currently dragged down by apply_ground()."""
+        return self.ground_timer > 0
+
     def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False, source=None):
         """Start (or refresh) a damage-over-time effect: damage_per_tick
         every tick_interval seconds, for duration seconds total -- see the
@@ -419,6 +457,14 @@ class Enemy:
             pygame.draw.ellipse(surface, BURROW_MOUND_COLOR, mound)
             sprite = sprite.copy()
             sprite.set_alpha(110)
+        if self.is_grounded:
+            # Dragged down: a shadow on the path right under it, tethered
+            # to the sprite, so it reads as in reach of ground towers.
+            center_x, center_y = int(self.pos.x), int(self.pos.y)
+            shadow = pygame.Rect(0, 0, self.radius * 2, self.radius)
+            shadow.center = (center_x, center_y + self.radius)
+            pygame.draw.ellipse(surface, GROUNDED_SHADOW_COLOR, shadow)
+            pygame.draw.line(surface, GROUNDED_TETHER_COLOR, (center_x, center_y), shadow.center, width=2)
         surface.blit(sprite, rect)
         self._draw_health_bar(surface)
 
@@ -843,7 +889,8 @@ class ShieldedEnemy(Enemy):
 class FlyingEnemy(Enemy):
     """Airborne -- only a tower with can_target_flying = True (see
     tower.py; every current tower except Cannon and Knockback) can hit it
-    at all, regardless of range/targeting mode. Fast and comparatively
+    at all, regardless of range/targeting mode -- unless a Harpoon has
+    Grounded it (apply_ground/is_airborne). Fast and comparatively
     fragile, closer to Scout than Tank."""
     display_name = "Flyer"
     description = "Flies over the path; some towers can't hit it."

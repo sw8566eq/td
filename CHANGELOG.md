@@ -8,6 +8,13 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Harpoon** tower (unlocks after 6 floors cleared): its hits **Ground** a flyer for a few seconds, and a
+  grounded flyer can be hit by ground-only towers -- Cannon, Mortar, Knockback, traps, burning ground --
+  and is stopped by Barricades. It starts on a new **Flying** targeting mode (airborne flyers first).
+  Specializations Deep Anchor (grounds far longer) and Reel In (hits also slow). New resonances
+  **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line** (Harpoon near Cannon:
+  +20% range), and a Harpoon relic, **Barbed Tethers** (grounding lasts 60% longer). The enemy tooltip
+  lists Grounded.
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.
 - Every tower has a one-line description, listed (with every enemy) in new Towers and Enemies sections of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.

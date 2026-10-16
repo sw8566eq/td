@@ -109,6 +109,8 @@ import random
 
 import pygame
 
+from entities.enemy import is_airborne
+
 # Choke Point's own cutoff: an enemy with less than this much path
 # distance behind it counts as "early in its route." Giant Slayer's own
 # cutoff matches its relic text ("more than 100 max HP") exactly, so
@@ -151,7 +153,7 @@ class Projectile:
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
-                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None):
+                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None, ground_duration=0.0):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -274,6 +276,9 @@ class Projectile:
         # (fraction of damage per second, seconds) -- a burning patch where
         # this shell lands (Game drains impact_events into GroundFire).
         self.ground_fire = ground_fire
+        # Seconds every flyer this shot hits stays Grounded (a Harpoon --
+        # see Enemy.apply_ground); 0 grounds nothing.
+        self.ground_duration = ground_duration
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -367,9 +372,9 @@ class Projectile:
 
     def _can_hit(self, enemy):
         """Whether this shot may touch `enemy` at all -- see can_hit_flying.
-        getattr with a False default, same as Tower.acquire_target(), since
-        not every enemy stand-in (tests, mainly) defines is_flying."""
-        return ((self.can_hit_flying or not getattr(enemy, "is_flying", False))
+        A Grounded flyer counts as on the ground (enemy.is_airborne, the
+        same rule Tower.acquire_target() uses)."""
+        return ((self.can_hit_flying or not is_airborne(enemy))
                 and (self.can_hit_burrowed or not getattr(enemy, "is_burrowed", False)))
 
     def _find_chain_target(self, current, excluded, chain_range, enemies):
@@ -581,6 +586,10 @@ class Projectile:
             and random.random() < self.relic_slow_chance
         ):
             enemy.apply_slow(*self.relic_slow_effect)
+        # A Harpoon's grounding -- see Enemy.apply_ground() (a no-op on a
+        # non-flyer, and absent on some test doubles).
+        if self.ground_duration and hasattr(enemy, "apply_ground"):
+            enemy.apply_ground(self.ground_duration)
         # A Beacon-style tower's own mark -- see enemy.apply_mark().
         if self.mark_effect is not None:
             enemy.apply_mark(*self.mark_effect)

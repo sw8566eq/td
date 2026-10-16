@@ -2,7 +2,7 @@
 
 Tower leveling and specialization, the Support two-pass update, Overload Cannon, Siphon, the
 targeting spatial index, the results table, then the run-era additions: veterancy, path traps,
-modules, Mortar's minimum range, Barricade and resonances.
+modules, Mortar's minimum range, Barricade, resonances and the Harpoon.
 
 ## Tower progression is two separate axes
 
@@ -222,3 +222,24 @@ a partner-type tower within `RESONANCE_RADIUS` adds the bonus to `resonance_dama
 `effective_damage`), `resonance_range_bonus` (additive in `effective_range`) or `resonance_fire_rate_
 bonus` (a multiplier in `effective_fire_rate`), and records `resonance_keys`. `ui.resonance_line` shows a
 placed tower's active ones, or a build-menu type's partners.
+
+## Harpoon
+
+`HarpoonTower` (`"harpoon"`) is the anti-air enabler: every hit passes `ground_duration` into
+`Projectile(ground_duration=...)`, which calls `Enemy.apply_ground` on the flyer it hits, so for a few
+seconds the flyer is not `is_airborne` and every ground-only tower can reach it (see
+[enemies.md](enemies.md) "Grounded flyers (`is_airborne`)"). Its own damage is deliberately middling
+(below Basic's DPS per gold in `tools/tower_bench.py`); the value is the opening it makes for Cannons
+and Mortars.
+
+- **Targeting.** It extends its own `TARGETING_MODES` with `"flying"` (`Tower._target_flying`: airborne
+  flyers first, else `"first"`) and starts on it (`DEFAULT_TARGETING_MODE`). Only the Harpoon offers
+  that mode, so `save_state` validates a saved `targeting_mode` against the saved tower *type's* own
+  `TARGETING_MODES`, not the base tuple.
+- **Specializations.** Deep Anchor multiplies `ground_duration`. Reel In multiplies `reel_slow_factor`
+  (1.0, no slow, until specialized) and damage; below 1.0 the shot carries a `slow_effect` for
+  `REEL_SLOW_DURATION`.
+- **Hooks.** Resonances `grounded_barrage` (Mortar near Harpoon) and `anchor_line` (Harpoon near
+  Cannon); relic `barbed_tethers` (`relic_harpoon_ground_bonus_multiplier`, read only in
+  `HarpoonTower.create_projectile`). Modules need nothing special: it fires through `Tower.update()`, so
+  on-hit module effects ride the usual `relic_*` fields.
