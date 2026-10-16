@@ -8,6 +8,33 @@ import pygame
 
 from support import settings
 
+# Rendered label surfaces, keyed by (font, text, color). A damage number's
+# text never changes after construction, and late endless waves keep
+# hundreds alive at once (mostly the same few strings), so re-rendering
+# every label every frame was the single biggest render cost. A cached
+# surface is shared between labels: draw() sets its alpha right before each
+# blit, so the shared alpha never leaks from one label into another. Keyed
+# by the Font object itself (not id()), so a font from an earlier Game can
+# never alias a new one; cleared wholesale once it reaches the limit, which
+# a real session only does if it sees that many distinct strings.
+_TEXT_CACHE_LIMIT = 1024
+_text_cache = {}
+
+
+def _text_entry(font, text, color):
+    """(surface, half_width, half_height) for a cached label -- see
+    _text_cache. The halves are what Rect(center=...) would subtract."""
+    key = (font, text, color)
+    entry = _text_cache.get(key)
+    if entry is None:
+        if len(_text_cache) >= _TEXT_CACHE_LIMIT:
+            _text_cache.clear()
+        surface = font.render(text, True, color)
+        width, height = surface.get_size()
+        entry = (surface, width // 2, height // 2)
+        _text_cache[key] = entry
+    return entry
+
 
 class FloatingText:
     """A short-lived label that rises and fades -- used for the damage
@@ -33,12 +60,16 @@ class FloatingText:
         self.pos.y -= self.rise_speed * dt
 
     def draw(self, surface, font):
-        if self.dead:
+        # Written flat (no `dead` property, no Rect) -- a late endless wave
+        # draws thousands of these a frame. Same pixels as the
+        # get_rect(center=...) placement it replaced.
+        age, lifetime = self.age, self.lifetime
+        if age >= lifetime:
             return
-        alpha = max(0, min(255, int(255 * (1 - self.age / self.lifetime))))
-        rendered = font.render(self.text, True, self.color)
-        rendered.set_alpha(alpha)
-        surface.blit(rendered, rendered.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+        rendered, half_width, half_height = _text_entry(font, self.text, self.color)
+        rendered.set_alpha(max(0, min(255, int(255 * (1 - age / lifetime)))))
+        pos = self.pos
+        surface.blit(rendered, (int(pos.x) - half_width, int(pos.y) - half_height))
 
 
 class GroundFire:

@@ -15,6 +15,8 @@ optimization must leave it byte-identical. `--check` prints it alone.
     python tools/perf_bench.py                    # default scenario
     python tools/perf_bench.py --enemies 500 --frames 300
     python tools/perf_bench.py --profile update   # cProfile top functions (update|render|both)
+    python tools/perf_bench.py --relics           # hold every non-curse relic (crits, chains, fires...)
+    python tools/perf_bench.py --coverage         # also draw the V coverage overlay
     python tools/perf_bench.py --check            # just the determinism fingerprint
 
 Writes nothing outside a temp directory.
@@ -38,11 +40,13 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
 
+import pygame
 from conftest import make_game, make_linear_run_map
 
 from core.game import GameState
 from entities.enemy import ENEMY_TYPES
 from entities.tower import TOWER_TYPES
+from run.relics import RELICS
 from run.run_state import ACT_COUNT
 
 SIM_STEP = 1 / 60
@@ -106,7 +110,7 @@ def _top_up(game, target, flood_index):
     return flood_index
 
 
-def build_scenario(level, towers, enemies, warmup):
+def build_scenario(level, towers, enemies, warmup, with_relics=False):
     random.seed(SEED)
     game = make_game(pathlib.Path(tempfile.mkdtemp()), unlimited_gold=True)
     game.start_new_run(seed=SEED)
@@ -114,6 +118,10 @@ def build_scenario(level, towers, enemies, warmup):
     run.map = make_linear_run_map(["boss"], level_id=level)
     run.act = ACT_COUNT - 1
     run.unlocked_towers = list(TOWER_TYPES)
+    if with_relics:
+        # Every non-curse relic at once: exercises the crit/chain/overkill/
+        # poison-spread/ground-fire paths an optimization could reorder.
+        run.relics = [key for key, relic in RELICS.items() if not relic.is_curse]
     game._enter_node("0-0")
     game._rebuild_button_rects()
     assert game.wave_manager.endless, "the final act's boss floor should load endless"
@@ -145,6 +153,12 @@ def fingerprint(game):
     random_state = repr(random.getstate()[1][:4])
     parts.append(random_state)
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
+
+
+def frame_hash(game):
+    """A hash of the last rendered frame's pixels -- a render cache must
+    leave it unchanged too."""
+    return hashlib.sha256(pygame.image.tobytes(game.screen, "RGBA")).hexdigest()[:16]
 
 
 def _percentile(samples, fraction):
@@ -185,25 +199,28 @@ def main(argv=None):
     parser.add_argument("--enemies", type=int, default=300, help="live enemies kept on the board")
     parser.add_argument("--warmup", type=int, default=600, help="frames simulated before measuring")
     parser.add_argument("--frames", type=int, default=300, help="frames measured")
+    parser.add_argument("--relics", action="store_true", help="hold every non-curse relic (proc-heavy)")
+    parser.add_argument("--coverage", action="store_true", help="draw the V coverage overlay too")
     parser.add_argument("--profile", choices=("update", "render", "both"), help="cProfile the measured frames")
     parser.add_argument("--top", type=int, default=30, help="functions shown with --profile")
     parser.add_argument("--check", action="store_true", help="print only the determinism fingerprint")
     args = parser.parse_args(argv)
 
-    game, placed, flood_index = build_scenario(args.level, args.towers, args.enemies, args.warmup)
+    game, placed, flood_index = build_scenario(args.level, args.towers, args.enemies, args.warmup, args.relics)
+    game.show_coverage = args.coverage
     update_ms, render_ms, profiler = measure(game, args.frames, args.enemies, flood_index, args.profile)
     if args.check:
-        print(fingerprint(game))
+        print(f"fingerprint {fingerprint(game)}  frame {frame_hash(game)}")
         return
     print(f"level {args.level}, {placed} towers, {len(game.enemies)} enemies, "
           f"{len(game.projectiles)} projectiles, {len(game.impact_effects)} rings, "
-          f"{len(game.damage_numbers)} damage numbers, wave {game.wave_manager.current_wave_number}")
+          f"{len(game.damage_numbers)} damage numbers, {len(game.ground_fires)} ground fires, wave {game.wave_manager.current_wave_number}")
     for label, samples in (("update", update_ms), ("render", render_ms)):
         print(f"{label:7} mean {statistics.fmean(samples):7.2f} ms   p95 {_percentile(samples, 0.95):7.2f} ms")
     if profiler:
         pstats.Stats(profiler).sort_stats("cumulative").print_stats(args.top)
         pstats.Stats(profiler).sort_stats("tottime").print_stats(args.top)
-    print(f"fingerprint {fingerprint(game)}")
+    print(f"fingerprint {fingerprint(game)}  frame {frame_hash(game)}")
 
 
 if __name__ == "__main__":
