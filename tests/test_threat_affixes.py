@@ -250,7 +250,7 @@ def test_map_tooltip_names_and_explains_the_affix(game, key, registry):
     assert all(game.small_font.size(line)[0] <= ui.MAP_TOOLTIP_MAX_WIDTH for line in body)
 
 
-@pytest.mark.parametrize("key, registry", NEW_KEYS)
+@pytest.mark.parametrize("key, registry", [(key, AFFIXES) for key in AFFIXES] + [(key, BOSS_AFFIXES) for key in BOSS_AFFIXES])
 def test_sidebar_text_fits_the_panel_at_a_deep_gauntlet(game, key, registry, tmp_path):
     node_type = "elite" if registry is AFFIXES else "boss"
     run = _run_with(game, node_type, key, registry)

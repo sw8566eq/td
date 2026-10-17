@@ -494,7 +494,11 @@ class Renderer:
                 # A boss affix is already a name ("The Warlord").
                 is_elite = run.map.node(run.current_node_id).node_type == "elite"
                 parts.append(f"{affix.display_name} elite" if is_elite else affix.display_name)
-        return ", ".join(parts) or None
+        text = ", ".join(parts)
+        if run.ascension and self.game.small_font.size(text)[0] > settings.PANEL_WIDTH - ui.PANEL_PADDING:
+            # Too wide for the sidebar: the short Run History tag instead.
+            text = ", ".join([f"G{run.ascension}", *parts[1:]])
+        return text or None
 
     def _draw_hint(self):
         """The current Field Notes hint, if any (see Game._hint_panel_rect)."""

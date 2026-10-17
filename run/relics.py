@@ -1172,7 +1172,7 @@ RELICS = {
         barricade_burst_fraction=1.0,
     ),
     "faraday_mesh": Relic(
-        "faraday_mesh", "Faraday Mesh", "Disruptors jam your towers for 60% less time.",
+        "faraday_mesh", "Faraday Mesh", "Anything that jams your towers (Disruptors, The Static Throne) jams them for 60% less time.",
         jam_duration_multiplier=0.4,
     ),
     "linebreaker": Relic(
