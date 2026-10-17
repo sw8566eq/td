@@ -19,6 +19,7 @@ import math
 import random
 from dataclasses import dataclass
 
+from run.endless_mutators import MutatorEffects, SpeciesSwap
 from run.run_escalation import FloorEscalation
 
 
@@ -42,6 +43,18 @@ class EliteAffix:
     # enemy_breach_multiplier).
     burrows: bool = False
     breach_multiplier: float = 1.0
+    # Reshape every spawn's queue with the endless mutators' own rules
+    # (endless_mutators.SpeciesSwap, per-spawn escorts): see spawn_rules,
+    # WaveManager.spawn_rules. Bosses are never swapped.
+    swap: SpeciesSwap | None = None
+    escort_species: str = ""
+    escort_per_spawn: int = 0
+    # (class attribute, value) pairs set on every boss-tier enemy's own
+    # *instance* (WaveManager.enemy_boss_traits) -- a named boss's jam pack
+    # (JAM_RADIUS/JAM_DURATION/JAM_COOLDOWN) or aura (AURA_RADIUS/
+    # AURA_DAMAGE_REDUCTION), the same way Tunneling sets BURROWS. The
+    # classes are never touched.
+    boss_traits: tuple[tuple[str, float], ...] = ()
 
 
 AFFIXES = {
@@ -73,6 +86,18 @@ AFFIXES = {
     "siegebreakers": EliteAffix(
         "siegebreakers", "Siegebreakers", "Enemies batter Barricades 3x as hard and have 10% more HP.",
         breach_multiplier=3.0, hp_multiplier=1.1,
+    ),
+    "jammers": EliteAffix(
+        "jammers", "Jammers", "Every spawn sends a Disruptor with each wave.",
+        escort_species="disruptor", escort_per_spawn=1,
+    ),
+    "phalanx": EliteAffix(
+        "phalanx", "Phalanx", "Every spawn sends a Bulwark with each wave; enemies have 10% more HP.",
+        escort_species="bulwark", escort_per_spawn=1, hp_multiplier=1.1,
+    ),
+    "windborne": EliteAffix(
+        "windborne", "Windborne", "Every 3rd ground enemy takes wing as a Flyer.",
+        swap=SpeciesSwap(every=3, to="flying"),
     ),
 }
 AFFIX_ORDER = list(AFFIXES)
@@ -106,6 +131,19 @@ BOSS_AFFIXES = {
         "battering_ram", "The Battering Ram", "Enemies batter Barricades 4x as hard and have 10% more HP.",
         breach_multiplier=4.0, hp_multiplier=1.1,
     ),
+    "static_throne": EliteAffix(
+        "static_throne", "The Static Throne",
+        "The boss jams every tower it passes, and a Disruptor escorts each spawn's waves.",
+        escort_species="disruptor", escort_per_spawn=1,
+        boss_traits=(("JAM_RADIUS", 110), ("JAM_DURATION", 2.0), ("JAM_COOLDOWN", 6.0)),
+    ),
+    "iron_phalanx": EliteAffix(
+        "iron_phalanx", "The Iron Phalanx",
+        "A Bulwark marches with each spawn's waves, the boss shields enemies near it, "
+        "and enemies take 10% less damage.",
+        escort_species="bulwark", escort_per_spawn=1, damage_taken_multiplier=0.9,
+        boss_traits=(("AURA_RADIUS", 110), ("AURA_DAMAGE_REDUCTION", 0.25)),
+    ),
 }
 BOSS_AFFIX_ORDER = list(BOSS_AFFIXES)
 
@@ -124,6 +162,19 @@ def apply_to_escalation(escalation: FloorEscalation, affix: EliteAffix) -> Floor
         enemy_hp_multiplier=escalation.enemy_hp_multiplier * affix.hp_multiplier,
         enemy_speed_multiplier=escalation.enemy_speed_multiplier * affix.speed_multiplier,
         enemy_gold_multiplier=escalation.enemy_gold_multiplier * affix.gold_multiplier,
+    )
+
+
+def spawn_rules(affix: EliteAffix) -> MutatorEffects | None:
+    """`affix`'s spawn-queue rules as an endless_mutators.MutatorEffects
+    (queue half only -- its stats go through the escalation), or None when
+    it doesn't reshape the queue. Re-derived on every load and resume
+    (Game._apply_affix_traits), never stored."""
+    if affix.swap is None and not affix.escort_per_spawn:
+        return None
+    return MutatorEffects(
+        swaps=() if affix.swap is None else (affix.swap,),
+        escorts=((affix.escort_species, affix.escort_per_spawn),) if affix.escort_per_spawn else (),
     )
 
 

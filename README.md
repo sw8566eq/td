@@ -76,8 +76,11 @@ node types:
 - **Elite** -- a harder floor that pays out more shop currency on clear (and drops a relic). Each
   Elite also rolls an **affix** you can see by hovering it on the map: **Swift** (faster enemies),
   **Hulking** (tougher but slower), **Swarming** (half again as many, each a bit weaker), or
-  **Gilded** (tougher, but they drop much more gold), **Regenerating** (enemies heal over time), or
-  **Armored** (enemies take less damage from every hit).
+  **Gilded** (tougher, but they drop much more gold), **Regenerating** (enemies heal over time),
+  **Armored** (enemies take less damage from every hit), **Tunneling** (ground enemies burrow under
+  traps and Barricades), **Siegebreakers** (they batter Barricades harder), **Jammers** (every spawn
+  sends a tower-jamming Disruptor each wave), **Phalanx** (a Bulwark escort each wave, and tougher
+  enemies), or **Windborne** (every third ground enemy flies instead).
 - **Shop** -- spend shop currency on towers and relics (see "The Shop and two currencies" below).
 - **Event** -- a short prompt with 2-3 honestly-described options (gain currency, lose a relic for a
   bigger reward, unlock a tower early, heal, ...) -- never a hidden-odds gamble.
@@ -218,10 +221,12 @@ counts one rank higher) and Old Guard (Veteran-or-better types fire 15% faster).
 
 ## Bosses
 
-Every act's boss is one of five named bosses with its own twist: The Juggernaut (tougher enemies), The
+Every act's boss is one of nine named bosses with its own twist: The Juggernaut (tougher enemies), The
 Broodmother (bigger swarms), The Warlord (faster enemies), The Lich (regenerating, slightly faster
-enemies) The Golden Tyrant (sturdier enemies that drop double gold), The Undermine (every ground enemy burrows)
-and The Battering Ram (wall-breakers). The map title tells you which
+enemies), The Golden Tyrant (sturdier enemies that drop double gold), The Undermine (every ground enemy burrows),
+The Battering Ram (wall-breakers), The Static Throne (the boss itself jams every tower it passes, with
+Disruptor escorts) and The Iron Phalanx (Bulwark escorts, a boss that shields the enemies around it, and
+tougher enemies). The map title tells you which
 one is waiting at the top of the act, so you can draft toward it.
 
 ## Gauntlet

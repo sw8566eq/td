@@ -170,6 +170,11 @@ class-attribute driven (`JAM_RADIUS`, `AURA_RADIUS`), so `Game` never branches o
   multiplicatively (Marked x1.2 in an aura takes 1.2 x 0.7 = 0.84x), and a Corrosive Poison tick that
   bypasses a shield still meets the aura.
 
+Because both are read off class attributes, a named boss can borrow either (The Static Throne's jam,
+The Iron Phalanx's aura) by setting them on its instance -- see
+[run-map.md](run-map.md) "Elite affixes and named bosses". The Jammers/Phalanx affixes add the species
+themselves as per-spawn escorts.
+
 The counter relics (Faraday Mesh, Linebreaker) are under [relics.md](relics.md) "Counter relics".
 `Enemy.KILL_COUNTER` names an achievements counter that the dead-enemy drain in `Game.update()` bumps
 once per frame per counter (`disruptors_killed`, `bulwarks_killed`).

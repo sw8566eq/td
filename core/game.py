@@ -924,7 +924,7 @@ class Game:
 
     def _apply_affix_traits(self, run, node):
         """Copy `node`'s Elite affix's enemy-side traits (regeneration,
-        damage taken) onto the freshly-built WaveManager -- the escalation
+        damage taken, burrowing, breach, spawn-queue rules, boss traits) onto the freshly-built WaveManager -- the escalation
         half is already folded in by _floor_load_context. Shared by a
         node load and a resume, like _floor_load_context itself."""
         affix = self._elite_affix(run, node)
@@ -933,6 +933,8 @@ class Game:
             self.wave_manager.enemy_damage_taken_multiplier = affix.damage_taken_multiplier
             self.wave_manager.enemy_burrows = affix.burrows
             self.wave_manager.enemy_breach_multiplier = affix.breach_multiplier
+            self.wave_manager.spawn_rules = elite_affixes.spawn_rules(affix)
+            self.wave_manager.enemy_boss_traits = affix.boss_traits
 
     def _level_for_node(self, run, node):
         """The Level `node` loads -- LEVELS' own entry, or a private copy

@@ -8,6 +8,12 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Three Elite affixes and two named bosses built on the newest threats.** *Jammers* sends a
+  Disruptor from every spawn each wave, *Phalanx* a Bulwark (and enemies have 10% more HP), and
+  *Windborne* turns every third ground enemy into a Flyer. *The Static Throne* is a boss that jams
+  every tower it walks past, escorted by Disruptors; *The Iron Phalanx* is escorted by Bulwarks,
+  shields the enemies around it itself, and its enemies take 10% less damage. All show on the map
+  tooltip, the sidebar and in the Field Manual. Existing seeds may roll different affixes and bosses.
 - **Four new levels**, each built around one placement puzzle. **The Coil** and **Killing Field**
   join the early single-lane rows: The Coil winds into the middle of the map and back out between
   its own legs, with a small high-ground plateau beside the exit, and Killing Field passes the same

@@ -159,6 +159,28 @@ class MutatorEffects:
                     queue[position] = swap.to
         return queue
 
+    def merged(self, other: "MutatorEffects | None") -> "MutatorEffects":
+        """This bundle with `other` folded on top, by the same rules as
+        compose -- `other`'s swaps run after this one's. How an Elite
+        affix's or named boss's queue rules (elite_affixes.spawn_rules) and
+        the endless final floor's mutators share one spawn queue
+        (WaveManager._queue_effects)."""
+        if other is None:
+            return self
+        escorts = dict(self.escorts)
+        for species, extra in other.escorts:
+            escorts[species] = escorts.get(species, 0) + extra
+        return MutatorEffects(
+            hp_multiplier=self.hp_multiplier * other.hp_multiplier,
+            speed_multiplier=self.speed_multiplier * other.speed_multiplier,
+            count_multiplier=self.count_multiplier * other.count_multiplier,
+            regen_fraction_per_second=self.regen_fraction_per_second + other.regen_fraction_per_second,
+            burrows=self.burrows or other.burrows,
+            breach_multiplier=self.breach_multiplier * other.breach_multiplier,
+            swaps=self.swaps + other.swaps,
+            escorts=tuple(escorts.items()),
+        )
+
 
 def compose(keys: Iterable[str]) -> MutatorEffects:
     hp = speed = count = breach = 1.0
