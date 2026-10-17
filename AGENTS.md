@@ -36,6 +36,7 @@ mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling
 
 python tools/flow_check.py         # end-to-end bot run per Commander; run after changing node types, reward/act flow or save state
 python tools/tower_bench.py        # dev-only tower balance bench
+python tools/perf_bench.py         # dev-only frame-time bench + determinism fingerprint; run before/after a perf change
 
 pyinstaller --onedir --name td --add-data "assets:assets" main.py   # local Linux release build -- see docs/agents/release.md
 ```

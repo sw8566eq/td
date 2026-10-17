@@ -1,6 +1,7 @@
 """Game state machine and main loop."""
 
 import dataclasses
+import math
 import random
 import sys
 from enum import Enum, auto
@@ -3076,17 +3077,20 @@ class Game:
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
 
-    def _update_ground_fires(self, dt):
+    def _update_ground_fires(self, dt, enemy_index=None):
         """Burn every ground (not flying, not burrowed) enemy standing in a
         live GroundFire, crediting the Mortar that left it, then drop the
-        ones that have burnt out."""
+        ones that have burnt out. `enemy_index` (optional) only narrows each
+        fire's scan; near_in_order() keeps the raw list's visiting order, so
+        the float damage credit sums identically."""
         vs_slowed = 1.0
         if self.active_run is not None:
             for key in self.active_run.relics:
                 vs_slowed *= relics.RELICS[key].ground_fire_vs_slowed_multiplier
         for fire in self.ground_fires:
             fire.time_left -= dt
-            for enemy in self.enemies:
+            pool = enemy_index.near_in_order(fire.pos, fire.radius) if enemy_index is not None else self.enemies
+            for enemy in pool:
                 if (enemy.is_dead or enemy.reached_goal or is_airborne(enemy) or enemy.is_burrowed
                         or enemy.pos.distance_to(fire.pos) > fire.radius):
                     continue
@@ -3473,9 +3477,21 @@ class Game:
             self.moving_tower = None  # the next wave started mid-move
 
         self._hold_enemies_at_barricades(dt)
-        self._update_ground_fires(dt)
+        # One lazily-built index for every enemy-vs-enemies query made
+        # before the towers act: ground fires (nothing has moved yet) and
+        # HealerEnemy's heal (mid-movement -- the per-enemy displacement
+        # reported below keeps its answers exact; see MovingEnemyIndex).
+        moving_index = spatial_index.MovingEnemyIndex(self.enemies)
+        self._update_ground_fires(dt, moving_index)
         for enemy in self.enemies:
-            enemy.update(dt, self.enemies)
+            if moving_index.built:
+                pos = enemy.pos
+                x, y = pos.x, pos.y
+                enemy.update(dt, self.enemies, moving_index)
+                pos = enemy.pos
+                moving_index.note_moved(math.hypot(pos.x - x, pos.y - y))
+            else:
+                enemy.update(dt, self.enemies, moving_index)
 
         # Two passes: every tower's aura buff is reset before any tower
         # (support or attacking) does its own per-frame work, so which
@@ -3527,8 +3543,11 @@ class Game:
                 self.economy.add_gold(granted)
                 tower.pending_siphon_gold -= granted
 
+        # The same index the towers just used: nothing moves an enemy
+        # between the tower loop and here (a knockback only queues a slide
+        # for the next Enemy.update()), so it's still exact for splash/chain.
         for projectile in self.projectiles:
-            projectile.update(dt, self.enemies)
+            projectile.update(dt, self.enemies, enemy_index)
 
         # Drained here, before dead projectiles are pruned below -- same
         # per-frame-event-list idiom as enemy.damage_events -> damage_
