@@ -52,6 +52,7 @@ sys.path.insert(0, str(REPO / "tests"))
 STEP = 1 / 20
 DECISION_INTERVAL = 0.5
 FIGHT_LIMIT_SECONDS = 2400
+ENDLESS_LIMIT_SECONDS = 9000  # the final boss's endless tail grows every wave, so it gets longer
 ENDLESS_WAVE_CAP = 40  # stop the final boss's endless tail here and call it "survived long"
 RESERVE_AFTER_WAVE_ONE = 15
 EARLY_CALLS = True
@@ -436,7 +437,8 @@ def play_floor(game, rng, stats):
     authored = len(game.level.wave_specs)
     lives_at_wave_start = game.economy.lives
     wave_seen = 0
-    while game.state == GameState.PLAYING and elapsed < FIGHT_LIMIT_SECONDS:
+    limit = ENDLESS_LIMIT_SECONDS if run.is_final_floor else FIGHT_LIMIT_SECONDS
+    while game.state == GameState.PLAYING and elapsed < limit:
         wm = game.wave_manager
         if wm.wave_index != wave_seen:
             wave_seen = wm.wave_index
@@ -465,7 +467,7 @@ def play_floor(game, rng, stats):
         stats["damage"][name] += tower.damage_dealt
         stats["kills"][name] += tower.kills
         stats["built"][name] += 1
-    return elapsed >= FIGHT_LIMIT_SECONDS
+    return elapsed >= limit
 
 
 # --- Between fights ----------------------------------------------------------
@@ -666,7 +668,7 @@ def play_run(seed, commander, account="veteran"):
                 outcome = "died"
                 break
             if run.is_final_floor:
-                outcome = "endless-cap"
+                outcome = "endless-cap" if run.endless_waves_cleared >= ENDLESS_WAVE_CAP else "endless-timeout"
                 break
         elif st == GameState.FLOOR_CLEARED:
             game._enter_reward_screen()
@@ -877,8 +879,8 @@ def report(records):
                      f"  {per_tower:8.0f}")
     timeouts = sum(r["timeouts"] for r in records)
     if timeouts:
-        lines.append(f"\n(fights hitting the {FIGHT_LIMIT_SECONDS}s limit: {timeouts})")
-    odd = [r for r in records if r["outcome"] not in ("died", "endless-cap")]
+        lines.append(f"\n(fights hitting the time limit: {timeouts})")
+    odd = [r for r in records if r["outcome"] not in ("died", "endless-cap", "endless-timeout")]
     for r in odd:
         lines.append(f"!! seed {r['seed']} {r['commander']}: {r['outcome']}")
     return "\n".join(lines)
