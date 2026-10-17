@@ -637,6 +637,7 @@ def play_run(seed, commander, account="veteran"):
     game.start_new_run(seed=seed, commander=commander)
     game._enter_blessing()
     stats = {"damage": collections.Counter(), "kills": collections.Counter(), "built": collections.Counter()}
+    endless_stats = {key: collections.Counter() for key in stats}
     memory = {"placed": collections.Counter()}
     floors = []
     outcome = None
@@ -654,7 +655,9 @@ def play_run(seed, commander, account="veteran"):
         elif st == GameState.PLAYING:
             node = run.map.node(run.current_node_id)
             lives_before = run.lives if run.lives_captured else game.economy.lives
-            timeouts += play_floor(game, rng, stats)
+            # The endless final boss is tallied apart: its unbounded tail would
+            # otherwise swamp every other floor's tower shares.
+            timeouts += play_floor(game, rng, endless_stats if run.is_final_floor else stats)
             for t in game.towers:
                 memory["placed"][_type_key(type(t))] += 1
             died = game.state == GameState.GAME_OVER
@@ -864,7 +867,8 @@ def report(records):
         lost = statistics.mean(f["lives_before"] - f["lives_after"] for f in fs)
         lines.append(f"  {key:3}  {len(fs):4d}  {lost:5.1f}  {_pct(sum(f['died'] for f in fs), len(fs))}")
 
-    lines.append("\ntowers: built share, damage share, kill share, damage per tower built")
+    lines.append("\ntowers (every floor but the endless final boss): built share, damage share, kill share, "
+                 "damage per tower built")
     built = collections.Counter()
     damage = collections.Counter()
     kills = collections.Counter()
