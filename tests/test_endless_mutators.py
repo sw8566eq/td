@@ -328,12 +328,12 @@ def test_a_hovered_potion_description_moves_above_the_mutator_list(game):
     blits = []
     real_blit = game.screen.blit
 
-    class SpySurface:
+    class SpySurface(pygame.Surface):  # a real Surface, so pygame.draw works on it
         def blit(self, source, pos, *args):
             blits.append((drawn[-1] if drawn else None, pos))
             return real_blit(source, pos, *args)
 
-    ui.draw_potion_belt(SpySurface(), game.font, SpyFont(), [potion], [], 0,
+    ui.draw_potion_belt(SpySurface(game.screen.get_size()), game.font, SpyFont(), [potion], [], 0,
                         mutator_names=names, mutator_count=len(names))
     tops = {text: pos[1] for text, pos in blits}
     header_y = tops[f"Endless mutators ({len(names)})"]
