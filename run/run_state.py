@@ -159,6 +159,15 @@ class RunState:
     # save and a pending reward screen both remember them.
     challenge_leaks: int = 0
     challenge_failed: bool = False
+    # The Commander's ability (run/abilities.py): waves still to clear
+    # before it can be used again (0 = ready). Set to the ability's
+    # cooldown_waves on use, ticked down by Game at every wave clear, and
+    # carried across floors and acts.
+    ability_cooldown: int = 0
+    # Fight-scoped charges an ability left behind (Hold the Gate's blocked
+    # leaks) -- reset by every fight load, like challenge_leaks, and kept on
+    # the run so a mid-floor save remembers them.
+    ability_charges: int = 0
 
     @property
     def current_level_id(self) -> object:

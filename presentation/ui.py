@@ -26,6 +26,7 @@ from progression.meta_progression import (
     SHOP_META_UNLOCKS,
 )
 from run import endless_mutators
+from run.abilities import ABILITIES
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
@@ -1661,6 +1662,7 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
             lines.append("Potions: " + ", ".join(POTIONS[p].display_name for p in commander.starting_potions))
         if commander.forged_towers:
             lines.append("Forged: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.forged_towers))
+        lines.append(f"Ability: {ABILITIES[commander.ability].display_name}")
         for line in lines:
             for wrapped in (_wrap_text(line, small_font, max_width) if line else [""]):
                 surface.blit(small_font.render(wrapped, True, settings.COLOR_TEXT_DIM), (x, y))
@@ -1932,15 +1934,30 @@ CHALLENGE_STATUS_COLOR = settings.COLOR_NODE_CHALLENGE
 MUTATOR_HEADER_COLOR = settings.COLOR_GOLD
 
 
-def mutator_list_lines(mutator_names, small_font, total=None):
+def mutator_list_lines(mutator_names, small_font, total=None, max_lines=None):
     """The sidebar's endless-mutator block: an "Endless mutators (N)"
     header plus the names (endless_mutators.summary_names), comma-joined
-    and wrapped to the panel width. [] for none."""
+    and wrapped to the panel width. [] for none. Past `max_lines` the list
+    is cut short with a trailing "..." (the header's count stays whole)."""
     if not mutator_names:
         return []
     max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
     header = f"Endless mutators ({total if total is not None else len(mutator_names)})"
-    return [header] + _wrap_text(", ".join(mutator_names), small_font, max_width)
+    lines = [header] + _wrap_text(", ".join(mutator_names), small_font, max_width)
+    if max_lines is not None and len(lines) > max_lines:
+        lines = lines[:max(1, max_lines)]
+        if len(lines) > 1:
+            last = lines[-1].rstrip(", ")
+            while last and small_font.size(last + " ...")[0] > max_width:
+                last = last[:-1]
+            lines[-1] = last.rstrip(", ") + " ..."
+    return lines
+
+
+def mutator_lines_fitting_below(min_top):
+    """How many mutator-list rows fit between `min_top` and the list's
+    bottom row (the Proving Grounds status rows' lower one)."""
+    return 1 + max(0, (CHALLENGE_STATUS_Y + PANEL_ROW_HEIGHT - min_top) // PANEL_ROW_HEIGHT)
 
 
 def build_potion_slot_rects(count):
@@ -1957,7 +1974,8 @@ def build_potion_slot_rects(count):
 
 
 def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
-                     run_modifiers_text=None, challenge_text=None, mutator_names=(), mutator_count=None):
+                     run_modifiers_text=None, challenge_text=None, mutator_names=(), mutator_count=None,
+                     mutator_min_top=None):
     """The run's potion slots -- a filled slot shows its potion's initials
     on its own color, an empty one just an outline. Hovering a filled slot
     shows that potion's name and description above the belt; a running
@@ -1965,7 +1983,9 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
 
     `mutator_names` (the endless final boss's active mutators) is listed
     in the rows a Proving Grounds status would use -- the final boss is
-    never one -- growing upward, wrapped to the panel width."""
+    never one -- growing upward, wrapped to the panel width, and cut short
+    rather than drawn above `mutator_min_top` (the Commander ability
+    button's bottom)."""
     x = settings.PLAY_WIDTH + PANEL_PADDING
     label_text = "Potions -- click or Q/W/E"
     if overclock_timer > 0:
@@ -1979,7 +1999,8 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
             surface.blit(small_font.render(line, True, CHALLENGE_STATUS_COLOR),
                          (x, CHALLENGE_STATUS_Y + index * PANEL_ROW_HEIGHT))
     description_bottom = POTION_DESCRIPTION_BOTTOM
-    mutator_lines = mutator_list_lines(mutator_names, small_font, mutator_count)
+    max_lines = mutator_lines_fitting_below(mutator_min_top) if mutator_min_top is not None else None
+    mutator_lines = mutator_list_lines(mutator_names, small_font, mutator_count, max_lines)
     if mutator_lines:
         top = CHALLENGE_STATUS_Y + PANEL_ROW_HEIGHT - (len(mutator_lines) - 1) * PANEL_ROW_HEIGHT
         for index, line in enumerate(mutator_lines):
@@ -2010,6 +2031,90 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         for text_line, color in lines:
             surface.blit(small_font.render(text_line, True, color), (x, y))
             y += PANEL_ROW_HEIGHT
+
+
+# --- Commander ability button (the sidebar, below the Sell/Move row) ---
+
+ABILITY_BUTTON_HEIGHT = 40
+# One line instead of two -- while the endless final boss's mutator list
+# needs the rows below it (see draw_potion_belt's mutator_min_top).
+ABILITY_BUTTON_COMPACT_HEIGHT = 24
+# Below the stats panel's lowest button (Sell/Move), above the Proving
+# Grounds status lines and the potion belt -- a strip no other sidebar
+# element claims, so the button stays put whatever the panel shows.
+ABILITY_BUTTON_TOP = SELL_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+ABILITY_HOTKEY_LABEL = "F"
+ABILITY_COLOR = (150, 200, 255)
+
+
+def build_ability_button_rect(compact=False):
+    height = ABILITY_BUTTON_COMPACT_HEIGHT if compact else ABILITY_BUTTON_HEIGHT
+    return pygame.Rect(_action_button_rect(ABILITY_BUTTON_TOP).x, ABILITY_BUTTON_TOP, ACTION_BUTTON_WIDTH, height)
+
+
+def ability_detail(ability):
+    """An ability's description plus its recharge -- the hover box and the
+    Field Manual both show this."""
+    return f"{ability.description} Recharges after {ability.cooldown_waves} waves."
+
+
+def ability_status_text(ability, cooldown, charges, timer, targeting, compact=False):
+    """The ability button's second line (or, `compact`, its short right-hand
+    tag) -- pulled out as a pure function so each state is unit-testable
+    without a display. Most-urgent first: aiming, a running effect, leftover
+    charges, then ready/recharging."""
+    if targeting:
+        return "Aim" if compact else "Aim -- right-click cancels"
+    if timer > 0:
+        return f"{timer:.1f}s" if compact else f"Active: {timer:.1f}s"
+    if charges > 0 and ability.charge_label:
+        return f"{charges} left" if compact else f"{charges} {ability.charge_label} left"
+    if cooldown > 0:
+        waves = f"{cooldown} wave{'s' if cooldown != 1 else ''}"
+        return waves if compact else f"Recharging: {waves}"
+    return "Ready"
+
+
+def draw_ability_button(surface, small_font, rect, ability, cooldown, charges=0, timer=0.0, targeting=False,
+                        hovered=False, compact=False):
+    """The Commander ability: name and hotkey on top, its state below --
+    or, `compact`, the bare name with a short state tag on one line.
+    Hovering shows the description in a filled box just above the button."""
+    ready = cooldown == 0
+    pygame.draw.rect(surface, settings.COLOR_BUTTON if ready else settings.COLOR_BUTTON_DISABLED, rect,
+                     border_radius=6)
+    if ready:  # aiming is outlined in gold, so the mode reads at a glance
+        pygame.draw.rect(surface, settings.COLOR_GOLD if targeting else ABILITY_COLOR, rect, width=2, border_radius=6)
+    title_color = ABILITY_COLOR if ready else settings.COLOR_TEXT_DIM
+    status = ability_status_text(ability, cooldown, charges, timer, targeting, compact)
+    status_surface = small_font.render(status, True, settings.COLOR_GOLD if status == "Ready" else settings.COLOR_TEXT_DIM)
+    if compact:
+        title = small_font.render(ability.display_name, True, title_color)
+        surface.blit(title, title.get_rect(midleft=(rect.x + 8, rect.centery)))
+        surface.blit(status_surface, status_surface.get_rect(midright=(rect.right - 8, rect.centery)))
+    else:
+        title = small_font.render(f"{ABILITY_HOTKEY_LABEL}: {ability.display_name}", True, title_color)
+        surface.blit(title, title.get_rect(midtop=(rect.centerx, rect.y + 3)))
+        surface.blit(status_surface, status_surface.get_rect(midbottom=(rect.centerx, rect.bottom - 3)))
+
+    if hovered:
+        max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+        lines = _wrap_text(ability_detail(ability), small_font, max_width)
+        box = pygame.Rect(settings.PLAY_WIDTH + PANEL_PADDING // 2, 0, settings.PANEL_WIDTH - PANEL_PADDING,
+                          len(lines) * PANEL_ROW_HEIGHT + 8)
+        box.bottom = rect.top - 4
+        pygame.draw.rect(surface, settings.COLOR_HUD_BG, box)
+        pygame.draw.rect(surface, ABILITY_COLOR, box, width=1, border_radius=4)
+        y = box.y + 4
+        for line in lines:
+            surface.blit(small_font.render(line, True, settings.COLOR_TEXT), (box.x + PANEL_PADDING // 2, y))
+            y += PANEL_ROW_HEIGHT
+
+
+def draw_ability_target_preview(surface, pos, radius):
+    """Where a targeted ability will land: its radius, ringed at the cursor."""
+    pygame.draw.circle(surface, ABILITY_COLOR, pos, int(radius), width=2)
+    pygame.draw.circle(surface, ABILITY_COLOR, pos, 3)
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
@@ -2836,6 +2941,10 @@ def compendium_rows(small_font):
         ("Curses", [(r.display_name, r.description) for r in RELICS.values() if r.is_curse]),
         ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
+        ("Commander abilities", [
+            (ABILITIES[c.ability].display_name, f"{c.display_name}: {ability_detail(ABILITIES[c.ability])}")
+            for c in COMMANDERS.values()
+        ]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
         ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
         ("Endless mutators", [(m.display_name, m.description) for m in endless_mutators.MUTATORS.values()]),
@@ -3067,6 +3176,7 @@ HELP_LINES = [
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
     "V shows every tower's range (and resonance links) at once during a fight",
     "Q / W / E (or click a sidebar slot) drink potion 1 / 2 / 3 during a run's fight",
+    "F (or the sidebar button) fires your Commander's ability -- it recharges over waves",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]

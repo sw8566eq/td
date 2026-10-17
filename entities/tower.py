@@ -437,6 +437,10 @@ class Tower:
         # An Overclock Elixir potion's live fire-rate bonus -- set every
         # frame by Game.update() (1.0 whenever no Overclock is running).
         self.potion_fire_rate_multiplier = 1.0
+        # A Commander ability's live buffs (run/abilities.py tower_buff) --
+        # reset to 1.0 and re-applied every frame by Game.update().
+        self.ability_fire_rate_multiplier = 1.0
+        self.ability_damage_multiplier = 1.0
         # This tower type's run veterancy (run/veterancy.py) -- set once at
         # construction by Game._construct_tower via apply_veterancy().
         self.veterancy_rank = 0
@@ -931,7 +935,7 @@ class Tower:
             + self.placement_damage_bonus
             + self.resonance_damage_bonus
             + self.high_ground_damage_bonus
-        )
+        ) * self.ability_damage_multiplier
 
     def _relic_family_damage_bonus(self):
         """Hook for a relic that only bonuses a specific tower family's
@@ -1073,6 +1077,7 @@ class Tower:
             * self.relic_last_stand_fire_rate_multiplier
             * self.relic_tower_density_fire_rate_bonus_multiplier
             * self.potion_fire_rate_multiplier
+            * self.ability_fire_rate_multiplier
             * (1.0 + self.resonance_fire_rate_bonus)
         )
 

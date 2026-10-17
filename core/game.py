@@ -26,6 +26,7 @@ from progression import (
     service_record,
 )
 from run import (
+    abilities,
     ascension,
     challenges,
     commanders,
@@ -464,6 +465,11 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
+        # The Commander ability's own floor-scoped state (run/abilities.py):
+        # seconds left on a timed ability's tower buff, and whether a
+        # targeted ability is waiting for the player to click the field.
+        self.ability_timer = 0.0
+        self.ability_targeting = False
         self.ground_fires = []
         self._announced_resonances = set()
         self.floor_veterancy_gains = []
@@ -1028,6 +1034,7 @@ class Game:
         # Every fight load (a restart included) starts its challenge clean.
         run.challenge_leaks = 0
         run.challenge_failed = False
+        run.ability_charges = 0
         self._apply_node_challenge(run, node)
         if not run.lives_captured:
             # run.lives so far is only pre-fight bonuses (see RunState.
@@ -1373,6 +1380,98 @@ class Game:
         self.audio.play("potion_used")
         self._record_achievement("potions_used")
         self._record_service(adds=[service_record.overall("potions_used", 1)])
+
+    # --- Commander ability ---
+
+    @property
+    def current_ability(self):
+        """The active run's Commander ability (abilities.ABILITIES), or None
+        outside a run -- Practice and editor playtests have no Commander."""
+        run = self.active_run
+        if run is None:
+            return None
+        return abilities.ABILITIES[commanders.COMMANDERS[run.commander].ability]
+
+    @property
+    def ability_button_compact(self):
+        """One-line button while the endless boss's mutator list needs the room."""
+        return bool(self.active_mutators)
+
+    @property
+    def ability_button_rect(self):
+        """Recomputed on read (cheap), so the click target always matches
+        the drawn button, compact or not."""
+        return ui.build_ability_button_rect(self.ability_button_compact)
+
+    def activate_ability(self):
+        """The ability button / hotkey. Only mid-floor (PLAYING) and only
+        once recharged (RunState.ability_cooldown == 0). A targeted ability
+        toggles its aiming mode instead of firing -- the next click on the
+        field fires it (see fire_ability); pressing again cancels."""
+        ability = self.current_ability
+        if self.state != GameState.PLAYING or ability is None:
+            return
+        if self.ability_targeting:
+            self.cancel_ability_targeting()
+            return
+        if self.active_run.ability_cooldown > 0:
+            waves = self.active_run.ability_cooldown
+            self._queue_toast(f"{ability.display_name} recharges in {waves} more wave{'s' if waves != 1 else ''}")
+            return
+        if ability.targeted:
+            self.ability_targeting = True
+            self.selected_tower_name = None  # the next click aims, it doesn't build
+            self.moving_tower = None
+            return
+        self.fire_ability(None)
+
+    def fire_ability(self, target):
+        """Run the ability's own `use` (abilities.py) -- this never branches
+        on which ability it is. A refusal (use returns False) toasts why and
+        keeps the charge, and a targeted ability stays aimed so the player
+        can pick a better spot."""
+        ability = self.current_ability
+        run = self.active_run
+        if self.state != GameState.PLAYING or ability is None or run.ability_cooldown > 0:
+            return
+        if not ability.use(self, target):
+            self._queue_toast(ability.unusable_message)
+            return
+        self.ability_targeting = False
+        run.ability_cooldown = ability.cooldown_waves
+        if ability.duration > 0:
+            self.ability_timer = ability.duration
+        self.audio.play("potion_used")
+        self._record_service(adds=[service_record.overall("abilities_used", 1)])
+
+    def cancel_ability_targeting(self):
+        self.ability_targeting = False
+
+    def ability_flash(self, pos, radius):
+        """A ring where an ability landed -- the presentation half an
+        ability's `use` asks for, drawn like every other impact ring."""
+        self.impact_effects.append(effects.ExpandingRing(
+            pos, max_radius=radius, duration=0.5, color=settings.COLOR_GOLD,
+        ))
+
+    def _recharge_ability(self):
+        """One wave cleared: one step closer to the ability being ready.
+        Called from update()'s wave-clear check -- the one place a wave
+        clear is detected -- so a resumed save never double-counts it."""
+        run = self.active_run
+        if run is not None and run.ability_cooldown > 0:
+            run.ability_cooldown -= 1
+            if run.ability_cooldown == 0:
+                self._queue_toast(f"{self.current_ability.display_name} is ready (F)")
+
+    def _apply_ability_buffs(self, tower):
+        """Reset `tower`'s ability multipliers, then re-apply a running timed
+        ability's buff -- called every frame in update()'s first tower pass."""
+        tower.ability_fire_rate_multiplier = 1.0
+        tower.ability_damage_multiplier = 1.0
+        ability = self.current_ability
+        if self.ability_timer > 0 and ability is not None and ability.tower_buff is not None:
+            ability.tower_buff(tower, TOWER_TYPE_NAMES[type(tower)])
 
     @property
     def potion_slot_rects(self):
@@ -2079,6 +2178,8 @@ class Game:
         # Resonances already announced with a toast this floor.
         self._announced_resonances = set()
         self.overclock_timer = 0.0
+        self.ability_timer = 0.0
+        self.ability_targeting = False
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
         self.moving_tower = None
@@ -3449,6 +3550,11 @@ class Game:
                         f"{self.active_challenge.challenge.display_name} broken -- the Proving Grounds bonus is lost",
                     )
                 return
+        if run is not None and run.ability_charges > 0:
+            # Hold the Gate (run/abilities.py): the leak still counts against
+            # a Proving Grounds limit above, but costs no life.
+            run.ability_charges -= 1
+            return
         if (
             run is not None and "guardians_reprieve" in run.relics
             and not run.used_guardians_reprieve and not self.economy.invulnerable
@@ -3517,6 +3623,7 @@ class Game:
             run = self.active_run
             self.hints.notify(
                 "fight_start",
+                *(("run_fight_start",) if run is not None else ()),
                 *(("holding_potion",) if run is not None and run.potions else ()),
                 *(("module_fitted",) if run is not None and run.tower_modules else ()),
             )
@@ -3559,10 +3666,13 @@ class Game:
         # a tower placed mid-effect is overclocked too.
         self.overclock_timer = max(0.0, self.overclock_timer - dt)
         overclock = potions.OVERCLOCK_FIRE_RATE_MULTIPLIER if self.overclock_timer > 0 else 1.0
+        # A timed Commander ability (run/abilities.py) rides the same pass.
+        self.ability_timer = max(0.0, self.ability_timer - dt)
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
             tower.potion_fire_rate_multiplier = overclock
+            self._apply_ability_buffs(tower)
         # Built fresh every frame, same as the position updates it buckets
         # -- see spatial_index.py for why a full per-frame rebuild, not an
         # incrementally-maintained structure, is the right shape here. This
@@ -3773,6 +3883,7 @@ class Game:
             self._record_achievement("waves_survived")
             self.hints.notify("wave_cleared")
             self._update_endless_score()
+            self._recharge_ability()
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
                 and self.active_run is not None and self.active_run.is_final_floor):
             self._handle_boss_defeated()

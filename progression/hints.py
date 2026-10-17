@@ -93,6 +93,11 @@ HINTS: dict[str, Hint] = {
         "Your Bandolier holds potions. Click a slot under the side panel, or press Q/W/E, "
         "to drink one mid-fight. Each is single-use.",
     ),
+    "commander_ability": Hint(
+        "run_fight_start", "Commander ability",
+        "Your Commander has one signature ability: the button under the side panel, or F. "
+        "Once used it recharges as you clear waves, so save it for when it counts.",
+    ),
     "module": Hint(
         "module_fitted", "Modules",
         "A module is fitted: every tower of that type you build this run gets its extra "

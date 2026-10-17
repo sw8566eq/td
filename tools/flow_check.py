@@ -4,7 +4,7 @@ A bot plays whole runs headless (one per Commander): it picks map nodes at
 random, builds and upgrades towers in fights, takes rewards, shops, resolves
 Events, uses Outposts (Rest/Forge/Drill/Move on), Armories and Treasures,
 fights Proving Grounds under their constraint (tallied per challenge, plus
-whether each was won), and saves now and then -- invulnerable in fights, since this checks that the
+whether each was won), fires the Commander ability, and saves now and then -- invulnerable in fights, since this checks that the
 run's state machine never crashes or gets stuck (act transitions, trophy
 rewards, the endless final boss), not balance. Dev-only, excluded from
 coverage; writes nothing outside a temp directory.
@@ -71,6 +71,12 @@ def play(seed, commander):
             for _ in range(60):
                 game.wave_manager.skip_delay(); game.update(1/20)
                 if game.state != GameState.PLAYING: break
+                if game.enemies and game.active_run.ability_cooldown == 0 and rng.random() < 0.05:
+                    game.activate_ability()  # the Commander ability, aimed at a live enemy if it aims
+                    if game.ability_targeting:
+                        game.fire_ability(tuple(rng.choice(game.enemies).pos))
+                        game.cancel_ability_targeting()
+                    seen["ability used" if game.active_run.ability_cooldown else "ability refused"] += 1
             if game.active_run.is_final_floor and game.wave_manager.wave_index > 12:
                 return seen, f"reached endless, act {game.active_run.act+1}"
         elif st == GameState.FLOOR_CLEARED:

@@ -42,7 +42,21 @@ Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sn
 Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder), **The Trapmaster**
 (Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) and **The Skywatch**
 (Basic, Harpoon, Cannon; Harpoon starts forged, grounded flyers stay down longer) unlock as you play.
-The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
+Every Commander also has one signature **ability**, fired mid-fight with the sidebar button or **F**;
+once used it recharges after a few cleared waves (shown on the button), so the only decision is when:
+
+| Commander | Ability | Effect | Recharge |
+|---|---|---|---|
+| The Warden | Hold the Gate | The next 3 enemies to leak this floor cost no lives | 3 waves |
+| The Alchemist | Toxic Downpour | Aim it: enemies within 110px are poisoned for 6% max HP/s for 6s (1% vs bosses) | 2 waves |
+| The Marksman | Called Shot | Basic and Sniper deal double damage for 6s | 2 waves |
+| The Engineer | Rapid Repairs | Every tower fires 40% faster for 8s; every Barricade repaired | 3 waves |
+| The Stormcaller | Thunderhead | Lightning strikes the 8 toughest enemies for 35% max HP (6% vs bosses) | 2 waves |
+| The Trapmaster | Caltrops | Every ground enemy slowed to 45% speed for 6s | 2 waves |
+| The Skywatch | Downdraft | Every flyer grounded and slowed to 70% speed for 6s | 2 waves |
+
+An aimed ability (Toxic Downpour) shows its radius at the cursor; click the field to fire, or
+right-click/Esc to cancel. The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
 one curse, and one module fitted to a starter tower, the same for everyone.
 
 Before the map, **Orders from Command** offer one requisition -- pick one: a
