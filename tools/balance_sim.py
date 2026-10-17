@@ -18,8 +18,9 @@ The policy, in brief (see docs/agents/tooling.md "Balance simulator"):
   with a bonus for a role the board lacks (anti-air when flyers come, slow,
   splash) and a mild penalty for repeating a type. It keeps a small reserve
   once the fight is under way and banks gold through the last wave.
-* Potions: offensive ones when leaks start or a boss pushes deep, Mending
-  Salve when low, Liquid Gold at the start of a floor.
+* Potions and the Commander's ability: offensive ones when leaks start or
+  a boss pushes deep, Mending Salve when low, Liquid Gold at the start of
+  a floor.
 * Between fights: map nodes scored by lives and shop currency (Outpost
   when hurt, Elite only when healthy), relics always, tower cards for a
   missing role, Outposts heal when hurt else forge the most-used tower.
@@ -386,6 +387,16 @@ class FloorBot:
 
     # potions
 
+    def use_ability(self):
+        """Fire the Commander's ability when it's charged -- aimed, if it
+        needs aiming, at the enemy furthest along its route."""
+        game = self.game
+        ability = getattr(game, "current_ability", None)
+        if ability is None or game.active_run.ability_cooldown > 0 or not game.enemies:
+            return
+        lead = max(game.enemies, key=lambda e: e.wp_index / max(1, len(e.waypoints)))
+        game.fire_ability((lead.pos.x, lead.pos.y) if ability.targeted else None)
+
     def use_potions(self, dt):
         game = self.game
         run = game.active_run
@@ -417,6 +428,7 @@ class FloorBot:
         boss_deep = any(e.IS_BOSS and e.wp_index / max(1, len(e.waypoints)) > 0.45 for e in game.enemies)
         lost = self.start_lives - lives
         if deep >= 5 or boss_deep or (lost >= 2 and deep >= 2) or lives <= 3:
+            self.use_ability()
             for slot, key in enumerate(run.potions):
                 if key in OFFENSIVE_POTIONS and usable(key):
                     return drink(slot, 4.0)
