@@ -1,7 +1,7 @@
 # Content registries and enemy mechanics
 
 How content registries are consumed generically, then the enemy-side mechanics: bosses, Mark,
-Corrosive Poison, Sappers/Burrowers, knockback resistance and poison credit.
+Corrosive Poison, Sappers/Burrowers, Disruptors/Bulwarks, knockback resistance and poison credit.
 
 ## Content is registries, not conditionals
 
@@ -143,6 +143,36 @@ purpose: `damage_vs_flying_multiplier` (Flak Rounds still counts a grounded flye
 `WaveManager`'s Undermine burrowing, which happens at spawn. `ui.enemy_tooltip_lines` lists "Grounded"
 (`Enemy.is_grounded`) and `Enemy.draw` adds a shadow and tether under it. See [towers.md](towers.md)
 "Harpoon".
+## Disruptors and Bulwarks
+
+Two reinforcement species (`run_escalation.RUN_REINFORCEMENTS`, appended after Sappers/Burrowers so
+existing entries keep their order) that punish one-trick defenses. Both are driven from `Game.update()`
+right after the enemies move, since only `Game` sees enemies and towers together, and both are
+class-attribute driven (`JAM_RADIUS`, `AURA_RADIUS`), so `Game` never branches on species.
+
+- **Disruptor** (`DisruptorEnemy`, from depth 4, i.e. Act 1 row 4, one more every 5 rows): `Game._jam_towers`
+  calls `Enemy.jam_towers(towers)` on every enemy. A species with `JAM_RADIUS` whose `jam_cooldown` is
+  up calls `Tower.jam(JAM_DURATION)` on every `Tower.JAMMABLE` tower within reach, then restarts its
+  cooldown. A pulse that finds no tower doesn't spend the cooldown. `Game` draws the pulse ring, and
+  the enemy itself stays simulation-only. The jam is tower state: `Tower.jammed_timer` (overlapping
+  jams keep the longer one) is counted down by `Tower._tick_jam` at the top of `Tower.update()` and
+  `OverloadCannonTower.update()`. A jammed tower's cooldown still runs, and an Overload Cannon's charge
+  pauses rather than being lost. `SupportTower` and `BarricadeTower` set `JAMMABLE = False`, since
+  neither fires. Jams are never saved: saves only happen between waves.
+- **Bulwark** (`BulwarkEnemy`, from depth 7, i.e. Act 2 row 1): `Game._apply_enemy_auras` resets every
+  enemy's `aura_damage_reduction` each frame, then each live `AURA_RADIUS` enemy grants
+  `AURA_DAMAGE_REDUCTION` to every *other* enemy in reach via `max()`. Several Bulwarks never stack
+  (they do protect each other), and list order can't matter. This is the same reset-then-apply shape
+  as `held` in `Game._hold_enemies_at_barricades`. The reduction is one more factor in the base
+  `Enemy.take_damage()` multiply, alongside Mark and the Armored affix's `damage_taken_multiplier`. So,
+  following "Mark and Corrosive Poison's shield-bypass hook", a shield or a boss's armor absorbs the
+  *raw* hit first, and the aura only shrinks what's left on its way to HP. It composes with Mark
+  multiplicatively (Marked x1.2 in an aura takes 1.2 x 0.7 = 0.84x), and a Corrosive Poison tick that
+  bypasses a shield still meets the aura.
+
+The counter relics (Faraday Mesh, Linebreaker) are under [relics.md](relics.md) "Counter relics".
+`Enemy.KILL_COUNTER` names an achievements counter that the dead-enemy drain in `Game.update()` bumps
+once per frame per counter (`disruptors_killed`, `bulwarks_killed`).
 
 ## Knockback stagger resistance
 

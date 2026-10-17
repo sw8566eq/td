@@ -82,6 +82,8 @@ OUTPOST_DRILL_XP = 60
 BARRICADE_BREACH_DPS = 2.5
 # A Booby-Trapped Walls-style relic's blast radius when a Barricade breaks.
 BARRICADE_BURST_RADIUS = 80
+# The ring a Disruptor's jam pulse shows (Game._jam_towers).
+JAM_PULSE_COLOR = (120, 220, 255)
 _ARMORY_RNG_STREAM = "armory"  # an Armory node's module offers -- keyed on the node's own id
 ARMORY_OFFER_COUNT = 3
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
@@ -3164,6 +3166,8 @@ class Game:
                 tower.HITS_BURROWED = True
             for relic in held:
                 tower.relic_damage_vs_slowed_multiplier *= relic.trap_damage_vs_slowed_multiplier
+        for relic in held:
+            tower.jam_duration_multiplier *= relic.jam_duration_multiplier
 
     def veterancy_rank(self, tower_name):
         """`tower_name`'s veterancy rank this run (run/veterancy.py),
@@ -3296,6 +3300,39 @@ class Game:
                     self.selected_tower = None
                 self._recompute_tower_density_bonuses()
                 self.audio.play("tower_sold")
+
+    def _apply_enemy_auras(self):
+        """Bulwark-style auras (Enemy.AURA_RADIUS/AURA_DAMAGE_REDUCTION): reset
+        every enemy's aura_damage_reduction, then let each live aura grant its
+        reduction to every *other* live enemy in reach -- max(), never
+        stacked, so the result can't depend on list order. Runs right after
+        the enemies move, so this frame's towers and projectiles see it."""
+        for enemy in self.enemies:
+            enemy.aura_damage_reduction = 0.0
+        sources = [enemy for enemy in self.enemies
+                   if enemy.AURA_RADIUS and not enemy.is_dead and not enemy.reached_goal]
+        if not sources:
+            return
+        strength = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                strength *= relics.RELICS[key].enemy_aura_multiplier
+        for source in sources:
+            reduction = source.AURA_DAMAGE_REDUCTION * strength
+            radius_sq = source.AURA_RADIUS ** 2
+            for enemy in self.enemies:
+                if enemy is not source and source.pos.distance_squared_to(enemy.pos) <= radius_sq:
+                    enemy.aura_damage_reduction = max(enemy.aura_damage_reduction, reduction)
+
+    def _jam_towers(self):
+        """Let every jamming enemy (a Disruptor -- Enemy.jam_towers) pulse,
+        and show each pulse as a ring. The jam itself is tower state
+        (Tower.jammed_timer), counted down by the tower's own update()."""
+        for enemy in self.enemies:
+            if enemy.jam_towers(self.towers):
+                self.impact_effects.append(effects.ExpandingRing(
+                    enemy.pos, max_radius=enemy.JAM_RADIUS, duration=0.35, color=JAM_PULSE_COLOR,
+                ))
 
     def _barricade_burst(self, barricade, damage):
         """A Booby-Trapped Walls-style relic: a breaking Barricade blasts every
@@ -3651,6 +3688,8 @@ class Game:
                 moving_index.note_moved(math.hypot(pos.x - x, pos.y - y))
             else:
                 enemy.update(dt, self.enemies, moving_index)
+        self._apply_enemy_auras()
+        self._jam_towers()
 
         # Two passes: every tower's aura buff is reset before any tower
         # (support or attacking) does its own per-frame work, so which
@@ -3762,6 +3801,9 @@ class Game:
         # freshly joined via pending_spawns above) is a valid spread
         # target, regardless of iteration order within this loop.
         poison_spread_sources = []
+        # Per-species kill counters (Enemy.KILL_COUNTER), bumped once per
+        # counter below, the same batching as kills_this_frame.
+        species_kills = {}
         for enemy in self.enemies:
             # Drained for *every* enemy, dead or alive, before the death/
             # goal/alive split below decides whether the enemy itself
@@ -3816,6 +3858,8 @@ class Game:
                 self.economy.add_gold(enemy.gold_reward)
                 kills_this_frame += 1
                 self.service_tally.add_kill(ENEMY_TYPE_NAMES.get(type(enemy)))
+                if enemy.KILL_COUNTER is not None:
+                    species_kills[enemy.KILL_COUNTER] = species_kills.get(enemy.KILL_COUNTER, 0) + 1
                 # A small death poof, same spot the killing blow's own
                 # damage number is spawned from -- reads enemy.pos before
                 # this enemy is dropped from self.enemies just below.
@@ -3853,6 +3897,8 @@ class Game:
             # would otherwise do that many separate load-mutate-save
             # round trips through achievements.json in a single frame.
             self._record_achievement("kills", kills_this_frame)
+        for counter, count in species_kills.items():
+            self._record_achievement(counter, count)
 
         # Compared before/after to detect a wave actually clearing this
         # tick (WaveManager._advance_after_clear bumping wave_index) --

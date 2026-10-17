@@ -739,6 +739,12 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
+    if is_placed and subject.jammed_timer > 0:
+        # A Disruptor jammed it (Tower.jam) -- it can't fire until this runs out.
+        row = small_font.render(f"Jammed: {subject.jammed_timer:.1f}s", True, settings.COLOR_LIVES)
+        surface.blit(row, (x, y))
+        y += PANEL_ROW_HEIGHT
+
 
 # --- Run map screen (see run_map.py/Game._enter_map) ---
 #
@@ -1771,6 +1777,8 @@ def enemy_tooltip_lines(enemy):
         states.append("Held")
     if getattr(enemy, "is_grounded", False):
         states.append("Grounded")
+    if getattr(enemy, "aura_damage_reduction", 0) > 0:
+        states.append(f"Fortified (-{round(enemy.aura_damage_reduction * 100)}% dmg)")
     if enemy.mark_timer > 0:
         states.append("Marked")
     if enemy.slow_timer > 0:

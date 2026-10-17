@@ -591,6 +591,12 @@ class Relic:
     # call_next_wave's early-call bonus, and move_fee (relocating towers).
     early_call_bonus_multiplier: float = 1.0
     free_tower_moves: bool = False
+    # Scales how long a Disruptor's jam lasts on each tower (Tower.jam_
+    # duration_multiplier, set by Game._apply_construction_relics).
+    jam_duration_multiplier: float = 1.0
+    # Scales every enemy damage-reduction aura (a Bulwark's) -- read by
+    # Game._apply_enemy_auras, multiplied across held relics.
+    enemy_aura_multiplier: float = 1.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1164,6 +1170,14 @@ RELICS = {
         "booby_trapped_walls", "Booby-Trapped Walls",
         "A Barricade that breaks explodes, dealing its max hit points as damage to nearby ground enemies.",
         barricade_burst_fraction=1.0,
+    ),
+    "faraday_mesh": Relic(
+        "faraday_mesh", "Faraday Mesh", "Disruptors jam your towers for 60% less time.",
+        jam_duration_multiplier=0.4,
+    ),
+    "linebreaker": Relic(
+        "linebreaker", "Linebreaker", "Bulwark auras are 75% weaker (30% damage reduction becomes 7.5%).",
+        enemy_aura_multiplier=0.25,
     ),
     "ambush": Relic(
         "ambush", "Ambush", "Enemies held at a Barricade take 25% more damage from everything.",

@@ -45,6 +45,10 @@ def is_airborne(enemy):
     defines is_flying or ground_timer."""
     return getattr(enemy, "is_flying", False) and getattr(enemy, "ground_timer", 0.0) <= 0
 
+# A charged Disruptor's jam-radius ring, a Bulwark's aura disc, and the small
+# pip an aura-protected enemy wears (Enemy.draw).
+DISRUPTOR_RING_COLOR = (120, 220, 255)
+BULWARK_AURA_COLOR = (200, 200, 120)
 
 class Enemy:
     display_name = "Enemy"
@@ -83,6 +87,20 @@ class Enemy:
     # Tunnels under the path: path traps can't hit it and Barricades don't
     # hold it (Tower.HITS_BURROWED, Game._hold_enemies_at_barricades).
     BURROWS = False
+    # Jams every jammable tower within JAM_RADIUS px for JAM_DURATION s, at
+    # most once per JAM_COOLDOWN s (jam_towers, driven by Game._jam_towers).
+    # 0 radius = never jams (every species but the Disruptor).
+    JAM_RADIUS = 0
+    JAM_DURATION = 0.0
+    JAM_COOLDOWN = 0.0
+    # Grants every *other* enemy within AURA_RADIUS px this fraction of damage
+    # reduction (Game._apply_enemy_auras; max across auras, never stacked).
+    # 0 = no aura (every species but the Bulwark).
+    AURA_RADIUS = 0
+    AURA_DAMAGE_REDUCTION = 0.0
+    # The achievements counter (progression/achievements.py) a kill of this
+    # species bumps, from Game.update()'s dead-enemy drain -- None for most.
+    KILL_COUNTER = None
 
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
@@ -102,6 +120,11 @@ class Enemy:
         # fraction of max_hp per second; Armored scales every hit taken.
         self.regen_fraction_per_second = 0.0
         self.damage_taken_multiplier = 1.0
+        # A Bulwark's aura (Game._apply_enemy_auras) -- reset and re-applied
+        # every frame, the same fresh-each-frame shape as `held` below.
+        self.aura_damage_reduction = 0.0
+        # Seconds until this enemy may jam towers again (JAM_RADIUS species only).
+        self.jam_cooldown = 0.0
 
         # Mark state -- see apply_mark()/take_damage(). Mirrors slow_
         # multiplier/slow_timer's own shape exactly (a multiplier plus a
@@ -209,6 +232,9 @@ class Enemy:
         if self.knockback_resistance > 0:
             self.knockback_resistance = max(0.0, self.knockback_resistance - KNOCKBACK_RESISTANCE_DECAY * dt)
 
+        if self.jam_cooldown > 0:
+            self.jam_cooldown = max(0.0, self.jam_cooldown - dt)
+
         if self.knockback_remaining > 0:
             # Slide backward at a fixed animation speed instead of the
             # enemy's own forward movement this frame -- being shoved and
@@ -258,7 +284,13 @@ class Enemy:
         # after that absorption, never before it; SplitterEnemy calls
         # super().take_damage() first, unmodified, so its split-on-death
         # logic is indifferent to the exact number Mark produces.
-        amount *= self.mark_damage_multiplier * self.damage_taken_multiplier * self.held_damage_multiplier
+        # A Bulwark's aura (aura_damage_reduction) sits in this same layer as
+        # the Armored affix's damage_taken_multiplier: it only shrinks what
+        # reaches HP, after any shield/armor has absorbed its share, and it
+        # composes multiplicatively with Mark (docs/agents/enemies.md
+        # "Disruptors and Bulwarks").
+        amount *= (self.mark_damage_multiplier * self.damage_taken_multiplier * self.held_damage_multiplier
+                   * (1.0 - self.aura_damage_reduction))
         if self.is_dead or self.reached_goal:
             return 0.0
         self.damage_events.append(amount)
@@ -388,6 +420,23 @@ class Enemy:
         traps, Barricades and burning ground can reach it again."""
         return self.BURROWS and self.mark_timer <= 0
 
+    def jam_towers(self, towers):
+        """Jam every jammable tower within JAM_RADIUS (Tower.jam) if this
+        species jams and its cooldown is up; returns the towers jammed. A
+        pulse that finds no tower in reach doesn't spend the cooldown, so a
+        Disruptor jams the first defense it walks past, not empty ground.
+        Called by Game._jam_towers, which owns the visual; this stays
+        simulation-only."""
+        if not self.JAM_RADIUS or self.jam_cooldown > 0 or self.is_dead or self.reached_goal:
+            return []
+        jammed = [tower for tower in towers
+                  if tower.JAMMABLE and self.pos.distance_to(tower.pos) <= self.JAM_RADIUS]
+        for tower in jammed:
+            tower.jam(self.JAM_DURATION)
+        if jammed:
+            self.jam_cooldown = self.JAM_COOLDOWN
+        return jammed
+
     def apply_knockback(self, distance):
         """Queue `distance` pixels of backward path travel, animated over
         the next several update() calls at knockback_speed rather than
@@ -466,6 +515,9 @@ class Enemy:
             pygame.draw.ellipse(surface, GROUNDED_SHADOW_COLOR, shadow)
             pygame.draw.line(surface, GROUNDED_TETHER_COLOR, (center_x, center_y), shadow.center, width=2)
         surface.blit(sprite, rect)
+        if self.aura_damage_reduction > 0:
+            # Fortified by a Bulwark: a small shield-coloured pip on top.
+            pygame.draw.circle(surface, BULWARK_AURA_COLOR, (int(self.pos.x), int(self.pos.y) - self.radius), 3)
         self._draw_health_bar(surface)
 
     def _draw_health_bar(self, surface):
@@ -539,6 +591,73 @@ class BurrowerEnemy(Enemy):
     reward_per_wave = 2
     sprite_name = "enemy_burrower"
     radius = 14
+
+
+class DisruptorEnemy(Enemy):
+    """Carries a jamming pack: every JAM_COOLDOWN seconds, each tower within
+    JAM_RADIUS of it is jammed (can't fire) for JAM_DURATION seconds -- see
+    Enemy.jam_towers and Game._jam_towers. Punishes stacking every tower at
+    one choke point; long-range towers (Sniper, Mortar) sit outside its
+    reach and are what kill it early. Support and Barricade aren't jammable
+    (Tower.JAMMABLE). Joins run waves from mid Act 1
+    (run_escalation.RUN_REINFORCEMENTS)."""
+    display_name = "Disruptor"
+    description = "Jams nearby towers so they can't fire for a moment."
+    base_hp = 50
+    hp_per_wave = 10
+    base_speed = 65.0
+    speed_per_wave = 2.5
+    max_speed = 125.0
+    base_reward = 14
+    reward_per_wave = 3
+    sprite_name = "enemy_disruptor"
+    radius = 14
+    JAM_RADIUS = 80
+    JAM_DURATION = 1.5
+    JAM_COOLDOWN = 5.0
+    KILL_COUNTER = "disruptors_killed"
+
+    def draw(self, surface, assets):
+        super().draw(surface, assets)
+        if self.jam_cooldown <= 0:
+            # Charged: a thin crackling ring at its jam radius, so a player
+            # can see which towers the next pulse will catch.
+            center = (int(self.pos.x), int(self.pos.y))
+            pygame.draw.circle(surface, DISRUPTOR_RING_COLOR, center, self.JAM_RADIUS, width=1)
+
+
+class BulwarkEnemy(Enemy):
+    """A slow, armored standard-bearer: every *other* enemy within
+    AURA_RADIUS takes AURA_DAMAGE_REDUCTION less damage (Enemy.
+    aura_damage_reduction, set every frame by Game._apply_enemy_auras; the
+    strongest aura wins, several never stack). Kill it first and the pack
+    around it is soft again. Joins run waves from Act 2
+    (run_escalation.RUN_REINFORCEMENTS)."""
+    display_name = "Bulwark"
+    description = "Nearby enemies take 30% less damage. Kill it first."
+    base_hp = 160
+    hp_per_wave = 32
+    base_speed = 40.0
+    speed_per_wave = 1.5
+    max_speed = 80.0
+    base_reward = 22
+    reward_per_wave = 4
+    sprite_name = "enemy_bulwark"
+    radius = 20
+    AURA_RADIUS = 90
+    AURA_DAMAGE_REDUCTION = 0.30
+    KILL_COUNTER = "bulwarks_killed"
+
+    def draw(self, surface, assets):
+        # The faint aura disc goes under the sprite.
+        if not self.is_dead and not self.reached_goal:
+            size = self.AURA_RADIUS * 2
+            aura = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.circle(aura, (*BULWARK_AURA_COLOR, 28), (self.AURA_RADIUS, self.AURA_RADIUS), self.AURA_RADIUS)
+            pygame.draw.circle(aura, (*BULWARK_AURA_COLOR, 110), (self.AURA_RADIUS, self.AURA_RADIUS),
+                               self.AURA_RADIUS, width=1)
+            surface.blit(aura, (int(self.pos.x) - self.AURA_RADIUS, int(self.pos.y) - self.AURA_RADIUS))
+        super().draw(surface, assets)
 
 
 class TankEnemy(Enemy):
@@ -1019,6 +1138,8 @@ ENEMY_TYPES = {
     "healer": HealerEnemy,
     "sapper": SapperEnemy,
     "burrower": BurrowerEnemy,
+    "disruptor": DisruptorEnemy,
+    "bulwark": BulwarkEnemy,
     "final_boss": FinalBossEnemy,
     "final_boss_shielded": FinalBossShieldedEnemy,
 }

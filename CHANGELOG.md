@@ -56,6 +56,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line** (Harpoon near Cannon:
   +20% range), and a Harpoon relic, **Barbed Tethers** (grounding lasts 60% longer). The enemy tooltip
   lists Grounded.
+- **Disruptors and Bulwarks**: two new enemies that punish lazy defenses. A Disruptor jams every tower within
+  80px for 1.5s (once every 5s), so it punishes a single crowded choke point. A Bulwark is slow and tanky, and gives
+  enemies around it 30% damage reduction (the strongest aura applies, auras never stack). Disruptors join run waves
+  from Act 1's fifth row, Bulwarks from Act 2's second. Each has a counter relic: **Faraday Mesh** (jams 60% shorter)
+  and **Linebreaker** (Bulwark auras 75% weaker). Each also has an achievement.
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.
 - Every tower has a one-line description, listed (with every enemy) in new Towers and Enemies sections of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.

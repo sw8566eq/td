@@ -20,6 +20,8 @@ from run import veterancy
 VARIETY_RADIUS = 110
 VARIETY_BONUS_CAP = 0.25
 ISOLATION_RADIUS = 100
+# The sparks drawn across a jammed tower (Tower._draw_jam_static).
+JAM_SPARK_COLOR = (120, 220, 255)
 from support import settings
 
 
@@ -101,6 +103,9 @@ class Tower:
     # A path structure that holds ground enemies until broken (Barricade --
     # see Game._hold_enemies_at_barricades).
     BLOCKS_PATH = False
+    # Whether a Disruptor (Enemy.jam_towers) can jam it. False for towers
+    # that never fire (Support's aura is passive; a Barricade just stands).
+    JAMMABLE = True
     # What a veterancy rank improves, for the stats panel ("+12% dmg").
     VETERANCY_BONUS_LABEL = "dmg"
     VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
@@ -191,6 +196,11 @@ class Tower:
         self.anchor_row = anchor_row
         self.pos = pygame.Vector2(pixel_pos)
         self.cooldown = 0.0
+        # Seconds this tower still can't fire because a Disruptor jammed it
+        # (jam()/_tick_jam); jam_duration_multiplier is a Faraday Mesh-style
+        # relic's cut, set by Game._apply_construction_relics.
+        self.jammed_timer = 0.0
+        self.jam_duration_multiplier = 1.0
         self.level = 1
         # Snapshot each scaled stat's level-1 value once, up front, so
         # every upgrade recomputes from the true base rather than
@@ -713,9 +723,29 @@ class Tower:
         self.aura_damage_multiplier = max(self.aura_damage_multiplier, damage_multiplier)
         self.aura_range_multiplier = max(self.aura_range_multiplier, range_multiplier)
 
+    def jam(self, duration):
+        """A Disruptor's pulse: can't fire for `duration` seconds (scaled by
+        jam_duration_multiplier). Overlapping jams keep the longer one rather
+        than stacking."""
+        if not self.JAMMABLE:
+            return
+        self.jammed_timer = max(self.jammed_timer, duration * self.jam_duration_multiplier)
+
+    @property
+    def is_jammed(self):
+        return self.jammed_timer > 0
+
+    def _tick_jam(self, dt):
+        """Count the jam down; True while it still blocks firing this frame."""
+        if self.jammed_timer > 0:
+            self.jammed_timer = max(0.0, self.jammed_timer - dt)
+        return self.jammed_timer > 0
+
     def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
         self.cooldown -= dt
-        if self.cooldown > 0:
+        # A jammed tower's cooldown still runs down, so it fires the moment
+        # the jam lifts if it was ready.
+        if self._tick_jam(dt) or self.cooldown > 0:
             return
 
         target = self.acquire_target(enemies, enemy_index)
@@ -1135,8 +1165,24 @@ class Tower:
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
         self._draw_level_pips(surface, rect)
+        if self.jammed_timer > 0:
+            self._draw_jam_static(surface, rect)
         if font is not None:
             self._draw_upgrade_badge(surface, font)
+
+    def _draw_jam_static(self, surface, sprite_rect):
+        """A jammed tower: a grey wash plus a few zig-zag sparks across it,
+        jittering with the remaining time so it reads as live static."""
+        wash = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
+        wash.fill((40, 40, 60, 110))
+        surface.blit(wash, sprite_rect)
+        phase = int(self.jammed_timer * 20)
+        step = max(4, sprite_rect.width // 6)
+        for i in range(3):
+            y = sprite_rect.top + (i + 1) * sprite_rect.height // 4
+            points = [(x, y + (3 if (n + phase + i) % 2 else -3))
+                      for n, x in enumerate(range(sprite_rect.left + 2, sprite_rect.right - 1, step))]
+            pygame.draw.lines(surface, JAM_SPARK_COLOR, False, points, 1)
 
     def _draw_upgrade_badge(self, surface, font):
         cost = self.upgrade_cost()
@@ -1941,6 +1987,7 @@ class BarricadeTower(Tower):
     PLACEMENT = "path"
     ATTACKS = False
     BLOCKS_PATH = True
+    JAMMABLE = False  # nothing to jam -- it never fires
     can_target_flying = False  # flyers pass over it
     LEVEL_SCALED_STATS = ("max_hp",)
     LEVEL_STAT_MULTIPLIERS = {1: 1.0, 2: 1.6, 3: 2.4}
@@ -2036,6 +2083,7 @@ class SupportTower(Tower):
     sprite_name = "tower_support"
     display_name = "Support"
     IS_SUPPORT = True
+    JAMMABLE = False  # its aura is passive -- a Disruptor has nothing to jam
     VETERANCY_ASSIST_FRACTION = 0.25
     VETERANCY_BONUS_LABEL = "aura"
     VETERANCY_BONUS_PER_RANK = veterancy.AURA_BONUS_PER_RANK
@@ -2219,7 +2267,13 @@ class OverloadCannonTower(Tower):
         timer, fire once ready, tag the resulting projectile with every
         relic_* field) but replaces "cooldown counts down to a shot" with
         "charge counts up to a burst," and adds the interrupted-charge
-        check the base template has no equivalent of at all."""
+        check the base template has no equivalent of at all.
+
+        A jam (Tower.jam) pauses the charge where it stands rather than
+        losing it -- the charge resumes once the jam lifts, provided the
+        target is still alive and in range."""
+        if self._tick_jam(dt):
+            return
         if self._charge_target is None:
             # Idle: try to acquire a fresh target and begin a new charge.
             # acquire_target() is called here EXACTLY ONCE per charge --

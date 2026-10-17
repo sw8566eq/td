@@ -459,6 +459,11 @@ menu holds more than nine, it wraps into two rows.
   Beacon Marks them, which drags them to the surface until the mark wears off. Two relics
   answer back: **Seismic Sensors** (traps can hit Burrowers) and **Booby-Trapped Walls** (a breaking
   Barricade explodes for its max hit points).
+  Two more reinforcements punish lazy defenses. From Act 1's fifth row, **Disruptors** jam every
+  tower within a short radius so it can't fire for 1.5s (Support and Barricades are immune), which
+  punishes crowding every tower at one choke point. Long-range Snipers and Mortars outrange them.
+  From Act 2, slow, tanky **Bulwarks** give the enemies around them 30% damage reduction, so kill
+  them first. **Faraday Mesh** (shorter jams) and **Linebreaker** (weaker auras) answer back.
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
 - **Harpoon** -- middling damage on a slow reload, but every hit **Grounds** a flyer for a few seconds:
   dragged down, it can be hit by ground-only towers (Cannon, Mortar, Knockback, traps, burning ground)

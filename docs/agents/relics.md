@@ -310,3 +310,9 @@ the Mortar's `damage_dealt`/`kills`. Fires draw under towers and enemies.
 `_apply_construction_relics`. `barricade_burst_fraction` (Booby-Trapped Walls) makes
 `_hold_enemies_at_barricades` call `Game._barricade_burst` for a breaking Barricade: max hp x fraction
 to every ground enemy within `BARRICADE_BURST_RADIUS`, credited to the barricade.
+
+`jam_duration_multiplier` (Faraday Mesh, 0.4) is multiplied onto each tower's
+`Tower.jam_duration_multiplier` in `_apply_construction_relics`, so a Disruptor's jam lasts 0.6s
+instead of 1.5s. `enemy_aura_multiplier` (Linebreaker, 0.25) is a flat non-tower field read by
+`Game._apply_enemy_auras`, scaling every Bulwark aura (30% -> 7.5%). See [enemies.md](enemies.md)
+"Disruptors and Bulwarks".

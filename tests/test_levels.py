@@ -233,9 +233,13 @@ def test_level_1_introduces_every_enemy_species_across_its_waves():
     # BOSS_LEVEL_IDS), never an ordinary corridor level's final wave
     # (that's still plain "boss" -- see
     # test_every_levels_final_wave_includes_a_boss_or_final_boss below).
-    # Sappers likewise only ever join run waves from Act 2 on
-    # (run_escalation.sapper_count_for_depth), never an authored level.
-    assert species_seen == set(ENEMY_TYPES) - {"final_boss", "final_boss_shielded", "sapper", "burrower"}
+    # Reinforcement species (Sappers, Burrowers, Disruptors, Bulwarks) only
+    # ever join run waves (run_escalation.RUN_REINFORCEMENTS), never an
+    # authored level.
+    from run.run_escalation import RUN_REINFORCEMENTS
+
+    reinforcements = {r.species for r in RUN_REINFORCEMENTS}
+    assert species_seen == set(ENEMY_TYPES) - {"final_boss", "final_boss_shielded"} - reinforcements
 
 
 def test_at_least_two_levels_are_registered():

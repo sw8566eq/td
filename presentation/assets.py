@@ -70,6 +70,8 @@ SPRITE_MANIFEST = {
     "enemy_healer": ("enemies/healer.png", (120, 230, 160), "circle"),
     "enemy_sapper": ("enemies/sapper.png", (190, 120, 60), "circle"),
     "enemy_burrower": ("enemies/burrower.png", (120, 90, 60), "circle"),
+    "enemy_disruptor": ("enemies/disruptor.png", (60, 200, 230), "circle"),
+    "enemy_bulwark": ("enemies/bulwark.png", (150, 140, 90), "circle"),
     "enemy_final_boss": ("enemies/final_boss.png", (60, 10, 90), "circle"),
     "enemy_final_boss_shielded": ("enemies/final_boss_shielded.png", (30, 60, 140), "circle"),
     "projectile_basic": ("projectiles/bullet.png", (255, 255, 0), "circle"),

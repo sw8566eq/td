@@ -177,6 +177,13 @@ ACHIEVEMENTS = {
     "alchemist": Achievement(
         "alchemist", "Alchemist", "Use 25 potions.", "potions_used", 25,
     ),
+    # Keyed off Enemy.KILL_COUNTER, bumped from Game.update()'s dead-enemy drain.
+    "signal_restored": Achievement(
+        "signal_restored", "Signal Restored", "Kill 25 Disruptors.", "disruptors_killed", 25,
+    ),
+    "wall_breaker": Achievement(
+        "wall_breaker", "Wall Breaker", "Kill 10 Bulwarks.", "bulwarks_killed", 10,
+    ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order
 
