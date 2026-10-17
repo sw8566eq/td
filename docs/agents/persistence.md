@@ -292,6 +292,13 @@ All optional on load (`.get` defaults), so older saves and histories still load:
 - Run History records' `top_crew` (the run's most experienced tower type; `""` when none) -- validated as
   a string by `_parse_run_records`, shown by `ui.run_history_lines`.
 
+## Fields added for Commander abilities
+
+`run.ability_cooldown` and `run.ability_charges` (ints, `0.._SANE_MAX`) -- optional on load (`.get`
+defaults 0, so an older save resumes with the ability ready), validated by
+`_parse_and_validate_active_run`. The floor-scoped `Game.ability_timer`/`ability_targeting` are never
+saved, like `overclock_timer` (see [run-loop.md](run-loop.md) "Commander abilities").
+
 ## Fields added for the Proving Grounds
 
 `run.challenge_leaks` (int, `0.._SANE_MAX`) and `run.challenge_failed` (bool) -- optional on load

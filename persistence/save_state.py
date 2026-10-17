@@ -141,6 +141,8 @@ def _run_to_dict(run):
         "lives_captured": run.lives_captured,
         "challenge_leaks": run.challenge_leaks,
         "challenge_failed": run.challenge_failed,
+        "ability_cooldown": run.ability_cooldown,
+        "ability_charges": run.ability_charges,
     }
 
 
@@ -182,6 +184,9 @@ def _run_from_dict(data):
         # Optional -- a save from before the Proving Grounds has neither.
         challenge_leaks=data.get("challenge_leaks", 0),
         challenge_failed=data.get("challenge_failed", False),
+        # Optional -- a save from before Commander abilities starts ready.
+        ability_cooldown=data.get("ability_cooldown", 0),
+        ability_charges=data.get("ability_charges", 0),
     )
 
 
@@ -364,6 +369,8 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     _require_int(run_data.get("endless_waves_cleared", 0), "run endless_waves_cleared", 0, _SANE_MAX)
     _require_int(run_data.get("challenge_leaks", 0), "run challenge_leaks", 0, _SANE_MAX)
     _require_bool(run_data.get("challenge_failed", False), "run challenge_failed")
+    _require_int(run_data.get("ability_cooldown", 0), "run ability_cooldown", 0, _SANE_MAX)
+    _require_int(run_data.get("ability_charges", 0), "run ability_charges", 0, _SANE_MAX)
     for flag in ("is_daily", "has_spent_gold", "used_guardians_reprieve", "used_emergency_reserves"):
         _require_bool(run_data[flag], f"run {flag}")
     for flag in ("boss_defeated", "reward_pending", "blessing_pending"):

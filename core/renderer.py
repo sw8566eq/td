@@ -376,6 +376,12 @@ class Renderer:
                 mutator_names=endless_mutators.summary_names(game.active_mutators),
                 mutator_count=len(game.active_mutators),
             )
+            ability = game.current_ability
+            ui.draw_ability_button(
+                game.screen, game.small_font, game.ability_button_rect, ability,
+                game.active_run.ability_cooldown, game.active_run.ability_charges, game.ability_timer,
+                game.ability_targeting, hovered=game.ability_button_rect.collidepoint(pygame.mouse.get_pos()),
+            )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
                                 game.current_level_id is None, game.can_save_run(),
@@ -563,6 +569,11 @@ class Renderer:
 
     def _render_placement_preview(self):
         game = self.game
+        if game.ability_targeting:
+            mouse_pos = pygame.mouse.get_pos()
+            if mouse_pos[0] < settings.PLAY_WIDTH and mouse_pos[1] < settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
+                ui.draw_ability_target_preview(game.screen, mouse_pos, game.current_ability.radius)
+            return
         if game.moving_tower is not None:
             self._render_move_preview()
             return

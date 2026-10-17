@@ -108,6 +108,18 @@ distinct from the older, narrower `test_skip_button_does_not_overlap_the_tower_b
 only ever checked the skip button's own `Rect` against the button row's `Rect`s and would never have
 caught text silently overflowing past both of them.
 
+## Commander ability button
+
+The Commander ability (see [run-loop.md](run-loop.md) "Commander abilities") sits in the sidebar at
+`ui.ABILITY_BUTTON_TOP`, just under the Sell/Move row and above the Proving Grounds status lines and
+the potion belt -- a strip nothing else claims, so it never moves with the panel's subject. The HUD
+top strip was too tight (wave preview, countdown, Skip/Relics/Speed). `ui.draw_ability_button` draws
+"F: <name>" over a status line from `ui.ability_status_text` (aiming > active timer > charges left >
+recharging > Ready); hovering shows `ui.ability_detail` in a filled box above it, covering the panel
+buttons only while hovered. The hotkey is a fixed `F` (`input_handler.ABILITY_HOTKEY`), not
+remappable, checked after every remappable action like the Q/W/E potion keys. Esc while aiming
+cancels the aim instead of pausing.
+
 ## Field Manual (`COMPENDIUM`)
 
 `GameState.COMPENDIUM` (`K` from MENU) lists every relic/boss relic/curse/potion/commander/elite affix.

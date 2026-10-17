@@ -8,6 +8,13 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Commander abilities**: every Commander has one signature ability, fired mid-fight from the
+  sidebar button or **F**, that recharges after 2-3 cleared waves -- Warden *Hold the Gate* (the next
+  3 leaks this floor cost no lives), Alchemist *Toxic Downpour* (aimed poison cloud), Marksman
+  *Called Shot* (Basic and Sniper deal double damage for 6s), Engineer *Rapid Repairs* (+40% fire
+  rate for 8s, Barricades repaired), Stormcaller *Thunderhead* (lightning hits the 8 toughest
+  enemies), Trapmaster *Caltrops* (slow every ground enemy) and Skywatch *Downdraft* (ground and slow
+  every flyer). Bosses take reduced damage. Listed on Commander cards and in the Field Manual.
 - Endless mutators are listed in the Field Manual, with a first-time Field Notes hint.
 - **Endless mutators**: on the final boss's endless floor, every 5 endless waves cleared adds one more
   stacking mutator for the rest of the fight -- Swarm, Ironclad, Gale, Skyborne, Tunnelers, Siege,

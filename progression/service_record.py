@@ -57,6 +57,7 @@ OVERALL_STATS: dict[str, str] = {
     "towers_built": "Towers built",
     "relics_collected": "Relics collected",
     "potions_used": "Potions used",
+    "abilities_used": "Abilities used",
 }
 TOWER_STATS = ("built", "damage", "kills", "best_rank")
 ENEMY_STATS = ("kills",)

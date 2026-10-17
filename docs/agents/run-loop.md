@@ -169,4 +169,42 @@ re-reads `meta_progression.unlocked_commanders`); clicking an unlocked card call
 this). Gating is `meta_progression.COMMANDER_META_UNLOCKS` (a 5th class in `ALL_UNLOCKS`, so the
 Unlocks screen and unlock toasts pick it up); `unlocked_commanders` also honours a counter already
 at goal, so pre-existing accounts don't wait for the next bump. Daily Runs force
-`DEFAULT_COMMANDER`. `RunState.commander` is saved and validated.
+`DEFAULT_COMMANDER`. `RunState.commander` is saved and validated. Each Commander also names one
+signature ability (`Commander.ability`) -- see "Commander abilities".
+
+## Commander abilities
+
+`run/abilities.py` -- `ABILITIES` registry, one per Commander (Warden *Hold the Gate*, Alchemist
+*Toxic Downpour*, Marksman *Called Shot*, Engineer *Rapid Repairs*, Stormcaller *Thunderhead*,
+Trapmaster *Caltrops*, Skywatch *Downdraft*). An ability is a usable-on-cooldown move, not a resource
+system: no energy, no hand, never more than one per Commander. Same shape as `run/potions.py`: each
+`Ability` carries its own `use(game, target) -> bool`, so `Game` never branches on which one it is.
+`use` checks first and returns False to refuse (no enemies in range, no flyers, the gate already
+held) -- `Game.fire_ability` then toasts `unusable_message` and keeps the charge.
+
+- **Cooldown in waves.** `RunState.ability_cooldown` is waves still to clear (0 = ready). A use sets it
+  to `cooldown_waves`; `Game._recharge_ability` ticks it down from `update()`'s one wave-clear check
+  (the same before/after spot that bumps `waves_survived`), so it is counted only from `Game`, never
+  twice on resume. It carries across floors and acts and starts ready; a Restart never refunds it.
+- **Charges.** `RunState.ability_charges` holds fight-scoped charges an ability leaves (Hold the Gate's
+  blocked leaks). `_load_combat_node` resets it with `challenge_leaks`; `_lose_a_life` spends one
+  *after* the Proving Grounds leak count (a held leak is still a leak for Glass Gate) and before
+  Guardian's Reprieve.
+- **Timed buffs.** An ability with `duration` starts `Game.ability_timer` (floor-scoped, not saved, like
+  `overclock_timer`). `update()`'s first tower pass calls `Game._apply_ability_buffs`: reset
+  `Tower.ability_fire_rate_multiplier`/`ability_damage_multiplier` to 1, then the ability's
+  `tower_buff(tower, type_key)` while the timer runs. `effective_damage()` multiplies by
+  `ability_damage_multiplier` after its additive stack; `effective_fire_rate()` multiplies the other.
+- **Targeting.** A `targeted` ability (Toxic Downpour) makes `activate_ability` set
+  `Game.ability_targeting` instead of firing; the next left click on the field calls
+  `fire_ability(pos)` and never builds or selects. Right-click, Esc (before it would pause), F or the
+  button again cancel. A refused aim stays aimed. `Renderer._render_placement_preview` draws the
+  radius ring at the cursor instead of a tower preview.
+- **Boss precedent.** Damage abilities take the potions' smaller boss fraction (`IS_BOSS`), so an
+  ability softens a boss fight without trivializing it.
+- **Practice/editor play** has no Commander: `Game.current_ability` is None and every entry point is
+  a no-op. A **Daily Run** forces `DEFAULT_COMMANDER`, so everyone gets the same ability, ready at
+  the start; no ability draws RNG (Thunderhead's "toughest 8" sorts by HP then path progress).
+
+Uses are recorded as the Service Record's `abilities_used`. Input and layout: see
+[ui-input.md](ui-input.md) "Commander ability button".

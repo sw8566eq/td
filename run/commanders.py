@@ -4,6 +4,9 @@ Picked on the Commander select screen right before a run starts (Game.
 _enter_commander_select), a Commander decides what the run begins with:
 its own starter towers (replacing card_pool.STARTER_TOWERS), a signature
 starting relic, and, for some, starting potions or towers already forged.
+Each also names its one signature activated ability (abilities.py's
+ABILITIES), usable mid-fight on a cooldown measured in waves.
+
 Same registry shape as every other content kind -- COMMANDERS is a {key:
 Commander} dict, and Game.start_new_run reads a Commander's fields without
 ever branching on which one it is.
@@ -27,6 +30,8 @@ class Commander:
     starting_relics: tuple[str, ...] = ()
     starting_potions: tuple[str, ...] = ()
     forged_towers: tuple[str, ...] = field(default_factory=tuple)
+    # An abilities.ABILITIES key -- this Commander's signature move.
+    ability: str = "hold_the_gate"
 
 
 COMMANDERS = {
@@ -34,28 +39,31 @@ COMMANDERS = {
         "warden", "The Warden",
         "A steady defender. Basic, Cannon and Frost; once per run, survives a killing blow.",
         ("basic", "cannon", "frost"), starting_relics=("guardians_reprieve",),
+        ability="hold_the_gate",
     ),
     "alchemist": Commander(
         "alchemist", "The Alchemist",
         "Poisons everything. Basic, Poison and Frost; venom-coated shots and two potions to start.",
         ("basic", "poison", "frost"), starting_relics=("venomous_coating",),
-        starting_potions=("fire_bomb", "mending_salve"),
+        starting_potions=("fire_bomb", "mending_salve"), ability="toxic_downpour",
     ),
     "marksman": Commander(
         "marksman", "The Marksman",
         "Precision over volume. Basic, Sniper and Frost; every tower crits more often.",
         ("basic", "sniper", "frost"), starting_relics=("focused_fire",),
+        ability="called_shot",
     ),
     "engineer": Commander(
         "engineer", "The Engineer",
         "Builds it better. Basic, Cannon and Support; Basic starts forged, upgrades cost less.",
         ("basic", "cannon", "support"), starting_relics=("quartermasters_favor",),
-        forged_towers=("basic",),
+        forged_towers=("basic",), ability="rapid_repairs",
     ),
     "stormcaller": Commander(
         "stormcaller", "The Stormcaller",
         "Chains lightning through crowds. Basic, Lightning and Frost; Lightning starts forged and hits harder.",
         ("basic", "lightning", "frost"), starting_relics=("storm_core",), forged_towers=("lightning",),
+        ability="thunderhead",
     ),
 }
 COMMANDERS["trapmaster"] = Commander(
@@ -63,11 +71,13 @@ COMMANDERS["trapmaster"] = Commander(
     "Turns the path itself into a weapon. Basic, Spike Trap and Tar Pit; Spike Trap starts forged, and "
     "traps hit slowed enemies harder.",
     ("basic", "spike_trap", "tar_pit"), starting_relics=("kill_corridor",), forged_towers=("spike_trap",),
+    ability="caltrops",
 )
 COMMANDERS["skywatch"] = Commander(
     "skywatch", "The Skywatch",
     "Brings the sky down to earth. Basic, Harpoon and Cannon; Harpoon starts forged, and grounded flyers "
     "stay down longer.",
     ("basic", "harpoon", "cannon"), starting_relics=("barbed_tethers",), forged_towers=("harpoon",),
+    ability="downdraft",
 )
 COMMANDER_ORDER = list(COMMANDERS)

@@ -383,3 +383,11 @@ def test_building_on_high_ground_shows_its_hint_once(game):
     drain(game)
     place(game)  # off high ground, and already seen anyway
     assert "high_ground" not in queued(game)
+
+
+def test_a_runs_first_fight_explains_the_commander_ability(game):
+    linear_run(game, ["combat", "combat"])
+    game._enter_node("0-0")
+    game.update(0.0)
+    assert "commander_ability" in queued(game)
+    assert_fires_once(game, "commander_ability", lambda: (game._enter_node("1-0"), game.update(0.0)))

@@ -43,6 +43,8 @@ from support import settings
 
 # Q/W/E use potion slots 1-3 while PLAYING (see ui.draw_potion_belt).
 POTION_HOTKEYS = (pygame.K_q, pygame.K_w, pygame.K_e)
+# F fires the Commander ability while PLAYING (see Game.activate_ability).
+ABILITY_HOTKEY = pygame.K_f
 
 
 class InputHandler:
@@ -259,7 +261,9 @@ class InputHandler:
             # but it still needs to keep working as a pause shortcut here
             # regardless of whatever key "pause" is currently bound to.
             mods = keybindings.normalize_mods(pygame.key.get_mods())
-            if key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
+            if key == pygame.K_ESCAPE and game.ability_targeting:
+                game.cancel_ability_targeting()  # Esc backs out of aiming before it pauses
+            elif key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
                 game.state = GameState.PAUSED
             elif keybindings.matches(game.keybindings["skip_wave"], key, mods):
                 game.call_next_wave()
@@ -280,6 +284,10 @@ class InputHandler:
                 # for three more rows) -- checked last, so a remapped
                 # action bound to Q/W/E still wins.
                 game.use_potion(POTION_HOTKEYS.index(key))
+            elif key == ABILITY_HOTKEY:
+                # Fixed like the potion keys, and checked after every
+                # remappable action for the same reason.
+                game.activate_ability()
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
             # any key dismisses it, Escape included. That's PAUSED's own
@@ -418,6 +426,9 @@ class InputHandler:
 
         game = self.game
         if game.state != GameState.PLAYING:
+            return
+        if game.ability_targeting:
+            game.cancel_ability_targeting()  # right-click backs out of aiming, nothing else
             return
         game.selected_tower_name = None
         game.selected_tower = None
@@ -815,6 +826,14 @@ class InputHandler:
             if slot is not None:
                 game.use_potion(slot)
                 return
+            if game.ability_button_rect.collidepoint(pos):
+                game.activate_ability()
+                return
+
+        if game.ability_targeting and pos[0] < settings.PLAY_WIDTH \
+                and pos[1] < settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
+            game.fire_ability(pos)  # aimed at the field -- never also builds or selects
+            return
 
         if self._handle_panel_action_click(pos):
             return
