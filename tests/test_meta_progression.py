@@ -173,10 +173,11 @@ def test_unlocked_level_pool_excludes_gated_levels_with_no_progress(tmp_path):
 
     assert 14 not in pool
     assert 15 not in pool
-    # every ungated level (everything except the two LEVEL_META_UNLOCKS
+    assert 20 not in pool
+    # every ungated level (everything except the LEVEL_META_UNLOCKS
     # entries above) is still present, same "only the newest content is
     # ever gated" precedent RELIC_META_UNLOCKS follows.
-    assert set(pool.keys()) == set(LEVELS.keys()) - {14, 15}
+    assert set(pool.keys()) == set(LEVELS.keys()) - {14, 15, 20}
 
 
 def test_unlocked_level_pool_includes_the_gated_level_once_unlocked(tmp_path):
@@ -191,6 +192,16 @@ def test_unlocked_level_pool_includes_double_confluence_once_unlocked(tmp_path):
     meta_progression.bump("runs_played", amount=25, path=path)
 
     assert 15 in meta_progression.unlocked_level_pool(path=path)
+
+
+def test_unlocked_level_pool_includes_tributaries_once_unlocked(tmp_path):
+    path = tmp_path / "meta_progression.json"
+    meta_progression.bump("total_floors_cleared", amount=29, path=path)
+    assert 20 not in meta_progression.unlocked_level_pool(path=path)
+
+    meta_progression.bump("total_floors_cleared", amount=1, path=path)
+
+    assert 20 in meta_progression.unlocked_level_pool(path=path)
 
 
 def test_bump_across_registries_returns_keys_from_every_kind_in_one_call(tmp_path):
