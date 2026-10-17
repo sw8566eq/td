@@ -175,9 +175,14 @@ class LevelMetaUnlock:
 # other ordinary (non-boss) multi-lane level still ungated, a genuine step
 # up from Quad Muster (4 spawns into 1 goal) via 2 independent goals
 # instead of 1. Threshold set past unlock_quad_muster's own 15.
+# Level 20 ("Tributaries", three spawns merging at two different points) is
+# the hardest of the 18-21 batch and the third gate, on total_floors_cleared
+# rather than runs_played so it unlocks on its own clock -- 30 floors is
+# roughly five or six full runs, between the tower curve and the relic gates.
 LEVEL_META_UNLOCKS: dict[str, LevelMetaUnlock] = {
     "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
     "unlock_double_confluence": LevelMetaUnlock("unlock_double_confluence", 15, "runs_played", 25),
+    "unlock_tributaries": LevelMetaUnlock("unlock_tributaries", 20, "total_floors_cleared", 30),
 }
 
 

@@ -8,6 +8,14 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Four new levels**, each built around one placement puzzle. **The Coil** and **Killing Field**
+  join the early single-lane rows: The Coil winds into the middle of the map and back out between
+  its own legs, with a small high-ground plateau beside the exit, and Killing Field passes the same
+  open arena twice, so a tower in its middle fires on every enemy on the way in and on the way back.
+  **Saddleback Ridge** and **Tributaries** join the later multi-lane rows: Saddleback Ridge runs two
+  parallel lanes with a high-ground ridge between them, the only place one tower reaches both, and
+  Tributaries merges three spawns at two different points. Tributaries unlocks after 30 floors
+  cleared.
 - **Commander abilities**: every Commander has one signature ability, fired mid-fight from the
   sidebar button or **F**, that recharges after 2-3 cleared waves -- Warden *Hold the Gate* (the next
   3 leaks this floor cost no lives), Alchemist *Toxic Downpour* (aimed poison cloud), Marksman

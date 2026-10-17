@@ -1,8 +1,11 @@
+import random
+
 import pytest
 
 from entities.enemy import ENEMY_TYPES
-from run.run_map import BOSS_LEVEL_IDS
+from run.run_map import BOSS_LEVEL_IDS, ROW_COUNT, _level_pool_for_row
 from support import settings
+from world import pathing
 from world.levels import LEVELS, Level, _corridor_level, generate_default_waves
 
 
@@ -374,3 +377,35 @@ def test_at_least_one_registered_level_branches_into_multiple_goals():
     # first to actually branch, the mirror image of the existing
     # multi-spawn-merge coverage above.
     assert any(len(level.goal_cells) > 1 for level in LEVELS.values())
+
+
+# Levels 18-21 (see world/levels.py): each one is built around a placement
+# puzzle, and its spawn count decides which run-map tier draws it.
+@pytest.mark.parametrize("level_id, tier_row", [(18, 0), (21, 0), (19, 3), (20, 3)])
+def test_levels_18_to_21_land_in_their_intended_run_map_tier(level_id, tier_row):
+    assert level_id in _level_pool_for_row(tier_row, LEVELS)
+    assert level_id not in _level_pool_for_row(ROW_COUNT - 1, LEVELS)
+
+
+@pytest.mark.parametrize("level_id", [18, 19, 20, 21])
+def test_levels_18_to_21_sample_a_route_from_every_spawn(level_id):
+    level = LEVELS[level_id]
+    topology = pathing.PathTopology(level.path_cells, level.spawn_cells, level.goal_cells)
+    for spawn in level.spawn_cells:
+        route = pathing.sample_route(topology, spawn, level.branch_weights, random.Random(0))
+        assert route[0] == spawn
+        assert route[-1] in level.goal_cells
+
+
+def test_saddleback_ridge_high_ground_sits_between_its_two_lanes():
+    level = LEVELS[19]
+    assert {row for _, row in level.high_ground_cells} == {4}
+    for col, _ in level.high_ground_cells:
+        assert (col, 2) in level.path_cells
+        assert (col, 6) in level.path_cells
+
+
+def test_tributaries_merges_its_three_spawns_at_two_different_junctions():
+    level = LEVELS[20]
+    assert len(level.spawn_cells) == 3
+    assert len(pathing.junctions_of(level.path_cells)) == 2

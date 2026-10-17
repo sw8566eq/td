@@ -280,3 +280,27 @@ like Treasure's, so `blocks_shop_income` doesn't touch it), and `_enter_reward_s
 every older pick so other fights' offers are unchanged. They're a pick-one `"challenge_relic"` row on
 the ordinary reward screen, whose subtitle says won or failed. A failed challenge still clears and
 rewards like a normal Combat floor.
+
+## Levels 18-21
+
+Four ordinary levels (`world/levels.py`, `LEVELS[18]`-`LEVELS[21]`) built around a placement puzzle
+each rather than a new junction shape. `_level_pool_for_row` tiers them by spawn count, as always:
+
+| Id | Name | Spawns | Tier | Puzzle |
+|---|---|---|---|---|
+| 18 | The Coil | 1 | early (rows 0-2) | a "Greek key": the route winds clockwise into the middle and unwinds back out between its own inbound legs, one empty row/column apart; 2x2 high ground beside the exit |
+| 21 | Killing Field | 1 | early | one route passes the same open arena (cols 4-10, rows 3-5) eastbound along row 2 then westbound along row 6; the arena's middle row is two tiles from both passes |
+| 19 | Saddleback Ridge | 2 | late (rows 3-4) | two parallel lanes on rows 2 and 6 with a six-tile high-ground ridge on row 4 (broken by a saddle at col 7); only a ridge tower's +20% range reaches both lanes |
+| 20 | Tributaries | 3 | late | two west spawns merge at col 4, a north spawn joins the trunk at col 10, four tiles from the goal; gated by `unlock_tributaries` |
+
+Two authoring constraints shaped them. Both ends of The Coil stay on the map edge because the game
+draws no spawn/goal markers (an early inward-only spiral ended mid-map and read as a dead end). And
+every pair of path legs is at least one tile apart, since two legs that touch become one connected
+cell set and form a loop that `pathing.validate_topology` rejects (see [grid-paths.md](grid-paths.md)
+"Paths are a graph, not a route").
+
+Wave counts were set against their tier with `tools/tower_bench.py`, act 1 at the floor's own
+starting gold, counting how many of the 15 attacking towers survive alone: The Coil 7 (Twin Peaks 6,
+Hairpin Gauntlet 3), Killing Field 8 (Broken Switchback 7, Serpentine Pass 9), Saddleback Ridge 1 and
+Tributaries 1 (Triple Crossing 1, Twin Confluence 2, Grand Delta and Quad Muster 0). Adding levels
+changes which level an existing seed's node draws.

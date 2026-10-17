@@ -254,7 +254,7 @@ LEVEL_5_WAVE_SPECS = [
 # High ground (Level.high_ground_cells) -- a few raised tiles per level, each
 # tucked inside a bend or beside a merge/branch so a tower there covers two
 # legs of the path at once, with the +20% range making the overlap real.
-# Levels 1, 4, 7, 12, 13 and 15 deliberately have none: the opening level
+# Levels 1, 4, 7, 12, 13, 15, 20 and 21 deliberately have none: the opening level
 # stays a plain introduction, and the rest keep some maps where placement is
 # judged on path geometry alone.
 LEVEL_2_HIGH_GROUND = frozenset({(5, 2), (8, 4), (8, 5)})  # first bend; inside the U
@@ -791,4 +791,140 @@ LEVELS[17] = _multi_lane_level(
     starting_gold=250,
     starting_lives=20,
     high_ground_cells=LEVEL_17_HIGH_GROUND,
+)
+
+# Levels 18-21: four ordinary levels built around a placement puzzle each,
+# rather than a new junction shape. Every layout was checked against
+# pathing.validate_topology before being wired in (see the Level 16-17
+# comment for why that step is never skipped). 18 and 21 are single-spawn,
+# so _level_pool_for_row draws them on the early corridor rows; 19 and 20
+# are multi-spawn, so they join the later multi-lane rows.
+
+# Level 18: "The Coil" -- a single-spawn double spiral (a "Greek key"):
+# the route winds clockwise into the middle of the map, turns, and unwinds
+# back out between its own inbound legs, leaving two rows below where it
+# came in. Every leg is one empty row or column from the next, so the gaps
+# are where a tower covers two legs at once, and the inner gap (row 4) sees
+# the turn-in and the way out. A 2x2 high-ground plateau sits in the pocket
+# beside the exit, where a tower sees the last leg and the innermost turn:
+# the coil's "last stand" spot. Both ends stay on the west edge -- the game
+# draws no spawn/goal markers, so an interior end would read as a dead end.
+LEVEL_18_CORNERS = [(0, 1), (13, 1), (13, 7), (3, 7), (3, 5), (11, 5), (11, 3), (0, 3)]
+LEVEL_18_HIGH_GROUND = frozenset({(1, 4), (2, 4), (1, 5), (2, 5)})  # the pocket beside the exit
+
+# The route is the longest single-spawn one in the campaign (53 tiles to
+# Hairpin Gauntlet's 49) and its gaps double up coverage, so the counts sit
+# between Twin Peaks' and Hairpin Gauntlet's.
+LEVEL_18_WAVE_SPECS = [
+    {"grunt": 11, "scout": 5},
+    {"grunt": 13, "scout": 11, "tank": 7, "shielded": 4, "splitter": 3},
+    {"grunt": 13, "scout": 11, "tank": 8, "shielded": 6, "flying": 6, "healer": 2, "boss": 2},
+]
+
+LEVELS[18] = _corridor_level(
+    18, "The Coil", LEVEL_18_CORNERS,
+    _single_spawn_waves(LEVEL_18_CORNERS[0], LEVEL_18_WAVE_SPECS),
+    starting_gold=160,
+    starting_lives=20,
+    high_ground_cells=LEVEL_18_HIGH_GROUND,
+)
+
+# Level 19: "Saddleback Ridge" -- two spawns in the far corners run two
+# parallel lanes (rows 2 and 6) the length of the map before merging just
+# short of the goal. The row between them is a high-ground ridge broken by
+# one low saddle at column 7. Off the ridge, an ordinary tower in rows 3-5
+# reaches one lane; on it, the +20% range is what lets the same tower cover
+# both, so the ridge, not path geometry, decides the build.
+LEVEL_19_SPAWN_TOP = (0, 0)
+LEVEL_19_SPAWN_BOTTOM = (0, 8)
+LEVEL_19_MERGE_JUNCTION = (12, 4)
+LEVEL_19_GOAL = (14, 4)
+LEVEL_19_HIGH_GROUND = frozenset({(4, 4), (5, 4), (6, 4), (8, 4), (9, 4), (10, 4)})  # the ridge
+LEVEL_19_WAVE_SPECS = [
+    {LEVEL_19_SPAWN_TOP: {"grunt": 7}, LEVEL_19_SPAWN_BOTTOM: {"grunt": 6}},
+    {LEVEL_19_SPAWN_TOP: {"grunt": 9, "tank": 5}, LEVEL_19_SPAWN_BOTTOM: {"scout": 9, "flying": 5, "shielded": 3}},
+    {LEVEL_19_SPAWN_TOP: {"grunt": 10, "tank": 6, "healer": 2, "boss": 1},
+     LEVEL_19_SPAWN_BOTTOM: {"scout": 10, "flying": 6, "shielded": 5}},
+]
+
+LEVELS[19] = _multi_lane_level(
+    19, "Saddleback Ridge",
+    lane_corner_lists=[
+        [LEVEL_19_SPAWN_TOP, (2, 0), (2, 2), (12, 2), LEVEL_19_MERGE_JUNCTION],
+        [LEVEL_19_SPAWN_BOTTOM, (2, 8), (2, 6), (12, 6), LEVEL_19_MERGE_JUNCTION],
+        [LEVEL_19_MERGE_JUNCTION, LEVEL_19_GOAL],
+    ],
+    spawn_cells=(LEVEL_19_SPAWN_TOP, LEVEL_19_SPAWN_BOTTOM),
+    goal_cells=(LEVEL_19_GOAL,),
+    wave_specs=LEVEL_19_WAVE_SPECS,
+    starting_gold=190,
+    starting_lives=20,
+    high_ground_cells=LEVEL_19_HIGH_GROUND,
+)
+
+# Level 20: "Tributaries" -- three spawns that merge at two different
+# points, unlike Triple Crossing's single three-way junction: the two west
+# spawns meet on a north-south spine at column 4, that trunk runs east, and
+# a third spawn drops in from the top edge to join it at column 10, only four
+# tiles from the goal. The north lane is short, so defending only the first
+# merge lets it walk straight past, and defending only the second leaves the
+# west lanes a long free run. No high ground: the two merge points are the
+# whole puzzle. Gated behind unlock_tributaries (see
+# progression/meta_progression.py's LEVEL_META_UNLOCKS).
+LEVEL_20_SPAWN_WEST_TOP = (0, 2)
+LEVEL_20_SPAWN_WEST_BOTTOM = (0, 7)
+LEVEL_20_SPAWN_NORTH = (10, 0)
+LEVEL_20_FIRST_MERGE = (4, 5)
+LEVEL_20_SECOND_MERGE = (10, 5)
+LEVEL_20_GOAL = (14, 5)
+LEVEL_20_WAVE_SPECS = [
+    {LEVEL_20_SPAWN_WEST_TOP: {"grunt": 5}, LEVEL_20_SPAWN_WEST_BOTTOM: {"scout": 5},
+     LEVEL_20_SPAWN_NORTH: {"grunt": 4}},
+    {LEVEL_20_SPAWN_WEST_TOP: {"grunt": 7, "tank": 4},
+     LEVEL_20_SPAWN_WEST_BOTTOM: {"scout": 8, "flying": 4, "shielded": 2},
+     LEVEL_20_SPAWN_NORTH: {"scout": 5, "splitter": 3}},
+    {LEVEL_20_SPAWN_WEST_TOP: {"grunt": 8, "tank": 6, "boss": 1},
+     LEVEL_20_SPAWN_WEST_BOTTOM: {"scout": 9, "flying": 5, "shielded": 4},
+     LEVEL_20_SPAWN_NORTH: {"scout": 6, "splitter": 4, "healer": 2}},
+]
+
+LEVELS[20] = _multi_lane_level(
+    20, "Tributaries",
+    lane_corner_lists=[
+        [LEVEL_20_SPAWN_WEST_TOP, (4, 2), LEVEL_20_FIRST_MERGE],
+        [LEVEL_20_SPAWN_WEST_BOTTOM, (4, 7), LEVEL_20_FIRST_MERGE],
+        [LEVEL_20_FIRST_MERGE, LEVEL_20_SECOND_MERGE],
+        [LEVEL_20_SPAWN_NORTH, LEVEL_20_SECOND_MERGE],
+        [LEVEL_20_SECOND_MERGE, LEVEL_20_GOAL],
+    ],
+    spawn_cells=(LEVEL_20_SPAWN_WEST_TOP, LEVEL_20_SPAWN_WEST_BOTTOM, LEVEL_20_SPAWN_NORTH),
+    goal_cells=(LEVEL_20_GOAL,),
+    wave_specs=LEVEL_20_WAVE_SPECS,
+    starting_gold=210,
+    starting_lives=20,
+)
+
+# Level 21: "Killing Field" -- one route that passes the same open arena
+# twice, eastbound along its north edge (row 2) and then westbound along its
+# south edge (row 6), with the east side (column 11) joining the two. The
+# arena between them (columns 4-10, rows 3-5) is left empty and open to the
+# west; a tower on its middle row is two tiles from both passes, so mid- to
+# long-range towers there fire on every enemy twice, while short-range ones
+# have to pick a side. Still a forest: the path wraps three sides of the
+# arena and leaves along the bottom edge, never closing the loop.
+LEVEL_21_CORNERS = [(0, 0), (3, 0), (3, 2), (11, 2), (11, 6), (3, 6), (3, 8), (14, 8)]
+
+# Counts in line with Broken Switchback's: a shorter route than The Coil's,
+# but the arena covers much of it twice.
+LEVEL_21_WAVE_SPECS = [
+    {"grunt": 9, "scout": 3},
+    {"grunt": 10, "scout": 8, "tank": 5, "splitter": 2},
+    {"grunt": 10, "scout": 8, "tank": 6, "shielded": 4, "flying": 3, "boss": 1},
+]
+
+LEVELS[21] = _corridor_level(
+    21, "Killing Field", LEVEL_21_CORNERS,
+    _single_spawn_waves(LEVEL_21_CORNERS[0], LEVEL_21_WAVE_SPECS),
+    starting_gold=150,
+    starting_lives=20,
 )
