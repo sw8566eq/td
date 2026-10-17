@@ -2,7 +2,7 @@
 
 Tower leveling and specialization, the Support two-pass update, Overload Cannon, Siphon, the
 targeting spatial index, the results table, then the run-era additions: veterancy, path traps,
-modules, Mortar's minimum range, Barricade, resonances and the Harpoon.
+modules, Mortar's minimum range, Barricade, resonances, the Harpoon and the Brazier.
 
 ## Tower progression is two separate axes
 
@@ -284,3 +284,37 @@ and Mortars.
   Cannon); relic `barbed_tethers` (`relic_harpoon_ground_bonus_multiplier`, read only in
   `HarpoonTower.create_projectile`). Modules need nothing special: it fires through `Tower.update()`, so
   on-hit module effects ride the usual `relic_*` fields.
+
+## Brazier (cone attacks)
+
+`BrazierTower` (`"brazier"`) is the one tower that hits a **cone**. It keeps `Tower.update()`'s
+cooldown-then-fire template unchanged, so it needs no copy of the relic-tagging block (contrast
+"Overload Cannon's charge-and-burst cycle"). Its `create_projectile()` returns a `Projectile` with
+`cone_radius` (its `effective_range()`, so Support auras, range relics and Long Barrel deepen it) and
+`cone_half_angle` (`cone_angle / 2`). A cone shot never flies: `Projectile.update()` resolves it the
+frame it's fired, aimed at wherever the target stands, even a target another shot just killed.
+
+- **Geometry.** `Projectile._resolve_cone` hits every enemy within `cone_radius` of the origin whose
+  offset is within the half angle of the aim line (a dot-product test, no trig per enemy). An enemy on
+  the origin counts as inside. It reads `enemy_index.near_in_order()` for the same shared-`random`
+  ordering reason splash does (see "The other enemy-vs-enemies scans use it too"), and each enemy gets
+  one full `_apply_hit_effects()` pass, so crits, relic procs, modules and kill credit work as for a
+  splash. `shots_hit` counts once per wash.
+- **Reach.** `can_target_flying = False` and `HITS_BURROWED = False`, passed into the shot as
+  `can_hit_flying`/`can_hit_burrowed`, so `_can_hit` keeps airborne flyers and Burrowers out of the
+  cone as well as out of targeting. A Grounded flyer or a Marked Burrower is in reach (see
+  [enemies.md](enemies.md) "Grounded flyers (`is_airborne`)").
+- **Burn.** Each hit carries `burn_effect` (tick, seconds) into `Enemy.apply_burn` (see
+  [enemies.md](enemies.md) "Burning"). `BrazierTower.burn_tick()` scales `burn_damage_per_tick` by
+  `effective_damage() / damage`, so every damage source (auras, relics, modules, veterancy) scales the
+  burn too, then by the Pitch Oil relic's `relic_brazier_burn_bonus_multiplier`.
+  `LEVEL_SCALED_STATS` is damage and burn; range stays short at every level.
+- **Specializations.** Wide Arc (`cone_angle` 70 -> 110, damage x2) suits fast enemies and bends in
+  the path, where the hit matters more than the burn. Blue Flame (burn tick x1.2, duration x1.6) suits
+  slow, dense streams.
+- **Visual.** A cone shot appends `(origin, direction, half_angle, radius)` to `Projectile.cone_events`
+  instead of an impact ring; `Game.update()` drains it into an `effects.FlameWedge` in
+  `impact_effects` (see [presentation.md](presentation.md) "Render caches").
+- **Hooks.** Resonances `firebreak` (Brazier near Barricade, which holds enemies in the cone) and
+  `kindling` (Brazier near Tar Pit); relic `pitch_oil`. `tools/tower_bench.py` puts it level with
+  Cannon and Spike Trap per act, below Basic against tanks, and at zero against flyers.

@@ -143,6 +143,19 @@ purpose: `damage_vs_flying_multiplier` (Flak Rounds still counts a grounded flye
 `WaveManager`'s Undermine burrowing, which happens at spawn. `ui.enemy_tooltip_lines` lists "Grounded"
 (`Enemy.is_grounded`) and `Enemy.draw` adds a shadow and tether under it. See [towers.md](towers.md)
 "Harpoon".
+## Burning
+
+`Enemy.apply_burn(damage_per_tick, duration, source=None)` (a Brazier hit, via
+`Projectile.burn_effect`) is a second damage-over-time channel, separate from poison:
+`burn_damage_per_tick`/`burn_time_remaining`/`burn_tick_timer`/`burn_source`, ticking every
+`BURN_TICK_INTERVAL` in `Enemy.update()` right after poison. It is separate on purpose, so a Brazier and
+a Poison tower stack instead of competing for one slot, and so no poison relic reads it (Corrosive
+Poison, the slowed/marked-and-poisoned combos, Virulent Bloom). Refresh semantics and credit copy
+"Poison credit": the stronger tick and the longer duration win, a re-hit never delays a tick already due,
+and the tower that applied the strongest tick gets `damage_dealt`/`kills`. Ticks go through plain
+`take_damage()`, so a shield or a boss's armor absorbs them. `Enemy.is_burning`, the tooltip's
+"Burning" and a small ember drawn by `Enemy.draw` show it. Not saved: saves only happen between waves.
+
 ## Disruptors and Bulwarks
 
 Two reinforcement species (`run_escalation.RUN_REINFORCEMENTS`, appended after Sappers/Burrowers so

@@ -105,6 +105,7 @@ in the same shot (impossible today, since no tower does both, but not
 architecturally ruled out) must not count itself as the qualifying combo.
 """
 
+import math
 import random
 
 import pygame
@@ -153,7 +154,8 @@ class Projectile:
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
-                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None, ground_duration=0.0):
+                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None, ground_duration=0.0,
+                 cone_radius=0.0, cone_half_angle=0.0, burn_effect=None):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -279,6 +281,14 @@ class Projectile:
         # Seconds every flyer this shot hits stays Grounded (a Harpoon --
         # see Enemy.apply_ground); 0 grounds nothing.
         self.ground_duration = ground_duration
+        # A Brazier's flame wash: a cone_radius > 0 shot never flies -- it
+        # resolves the frame it's fired, hitting every enemy within
+        # cone_radius of `pos` and within cone_half_angle degrees of the
+        # line to its target (see _resolve_cone). burn_effect is
+        # (damage per tick, seconds) handed to enemy.apply_burn().
+        self.cone_radius = cone_radius
+        self.cone_half_angle = cone_half_angle
+        self.burn_effect = burn_effect
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -297,9 +307,21 @@ class Projectile:
         # instances, same drain-a-per-frame-event-list idiom Enemy.
         # damage_events already established for floating damage numbers.
         self.impact_events = []
+        # (origin, direction_degrees, half_angle_degrees, radius), one per
+        # cone wash -- drained by Game.update() into an effects.FlameWedge,
+        # the same idiom as impact_events (a cone records no impact ring).
+        self.cone_events = []
 
     def update(self, dt, enemies, enemy_index=None):
         if self.dead:
+            return
+
+        if self.cone_radius > 0:
+            # A flame wash lands the frame it's fired, aimed at wherever its
+            # target stands -- even one another shot just killed, since the
+            # cone still has somewhere to point.
+            self._resolve_cone(self.target.pos, enemies, enemy_index)
+            self.dead = True
             return
 
         if self.target.is_dead or self.target.reached_goal:
@@ -375,6 +397,37 @@ class Projectile:
             self._apply_hit_effects(next_target, enemies, enemy_index)
             hit.add(next_target)
             current = next_target
+
+    def _resolve_cone(self, aim_pos, enemies, enemy_index=None):
+        """A Brazier's flame wash: hit every live enemy this shot may touch
+        (_can_hit -- so no airborne flyer, no burrower) within cone_radius
+        of the origin and within cone_half_angle degrees either side of the
+        line from the origin to `aim_pos`. One hit-effects pass per enemy, so
+        crits, relic procs, modules and credit work as for a splash; the
+        index is read in raw-list order for the same shared-`random` reason.
+        An enemy standing right on the origin counts as inside."""
+        origin = self.pos
+        aim = pygame.Vector2(aim_pos) - origin
+        aim_length = aim.length()
+        direction = 0.0 if aim_length == 0 else math.degrees(math.atan2(aim.y, aim.x))
+        self.cone_events.append((pygame.Vector2(origin), direction, self.cone_half_angle, self.cone_radius))
+        cos_half = math.cos(math.radians(self.cone_half_angle))
+        radius = self.cone_radius
+        pool = enemies if enemy_index is None else enemy_index.near_in_order(origin, radius)
+        hit_anything = False
+        for enemy in pool:
+            if enemy.is_dead or enemy.reached_goal or not self._can_hit(enemy):
+                continue
+            offset = enemy.pos - origin
+            distance = offset.length()
+            if distance > radius:
+                continue
+            if distance > 0 and aim_length > 0 and offset.dot(aim) < cos_half * distance * aim_length:
+                continue
+            self._apply_hit_effects(enemy, enemies, enemy_index)
+            hit_anything = True
+        if self.source is not None and hit_anything:
+            self.source.shots_hit += 1
 
     def _can_hit(self, enemy):
         """Whether this shot may touch `enemy` at all -- see can_hit_flying.
@@ -594,6 +647,9 @@ class Projectile:
             and random.random() < self.relic_slow_chance
         ):
             enemy.apply_slow(*self.relic_slow_effect)
+        # A Brazier's burn -- see Enemy.apply_burn() (absent on some test doubles).
+        if self.burn_effect is not None and hasattr(enemy, "apply_burn"):
+            enemy.apply_burn(*self.burn_effect, source=self.source)
         # A Harpoon's grounding -- see Enemy.apply_ground() (a no-op on a
         # non-flyer, and absent on some test doubles).
         if self.ground_duration and hasattr(enemy, "apply_ground"):

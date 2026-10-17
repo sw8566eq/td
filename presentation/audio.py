@@ -91,6 +91,12 @@ SOUND_MANIFEST = {
         SynthSpec("triangle", frequency=(700, 220), duration=0.1, volume=0.45, release=0.05),
     )),
 
+    # A Brazier's flame wash: a breathy whoosh with a low roar under it.
+    "tower_fire_flame": ("sfx/tower_fire_flame.wav", (
+        SynthSpec("noise", duration=0.22, volume=0.35, attack=0.03, release=0.12),
+        SynthSpec("triangle", frequency=(140, 90), duration=0.2, volume=0.3, attack=0.02, release=0.1),
+    )),
+
     # --- Combat feedback ---
     "enemy_hit_small": ("sfx/enemy_hit_small.wav", (
         SynthSpec("square", frequency=520, duration=0.04, volume=0.35, release=0.02),
