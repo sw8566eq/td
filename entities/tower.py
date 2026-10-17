@@ -57,6 +57,10 @@ def _format_ramp_per_hit(value):
     return f"+{round(value * 100)}%/hit"
 
 
+def _format_degrees(value):
+    return f"{round(value)} deg"
+
+
 class Tower:
     cost = 0
     range = 0
@@ -307,6 +311,9 @@ class Tower:
         # A Barbed Tethers-style relic -- read only by HarpoonTower, scaling
         # how long its hits keep a flyer Grounded.
         self.relic_harpoon_ground_bonus_multiplier = 1.0
+        # A Pitch Oil-style relic -- read only by BrazierTower, scaling its
+        # burn's damage per tick (BrazierTower.burn_tick).
+        self.relic_brazier_burn_bonus_multiplier = 1.0
         # Aerial Targeting Array-style relic -- Cannon's first fully
         # exclusive relic (heavy_ordnance immediately above is shared
         # 50/50 with Knockback), boolean OR-composed the same shape as
@@ -1886,6 +1893,68 @@ class HarpoonTower(Tower):
         )
 
 
+class BrazierTower(Tower):
+    """A short-range flamethrower: every shot washes flame over a cone --
+    cone_angle degrees wide, as deep as its range, pointed at its target --
+    hitting every ground enemy inside it for modest damage and setting it
+    Burning (Enemy.apply_burn, a damage-over-time channel of its own that
+    stacks with Poison). The wash is a Projectile with a cone_radius, so it
+    resolves the frame it's fired (Projectile._resolve_cone) through the
+    usual hit pipeline: relics, modules, crits and credit all work as for a
+    splash, and Tower.update()'s relic tagging needs no copy here. Ground
+    only: airborne flyers and Burrowers are out of reach. Built for dense
+    ground swarms; a lone tank or a flock of flyers is its weak spot."""
+    description = "Washes a cone of flame over ground enemies, setting them Burning. Short range."
+    cost = 95
+    range = 95
+    damage = 4
+    fire_rate = 0.8
+    projectile_speed = 0.0  # a cone wash never flies -- see Projectile._resolve_cone
+    cone_angle = 70.0
+    burn_damage_per_tick = 3.0
+    burn_duration = 2.5
+    can_target_flying = False
+    HITS_BURROWED = False
+    # Its burn grows with level alongside its hit; its reach stays short.
+    LEVEL_SCALED_STATS = ("damage", "burn_damage_per_tick")
+    sprite_name = "tower_brazier"
+    display_name = "Brazier"
+    FIRE_SOUND = "tower_fire_flame"
+    EXTRA_STATS = (
+        ("Flame arc", "cone_angle", _format_degrees),
+        ("Burn", "burn_damage_per_tick", _format_poison_tick),
+        ("Burn duration", "burn_duration", _format_seconds),
+    )
+    SPECIALIZATIONS = {
+        "wide_arc": {
+            "display_name": "Wide Arc",
+            "description": "A far wider flame cone.",
+            "stat_multipliers": {"cone_angle": 110.0 / 70.0},
+        },
+        "blue_flame": {
+            "display_name": "Blue Flame",
+            "description": "Hotter, longer burns.",
+            "stat_multipliers": {"burn_damage_per_tick": 1.25, "burn_duration": 1.8},
+        },
+    }
+
+    def burn_tick(self):
+        """Damage per burn tick right now: burn_damage_per_tick scaled by
+        whatever scales this tower's hit (effective_damage() over damage --
+        auras, relics, modules, veterancy), times a Pitch Oil-style relic."""
+        scale = self.effective_damage() / self.damage if self.damage else 1.0
+        return self.burn_damage_per_tick * scale * self.relic_brazier_burn_bonus_multiplier
+
+    def create_projectile(self, target):
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(), source=self,
+            cone_radius=self.effective_range(), cone_half_angle=self.cone_angle / 2,
+            burn_effect=(self.burn_tick(), self.burn_duration),
+            can_hit_flying=self.can_target_flying, can_hit_burrowed=self.HITS_BURROWED,
+        )
+
+
 class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
@@ -2370,6 +2439,7 @@ TOWER_TYPES = {
     "spike_trap": SpikeTrapTower,
     "tar_pit": TarPitTower,
     "harpoon": HarpoonTower,
+    "brazier": BrazierTower,
 }
 # The reverse lookup -- a tower class's registry key.
 TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}
@@ -2451,5 +2521,11 @@ RESONANCES = {
     ),
     "anchor_line": Resonance(
         "Anchor Line", "harpoon", "cannon", "Harpoon near a Cannon: +20% range.", range_bonus=0.20,
+    ),
+    "firebreak": Resonance(
+        "Firebreak", "brazier", "barricade", "Brazier near a Barricade: +25% fire rate.", fire_rate_bonus=0.25,
+    ),
+    "kindling": Resonance(
+        "Kindling", "brazier", "tar_pit", "Brazier near a Tar Pit: +20% damage.", damage_bonus=0.20,
     ),
 }

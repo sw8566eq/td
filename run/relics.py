@@ -572,6 +572,9 @@ class Relic:
     # Harpoon only: how much longer its hits keep a flyer Grounded
     # (Game._apply_construction_relics -> HarpoonTower.create_projectile).
     harpoon_ground_duration_multiplier: float = 1.0
+    # Brazier only: how much harder its burns tick
+    # (Game._apply_construction_relics -> BrazierTower.burn_tick).
+    brazier_burn_multiplier: float = 1.0
     # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
     # damage_multiplier, set by Game._hold_enemies_at_barricades).
     held_damage_multiplier: float = 1.0
@@ -1285,6 +1288,10 @@ RELICS = {
     "barbed_tethers": Relic(
         "barbed_tethers", "Barbed Tethers", "Harpoon only: flyers it hits stay grounded 60% longer.",
         harpoon_ground_duration_multiplier=1.6,
+    ),
+    "pitch_oil": Relic(
+        "pitch_oil", "Pitch Oil", "Brazier only: its burns deal 50% more damage.",
+        brazier_burn_multiplier=1.5,
     ),
 }
 

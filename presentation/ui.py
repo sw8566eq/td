@@ -1783,6 +1783,8 @@ def enemy_tooltip_lines(enemy):
         states.append("Slowed")
     if enemy.poison_time_remaining > 0:
         states.append("Poisoned")
+    if getattr(enemy, "burn_time_remaining", 0) > 0:
+        states.append("Burning")
     if states:
         lines.append(", ".join(states))
     return lines
@@ -3391,7 +3393,8 @@ _RUN_GUIDE_NODE_TYPE_LINES = [
     f"{MAP_NODE_TYPE_NAMES[key]}: {MAP_NODE_TYPE_DESCRIPTIONS[key]}" for key in MAP_NODE_TYPE_NAMES
 ]
 _RUN_GUIDE_STATUS_LINES = [
-    "Statuses: Marked takes extra damage (Beacon), Slowed moves slower (Frost), Poisoned burns (Poison)",
+    "Statuses: Marked takes extra damage (Beacon), Slowed moves slower (Frost), Poisoned takes damage over time (Poison)",
+    "Burning (Brazier) is a second damage-over-time that stacks with Poison; Grounded flyers can be hit by ground towers",
     "Shielded absorbs damage before HP; Knocked back slides back along its route (Knockback)",
 ]
 # The run's tower-progression systems, one line each.

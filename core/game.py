@@ -3162,7 +3162,7 @@ class Game:
         return tower.effective_range() + tower.range * (destination - tower.high_ground_range_bonus)
 
     def _apply_construction_relics(self, tower, has_module):
-        """Earthworks / Forward Observer / Quick-Release Mounts / Barbed Tethers -- Relic-only
+        """Earthworks / Forward Observer / Quick-Release Mounts / Barbed Tethers / Pitch Oil -- Relic-only
         fields applied to every tower a run builds; each is a no-op on a
         tower it doesn't concern."""
         held = [relics.RELICS[key] for key in self.active_run.relics]
@@ -3180,6 +3180,7 @@ class Game:
         for relic in held:
             tower.relic_resonance_multiplier *= relic.resonance_multiplier
             tower.relic_harpoon_ground_bonus_multiplier *= relic.harpoon_ground_duration_multiplier
+            tower.relic_brazier_burn_bonus_multiplier *= relic.brazier_burn_multiplier
         if tower.PLACEMENT == "path":
             if any(relic.traps_hit_burrowed for relic in held):
                 tower.HITS_BURROWED = True
@@ -3791,6 +3792,11 @@ class Game:
                 ))
                 self.audio.play("enemy_hit_splash" if splash_radius else "enemy_hit_small")
             projectile.impact_events.clear()
+            # A Brazier's flame wash (Projectile._resolve_cone) -- a fading
+            # wedge over the cone it just hit, instead of an impact ring.
+            for origin, direction, half_angle, radius in projectile.cone_events:
+                self.impact_effects.append(effects.FlameWedge(origin, direction, half_angle, radius))
+            projectile.cone_events.clear()
         self.projectiles = [p for p in self.projectiles if not p.dead]
 
         # Drained here -- while dead enemies are still in self.enemies with
