@@ -208,7 +208,7 @@ class FlameWedge:
             return
         radius = int(self.radius)
         direction = round(self.direction / FLAME_DIRECTION_STEP) * FLAME_DIRECTION_STEP % 360
-        wedge = _wedge_surface(radius, direction, int(round(self.half_angle)), self.color)
+        wedge = _wedge_surface(radius, direction, round(self.half_angle), self.color)
         progress = 0.0 if self.duration <= 0 else min(1.0, self.age / self.duration)
         wedge.set_alpha(max(0, min(255, int(255 * (1 - progress)))))
         surface.blit(wedge, (int(self.pos.x) - radius - 1, int(self.pos.y) - radius - 1))

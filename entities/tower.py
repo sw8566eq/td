@@ -1907,11 +1907,11 @@ class BrazierTower(Tower):
     description = "Washes a cone of flame over ground enemies, setting them Burning. Short range."
     cost = 95
     range = 95
-    damage = 4
+    damage = 5
     fire_rate = 0.8
     projectile_speed = 0.0  # a cone wash never flies -- see Projectile._resolve_cone
     cone_angle = 70.0
-    burn_damage_per_tick = 3.0
+    burn_damage_per_tick = 4.0
     burn_duration = 2.5
     can_target_flying = False
     HITS_BURROWED = False
@@ -1928,13 +1928,13 @@ class BrazierTower(Tower):
     SPECIALIZATIONS = {
         "wide_arc": {
             "display_name": "Wide Arc",
-            "description": "A far wider flame cone.",
-            "stat_multipliers": {"cone_angle": 110.0 / 70.0},
+            "description": "Wider cone, harder hits.",
+            "stat_multipliers": {"cone_angle": 110.0 / 70.0, "damage": 2.0},
         },
         "blue_flame": {
             "display_name": "Blue Flame",
             "description": "Hotter, longer burns.",
-            "stat_multipliers": {"burn_damage_per_tick": 1.25, "burn_duration": 1.8},
+            "stat_multipliers": {"burn_damage_per_tick": 1.2, "burn_duration": 1.6},
         },
     }
 
