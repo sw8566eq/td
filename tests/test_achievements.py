@@ -1,5 +1,6 @@
 import json
 
+from entities.enemy import ENEMY_TYPES
 from progression import achievements
 
 
@@ -98,8 +99,11 @@ def test_every_achievements_counter_is_a_real_registered_counter_name():
         "modules_fitted",  # Game._take_reward_card
         "acts_cleared",  # Game._advance_run_floor, on an earlier act's boss
         "towers_forged",  # every forging path: Rest Smith, reward forge/pre-forged cards, Events
+        "waves_called_early",  # Game.call_next_wave, when it pays a bonus
+        "towers_moved",  # Game.try_move_tower
+        "challenges_won",  # Game._advance_run_floor, a won Proving Grounds
         "ascension_reached", "curses_held_at_once", "veterancy_rank_reached", "resonances_active",  # max-only, via Game._record_achievement_max
-    }
+    } | {cls.KILL_COUNTER for cls in ENEMY_TYPES.values() if cls.KILL_COUNTER}  # Game.update's dead-enemy drain
     for key, achievement in achievements.ACHIEVEMENTS.items():
         assert achievement.counter in known_counters, key
 

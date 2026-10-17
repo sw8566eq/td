@@ -24,7 +24,7 @@ spirit save_state.py already applies to `sold_towers` on an even older save.
 import json
 import os
 
-from entities.tower import TOWER_TYPES, Tower
+from entities.tower import TOWER_TYPES
 from entities.waves import WaveState
 from persistence.json_io import load_json_with_fallback, module_relative_path
 from persistence.persistence import level_from_dict, level_to_dict
@@ -34,7 +34,7 @@ from run.difficulty import DIFFICULTY_MODES
 from run.modules import MODULES
 from run.potions import POTIONS
 from run.relics import RELICS
-from run.run_map import ACT_COUNT, COLS, NODE_TYPES, MapNode, RunMap
+from run.run_map import ACT_COUNT, COLS, FIGHT_NODE_TYPES, NODE_TYPES, MapNode, RunMap
 from run.run_state import RunState
 from support import settings
 from world.levels import LEVELS
@@ -69,7 +69,7 @@ def _tower_to_dict(tower):
         "specialization": tower.specialization,
         "targeting_mode": tower.targeting_mode,
         "forged": tower.forged,
-        # Lifetime stats, purely for display (see CLAUDE.md's "Post-level
+        # Lifetime stats, purely for display (see docs/agents/towers.md "Post-level
         # results") -- without these, every tower reconstructed on resume
         # would show 0 shots/damage/kills even after real combat history.
         "shots_fired": tower.shots_fired,
@@ -139,6 +139,10 @@ def _run_to_dict(run):
         "reward_pending": run.reward_pending,
         "blessing_pending": run.blessing_pending,
         "lives_captured": run.lives_captured,
+        "challenge_leaks": run.challenge_leaks,
+        "challenge_failed": run.challenge_failed,
+        "ability_cooldown": run.ability_cooldown,
+        "ability_charges": run.ability_charges,
     }
 
 
@@ -177,6 +181,12 @@ def _run_from_dict(data):
         # first fight had loaded, i.e. iff they're no longer the 0
         # placeholder.
         lives_captured=data.get("lives_captured", data["lives"] > 0),
+        # Optional -- a save from before the Proving Grounds has neither.
+        challenge_leaks=data.get("challenge_leaks", 0),
+        challenge_failed=data.get("challenge_failed", False),
+        # Optional -- a save from before Commander abilities starts ready.
+        ability_cooldown=data.get("ability_cooldown", 0),
+        ability_charges=data.get("ability_charges", 0),
     )
 
 
@@ -324,8 +334,9 @@ def _parse_and_validate_save(data):
             raise ValueError(f"saved run references an unrecognized tower type {tower_data['type']!r}")
         # Tower.acquire_target() looks targeting_mode up in its strategy
         # table -- an unknown one loads fine but crashes mid-fight the
-        # first time that tower has an enemy in range.
-        if tower_data["targeting_mode"] not in Tower.TARGETING_MODES:
+        # first time that tower has an enemy in range. Checked against the
+        # tower type's own modes (a Harpoon adds "flying").
+        if tower_data["targeting_mode"] not in TOWER_TYPES[tower_data["type"]].TARGETING_MODES:
             raise ValueError(f"saved run references an unrecognized targeting mode {tower_data['targeting_mode']!r}")
         _validate_tower_data(tower_data)
     run_data = data.get("run")  # absent (older save) and explicit None both mean "no active run"
@@ -347,7 +358,7 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     KeyError reaching for a "map" key that was never written (one of
     json_io's own fallback-triggering exceptions), and load_run() falls all
     the way back to "nothing to resume" -- see this module's own docstring
-    and CLAUDE.md's run-loop section for why a clean break, not a
+    and docs/agents/persistence.md for why a clean break, not a
     migration, is the right call here."""
     _require_int(run_data["seed"], "run seed")
     _require_int(run_data["lives"], "run lives", 0, _SANE_MAX)
@@ -356,6 +367,10 @@ def _parse_and_validate_active_run(run_data, at_map=False):
     _require_int(run_data.get("act", 0), "run act", 0, ACT_COUNT - 1)
     _require_int(run_data.get("floors_cleared_prior_acts", 0), "run floors_cleared_prior_acts", 0, _SANE_MAX)
     _require_int(run_data.get("endless_waves_cleared", 0), "run endless_waves_cleared", 0, _SANE_MAX)
+    _require_int(run_data.get("challenge_leaks", 0), "run challenge_leaks", 0, _SANE_MAX)
+    _require_bool(run_data.get("challenge_failed", False), "run challenge_failed")
+    _require_int(run_data.get("ability_cooldown", 0), "run ability_cooldown", 0, _SANE_MAX)
+    _require_int(run_data.get("ability_charges", 0), "run ability_charges", 0, _SANE_MAX)
     for flag in ("is_daily", "has_spent_gold", "used_guardians_reprieve", "used_emergency_reserves"):
         _require_bool(run_data[flag], f"run {flag}")
     for flag in ("boss_defeated", "reward_pending", "blessing_pending"):
@@ -378,7 +393,7 @@ def _parse_and_validate_active_run(run_data, at_map=False):
                 raise TypeError("saved run's map has a node with a non-string id")
             _require_int(node_data["row"], "map node row", row_index, row_index)
             _require_int(node_data["col"], "map node col", 0, COLS - 1)
-            if node_data["node_type"] in ("combat", "elite", "boss") and node_data["level_id"] is None:
+            if node_data["node_type"] in FIGHT_NODE_TYPES and node_data["level_id"] is None:
                 raise ValueError("saved run's map has a fight node with no level")
     if not isinstance(run_data["map"]["edges"], dict):
         raise TypeError("saved run's map edges are malformed")
@@ -409,11 +424,11 @@ def _parse_and_validate_active_run(run_data, at_map=False):
             raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
     elif current_node is None:
         raise ValueError(f"saved run's current_node_id {run_data['current_node_id']!r} is not in its own map")
-    elif current_node["node_type"] not in ("combat", "elite", "boss"):
+    elif current_node["node_type"] not in FIGHT_NODE_TYPES:
         raise ValueError(f"saved run's current node is a {current_node['node_type']!r} node, not resumable mid-PLAYING")
     # A pending reward belongs to the cleared fight the run is standing on.
     if run_data.get("reward_pending", False) and (
-        current_node is None or current_node["node_type"] not in ("combat", "elite", "boss")
+        current_node is None or current_node["node_type"] not in FIGHT_NODE_TYPES
         or run_data["current_node_id"] not in run_data["visited_node_ids"]
     ):
         raise ValueError("saved run has a pending reward but isn't standing on a cleared fight")

@@ -1,11 +1,11 @@
 """Game's achievement/meta-progression/toast-recording methods, extracted
 into their own module -- the third slice of game.py's own god-object
 decomposition (see renderer.py/input_handler.py for the first two, and
-CLAUDE.md's own note on the shape this pattern follows).
+docs/agents/core-game.md's note on the shape this pattern follows).
 
 Unlike input_handler.py's own extraction, which orphaned 3 delegators
 because every caller of a moved method had itself also moved (see
-CLAUDE.md's own documented gotcha), this slice's real callers --
+docs/agents/core-game.md's documented gotcha), this slice's real callers --
 Game.try_place_tower/try_upgrade_tower/try_specialize_tower, update()'s own
 kill/wave/level-clear hooks, _advance_run_floor, _record_run_permadeath,
 _handle_boss_defeated -- all stay on Game. So Game keeps a one-line
@@ -29,7 +29,7 @@ game.achievement_toasts (via _queue_toast) plus game.audio.play(...).
 
 from entities import effects
 from entities.tower import TOWER_TYPES
-from progression import achievements, meta_progression, progress
+from progression import achievements, meta_progression, progress, service_record
 from run import relics
 from run.commanders import COMMANDERS
 from support import settings
@@ -122,6 +122,18 @@ class ProgressTracker:
         self._record_progress_counter(
             meta_progression.bump, game.meta_progression_path, self._queue_meta_unlock_toasts, counter_name, amount,
         )
+
+    def _record_service(self, adds, raises):
+        """Apply Service Record add/raise entries (see
+        progression/service_record.py) in one write -- sandbox-gated like
+        every other recorder here. No toasts: lifetime stats unlock
+        nothing."""
+        game = self.game
+        if game.sandbox:
+            return
+        adds, raises = list(adds), list(raises)
+        if adds or raises:
+            service_record.record(game.service_record_path, adds, raises)
 
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         """Same toast presentation _queue_achievement_toasts uses, for

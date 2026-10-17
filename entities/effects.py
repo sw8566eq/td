@@ -8,6 +8,33 @@ import pygame
 
 from support import settings
 
+# Rendered label surfaces, keyed by (font, text, color). A damage number's
+# text never changes after construction, and late endless waves keep
+# hundreds alive at once (mostly the same few strings), so re-rendering
+# every label every frame was the single biggest render cost. A cached
+# surface is shared between labels: draw() sets its alpha right before each
+# blit, so the shared alpha never leaks from one label into another. Keyed
+# by the Font object itself (not id()), so a font from an earlier Game can
+# never alias a new one; cleared wholesale once it reaches the limit, which
+# a real session only does if it sees that many distinct strings.
+_TEXT_CACHE_LIMIT = 1024
+_text_cache = {}
+
+
+def _text_entry(font, text, color):
+    """(surface, half_width, half_height) for a cached label -- see
+    _text_cache. The halves are what Rect(center=...) would subtract."""
+    key = (font, text, color)
+    entry = _text_cache.get(key)
+    if entry is None:
+        if len(_text_cache) >= _TEXT_CACHE_LIMIT:
+            _text_cache.clear()
+        surface = font.render(text, True, color)
+        width, height = surface.get_size()
+        entry = (surface, width // 2, height // 2)
+        _text_cache[key] = entry
+    return entry
+
 
 class FloatingText:
     """A short-lived label that rises and fades -- used for the damage
@@ -33,12 +60,16 @@ class FloatingText:
         self.pos.y -= self.rise_speed * dt
 
     def draw(self, surface, font):
-        if self.dead:
+        # Written flat (no `dead` property, no Rect) -- a late endless wave
+        # draws thousands of these a frame. Same pixels as the
+        # get_rect(center=...) placement it replaced.
+        age, lifetime = self.age, self.lifetime
+        if age >= lifetime:
             return
-        alpha = max(0, min(255, int(255 * (1 - self.age / self.lifetime))))
-        rendered = font.render(self.text, True, self.color)
-        rendered.set_alpha(alpha)
-        surface.blit(rendered, rendered.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+        rendered, half_width, half_height = _text_entry(font, self.text, self.color)
+        rendered.set_alpha(max(0, min(255, int(255 * (1 - age / lifetime)))))
+        pos = self.pos
+        surface.blit(rendered, (int(pos.x) - half_width, int(pos.y) - half_height))
 
 
 class GroundFire:
@@ -110,8 +141,28 @@ class ExpandingRing:
         # SRCALPHA surface sized just for this ring and blit that, same
         # workaround FloatingText avoids needing only because font.render()
         # already returns an alpha-capable Surface.
-        diameter = radius * 2 + self.width
+        ring_surface = _ring_surface(radius, self.width, self.color, alpha)
+        surface.blit(ring_surface, ring_surface.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+
+
+# Drawn ring surfaces, keyed by (radius, width, color, alpha) -- everything
+# _ring_surface draws from, so a hit is pixel-identical to a fresh draw.
+# Rings of one kind share a duration and frames share a dt, so the same
+# keys recur constantly. Never drawn onto after creation; cleared wholesale
+# at the limit, like _text_cache.
+_RING_CACHE_LIMIT = 2048
+_ring_cache = {}
+
+
+def _ring_surface(radius, width, color, alpha):
+    key = (radius, width, color, alpha)
+    ring_surface = _ring_cache.get(key)
+    if ring_surface is None:
+        if len(_ring_cache) >= _RING_CACHE_LIMIT:
+            _ring_cache.clear()
+        diameter = radius * 2 + width
         ring_surface = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
         center = (diameter // 2, diameter // 2)
-        pygame.draw.circle(ring_surface, (*self.color, alpha), center, radius, width=self.width)
-        surface.blit(ring_surface, ring_surface.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+        pygame.draw.circle(ring_surface, (*color, alpha), center, radius, width=width)
+        _ring_cache[key] = ring_surface
+    return ring_surface

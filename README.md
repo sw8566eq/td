@@ -39,9 +39,24 @@ one sets your three starter towers and a signature starting relic: **The Warden*
 Frost; survives one killing blow per run) is always available; **The Alchemist** (Basic, Poison,
 Frost; venom-coated shots and two starting potions), **The Marksman** (Basic, Sniper, Frost; more crits)
 **The Engineer** (Basic, Cannon, Support; Basic starts forged, cheaper upgrades), **The
-Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder) and **The Trapmaster**
-(Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) unlock as you play.
-The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
+Stormcaller** (Basic, Lightning, Frost; Lightning starts forged and hits harder), **The Trapmaster**
+(Basic, Spike Trap, Tar Pit; Spike Trap starts forged, traps hit slowed enemies harder) and **The Skywatch**
+(Basic, Harpoon, Cannon; Harpoon starts forged, grounded flyers stay down longer) unlock as you play.
+Every Commander also has one signature **ability**, fired mid-fight with the sidebar button or **F**;
+once used it recharges after a few cleared waves (shown on the button), so the only decision is when:
+
+| Commander | Ability | Effect | Recharge |
+|---|---|---|---|
+| The Warden | Hold the Gate | The next 3 enemies to leak this floor cost no lives | 3 waves |
+| The Alchemist | Toxic Downpour | Aim it: enemies within 110px are poisoned for 6% max HP/s for 6s (1% vs bosses) | 2 waves |
+| The Marksman | Called Shot | Basic and Sniper deal double damage for 6s | 2 waves |
+| The Engineer | Rapid Repairs | Every tower fires 40% faster for 8s; every Barricade repaired | 3 waves |
+| The Stormcaller | Thunderhead | Lightning strikes the 8 toughest enemies for 35% max HP (6% vs bosses) | 2 waves |
+| The Trapmaster | Caltrops | Every ground enemy slowed to 45% speed for 6s | 2 waves |
+| The Skywatch | Downdraft | Every flyer grounded and slowed to 70% speed for 6s | 2 waves |
+
+An aimed ability (Toxic Downpour) shows its radius at the cursor; click the field to fire, or
+right-click/Esc to cancel. The Daily Run always uses The Warden, and starts with that day's **modifiers** -- one trophy relic,
 one curse, and one module fitted to a starter tower, the same for everyone.
 
 Before the map, **Orders from Command** offer one requisition -- pick one: a
@@ -72,6 +87,12 @@ node types:
   with a `+` on its build button).
 - **Treasure** -- a guaranteed shop-currency payout plus a guaranteed relic pick.
 - **Armory** -- choose one of three tower modules, each for a different tower type you hold, free.
+- **Proving Grounds** -- an optional fight under one constraint, shown on the map before you commit:
+  **Skeleton Crew** (at most 4 towers), **No Upgrades**, **Narrow Front** (only two of your tower
+  types may be built), **Double Time** (enemies 35% faster, 50% more gold), **Glass Gate** (only 3
+  lives at stake -- a 4th leak costs nothing but fails the challenge) or **Fog of War** (no wave
+  preview, no range rings). Win without breaking it for a pick of 1 of 2 bonus relics plus extra
+  shop currency; break it and the fight carries on as a normal one. Never on a run's first rows.
 
 The final row is always a single **Boss** node, and a run is **three acts** -- three maps back to
 back. Beating Act 1's or Act 2's boss clears it like any floor, then lets you
@@ -80,7 +101,13 @@ pick one of three trophy relics (plus a potion) and moves you on to the next act
 so Act 2's first fight is tougher than Act 1's boss. **Act 3's boss** loads in Endless mode from the
 very start, so its waves never run out and there's no "you won the run" screen -- while the boss
 itself is still alive it periodically reinforces (or, on the other boss level, shields itself), and
-defeating it just means the fight keeps going, now boss-free, for score. A run ends only by
+defeating it just means the fight keeps going, now boss-free, for score. Every 5 endless waves you
+clear, an **endless mutator** joins the fight and stays for the rest of it, stacking with the ones
+before: Swarm (+30% enemies), Ironclad (+25% HP), Gale (+15% speed), Skyborne (every 4th ground enemy
+flies), Tunnelers (ground enemies burrow), Siege (Barricades battered twice as hard), Regrowth (1% HP
+regen per second), Shielded Ranks (every 4th ground enemy shielded) or Escort (a Tank per spawn each
+wave). Each one is announced with a toast, listed in the sidebar, and pays a bounty of +1 life and +60
+battle gold; the Run Over recap and Run History count how many you faced. A run ends only by
 **permadeath** -- losing your last life -- which records the run (`progression/run_history.py`,
 keyed by seed, keeping your best result) and banks its progress toward the next one.
 
@@ -130,7 +157,8 @@ potion drunk), and Brewmaster's Kit (every won fight's reward includes a potion)
 ## Construction relics
 
 **Earthworks** (Barricades get 50% more hit points), **Forward Observer** (the Mortar's dead zone is
-half as wide) and **Quick-Release Mounts** (towers whose type has a module fire 10% faster).
+half as wide), **Quick-Release Mounts** (towers whose type has a module fire 10% faster) and
+**Watchtowers** (towers on high ground deal 15% more damage).
 
 **Ambush** makes enemies held at a Barricade take 25% more damage from everything, and **Incendiary
 Shells** makes every Mortar shell leave burning ground for 3 seconds. Pair those with slows: **Flashpoint**
@@ -171,8 +199,9 @@ range), **Fortified Battery** (Mortar near Barricade: +20% damage), **Sticky Spi
 Pit: +25% fire rate), **Shock and Awe** (Cannon near Knockback: +15% fire rate), **Toxic Cloud** (Poison
 near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage), **Overwatch** (Basic near
 Sniper: +10% damage), **Static Charge** (Overload Cannon near Lightning: +20% damage), **Deep Freeze** (Frost
-near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate) and **Thermal Shock** (Mortar
-near Frost: +15% damage). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
+near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate), **Thermal Shock** (Mortar
+near Frost: +15% damage), **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line**
+(Harpoon near Cannon: +20% range). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
 show which towers it would resonate with; a placed tower lists its active resonances. The **Harmonic
 Tuning** relic doubles every resonance. The Field Manual has them all.
 
@@ -233,7 +262,9 @@ From the main **menu**: press any other key to start a new run (see "Runs" above
 map editor, `L` opens the level browser to practice a single floor, `S` opens Settings, `A` opens
 your Achievements, `H` opens an in-game How to Play screen, `D` starts today's Daily Run, `B` opens
 the Credits screen, `R` opens Run History, `U` opens Unlocks, `K` opens the **Field Manual** (every
-relic, trophy relic, curse, potion, commander, elite affix, boss, tower module and veterancy rank with what it does), and `C` (shown only
+relic, trophy relic, curse, potion, commander, elite affix, boss, tower module and veterancy rank with what it does),
+`T` opens your **Service Record** (lifetime stats: runs, floors, kills, gold, plus damage and kills per tower,
+kills per enemy and best depth per commander -- Practice never counts), and `C` (shown only
 when one exists) continues a saved in-progress run.
 
 On the run map, `R` shows the relics you're holding (as it does mid-fight). During a run's fight,
@@ -253,16 +284,20 @@ how that works.
 Hover any placed tower to see its live stats and range in the sidebar; **click** it instead and that
 stays pinned open even once the mouse moves away, until you click a different tower, pick a
 build-menu type, or click empty ground with nothing selected. The pinned/hovered panel shows a
-**Targeting** row (click to cycle first/last/strongest/closest -- which in-range enemy the tower
+**Targeting** row (click to cycle first/last/strongest/closest/weakest, plus flying on a Harpoon -- which in-range enemy the tower
 actually shoots at), **Upgrade** and **Sell** buttons (in addition to the small "+cost" badge in the
 tower's tile corner, which still works too), and at max level, Upgrade is replaced by two
 **Specialize** buttons -- see "Tower levels & specialization" below. Selling refunds a fraction of
-everything spent on that tower and frees its space immediately.
+everything spent on that tower and frees its space immediately. **Move** (next to Sell) picks a placed
+tower up so the next click puts it down somewhere else, keeping its level, specialization and
+experience: free before a floor's first wave, 15% of what you've spent on it between waves, and never
+mid-wave. Right-click (or Move again) cancels.
 
 The HUD's top strip shows a countdown to the next wave and a button that reads "Start" before the
 first wave -- it waits for you rather than auto-starting, so you get a beat to place towers first --
-and "Skip" for every wave after that, forcing the between-wave delay to end early. `Space` does the
-same thing as clicking it. The same strip also has a button that cycles the simulation speed
+and "Skip" for every wave after that, forcing the between-wave delay to end early. Skipping pays an
+**early-call bonus** of 3 battle gold per second cut from the countdown (shown next to the button,
+e.g. "skip: +12g"). `Space` does the same thing as clicking it. The same strip also has a button that cycles the simulation speed
 (`1x`/`2x`/`3x`, or press `1`/`2`/`3` directly) -- real time still drives the frame rate, only the
 simulated world speeds up -- and, during a run, a "Relics: N" button. `R` opens a read-only overlay
 of your currently-held relics (a run only); any key closes it.
@@ -363,6 +398,15 @@ with a thin, soft-edged gap between them (`Grid._build_background`, cached once 
 redrawn every frame), so the placement grid is visible at a glance without being visually harsh. The
 path renders as one unbroken tile -- no seams -- since it's never buildable anyway.
 
+**High ground.** Some maps have raised tiles: lighter, with a bright top/left edge and a shadow on
+the bottom/right. A tower with at least half its footprint on high ground gets **+20% range**
+(`settings.HIGH_GROUND_RANGE_BONUS`). It stacks with range relics and Support auras, and a Support
+tower up there also buffs a wider area. High ground sits inside bends and beside merges, so one tower
+there can cover two stretches of path. The placement preview's ring already shows the bigger range
+when you hover high ground, and a placed tower's panel says "High ground". Path traps never get the
+bonus, and a moved tower gains or loses it at its new spot. The **Watchtowers** relic adds +15% damage
+to high-ground towers.
+
 ## Towers
 
 Sixteen so far. In a run you start with three of them and unlock the rest (see "Runs" and
@@ -415,7 +459,17 @@ menu holds more than nine, it wraps into two rows.
   Beacon Marks them, which drags them to the surface until the mark wears off. Two relics
   answer back: **Seismic Sensors** (traps can hit Burrowers) and **Booby-Trapped Walls** (a breaking
   Barricade explodes for its max hit points).
+  Two more reinforcements punish lazy defenses. From Act 1's fifth row, **Disruptors** jam every
+  tower within a short radius so it can't fire for 1.5s (Support and Barricades are immune), which
+  punishes crowding every tower at one choke point. Long-range Snipers and Mortars outrange them.
+  From Act 2, slow, tanky **Bulwarks** give the enemies around them 30% damage reduction, so kill
+  them first. **Faraday Mesh** (shorter jams) and **Linebreaker** (weaker auras) answer back.
 - **Spike Trap** / **Tar Pit** -- path traps, built on the path itself (see "Path traps").
+- **Harpoon** -- middling damage on a slow reload, but every hit **Grounds** a flyer for a few seconds:
+  dragged down, it can be hit by ground-only towers (Cannon, Mortar, Knockback, traps, burning ground)
+  and stopped by a Barricade. It starts on the **Flying** targeting mode, aiming at flyers that are
+  still airborne first. Specializes into Deep Anchor (grounds far longer) or Reel In (hits also slow).
+  The **Barbed Tethers** relic makes grounding last 60% longer. Unlocks after 6 floors cleared.
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.
 
@@ -484,9 +538,14 @@ and an achievement mark the moment it happens).
 
 ## Levels
 
-Seventeen built in -- fifteen ordinary ones the run map's own nodes draw from (single-lane corridors
+Twenty-one built in -- nineteen ordinary ones the run map's own nodes draw from (single-lane corridors
 for early rows, branching/merging multi-lane maps for later ones), plus two dedicated boss levels
-reserved for the map's final row. `L` from the main menu opens a level browser listing every
+reserved for the map's final row. The newest four are each built around one placement puzzle:
+**The Coil** (a route that winds into the middle of the map and back out between its own legs),
+**Killing Field** (one route passing the same open arena twice, eastbound then westbound),
+**Saddleback Ridge** (two parallel lanes with a high-ground ridge between them, the only spot that
+reaches both) and **Tributaries** (three spawns merging at two different points, the last one only
+four tiles from the goal). `L` from the main menu opens a level browser listing every
 built-in level plus any custom ones you've saved from the map editor -- each one shown with a small
 thumbnail of its actual path (ground/path fill plus spawn/goal dots), not just its name. Nothing here
 is locked: picking one is **Practice** (see below), which is deliberately decoupled from real
@@ -501,7 +560,7 @@ Eight of the twelve towers start locked account-wide behind lifetime counters
 (`progression/meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
 playing more runs unlocks Sniper, Support, Beacon, and Siphon; reaching the endless final floor once
 unlocks Beam. An unlocked tower joins the pool the Shop can offer from -- it doesn't start in your
-hand, it just becomes a card you might see. A handful of the game's newest relics and two of its
+hand, it just becomes a card you might see. A handful of the game's newest relics and three of its
 levels are gated the same way, behind steeper thresholds, so there's still something to chase long
 after every tower is unlocked. A toast pops up in-game the moment you unlock anything.
 
@@ -537,6 +596,12 @@ nothing.
 `S` from the main menu opens a Settings screen for **Fullscreen** (toggle), **Sound** (toggle -- see
 "Sound" above), and **Difficulty** (Easy/Normal/Hard, see above) -- all three take effect and save to
 disk immediately, so they're still set the same way the next time you launch the game.
+
+**Field Notes** are short hints shown once the first time you meet a system: a new node type on
+the map, the reward screen, a potion or module, a resonance, a flyer or burrower, low lives, and so
+on. They appear one at a time in a corner panel. Click one to dismiss it, or let it fade after 10
+seconds. **Hints: On/Off** in Settings turns them off, and **Reset Hints** shows them all again. The
+hints you've already seen are kept in `hints.json` next to the game's other local files.
 
 ## Post-level results
 
@@ -607,6 +672,11 @@ closed loop -- erase one edge tile to open it into a valid path). **Copy**/**Pas
 whatever's in your current selection -- path, spawns, and goals -- somewhere else on the map; a
 pasted spawn doesn't carry over any wave data, since it's a genuinely new spawn point, not a copy
 of the original's.
+
+The **High** tool paints high ground (the +20%-range raised tiles, see "Tower placement"). Start a
+drag on plain ground to raise tiles, or on high ground to lower them. High ground can't go on the
+path: painting path over a raised tile flattens it, and Erase clears it too. It's saved in the level
+file, copied by Copy/Paste and covered by Undo/Redo. Older level files without it still load.
 
 **Load Map...**, also in the sidebar, reopens a previously saved custom
 level for further editing -- it's the same level browser `L` uses, just

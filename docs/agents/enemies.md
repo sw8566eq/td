@@ -1,5 +1,8 @@
 # Content registries and enemy mechanics
 
+How content registries are consumed generically, then the enemy-side mechanics: bosses, Mark,
+Corrosive Poison, Sappers/Burrowers, Disruptors/Bulwarks, knockback resistance and poison credit.
+
 ## Content is registries, not conditionals
 
 Towers (`TOWER_TYPES` in `entities/tower.py`), enemies (`ENEMY_TYPES` in `entities/enemy.py`), and levels (`LEVELS`
@@ -17,7 +20,7 @@ is how a subclass's special mechanic (splash radius, slow %, chain range, ...) s
 stats panel automatically. `Projectile` (`entities/projectile.py`) is a single data-parametrized class, not
 one subclass per tower -- splash/slow/knockback/chain/mark are just constructor args a tower's
 `create_projectile()` passes in, and the hit-resolution algorithm doesn't care which combination
-it got (see "Mark and Corrosive Poison's shield-bypass hook" below for why Mark's own
+it got (see "Mark and Corrosive Poison's shield-bypass hook" for why Mark's own
 amplification math still lives in `Enemy`, not here).
 
 ## Boss enemy mechanics
@@ -34,8 +37,7 @@ _spawn_enemy` multiplies `max_hp`/`hp` by the active difficulty's `enemy_hp_mult
 construction (the same reason it already has a `hasattr(enemy, "max_shield")` patch-up for
 `ShieldedEnemy`), so a threshold baked in early would silently fire at the wrong HP on Easy/Hard.
 
-`FinalBossEnemy` (the run map's own boss-node species -- see the Boss bullet under "The run's
-branching map" above) subclasses `BossEnemy` directly and inherits both mechanics completely
+`FinalBossEnemy` (the run map's own boss-node species -- see the Boss bullet under [run-map.md](run-map.md) "Node types") subclasses `BossEnemy` directly and inherits both mechanics completely
 unmodified -- `take_damage()` isn't overridden a second time. Its own reinforcement-summon mechanic
 lives entirely in `update()`, guarded the same `if self.is_dead or self.reached_goal: return` way
 every other one-time enemy mechanic in this file is.
@@ -56,10 +58,10 @@ just pulsed on a timer rather than continuously regenerating. Deliberately named
 `hasattr(enemy, "max_shield")` patch-up above, which is hardcoded for `ShieldedEnemy`'s own
 difficulty-scaling model and sizes things a completely different way. It also needs its own
 `take_poison_damage()` override, unlike `FinalBossEnemy` -- see "Mark and Corrosive Poison's
-shield-bypass hook" below for why.
+shield-bypass hook" for why.
 
 `Enemy.IS_BOSS` (`False` on the base class, `True` on `BossEnemy` only) is a class-level flag added
-for `titan_slayer` (see the `run/relics.py` bullet above), mirroring `Tower.IS_SUPPORT`'s own shape
+for `titan_slayer` (see [relics.md](relics.md) "Tower-exclusive and per-enemy relics"), mirroring `Tower.IS_SUPPORT`'s own shape
 exactly -- a plain boolean neither subclass ever needs to check dynamically, just inherit or
 override once. `FinalBossEnemy`/`FinalBossShieldedEnemy` both subclass `BossEnemy` directly and
 never override class-level flags like this one, so they inherit `IS_BOSS = True` for free, same as
@@ -97,7 +99,7 @@ uniformly, not just a tower's own direct hit resolution:
   poison-tick handling calls instead of `take_damage()` directly: the base implementation is just a
   polymorphic call to `take_damage()` (meaningless without a shield to ignore), and exactly two
   species override it -- `ShieldedEnemy` (its regenerating shield) and `FinalBossShieldedEnemy`
-  (its periodic self-shield pulse -- see the run's branching map section above) -- each bypassing
+  (its periodic self-shield pulse -- see "Boss enemy mechanics") -- each bypassing
   its own shield-absorbing `take_damage()` override by calling the shield-less base class's
   `take_damage()` directly (`Enemy.take_damage(self, amount)` for `ShieldedEnemy`,
   `BossEnemy.take_damage(self, amount)` for `FinalBossShieldedEnemy`, since the latter still needs
@@ -113,7 +115,7 @@ uniformly, not just a tower's own direct hit resolution:
   application sets it directly, but a refresh of already-active poison ORs it in, so the stronger
   property (bypassing a shield) can never be silently downgraded by a second, weaker application.
 
-## Breach strength and Sappers
+## Sappers, Burrowers and breach strength
 
 `Enemy.BREACH_MULTIPLIER` scales how hard an enemy batters a Barricade (`Game._hold_enemies_at_barricades`):
 1 by default, 6 for `BossEnemy` (and its subclasses), 5 for `SapperEnemy`. Sappers (and Burrowers) are never in an
@@ -125,13 +127,52 @@ Swarming affix uses, so a mid-floor save keeps them) from `SAPPER_MIN_DEPTH` (Ac
 and passed into `Projectile(can_hit_burrowed=...)` so their splash skips it too; the barricade hold
 skips it. Trap and Mortar shots also pass `can_hit_flying` now (their splash used to touch flyers).
 
-## Knockback stagger resistance
+`Enemy.is_burrowed` (BURROWS and not currently Marked) is what every burrow check reads -- trap
+targeting/splash, the barricade hold, ground fire -- so a Beacon-style mark surfaces a burrower.
 
-`Enemy.knockback_resistance` (0..`KNOCKBACK_RESISTANCE_CAP`) scales every `apply_knockback` distance by
-`1 - resistance`, then grows by `KNOCKBACK_RESISTANCE_PER_SHOVE`; `update()` decays it by
-`KNOCKBACK_RESISTANCE_DECAY` per second. Applies to every knockback source (tower, relic, potion).
-Added after a fixed-budget, single-tower-type bench showed 3+ Knockback towers holding Act 3 waves
-forever with zero leaks.
+## Grounded flyers (`is_airborne`)
+
+`Enemy.ground_timer`, set by `Enemy.apply_ground(duration)` (a Harpoon hit, via `Projectile.ground_duration`;
+refreshes with `max()` like Mark's timer, a no-op on non-flying species and the dead), decays in `update()`.
+`entities/enemy.py`'s module-level `is_airborne(enemy)` -- `is_flying` and not grounded, duck-typed with
+`getattr` defaults for test doubles -- is the one "can a ground-only attack touch this?" check: tower
+targeting (`acquire_target`), projectile splash/chain (`Projectile._can_hit`), burning ground, the
+Barricade hold and the Barricade burst all read it, so a grounded flyer is a ground enemy everywhere at
+once. Movement is unchanged (it keeps following its own waypoints). Two reads stay species-based on
+purpose: `damage_vs_flying_multiplier` (Flak Rounds still counts a grounded flyer as a flyer) and
+`WaveManager`'s Undermine burrowing, which happens at spawn. `ui.enemy_tooltip_lines` lists "Grounded"
+(`Enemy.is_grounded`) and `Enemy.draw` adds a shadow and tether under it. See [towers.md](towers.md)
+"Harpoon".
+## Disruptors and Bulwarks
+
+Two reinforcement species (`run_escalation.RUN_REINFORCEMENTS`, appended after Sappers/Burrowers so
+existing entries keep their order) that punish one-trick defenses. Both are driven from `Game.update()`
+right after the enemies move, since only `Game` sees enemies and towers together, and both are
+class-attribute driven (`JAM_RADIUS`, `AURA_RADIUS`), so `Game` never branches on species.
+
+- **Disruptor** (`DisruptorEnemy`, from depth 4, i.e. Act 1 row 4, one more every 5 rows): `Game._jam_towers`
+  calls `Enemy.jam_towers(towers)` on every enemy. A species with `JAM_RADIUS` whose `jam_cooldown` is
+  up calls `Tower.jam(JAM_DURATION)` on every `Tower.JAMMABLE` tower within reach, then restarts its
+  cooldown. A pulse that finds no tower doesn't spend the cooldown. `Game` draws the pulse ring, and
+  the enemy itself stays simulation-only. The jam is tower state: `Tower.jammed_timer` (overlapping
+  jams keep the longer one) is counted down by `Tower._tick_jam` at the top of `Tower.update()` and
+  `OverloadCannonTower.update()`. A jammed tower's cooldown still runs, and an Overload Cannon's charge
+  pauses rather than being lost. `SupportTower` and `BarricadeTower` set `JAMMABLE = False`, since
+  neither fires. Jams are never saved: saves only happen between waves.
+- **Bulwark** (`BulwarkEnemy`, from depth 7, i.e. Act 2 row 1): `Game._apply_enemy_auras` resets every
+  enemy's `aura_damage_reduction` each frame, then each live `AURA_RADIUS` enemy grants
+  `AURA_DAMAGE_REDUCTION` to every *other* enemy in reach via `max()`. Several Bulwarks never stack
+  (they do protect each other), and list order can't matter. This is the same reset-then-apply shape
+  as `held` in `Game._hold_enemies_at_barricades`. The reduction is one more factor in the base
+  `Enemy.take_damage()` multiply, alongside Mark and the Armored affix's `damage_taken_multiplier`. So,
+  following "Mark and Corrosive Poison's shield-bypass hook", a shield or a boss's armor absorbs the
+  *raw* hit first, and the aura only shrinks what's left on its way to HP. It composes with Mark
+  multiplicatively (Marked x1.2 in an aura takes 1.2 x 0.7 = 0.84x), and a Corrosive Poison tick that
+  bypasses a shield still meets the aura.
+
+The counter relics (Faraday Mesh, Linebreaker) are under [relics.md](relics.md) "Counter relics".
+`Enemy.KILL_COUNTER` names an achievements counter that the dead-enemy drain in `Game.update()` bumps
+once per frame per counter (`disruptors_killed`, `bulwarks_killed`).
 
 ## Knockback stagger resistance
 
@@ -148,6 +189,3 @@ fresh application or when the new tick is at least as strong; `update()` adds ea
 to its `damage_dealt` and a killing tick to its `kills` (so poison counts for results and veterancy).
 Projectiles pass `self.source`; Virulent Bloom's spread passes the dying enemy's source; potions pass
 none.
-
-`Enemy.is_burrowed` (BURROWS and not currently Marked) is what every burrow check reads -- trap
-targeting/splash, the barricade hold, ground fire -- so a Beacon-style mark surfaces a burrower.

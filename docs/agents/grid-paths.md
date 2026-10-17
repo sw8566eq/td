@@ -1,11 +1,14 @@
 # Grid and paths
 
+The two coordinate systems (tiles for paths, subtiles for tower footprints) and why a level's path
+is a forest-shaped graph sampled per enemy.
+
 ## Grid has two coordinate systems
 
 `Grid` (`world/grid.py`) tracks the map at two granularities at once:
 - **Coarse tile coords** (`col, row`; unit = `TILE_SIZE`, 64px) -- path, blocked cells, and the
   rendered mosaic. Comes straight from a `Level`'s `path_cells`/`spawn_cells`/`goal_cells`/
-  `blocked_cells` (see "Paths are a graph, not a route" below).
+  `blocked_cells` (see "Paths are a graph, not a route").
 - **Subtile coords** (`anchor_col, anchor_row`; unit = `SUBTILE_SIZE`, `TILE_SIZE /
   SUBTILES_PER_TILE`) -- tower placement. A tower's footprint is normally one tile's worth of area
   (`SUBTILES_PER_TILE x SUBTILES_PER_TILE` subtiles, currently 8x8) but can be *anchored* at any
@@ -64,3 +67,43 @@ walks each axis-aligned segment into the cell set) purely as an authoring conven
 built by the map editor's tile-paint brush builds `path_cells`/`spawn_cells`/`goal_cells` directly,
 with no corner list involved. Both end up as the exact same shape -- one representation, not two
 parallel formats.
+
+## High ground
+
+`Level.high_ground_cells` (a frozenset of tile coords, default empty) marks raised, still-buildable
+tiles. `Level.__post_init__` rejects a cell that is off the grid, not a 2-int pair, or on the path.
+Several built-in levels in `world/levels.py` carry 3-4 tiles each (the `LEVEL_<n>_HIGH_GROUND`
+constants), tucked inside bends and beside merges/branches so a tower there covers two legs at once.
+Levels 1, 4, 7, 12, 13, 15, 20 and 21 have none on purpose. Two levels make high ground the
+centrepiece rather than a garnish: Saddleback Ridge (19) puts a six-tile ridge on the row between two
+parallel lanes four rows apart, so only a tower on the ridge reaches both, and The Coil (18) has a 2x2
+plateau beside its exit (see [run-map.md](run-map.md) "Levels 18-21").
+
+**The bonus.** `Grid` takes `high_ground_cells` and answers `high_ground_fraction(anchor, footprint)`
+(the share of the footprint's *subtiles* whose coarse tile is raised -- a footprint can straddle four
+tiles) and `is_on_high_ground(...)`, true at `settings.HIGH_GROUND_MIN_FOOTPRINT_FRACTION` (0.5, half
+the footprint) or more. `Game._apply_high_ground` (called at the end of `_construct_tower` and again
+by `try_move_tower`, never per frame) sets it from where the tower stands: a ground tower that
+qualifies gets `Tower.on_high_ground = True` and `high_ground_range_bonus =
+settings.HIGH_GROUND_RANGE_BONUS` (0.20), one more additive term in `effective_range()` (see
+[towers.md](towers.md) "Support towers and the two-pass update loop") and in `relic_adjusted_range()`,
+so a Support tower on high ground also broadcasts further. A path trap (`PLACEMENT == "path"`) never
+qualifies. Because the placement preview (`Game.preview_tower`) and save/resume
+(`_tower_from_save_data`) both go through `_construct_tower`, the preview ring, the placed tower's
+range ring, the coverage overlay and the stats panel's Range bonus tag all show the boosted reach with
+no extra code. The move preview uses `Game.move_preview_range`, which swaps the tower's current
+high-ground term for the destination's. `ui.resonance_line` adds a "High ground" note to the panel so the tag has a source.
+
+The Watchtowers relic (`Relic.high_ground_damage_bonus`) adds damage to high-ground towers; see
+[relics.md](relics.md) "Construction relics".
+
+**Drawing.** `world.grid.draw_high_ground_tile` lays a light wash over the tile, a lit edge on its
+top/left sides and a shadow on its bottom/right sides, skipping any side that borders more high ground
+so adjacent tiles read as one plateau. `Grid._build_background` calls it after the grass mosaic (so it
+stays in the cached background), and the map editor's grid preview uses the same function.
+`ui.build_level_thumbnail` fills high-ground cells with `COLOR_THUMBNAIL_HIGH_GROUND`.
+
+**Persistence.** `persistence.level_to_dict` writes `high_ground_cells`; `level_from_dict` reads it
+with an empty default, so older custom level files and older saves (whose level blob uses the same
+functions) still load. The schema version is unchanged since the field is optional. The map editor's
+side is in [editor.md](editor.md) "High Ground brush".

@@ -1,6 +1,7 @@
 """Game state machine and main loop."""
 
 import dataclasses
+import math
 import random
 import sys
 from enum import Enum, auto
@@ -10,19 +11,29 @@ import pygame
 from core import input_handler, progress_tracker, renderer, settings_manager
 from core.editor import Editor
 from entities import effects
-from entities.enemy import ENEMY_TYPES
+from entities.enemy import ENEMY_TYPES, is_airborne
 from entities.tower import RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveManager, WaveState
 from persistence import keybindings, persistence, player_settings, save_state
 from presentation import audio, ui
 from presentation.assets import AssetManager
-from progression import achievements, meta_progression, progress, run_history
+from progression import (
+    achievements,
+    hints,
+    meta_progression,
+    progress,
+    run_history,
+    service_record,
+)
 from run import (
+    abilities,
     ascension,
+    challenges,
     commanders,
     daily_challenge,
     difficulty,
     elite_affixes,
+    endless_mutators,
     events,
     modules,
     potions,
@@ -39,6 +50,10 @@ from world import spatial_index
 from world.economy import Economy
 from world.grid import Grid
 from world.levels import LEVELS
+
+# Enemy class -> ENEMY_TYPES key, for the Service Record's per-enemy kills
+# (same reverse-lookup shape as entities.tower.TOWER_TYPE_NAMES).
+ENEMY_TYPE_NAMES = {cls: name for name, cls in ENEMY_TYPES.items()}
 
 # Independently-derived rng streams within one roguelike run (see
 # Game._run_rng) -- distinct string labels, folded into the seed string
@@ -58,6 +73,7 @@ _EVENT_RNG_STREAM = "event"  # which Event a node shows -- keyed on the node's o
 _EVENT_ITEM_RNG_STREAM = "event-item"  # an Event option's own relic/tower grant -- keyed on (node id, option key)
 _TREASURE_RNG_STREAM = "treasure"  # a Treasure node's guaranteed relic pick -- keyed on the node's own id
 _AFFIX_RNG_STREAM = "affix"  # an Elite node's own affix roll -- keyed on the node's own id
+_CHALLENGE_RNG_STREAM = "challenge"  # a Proving Grounds node's constraint -- keyed on the node's own id
 _DAILY_MODS_RNG_STREAM = "daily-mods"  # a Daily Run's boss relic + curse -- keyed "start", once per run
 # Veterancy experience an Outpost's Drill gives the chosen tower type.
 OUTPOST_DRILL_XP = 60
@@ -66,9 +82,12 @@ OUTPOST_DRILL_XP = 60
 BARRICADE_BREACH_DPS = 2.5
 # A Booby-Trapped Walls-style relic's blast radius when a Barricade breaks.
 BARRICADE_BURST_RADIUS = 80
+# The ring a Disruptor's jam pulse shows (Game._jam_towers).
+JAM_PULSE_COLOR = (120, 220, 255)
 _ARMORY_RNG_STREAM = "armory"  # an Armory node's module offers -- keyed on the node's own id
 ARMORY_OFFER_COUNT = 3
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
+_MUTATOR_RNG_STREAM = "mutator"  # the endless final boss's mutator draws -- keyed "<node id>:<draw index>"
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
 # params -- both dataclasses are frozen, so one shared instance is safe to
@@ -78,6 +97,10 @@ _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat 
 # looks like a mutable-default footgun to a linter, frozen or not.
 _DEFAULT_ESCALATION = run_escalation.FloorEscalation()
 _DEFAULT_RELIC_MODIFIERS = relics.RelicModifiers()
+# Lives at or below this show the "low_lives" Field Note.
+LOW_LIVES_HINT_THRESHOLD = 5
+# An enemy class's registry key, for its "enemy_<key>" Field Notes trigger.
+_ENEMY_TYPE_NAMES = {cls: name for name, cls in ENEMY_TYPES.items()}
 
 # Lives restored when a run moves on to its next act (Game._advance_act).
 ACT_HEAL_LIVES = 10
@@ -121,6 +144,8 @@ class GameState(Enum):
     # A read-only browser of every relic/boss relic/curse/potion/commander/
     # elite affix and what it does (ui.compendium_rows) -- K from MENU.
     COMPENDIUM = auto()
+    # Lifetime statistics (progression/service_record.py) -- T from MENU.
+    SERVICE_RECORD = auto()
     # Reached from a button on HELP, not a new top-level menu key (see
     # ui.RUN_GUIDE_ENTRY_BUTTON_WIDTH's own comment) -- a run-loop/status-
     # effect explainer deepening HELP's own controls-only reference. Esc
@@ -152,7 +177,7 @@ class GameState(Enum):
     # screen alongside it) used to be a single free pick from exactly one
     # card type, entered automatically after every floor clear. It's now a
     # priced, multi-purchase Shop offering both tower and relic cards
-    # together (see shop.py/CLAUDE.md's "Two currencies" section), only
+    # together (see shop.py and docs/agents/economy-shop.md "Two currencies"), only
     # entered when the player picks a Shop node on the map (see Game.
     # _enter_shop_node) -- but renaming this whole family of identifiers
     # would touch this module, ui.py, and every test that exercises the
@@ -187,6 +212,14 @@ class GameState(Enum):
 
 
 class Game:
+    # Where a Field Notes hint is drawn (Renderer._draw_hint) and ages (update())
+    # -- the board and every run screen. Menus, editors and PAUSED hold it, so a
+    # hint is never missed while the player is away from the run.
+    HINT_STATES = frozenset({
+        GameState.PLAYING, GameState.FLOOR_CLEARED, GameState.GAME_OVER, GameState.VICTORY,
+        GameState.MAP, GameState.DRAFT, GameState.ARMORY, GameState.REWARD, GameState.EVENT,
+        GameState.REST, GameState.TREASURE,
+    })
     # Simulation speed multipliers cycled through by the HUD's speed button
     # (or pressing 1/2/3 directly) -- see cycle_time_scale()/set_time_scale().
     TIME_SCALES = (1.0, 2.0, 3.0)
@@ -198,7 +231,8 @@ class Game:
 
     def __init__(self, unlimited_gold=False, progress_path=None, settings_path=None,
                  achievements_path=None, save_path=None,
-                 meta_progression_path=None, run_history_path=None, keybindings_path=None):
+                 meta_progression_path=None, run_history_path=None, keybindings_path=None,
+                 hints_path=None, service_record_path=None):
         self.unlimited_gold = unlimited_gold  # debug flag -- see main.py --unlimited-gold
         # A sticky player preference for the whole session, not reset by
         # reset()/load_level() -- same idea as unlimited_gold not being tied
@@ -287,6 +321,18 @@ class Game:
         self.unlocks_back_rect = ui.build_unlocks_back_rect()
         self.compendium_rows = []
         self.compendium_scroll_offset = 0
+        # Same injectable-path convention as the paths above. Written by
+        # _record_service (sandbox-gated) at the moments listed in
+        # docs/agents/persistence.md "`progression/service_record.py`";
+        # the cached copy is only for the Service Record screen and is
+        # re-read on entry, like unlocks_state.
+        self.service_record_path = service_record_path or service_record.SERVICE_RECORD_PATH
+        self.service_record_state = service_record.load_service_record(self.service_record_path)
+        self.service_record_rows = []
+        self.service_record_scroll_offset = 0
+        # This floor's live kills-by-enemy-type/lives-lost counts, flushed
+        # by _flush_service_tally (reset per floor in _load_level_object).
+        self.service_tally = service_record.FloorTally()
         # The active roguelike run, or None outside of one (classic/
         # Practice play, a map-editor playtest -- a Daily Run is still a
         # real run, see _start_daily_challenge). Same reset-inside-
@@ -341,6 +387,18 @@ class Game:
         # Each fight node's (enemy HP, speed) multipliers, for the map
         # tooltip (see _node_threat) -- rebuilt by _enter_map.
         self.map_node_threats = {}
+        # Each Proving Grounds node's constraint summary line, for the map
+        # tooltip (see _node_challenge) -- rebuilt by _enter_map.
+        self.map_node_challenges = {}
+        # The current fight's challenges.ChallengeRoll, or None -- set by
+        # _apply_node_challenge on every run fight load/resume, cleared by
+        # every _load_level_object. What every enforcement site reads.
+        self.active_challenge = None
+        # The endless final boss fight's active mutator keys, in draw order
+        # (endless_mutators.py) -- re-derived by _apply_endless_mutators on
+        # every load, resume and wave clear, cleared by every
+        # _load_level_object. What the sidebar list reads.
+        self.active_mutators = []
         # A Random Event node's own two-phase state (see _enter_event_node/
         # _handle_event_click): "choose" while the options are still on
         # offer, "resolved" once one's been picked -- current_event/
@@ -409,6 +467,11 @@ class Game:
         # fires faster while this is positive. Floor-scoped: reset by
         # _load_level_object, ticked down on scaled time in update().
         self.overclock_timer = 0.0
+        # The Commander ability's own floor-scoped state (run/abilities.py):
+        # seconds left on a timed ability's tower buff, and whether a
+        # targeted ability is waiting for the player to click the field.
+        self.ability_timer = 0.0
+        self.ability_targeting = False
         self.ground_fires = []
         self._announced_resonances = set()
         self.floor_veterancy_gains = []
@@ -435,6 +498,9 @@ class Game:
         # different from achievements_path/save_path/etc. just above.
         self.settings_path = settings_path or player_settings.SETTINGS_PATH
         self.keybindings_path = keybindings_path or keybindings.BINDINGS_PATH
+        # Field Notes' seen-set (progression/hints.py) -- loaded by
+        # SettingsManager below, alongside the hints_enabled setting.
+        self.hints_path = hints_path or hints.HINTS_PATH
 
         pygame.init()
         # Constructed early, interleaved with pygame.init(), unlike
@@ -474,6 +540,7 @@ class Game:
         self.settings_rects = ui.build_settings_rects()
         self.volume_button_rects = ui.build_volume_button_rects()
         self.keybinds_entry_button_rect = ui.build_keybinds_entry_button_rect()
+        self.hint_settings_rects = ui.build_hint_settings_rects()
         self.keybind_row_rects = ui.build_keybind_row_rects()
         self.keybinds_reset_rect = ui.build_keybinds_reset_rect()
         self.keybinds_back_rect = ui.build_keybinds_back_rect()
@@ -485,6 +552,9 @@ class Game:
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
         self.sell_button_rect = ui.build_sell_button_rect()
+        self.move_button_rect = ui.build_move_button_rect()
+        # The placed tower being relocated (Game.try_move_tower), or None.
+        self.moving_tower = None
 
         # The editor instance persists for the whole session (not just
         # while GameState.EDITOR/WAVE_EDITOR is active) so leaving it to
@@ -696,6 +766,9 @@ class Game:
             relics=list(chosen.starting_relics), potions=list(chosen.starting_potions),
             forged_towers=list(chosen.forged_towers),
         )
+        self._record_service(adds=[
+            service_record.overall("runs_started", 1), service_record.commander(commander, "runs", 1),
+        ])
         if is_daily:
             self._apply_daily_modifiers()
         self._enter_map()
@@ -761,6 +834,9 @@ class Game:
         affix = self._elite_affix(run, node)
         if affix is not None:
             escalation = elite_affixes.apply_to_escalation(escalation, affix)
+        roll = self._node_challenge(run, node)
+        if roll is not None:
+            escalation = challenges.apply_to_escalation(escalation, roll.challenge)
         return escalation
 
     def _node_threat(self, run, node):
@@ -768,7 +844,7 @@ class Game:
         get on top of their own per-wave scaling -- escalation times the
         run's difficulty mode -- for the map tooltip. None for a node
         that isn't a fight."""
-        if node.node_type not in ("combat", "elite", "boss"):
+        if node.node_type not in run_map.FIGHT_NODE_TYPES:
             return None
         escalation = self._node_escalation(run, node)
         mode = difficulty.DIFFICULTY_MODES[run.difficulty]
@@ -787,6 +863,59 @@ class Game:
         if node.node_type != "elite":
             return None
         return elite_affixes.AFFIXES[elite_affixes.roll_affix(self._run_rng(run, _AFFIX_RNG_STREAM, node.id))]
+
+    def _node_challenge(self, run, node):
+        """`node`'s challenges.ChallengeRoll if it's a Proving Grounds node,
+        else None. Re-derived from the node id every time (like
+        _elite_affix), never stored, so the map tooltip, the floor load and
+        a resumed save all agree. Narrow Front-style picks draw from the
+        run's held damaging tower types, sorted for a stable order."""
+        if node.node_type != "challenge":
+            return None
+        damaging = self._damaging_tower_types()
+        candidates = sorted(name for name in run.unlocked_towers if name in damaging)
+        return challenges.roll_for_node(self._run_rng(run, _CHALLENGE_RNG_STREAM, node.id), candidates)
+
+    def _challenge_summary(self, roll):
+        """The one-line constraint text the map tooltip, sidebar and
+        refusal toasts share."""
+        return roll.summary(self._tower_display_names())
+
+    @staticmethod
+    def _tower_display_names():
+        return {name: cls.display_name for name, cls in TOWER_TYPES.items()}
+
+    def _apply_node_challenge(self, run, node):
+        """Arm `node`'s challenge (or none) for the fight just loaded --
+        shared by a node load and a resume, like _apply_affix_traits."""
+        self.active_challenge = self._node_challenge(run, node)
+
+    def challenge_blocked_towers(self):
+        """Build-menu tower types the active Proving Grounds rule refuses
+        right now (greyed and struck through on the HUD) -- the same
+        challenges.placement_refusal check try_place_tower makes."""
+        if self.active_challenge is None:
+            return frozenset()
+        names = self._tower_display_names()
+        return frozenset(name for name in self.button_rects
+                         if challenges.placement_refusal(self.active_challenge, name, len(self.towers), names))
+
+    def _challenge_won(self):
+        """Whether the run is standing on a Proving Grounds fight whose
+        constraint hasn't been broken -- read at the floor clear (bonus
+        currency) and the reward screen (relic choice). Reads the node type
+        and RunState.challenge_failed, never active_challenge, so a reward
+        screen reopened from a map checkpoint still knows."""
+        run = self.active_run
+        return run.map.node(run.current_node_id).node_type == "challenge" and not run.challenge_failed
+
+    def _refuse_for_challenge(self, reason):
+        """A challenge just blocked a player action: say why, once per
+        reason while its toast is still on screen (a held click can't
+        stack a column of identical toasts)."""
+        if not any(toast.text == reason and not toast.dead for toast in self.achievement_toasts):
+            self._queue_toast(reason)
+        return False
 
     def _apply_affix_traits(self, run, node):
         """Copy `node`'s Elite affix's enemy-side traits (regeneration,
@@ -862,7 +991,7 @@ class Game:
         via _load_level_object's own construction (relic-adjustable via
         starting_gold_multiplier the same as any other floor), same as if
         this were the very first floor of the run every time; see
-        CLAUDE.md's "Two currencies" section for why. The map's boss node
+        docs/agents/economy-shop.md "Two currencies" for why. The map's boss node
         (the only node in its final row) always loads endless=True (see
         WaveManager's own endless tail) -- a run only ever ends by
         permadeath, never by "finishing" the boss floor; see update()'s
@@ -903,6 +1032,12 @@ class Game:
         )
         self.current_level_id = node.level_id
         self._apply_affix_traits(run, node)
+        self._apply_endless_mutators(run, node)
+        # Every fight load (a restart included) starts its challenge clean.
+        run.challenge_leaks = 0
+        run.challenge_failed = False
+        run.ability_charges = 0
+        self._apply_node_challenge(run, node)
         if not run.lives_captured:
             # run.lives so far is only pre-fight bonuses (see RunState.
             # lives_captured) -- added on, not overwritten. Flagged so a
@@ -946,8 +1081,17 @@ class Game:
             run.shop_currency += shop.income_for_floor(
                 run.depth_of(node.row), self.economy.gold, is_elite=node.node_type in ("elite", "boss"),
             )
+        if self._challenge_won():
+            # A won Proving Grounds pays its bonus like a Treasure does --
+            # a reward, not floor income, so Ransom-style income blocks
+            # don't touch it. Its relic choice waits on the reward screen.
+            bonus = challenges.bonus_shop_currency(run.depth_of(node.row))
+            run.shop_currency += bonus
+            self._queue_toast(f"Proving Grounds won: +{bonus} Shop currency and a relic choice")
+            self._record_achievement("challenges_won")
         self._record_meta_progress("total_floors_cleared")
         self._award_veterancy()
+        self._record_service_floor_cleared(node)
         if node.node_type == "boss":
             # An earlier act's boss -- a finite fight (only the last act's
             # is endless, see RunState.is_final_floor), so it clears like
@@ -957,6 +1101,7 @@ class Game:
             self._record_achievement("bosses_defeated")
             self._record_achievement("acts_cleared")
             self.audio.play("boss_defeated")
+            self.hints.notify("act_cleared")
         # A save is only ever taken mid-floor (see can_save_run), so once
         # the floor it was taken on clears, it points back at progress
         # this clear has already credited. Left on disk, quitting now and
@@ -996,10 +1141,21 @@ class Game:
             "commander": run.commander, "ascension": run.ascension, "act": run.act + 1,
             "daily": run.is_daily, "final_boss_defeated": run.boss_defeated,
             "endless_waves": run.endless_waves_cleared,
+            # The deepest endless mutator count any fight of this run reached.
+            "endless_mutators": endless_mutators.mutator_count(run.endless_waves_cleared),
             # The run's most experienced tower type (veterancy), if any.
             "top_crew": max(run.tower_xp, key=run.tower_xp.get) if run.tower_xp else "",
         })
         self._record_meta_progress("runs_played")
+        depth = run.depth + 1
+        self._record_service(
+            adds=[service_record.overall("runs_ended", 1)],
+            raises=[
+                service_record.overall("deepest_depth", depth),
+                service_record.overall("best_endless_score", run.endless_waves_cleared),
+                service_record.commander(run.commander, "best_depth", depth),
+            ],
+        )
         if self.active_run.is_final_floor:
             self._record_meta_progress("runs_reached_endless")
         if self.active_run.is_daily:
@@ -1013,15 +1169,54 @@ class Game:
         run = self.active_run
         if run is None or not run.is_final_floor:
             return
+        run.endless_waves_cleared = max(run.endless_waves_cleared, self._fight_endless_waves_cleared(run))
+        self._record_service(raises=[service_record.overall("best_endless_score", run.endless_waves_cleared)])
+        self._apply_endless_mutators(run, run.map.node(run.current_node_id), announce=True)
+
+    def _fight_endless_waves_cleared(self, run):
+        """Endless waves cleared in *this* fight (a restart starts over at 0,
+        unlike RunState.endless_waves_cleared, the run's best) -- what the
+        active mutator count follows. LEVELS' entry is the authored count;
+        game.level has endless waves appended."""
         authored = len(LEVELS[run.current_level_id].wave_specs)
-        run.endless_waves_cleared = max(run.endless_waves_cleared, self.wave_manager.wave_index - authored)
+        return max(0, self.wave_manager.wave_index - authored)
+
+    def _apply_endless_mutators(self, run, node, announce=False):
+        """Arm the endless final boss fight's mutators (endless_mutators.py)
+        for its current wave index -- every MUTATOR_CADENCE endless waves
+        cleared adds one more, drawn from _run_rng(run, "mutator",
+        "<node id>:<index>"), so the list is re-derived identically on a
+        load, a resume or a wave clear and never stored. `announce` (a wave
+        clear) toasts each newly drawn mutator and pays its bounty (lives +
+        battle gold) -- never on a load/resume, so resuming can't re-pay it.
+        Not the final floor: no mutators."""
+        if not run.is_final_floor:
+            self.active_mutators = []
+            self.wave_manager.mutators = None
+            return
+        count = endless_mutators.mutator_count(self._fight_endless_waves_cleared(run))
+        keys = endless_mutators.draw_mutators(
+            lambda index: self._run_rng(run, _MUTATOR_RNG_STREAM, f"{node.id}:{index}"), count,
+        )
+        new_keys = keys[len(self.active_mutators):] if announce else []
+        self.active_mutators = keys
+        self.wave_manager.mutators = endless_mutators.compose(keys) if keys else None
+        for key in new_keys:
+            mutator = endless_mutators.MUTATORS[key]
+            self.economy.lives += endless_mutators.BOUNTY_LIVES
+            self.economy.add_gold(endless_mutators.BOUNTY_GOLD)
+            self._queue_toast(f"Endless mutator: {mutator.display_name} -- {mutator.description}")
+            self.hints.notify("endless_mutator")
+            self._queue_toast(
+                f"Bounty for facing it: +{endless_mutators.BOUNTY_LIVES} life, +{endless_mutators.BOUNTY_GOLD} gold"
+            )
 
     def _handle_boss_defeated(self):
         """The map's boss node just ran out of authored waves for the
         first time this run (see update()'s own before/after check on
         WaveManager.authored_waves_cleared) -- the run keeps going
         (endless=True, so the fight continues; there is no "you won the
-        run" screen, see CLAUDE.md's run-loop section), but this is still a
+        run" screen, see docs/agents/run-loop.md), but this is still a
         real, one-time-per-run moment worth recording and celebrating.
         Guarded on RunState.boss_defeated (a one-shot-per-run flag, same
         shape as used_guardians_reprieve) rather than firing every time
@@ -1034,6 +1229,8 @@ class Game:
         self.active_run.boss_defeated = True
         self._record_meta_progress("bosses_defeated")
         self._unlock_next_ascension()
+        # The final act's boss falling clears that act, too.
+        self._record_service(adds=[service_record.overall("acts_cleared", 1)])
         self._record_achievement("bosses_defeated")
         self.audio.play("boss_defeated")
         self._queue_toast("Boss defeated! Fighting on for score...")
@@ -1055,6 +1252,7 @@ class Game:
             rng, run, is_elite=node.node_type == "elite", meta_progression_path=self.meta_progression_path,
             tower_count=tower_count, is_boss=node.node_type == "boss",
             damaging_types=self._damaging_tower_types(),
+            challenge_relic_count=challenges.RELIC_CHOICE_COUNT if self._challenge_won() else 0,
         )
         if self.reward.is_empty:
             self._leave_reward_screen()
@@ -1064,6 +1262,7 @@ class Game:
         run.reward_pending = True
         self._autosave_run()
         self.state = GameState.REWARD
+        self.hints.notify("reward")
 
     def _reward_cards(self):
         """(kind, key) per reward card, in reward_rects' own order --
@@ -1076,6 +1275,7 @@ class Game:
         if self.reward.module is not None:
             cards.append(("module", self.reward.module))
         cards.extend(("boss_relic", key) for key in self.reward.boss_relic_choices)
+        cards.extend(("challenge_relic", key) for key in self.reward.challenge_relic_choices)
         if self.reward.potion is not None:
             cards.append(("potion", self.reward.potion))
         return cards
@@ -1091,7 +1291,7 @@ class Game:
             return False
         cards = self._reward_cards()
         kind = cards[index][0]
-        if kind in ("tower", "forge", "boss_relic"):
+        if kind in ("tower", "forge", "boss_relic", "challenge_relic"):
             # Pick-one rows: claiming one forfeits the rest of its row --
             # new towers and forge cards share one row.
             row = ("tower", "forge") if kind in ("tower", "forge") else (kind,)
@@ -1148,7 +1348,7 @@ class Game:
             self.active_run.forged_towers.append(key)
             self._record_achievement("towers_forged")
             self.audio.play("tower_upgraded")
-        elif kind in ("relic", "boss_relic"):
+        elif kind in ("relic", "boss_relic", "challenge_relic"):
             self._grant_relic(key)
         elif kind == "module":
             module_key, tower_name = key
@@ -1172,11 +1372,108 @@ class Game:
         if potions.POTIONS[run.potions[slot]].needs_enemies and not self.enemies:
             self._queue_toast("No enemies to use that on yet")
             return
+        potion = potions.POTIONS[run.potions[slot]]
+        if potion.usable is not None and not potion.usable(self):
+            self._queue_toast(potion.unusable_message)
+            return
         key = run.potions.pop(slot)
         potions.POTIONS[key].use(self)
         self.economy.lives += sum(relics.RELICS[relic].lives_per_potion for relic in run.relics)
         self.audio.play("potion_used")
         self._record_achievement("potions_used")
+        self._record_service(adds=[service_record.overall("potions_used", 1)])
+
+    # --- Commander ability ---
+
+    @property
+    def current_ability(self):
+        """The active run's Commander ability (abilities.ABILITIES), or None
+        outside a run -- Practice and editor playtests have no Commander."""
+        run = self.active_run
+        if run is None:
+            return None
+        return abilities.ABILITIES[commanders.COMMANDERS[run.commander].ability]
+
+    @property
+    def ability_button_compact(self):
+        """One-line button while the endless boss's mutator list needs the room."""
+        return bool(self.active_mutators)
+
+    @property
+    def ability_button_rect(self):
+        """Recomputed on read (cheap), so the click target always matches
+        the drawn button, compact or not."""
+        return ui.build_ability_button_rect(self.ability_button_compact)
+
+    def activate_ability(self):
+        """The ability button / hotkey. Only mid-floor (PLAYING) and only
+        once recharged (RunState.ability_cooldown == 0). A targeted ability
+        toggles its aiming mode instead of firing -- the next click on the
+        field fires it (see fire_ability); pressing again cancels."""
+        ability = self.current_ability
+        if self.state != GameState.PLAYING or ability is None:
+            return
+        if self.ability_targeting:
+            self.cancel_ability_targeting()
+            return
+        if self.active_run.ability_cooldown > 0:
+            waves = self.active_run.ability_cooldown
+            self._queue_toast(f"{ability.display_name} recharges in {waves} more wave{'s' if waves != 1 else ''}")
+            return
+        if ability.targeted:
+            self.ability_targeting = True
+            self.selected_tower_name = None  # the next click aims, it doesn't build
+            self.moving_tower = None
+            return
+        self.fire_ability(None)
+
+    def fire_ability(self, target):
+        """Run the ability's own `use` (abilities.py) -- this never branches
+        on which ability it is. A refusal (use returns False) toasts why and
+        keeps the charge, and a targeted ability stays aimed so the player
+        can pick a better spot."""
+        ability = self.current_ability
+        run = self.active_run
+        if self.state != GameState.PLAYING or ability is None or run.ability_cooldown > 0:
+            return
+        if not ability.use(self, target):
+            self._queue_toast(ability.unusable_message)
+            return
+        self.ability_targeting = False
+        run.ability_cooldown = ability.cooldown_waves
+        if ability.duration > 0:
+            self.ability_timer = ability.duration
+        self.audio.play("potion_used")
+        self._record_service(adds=[service_record.overall("abilities_used", 1)])
+
+    def cancel_ability_targeting(self):
+        self.ability_targeting = False
+
+    def ability_flash(self, pos, radius):
+        """A ring where an ability landed -- the presentation half an
+        ability's `use` asks for, drawn like every other impact ring."""
+        self.impact_effects.append(effects.ExpandingRing(
+            pos, max_radius=radius, duration=0.5, color=settings.COLOR_GOLD,
+        ))
+
+    def _recharge_ability(self):
+        """One wave cleared: one step closer to the ability being ready.
+        Called from update()'s wave-clear check -- the one place a wave
+        clear is detected -- so a resumed save never double-counts it."""
+        run = self.active_run
+        if run is not None and run.ability_cooldown > 0:
+            run.ability_cooldown -= 1
+            if run.ability_cooldown == 0:
+                self._queue_toast(f"{self.current_ability.display_name} is ready (F)")
+
+    def _apply_ability_buffs(self, tower):
+        """Reset `tower`'s ability multipliers, then re-apply a running timed
+        ability's buff -- called every frame in update()'s first tower pass."""
+        tower.ability_fire_rate_multiplier = 1.0
+        tower.ability_damage_multiplier = 1.0
+        ability = self.current_ability
+        if self.ability_timer > 0 and ability is not None and ability.tower_buff is not None:
+            ability.tower_buff(tower, TOWER_TYPE_NAMES[type(tower)])
 
     @property
     def potion_slot_rects(self):
@@ -1216,6 +1513,7 @@ class Game:
         if self.selected_ascension == run.ascension:
             self.selected_ascension = next_level  # climb by default
         self._queue_toast(f"Gauntlet {next_level} unlocked!")
+        self.hints.notify("gauntlet_unlocked")
 
     # --- The run's own branching map ---
 
@@ -1246,7 +1544,12 @@ class Game:
         }
         self.map_node_threats = {
             node.id: self._node_threat(run, node)
-            for row in run.map.rows for node in row if node.node_type in ("combat", "elite", "boss")
+            for row in run.map.rows for node in row if node.node_type in run_map.FIGHT_NODE_TYPES
+        }
+        self.map_node_challenges = {
+            node.id: self._challenge_summary(roll)
+            for row in run.map.rows for node in row
+            if (roll := self._node_challenge(run, node)) is not None
         }
         self._map_is_first_run = (
             meta_progression.load_meta_progression(self.meta_progression_path)["counters"].get("runs_played", 0) == 0
@@ -1278,7 +1581,8 @@ class Game:
         run.current_node_id = node_id
         self._autosave_run()
         node = run.map.node(node_id)
-        if node.node_type in ("combat", "elite", "boss"):
+        self.hints.notify(f"node_{node.node_type}")
+        if node.node_type in run_map.FIGHT_NODE_TYPES:
             self._load_combat_node(node)
         elif node.node_type == "shop":
             self._enter_shop_node(node)
@@ -1462,6 +1766,8 @@ class Game:
         self._apply_one_time_relic_bonus(relics.RELICS[relic_key])
         self.audio.play("relic_acquired")
         self._record_achievement("relics_collected")
+        self.hints.notify("curse" if relics.RELICS[relic_key].is_curse else "relic")
+        self._record_service(adds=[service_record.overall("relics_collected", 1)])
 
     def _enter_event_node(self, node):
         """Enter the Random Event screen for `node` -- picks one Event
@@ -1496,6 +1802,7 @@ class Game:
         self.active_run.blessing_pending = True
         self._autosave_run()
         self.state = GameState.EVENT
+        self.hints.notify("blessing")
 
     def _leave_event(self):
         """Any key/click once an Event is resolved -- back to the map,
@@ -1545,6 +1852,7 @@ class Game:
         if "relic" in self.event_resolution or "boss_relic" in self.event_resolution:
             self.audio.play("relic_acquired")
             self._record_achievement("relics_collected")
+            self._record_service(adds=[service_record.overall("relics_collected", 1)])
         elif "tower" in self.event_resolution:
             self.audio.play("tower_unlocked_shop")
         self._record_achievement("events_resolved")
@@ -1757,6 +2065,10 @@ class Game:
         # menu the first time, no separate "narrow it back down" pass
         # needed anywhere.
         self.active_run = active_run
+        # No challenge unless the run fight loader arms one afterward
+        # (_apply_node_challenge) -- Practice and classic play never have one.
+        self.active_challenge = None
+        self.active_mutators = []
         # Resets the build menu to active_run's own drafted pool, or every
         # registered tower when there's no run (classic/Practice play, a
         # map-editor playtest) -- see _active_tower_names(). Centralizing
@@ -1782,6 +2094,7 @@ class Game:
             subtiles_per_tile=settings.SUBTILES_PER_TILE,
             subtile_gap=settings.SUBTILE_GAP,
             subtile_gap_alpha=settings.SUBTILE_GAP_ALPHA,
+            high_ground_cells=level.high_ground_cells,
         )
         # escalation/relic_modifiers both default to a no-op (safe as literal
         # defaults -- both are frozen/immutable) unless a caller passes a
@@ -1847,6 +2160,10 @@ class Game:
         # _tower_results() can still find it. Never touched otherwise; a
         # sold tower is already fully inert once off the grid.
         self.sold_towers = []
+        # A fresh floor (or a resumed save's restored wave) starts a fresh
+        # Service Record tally -- whatever an abandoned floor never flushed
+        # is dropped, never carried into this one.
+        self.service_tally = service_record.FloorTally()
         # render()'s own snapshot of _tower_results(), taken once by
         # _cache_tower_results() at the moment GAME_OVER/VICTORY/
         # FLOOR_CLEARED is actually entered -- reset to empty here purely
@@ -1863,12 +2180,19 @@ class Game:
         # Resonances already announced with a toast this floor.
         self._announced_resonances = set()
         self.overclock_timer = 0.0
+        self.ability_timer = 0.0
+        self.ability_targeting = False
         self.selected_tower_name = None
         self.selected_tower = None  # placed Tower instance pinned open in the stats panel
+        self.moving_tower = None
         # Whatever the stats panel showed as of the last render() -- see
         # _handle_panel_action_click for why clicks must use this instead
         # of re-deriving the subject from the click-time mouse position.
         self._last_panel_subject = None
+        # Field Notes for this fight -- notified from update()'s first
+        # PLAYING frame, not here: __init__ loads a level behind the menu,
+        # and a hint must never be spent on a board nobody is looking at.
+        self._fight_hints_pending = True
 
     # Settings/Display/Audio/Keybindings cluster -- extracted into
     # settings_manager.SettingsManager (the fourth game.py-decomposition
@@ -1895,6 +2219,12 @@ class Game:
     def set_window_size(self, size):
         return self.settings_manager.set_window_size(size)
 
+    def set_hints_enabled(self, value):
+        return self.settings_manager.set_hints_enabled(value)
+
+    def reset_hints(self):
+        return self.settings_manager.reset_hints()
+
     def _enter_keybinds(self):
         return self.settings_manager._enter_keybinds()
 
@@ -1903,6 +2233,38 @@ class Game:
 
     def reset_keybindings(self):
         return self.settings_manager.reset_keybindings()
+
+    def early_call_bonus(self, seconds):
+        """Battle gold for cutting `seconds` off a between-waves countdown --
+        shared by call_next_wave (the payout) and the HUD caption (the
+        preview), so they can't disagree. Signal Horn-style relics multiply."""
+        multiplier = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                multiplier *= relics.RELICS[key].early_call_bonus_multiplier
+        return int(max(0.0, seconds) * settings.EARLY_CALL_GOLD_PER_SECOND * multiplier)
+
+    def call_next_wave(self):
+        """The HUD's Start/Skip button and the skip_wave key: start the next
+        wave now. Skipping part of a real between-waves countdown pays an
+        early-call bonus in battle gold (settings.EARLY_CALL_GOLD_PER_SECOND
+        per second skipped, rounded down), shown as a rising gold label over
+        the Skip button. Wave 1's "Start" pays nothing -- there's no
+        countdown to cut short."""
+        bonus = self.early_call_bonus(self.wave_manager.skip_delay())
+        if bonus <= 0:
+            return 0
+        self.economy.add_gold(bonus)
+        self._record_achievement("waves_called_early")
+        self.damage_numbers.append(
+            effects.FloatingText(
+                (self.skip_button_rect.centerx, self.skip_button_rect.top - 8),
+                f"+{bonus} gold",
+                lifetime=1.2,
+                color=settings.COLOR_GOLD,
+            )
+        )
+        return bonus
 
     def set_time_scale(self, scale):
         return self.settings_manager.set_time_scale(scale)
@@ -1958,7 +2320,7 @@ class Game:
             # player a standalone, run-less level whose win still records
             # level progress/achievements/meta-progression -- exactly what
             # Practice mode's "standalone play earns nothing" rule exists
-            # to prevent (see CLAUDE.md's Practice mode section).
+            # to prevent (see docs/agents/waves-difficulty.md on Practice mode).
             sandbox = self.sandbox or self.active_run is not None
             if self.current_level_id is None:
                 # custom level: nothing in LEVELS to re-look-up
@@ -2000,6 +2362,9 @@ class Game:
         if not self.can_save_run():
             return False
         save_state.save_run(self, self.save_path)
+        # Everything up to this wave boundary is now on record; a resume
+        # starts a fresh tally from here, so nothing is counted twice.
+        self._flush_service_tally()
         self.has_saved_run = True
         return True
 
@@ -2080,7 +2445,13 @@ class Game:
         self.current_level_id = save_data["current_level_id"]
         if run is not None:
             self._apply_affix_traits(run, run.map.node(run.current_node_id))
+            # The leak count/failure ride on the RunState itself, so a
+            # mid-floor resume keeps them; only the roll is re-derived.
+            self._apply_node_challenge(run, run.map.node(run.current_node_id))
         self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
+        if run is not None:
+            # Re-derived from the restored wave index, never stored.
+            self._apply_endless_mutators(run, run.map.node(run.current_node_id))
         self.economy.gold = save_data["gold"]
         self.economy.lives = save_data["lives"]
 
@@ -2465,6 +2836,20 @@ class Game:
     def _scroll_unlocks(self, wheel_y):
         return self.input_handler._scroll_unlocks(wheel_y)
 
+    def _enter_service_record(self):
+        """Re-read on entry (a run can have ended since) and reopened at
+        the top, like every other list screen."""
+        self.service_record_state = service_record.load_service_record(self.service_record_path)
+        self.service_record_rows = ui.service_record_rows(self.service_record_state)
+        self.service_record_scroll_offset = 0
+        self.state = GameState.SERVICE_RECORD
+
+    def _handle_service_record_click(self, pos):
+        return self.input_handler._handle_static_screen_back_click(pos, self.unlocks_back_rect)
+
+    def _scroll_service_record(self, wheel_y):
+        return self.input_handler._scroll_service_record(wheel_y)
+
     def _enter_compendium(self):
         """Built on entry (wrapping needs the live font), reopened scrolled
         to the top like every other list screen."""
@@ -2519,6 +2904,47 @@ class Game:
     def _record_meta_progress(self, counter_name, amount=1):
         return self.progress_tracker._record_meta_progress(counter_name, amount)
 
+    def _record_service(self, adds=(), raises=()):
+        return self.progress_tracker._record_service(adds, raises)
+
+    def _flush_service_tally(self):
+        """Write this floor's live tally (kills by enemy type, lives lost,
+        battle gold earned) into the Service Record and start it over --
+        at a floor's end, and when a mid-floor save is taken, so a resumed
+        save (which starts a fresh tally) can never count it twice."""
+        self._record_service(adds=self.service_tally.entries(self.economy.gold_earned))
+        self.service_tally = service_record.FloorTally()
+        self.economy.gold_earned = 0
+
+    def _record_service_floor_end(self):
+        """A floor just ended (cleared, lost, or a classic Victory): flush
+        the tally, and fold every tower's floor damage/kills -- placed and
+        sold alike, the same set _tower_results() reports -- into the
+        per-type totals. Once per floor, from the towers' own counters
+        (which a mid-floor save restores), so a resumed floor's pre-save
+        damage still counts exactly once."""
+        self._flush_service_tally()
+        self._record_service(adds=service_record.tower_floor_entries(
+            (TOWER_TYPE_NAMES[type(tower)], tower.damage_dealt, tower.kills)
+            for tower in self.towers + self.sold_towers
+        ))
+
+    def _record_service_floor_cleared(self, node):
+        """A run's Combat/Elite/boss floor just cleared (see
+        _advance_run_floor; runs after _award_veterancy, so the ranks read
+        here include this floor's promotions)."""
+        run = self.active_run
+        depth = run.depth_of(node.row) + 1
+        adds = [service_record.overall("floors_cleared", 1)]
+        if node.node_type == "boss":
+            adds.append(service_record.overall("acts_cleared", 1))
+        raises = [
+            service_record.overall("deepest_depth", depth),
+            service_record.commander(run.commander, "best_depth", depth),
+        ]
+        raises += [service_record.tower(name, "best_rank", self.veterancy_rank(name)) for name in run.tower_xp]
+        self._record_service(adds=adds, raises=raises)
+
     def _queue_meta_unlock_toasts(self, newly_unlocked_keys):
         return self.progress_tracker._queue_meta_unlock_toasts(newly_unlocked_keys)
 
@@ -2548,6 +2974,13 @@ class Game:
         tower_cls = TOWER_TYPES[self.selected_tower_name]
         if not self._is_buildable_for(tower_cls, anchor_col, anchor_row):
             return False
+        if self.active_challenge is not None:
+            # A Proving Grounds placement gate (Skeleton Crew, Narrow Front).
+            reason = challenges.placement_refusal(
+                self.active_challenge, self.selected_tower_name, len(self.towers), self._tower_display_names(),
+            )
+            if reason is not None:
+                return self._refuse_for_challenge(reason)
 
         if not self.economy.can_afford(tower_cls.cost):
             return False
@@ -2559,6 +2992,9 @@ class Game:
         self._register_tower(tower)
         self._recompute_tower_density_bonuses()  # a new neighbor may affect others' counts too
         self._record_achievement("towers_built")
+        self._record_service(adds=[
+            service_record.overall("towers_built", 1), service_record.tower(self.selected_tower_name, "built", 1),
+        ])
         # Per-tower-type counter, generalized past just power_tap/
         # overcharged (the two achievements that currently key off it) --
         # self.selected_tower_name is already the exact TOWER_TYPES key
@@ -2566,6 +3002,8 @@ class Game:
         # free, and a future achievement can hang off any tower's own
         # counter without ever touching this call site again.
         self._record_achievement(f"{self.selected_tower_name}_built")
+        self.hints.notify("tower_built", f"built_{self.selected_tower_name}",
+                          *(("high_ground",) if tower.on_high_ground else ()))
         self.audio.play("tower_placed")
         return True
 
@@ -2672,10 +3110,40 @@ class Game:
             if module_key is not None:
                 modules.apply_module(tower, modules.MODULES[module_key])
             self._apply_construction_relics(tower, module_key is not None)
+        self._apply_high_ground(tower)
         return tower
 
+    def _high_ground_range_bonus_at(self, tower_cls, anchor_col, anchor_row, footprint_subtiles):
+        """settings.HIGH_GROUND_RANGE_BONUS if a `tower_cls` anchored here
+        would stand on high ground, else 0.0 -- a path trap never does."""
+        if tower_cls.PLACEMENT == "path" or not self.grid.is_on_high_ground(
+                anchor_col, anchor_row, footprint_subtiles=footprint_subtiles):
+            return 0.0
+        return settings.HIGH_GROUND_RANGE_BONUS
+
+    def _apply_high_ground(self, tower):
+        """Set `tower`'s high-ground fields from where it stands now (docs/
+        agents/grid-paths.md "High ground") -- at construction and again
+        after try_move_tower, never per frame. The damage term is a
+        Watchtowers-style relic's (Relic.high_ground_damage_bonus)."""
+        bonus = self._high_ground_range_bonus_at(type(tower), tower.anchor_col, tower.anchor_row,
+                                                 tower.footprint_subtiles)
+        tower.on_high_ground = bonus > 0
+        tower.high_ground_range_bonus = bonus
+        tower.high_ground_damage_bonus = 0.0
+        if tower.on_high_ground and self.active_run is not None:
+            tower.high_ground_damage_bonus = sum(
+                relics.RELICS[key].high_ground_damage_bonus for key in self.active_run.relics)
+
+    def move_preview_range(self, tower, anchor_col, anchor_row):
+        """`tower`'s effective range if moved to this anchor -- its current
+        reach with the high-ground term swapped for the destination's."""
+        destination = self._high_ground_range_bonus_at(type(tower), anchor_col, anchor_row,
+                                                       tower.footprint_subtiles)
+        return tower.effective_range() + tower.range * (destination - tower.high_ground_range_bonus)
+
     def _apply_construction_relics(self, tower, has_module):
-        """Earthworks / Forward Observer / Quick-Release Mounts -- Relic-only
+        """Earthworks / Forward Observer / Quick-Release Mounts / Barbed Tethers -- Relic-only
         fields applied to every tower a run builds; each is a no-op on a
         tower it doesn't concern."""
         held = [relics.RELICS[key] for key in self.active_run.relics]
@@ -2692,11 +3160,14 @@ class Game:
             tower.relic_fire_rate_bonus_multiplier *= 1 + sum(relic.module_fire_rate_bonus for relic in held)
         for relic in held:
             tower.relic_resonance_multiplier *= relic.resonance_multiplier
+            tower.relic_harpoon_ground_bonus_multiplier *= relic.harpoon_ground_duration_multiplier
         if tower.PLACEMENT == "path":
             if any(relic.traps_hit_burrowed for relic in held):
                 tower.HITS_BURROWED = True
             for relic in held:
                 tower.relic_damage_vs_slowed_multiplier *= relic.trap_damage_vs_slowed_multiplier
+        for relic in held:
+            tower.jam_duration_multiplier *= relic.jam_duration_multiplier
 
     def veterancy_rank(self, tower_name):
         """`tower_name`'s veterancy rank this run (run/veterancy.py),
@@ -2740,6 +3211,7 @@ class Game:
             if after > before:
                 self._queue_toast(f"{TOWER_TYPES[name].display_name} promoted: {veterancy.rank_name(after)}")
                 self._record_achievement_max("veterancy_rank_reached", after)
+                self.hints.notify("veterancy")
 
     def _apply_forge(self, tower):
         """A forged tower type's free head start (see _forge_tower): one
@@ -2762,18 +3234,21 @@ class Game:
         shrunk = settings.SUBTILES_PER_TILE - self.relic_modifiers.tower_footprint_shrink
         return max(settings.MIN_TOWER_FOOTPRINT_SUBTILES, shrunk)
 
-    def _update_ground_fires(self, dt):
+    def _update_ground_fires(self, dt, enemy_index=None):
         """Burn every ground (not flying, not burrowed) enemy standing in a
         live GroundFire, crediting the Mortar that left it, then drop the
-        ones that have burnt out."""
+        ones that have burnt out. `enemy_index` (optional) only narrows each
+        fire's scan; near_in_order() keeps the raw list's visiting order, so
+        the float damage credit sums identically."""
         vs_slowed = 1.0
         if self.active_run is not None:
             for key in self.active_run.relics:
                 vs_slowed *= relics.RELICS[key].ground_fire_vs_slowed_multiplier
         for fire in self.ground_fires:
             fire.time_left -= dt
-            for enemy in self.enemies:
-                if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed
+            pool = enemy_index.near_in_order(fire.pos, fire.radius) if enemy_index is not None else self.enemies
+            for enemy in pool:
+                if (enemy.is_dead or enemy.reached_goal or is_airborne(enemy) or enemy.is_burrowed
                         or enemy.pos.distance_to(fire.pos) > fire.radius):
                     continue
                 multiplier = vs_slowed if enemy.slow_timer > 0 else 1.0
@@ -2800,7 +3275,7 @@ class Game:
             for key in self.active_run.relics:
                 ambush *= relics.RELICS[key].held_damage_multiplier
         for enemy in self.enemies:
-            if enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False) or enemy.is_burrowed:
+            if enemy.is_dead or enemy.reached_goal or is_airborne(enemy) or enemy.is_burrowed:
                 continue
             for barricade in barricades:
                 if barricade.hp > 0 and enemy.pos.distance_to(barricade.pos) <= barricade.block_radius:
@@ -2826,11 +3301,44 @@ class Game:
                 self._recompute_tower_density_bonuses()
                 self.audio.play("tower_sold")
 
+    def _apply_enemy_auras(self):
+        """Bulwark-style auras (Enemy.AURA_RADIUS/AURA_DAMAGE_REDUCTION): reset
+        every enemy's aura_damage_reduction, then let each live aura grant its
+        reduction to every *other* live enemy in reach -- max(), never
+        stacked, so the result can't depend on list order. Runs right after
+        the enemies move, so this frame's towers and projectiles see it."""
+        for enemy in self.enemies:
+            enemy.aura_damage_reduction = 0.0
+        sources = [enemy for enemy in self.enemies
+                   if enemy.AURA_RADIUS and not enemy.is_dead and not enemy.reached_goal]
+        if not sources:
+            return
+        strength = 1.0
+        if self.active_run is not None:
+            for key in self.active_run.relics:
+                strength *= relics.RELICS[key].enemy_aura_multiplier
+        for source in sources:
+            reduction = source.AURA_DAMAGE_REDUCTION * strength
+            radius_sq = source.AURA_RADIUS ** 2
+            for enemy in self.enemies:
+                if enemy is not source and source.pos.distance_squared_to(enemy.pos) <= radius_sq:
+                    enemy.aura_damage_reduction = max(enemy.aura_damage_reduction, reduction)
+
+    def _jam_towers(self):
+        """Let every jamming enemy (a Disruptor -- Enemy.jam_towers) pulse,
+        and show each pulse as a ring. The jam itself is tower state
+        (Tower.jammed_timer), counted down by the tower's own update()."""
+        for enemy in self.enemies:
+            if enemy.jam_towers(self.towers):
+                self.impact_effects.append(effects.ExpandingRing(
+                    enemy.pos, max_radius=enemy.JAM_RADIUS, duration=0.35, color=JAM_PULSE_COLOR,
+                ))
+
     def _barricade_burst(self, barricade, damage):
         """A Booby-Trapped Walls-style relic: a breaking Barricade blasts every
         ground enemy within BARRICADE_BURST_RADIUS, credited to the barricade."""
         for enemy in self.enemies:
-            if (enemy.is_dead or enemy.reached_goal or getattr(enemy, "is_flying", False)
+            if (enemy.is_dead or enemy.reached_goal or is_airborne(enemy)
                     or enemy.pos.distance_to(barricade.pos) > BARRICADE_BURST_RADIUS):
                 continue
             barricade.damage_dealt += enemy.take_damage(damage) or 0.0
@@ -2887,6 +3395,7 @@ class Game:
         for key in {key for tower in self.towers for key in tower.resonance_keys} - self._announced_resonances:
             self._announced_resonances.add(key)
             self._queue_toast(f"Resonance: {RESONANCES[key].display_name}!")
+            self.hints.notify("resonance")
 
     def _register_tower(self, tower):
         """Add an already-built tower to both self.towers and the grid --
@@ -2903,7 +3412,11 @@ class Game:
         if tower not in self.towers:
             return False
         cost = tower.upgrade_cost()
-        if cost is None or not self.economy.can_afford(cost):
+        if cost is None:
+            return False
+        if self._upgrade_refused():
+            return False
+        if not self.economy.can_afford(cost):
             return False
 
         self._spend_gold(cost)
@@ -2915,6 +3428,8 @@ class Game:
         # later no-op call.
         if tower.is_max_level:
             self._record_achievement("towers_maxed")
+        if tower.can_specialize:
+            self.hints.notify("specialize_ready")
         self.audio.play("tower_upgraded")
         return True
 
@@ -2922,6 +3437,8 @@ class Game:
         if tower not in self.towers:
             return False
         if not tower.can_specialize or key not in tower.SPECIALIZATIONS:
+            return False
+        if self._upgrade_refused():
             return False
         cost = tower.specialization_cost()
         if not self.economy.can_afford(cost):
@@ -2933,17 +3450,93 @@ class Game:
         self.audio.play("tower_upgraded")
         return True
 
+    def _upgrade_refused(self):
+        """A Proving Grounds upgrade gate (No Upgrades) -- True (after
+        saying why) if this fight's challenge blocks upgrading/specializing."""
+        if self.active_challenge is None:
+            return False
+        reason = challenges.upgrade_refusal(self.active_challenge)
+        if reason is None:
+            return False
+        self._refuse_for_challenge(reason)
+        return True
+
+    def can_move_towers(self):
+        """Towers can only be relocated between waves, never mid-wave."""
+        return self.wave_manager.state in (WaveState.AWAITING_START, WaveState.BETWEEN_WAVES)
+
+    def move_fee(self, tower):
+        """Gold to relocate `tower`: free before the floor's first wave (still
+        planning the layout), else settings.MOVE_FEE_FRACTION of what it cost."""
+        if self.wave_manager.state == WaveState.AWAITING_START:
+            return 0
+        if self.active_run is not None and any(relics.RELICS[key].free_tower_moves for key in self.active_run.relics):
+            return 0
+        return max(1, int(tower.total_invested * settings.MOVE_FEE_FRACTION))
+
+    def begin_moving_tower(self, tower):
+        """Pick `tower` up to relocate it (the panel's Move button). The next
+        click on the board tries to put it down; right-click cancels."""
+        if tower not in self.towers or not self.can_move_towers():
+            return False
+        if not self.economy.can_afford(self.move_fee(tower)):
+            return False
+        self.moving_tower = tower
+        self.selected_tower_name = None
+        return True
+
+    def _is_buildable_for_move(self, tower, anchor_col, anchor_row):
+        """Whether `tower` could stand at the new anchor, ignoring the space
+        it occupies itself (so a short nudge that overlaps its old footprint
+        is allowed)."""
+        self.grid.remove(tower.anchor_col, tower.anchor_row)
+        try:
+            return self.grid.is_buildable(anchor_col, anchor_row, footprint_subtiles=tower.footprint_subtiles,
+                                          on_path=tower.PLACEMENT == "path")
+        finally:
+            self.grid.occupy(tower.anchor_col, tower.anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
+
+    def try_move_tower(self, tower, anchor_col, anchor_row):
+        """Relocate a placed tower, keeping its level, specialization,
+        targeting, veterancy and lifetime stats. Between waves only; costs
+        move_fee(). Neighbor-dependent bonuses (density, placement relics,
+        resonances) are recomputed for the whole board afterward."""
+        if tower not in self.towers or not self.can_move_towers():
+            return False
+        if (anchor_col, anchor_row) == (tower.anchor_col, tower.anchor_row):
+            return False
+        if not self._is_buildable_for_move(tower, anchor_col, anchor_row):
+            return False
+        fee = self.move_fee(tower)
+        if not self.economy.can_afford(fee):
+            return False
+        if fee:
+            self._spend_gold(fee)
+        self.grid.remove(tower.anchor_col, tower.anchor_row)
+        tower.anchor_col, tower.anchor_row = anchor_col, anchor_row
+        tower.pos = pygame.Vector2(self.grid.anchor_to_pixel_center(
+            anchor_col, anchor_row, footprint_subtiles=tower.footprint_subtiles))
+        self.grid.occupy(anchor_col, anchor_row, tower, footprint_subtiles=tower.footprint_subtiles)
+        self._apply_high_ground(tower)
+        self._recompute_tower_density_bonuses()
+        self.moving_tower = None
+        self._record_achievement("towers_moved")
+        self.audio.play("tower_placed")
+        return True
+
     def try_sell_tower(self, tower):
         if tower not in self.towers:
             return False
 
-        self.economy.add_gold(tower.sell_value())
+        self.economy.add_gold(tower.sell_value(), earned=False)  # a refund, not battle income
         self.towers.remove(tower)
         self.sold_towers.append(tower)  # see _tower_results()
         self.grid.remove(tower.anchor_col, tower.anchor_row)
         self._recompute_tower_density_bonuses()  # a removed neighbor may affect others' counts too
         if self.selected_tower is tower:
             self.selected_tower = None
+        if self.moving_tower is tower:
+            self.moving_tower = None
         self.audio.play("tower_sold")
         return True
 
@@ -2978,8 +3571,27 @@ class Game:
         call (not once per frame) correctly handles several enemies
         leaking on the same frame: the first one that would actually zero
         lives out consumes the charge, any others that frame proceed
-        normally against the still-nonzero lives."""
+        normally against the still-nonzero lives.
+
+        A Proving Grounds leak_limit (Glass Gate) is checked first: every
+        leak counts against it, and one past the limit costs no life but
+        breaks the challenge (RunState.challenge_failed)."""
         run = self.active_run
+        leak_limit = self.active_challenge.challenge.leak_limit if self.active_challenge is not None else None
+        if run is not None and leak_limit is not None:
+            run.challenge_leaks += 1
+            if run.challenge_leaks > leak_limit:
+                if not run.challenge_failed:
+                    run.challenge_failed = True
+                    self._queue_toast(
+                        f"{self.active_challenge.challenge.display_name} broken -- the Proving Grounds bonus is lost",
+                    )
+                return
+        if run is not None and run.ability_charges > 0:
+            # Hold the Gate (run/abilities.py): the leak still counts against
+            # a Proving Grounds limit above, but costs no life.
+            run.ability_charges -= 1
+            return
         if (
             run is not None and "guardians_reprieve" in run.relics
             and not run.used_guardians_reprieve and not self.economy.invulnerable
@@ -2987,8 +3599,12 @@ class Game:
         ):
             run.used_guardians_reprieve = True
             return
+        lives_before = self.economy.lives
         self.economy.lose_life()
+        self.service_tally.lives_lost += lives_before - self.economy.lives
         self.audio.play("life_lost")
+        if 0 < self.economy.lives <= LOW_LIVES_HINT_THRESHOLD:
+            self.hints.notify("low_lives")
 
     def _spend_gold(self, amount):
         """The one choke point for actually spending gold -- every place
@@ -3029,18 +3645,51 @@ class Game:
         for toast in self.achievement_toasts:
             toast.update(dt)
         self.achievement_toasts = [t for t in self.achievement_toasts if not t.dead]
+        # Field Notes age on real dt too, but only where one can be seen.
+        if self.state in self.HINT_STATES:
+            self.hints.update(dt)
 
         if self.state != GameState.PLAYING:
             return
+
+        if self._fight_hints_pending:
+            # The basics, plus whatever the run carries in (a potion or module
+            # may have come from a reward, an event, the Shop or the Armory --
+            # checked once here rather than at each of those).
+            self._fight_hints_pending = False
+            run = self.active_run
+            self.hints.notify(
+                "fight_start",
+                *(("run_fight_start",) if run is not None else ()),
+                *(("holding_potion",) if run is not None and run.potions else ()),
+                *(("module_fitted",) if run is not None and run.tower_modules else ()),
+            )
 
         # Real wall-clock dt still drives self.clock.tick(FPS) in run(), so
         # frame pacing/FPS is unaffected -- only simulated time speeds up.
         dt = dt * self.time_scale
 
+        if self.moving_tower is not None and not self.can_move_towers():
+            self.moving_tower = None  # the next wave started mid-move
+
         self._hold_enemies_at_barricades(dt)
-        self._update_ground_fires(dt)
+        # One lazily-built index for every enemy-vs-enemies query made
+        # before the towers act: ground fires (nothing has moved yet) and
+        # HealerEnemy's heal (mid-movement -- the per-enemy displacement
+        # reported below keeps its answers exact; see MovingEnemyIndex).
+        moving_index = spatial_index.MovingEnemyIndex(self.enemies)
+        self._update_ground_fires(dt, moving_index)
         for enemy in self.enemies:
-            enemy.update(dt, self.enemies)
+            if moving_index.built:
+                pos = enemy.pos
+                x, y = pos.x, pos.y
+                enemy.update(dt, self.enemies, moving_index)
+                pos = enemy.pos
+                moving_index.note_moved(math.hypot(pos.x - x, pos.y - y))
+            else:
+                enemy.update(dt, self.enemies, moving_index)
+        self._apply_enemy_auras()
+        self._jam_towers()
 
         # Two passes: every tower's aura buff is reset before any tower
         # (support or attacking) does its own per-frame work, so which
@@ -3056,10 +3705,13 @@ class Game:
         # a tower placed mid-effect is overclocked too.
         self.overclock_timer = max(0.0, self.overclock_timer - dt)
         overclock = potions.OVERCLOCK_FIRE_RATE_MULTIPLIER if self.overclock_timer > 0 else 1.0
+        # A timed Commander ability (run/abilities.py) rides the same pass.
+        self.ability_timer = max(0.0, self.ability_timer - dt)
         for tower in self.towers:
             tower.reset_aura()
             tower.set_last_stand_multiplier(last_stand_active)
             tower.potion_fire_rate_multiplier = overclock
+            self._apply_ability_buffs(tower)
         # Built fresh every frame, same as the position updates it buckets
         # -- see spatial_index.py for why a full per-frame rebuild, not an
         # incrementally-maintained structure, is the right shape here. This
@@ -3092,8 +3744,11 @@ class Game:
                 self.economy.add_gold(granted)
                 tower.pending_siphon_gold -= granted
 
+        # The same index the towers just used: nothing moves an enemy
+        # between the tower loop and here (a knockback only queues a slide
+        # for the next Enemy.update()), so it's still exact for splash/chain.
         for projectile in self.projectiles:
-            projectile.update(dt, self.enemies)
+            projectile.update(dt, self.enemies, enemy_index)
 
         # Drained here, before dead projectiles are pruned below -- same
         # per-frame-event-list idiom as enemy.damage_events -> damage_
@@ -3146,6 +3801,9 @@ class Game:
         # freshly joined via pending_spawns above) is a valid spread
         # target, regardless of iteration order within this loop.
         poison_spread_sources = []
+        # Per-species kill counters (Enemy.KILL_COUNTER), bumped once per
+        # counter below, the same batching as kills_this_frame.
+        species_kills = {}
         for enemy in self.enemies:
             # Drained for *every* enemy, dead or alive, before the death/
             # goal/alive split below decides whether the enemy itself
@@ -3199,6 +3857,9 @@ class Game:
             if enemy.is_dead:
                 self.economy.add_gold(enemy.gold_reward)
                 kills_this_frame += 1
+                self.service_tally.add_kill(ENEMY_TYPE_NAMES.get(type(enemy)))
+                if enemy.KILL_COUNTER is not None:
+                    species_kills[enemy.KILL_COUNTER] = species_kills.get(enemy.KILL_COUNTER, 0) + 1
                 # A small death poof, same spot the killing blow's own
                 # damage number is spawned from -- reads enemy.pos before
                 # this enemy is dropped from self.enemies just below.
@@ -3236,6 +3897,8 @@ class Game:
             # would otherwise do that many separate load-mutate-save
             # round trips through achievements.json in a single frame.
             self._record_achievement("kills", kills_this_frame)
+        for counter, count in species_kills.items():
+            self._record_achievement(counter, count)
 
         # Compared before/after to detect a wave actually clearing this
         # tick (WaveManager._advance_after_clear bumping wave_index) --
@@ -3250,7 +3913,10 @@ class Game:
         wave_number_before_update = self.wave_manager.current_wave_number
         wave_state_before_update = self.wave_manager.state
         boss_cleared_before = self.wave_manager.authored_waves_cleared
-        self.enemies.extend(self.wave_manager.update(dt, self.enemies))
+        spawned = self.wave_manager.update(dt, self.enemies)
+        self.enemies.extend(spawned)
+        if spawned:
+            self.hints.notify(*{f"enemy_{_ENEMY_TYPE_NAMES.get(type(enemy))}" for enemy in spawned})
         # Same before/after idiom as wave_number_before_update/
         # boss_cleared_before just below -- catches wave 1 (via
         # skip_delay()), every later authored wave, and every endless-
@@ -3261,7 +3927,9 @@ class Game:
             self.audio.play("wave_start")
         if self.wave_manager.current_wave_number > wave_number_before_update:
             self._record_achievement("waves_survived")
+            self.hints.notify("wave_cleared")
             self._update_endless_score()
+            self._recharge_ability()
         if (not boss_cleared_before and self.wave_manager.authored_waves_cleared
                 and self.active_run is not None and self.active_run.is_final_floor):
             self._handle_boss_defeated()
@@ -3271,12 +3939,14 @@ class Game:
             self.audio.play("game_over")
             self._cache_tower_results()
             self._delete_save_if_this_run_was_resumed()
+            self._record_service_floor_end()
             if self.active_run is not None:
                 # A Daily Run is still just self.active_run with is_daily
                 # set -- _record_run_permadeath() needs no special case for
                 # it, same reasoning _start_daily_challenge's own docstring
                 # gives.
                 self._record_run_permadeath()
+                self.hints.notify("run_lost")
         elif self.wave_manager.all_waves_complete and not self.enemies:
             # One level genuinely beaten, on either path below -- recorded
             # once, here, above the split, rather than duplicated into both
@@ -3284,6 +3954,7 @@ class Game:
             # this used to live inline in the VICTORY branch alone, which a
             # run never reaches).
             self._record_level_cleared()
+            self._record_service_floor_end()
             if self.active_run is not None:
                 # A run's own floor-clear, not a classic-play VICTORY --
                 # the final act's boss node is always loaded endless=True
@@ -3371,6 +4042,20 @@ class Game:
         (smith phase) under the mouse, or None."""
         rects = self.rest_option_rects if self.rest_phase == "choose" else self.rest_picker()[1]
         return ui.get_clicked_draft_choice(pygame.mouse.get_pos(), rects)
+
+    def _hint_placement(self):
+        """Which ui.HINT_PANEL_WIDTHS layout the hint panel uses here: on the
+        board, on the run map, or on another full-screen run screen."""
+        if self.state in (GameState.PLAYING, GameState.FLOOR_CLEARED, GameState.GAME_OVER, GameState.VICTORY):
+            return "board"
+        return "map" if self.state == GameState.MAP else "screen"
+
+    def _hint_panel_rect(self):
+        """The shown Field Notes panel's Rect, or None when none is visible
+        here -- what the renderer draws and a dismiss click tests against."""
+        if self.hints.current is None or self.state not in self.HINT_STATES:
+            return None
+        return ui.hint_panel_rect(self.small_font, hints.HINTS[self.hints.current], self._hint_placement())
 
     def _stats_panel_subject(self, hovered_tower):
         """What the stats panel should show, in priority order: a hovered

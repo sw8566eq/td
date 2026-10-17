@@ -1,5 +1,8 @@
 # The run's branching map
 
+The map's shape and node types, the map screen, and what happens around a node: post-combat rewards,
+potions, the threat readout, elite affixes/named bosses, the opening blessing and Armory nodes.
+
 ## The run's branching map
 
 A run's map (`run/run_map.py`) is a row-based DAG, generated once, up front (`Game.
@@ -12,7 +15,8 @@ only ever run from one row to the next, never skip a row or point backward, whic
 fact (tests still verify it via BFS over many seeds anyway). Row 0 is a fixed-width, all-Combat
 choice (which of `START_ROW_WIDTH` same-difficulty layouts to open the run on, not a difficulty
 choice at all) -- the run's very first resolved node is always guaranteed to be a real level load,
-keeping the lives-capture special case above simple. The final row is always exactly one node of its
+keeping the lives-capture special case (see [run-loop.md](run-loop.md) "Starting a run and entering
+nodes") simple. The final row is always exactly one node of its
 own dedicated `"boss"` type (`RunMap.boss_node_id`) -- fixing its width at 1 is what keeps
 `is_final_floor`/`endless=True` trivial, no "did every path converge" check needed.
 
@@ -33,16 +37,18 @@ rows -- not a hardcoded id list, so it stays self-maintaining as levels are adde
 freely across all of `LEVELS`, preserving the same corridor-then-multi-lane authored ramp the old
 flat, ascending `floor_sequence` used to give for free. The final row's own boss node is a further
 special case on top of that tiering, not just "whichever multi-lane level a late row would otherwise
-draw" -- see the Boss bullet below.
+draw" -- see the Boss bullet under "Node types".
 
-The seven node types:
+## Node types
+
+The node types:
 - **Combat**: a normal floor, exactly what a run's only node type used to be.
 - **Elite**: a harder floor (`run_escalation.apply_elite_multiplier`, layered on top of the row's own
   escalation) that pays out more shop currency on clear (`shop.income_for_floor`'s own
   `ELITE_INCOME_MULTIPLIER`) -- risk/reward, not "harder for its own sake."
-- **Shop**: `GameState.DRAFT` (see its own naming note just below) -- reuses `run/shop.py` verbatim, only
-  reached via a map node now rather than automatically after every floor clear (see "Two currencies"
-  below for what this replaced).
+- **Shop**: `GameState.DRAFT` (the code's legacy name for the Shop screen) -- reuses `run/shop.py` verbatim, only
+  reached via a map node now rather than automatically after every floor clear (see [economy-shop.md](economy-shop.md) "Two currencies: battle gold and the Shop"
+  for what this replaced).
 - **Event**: `GameState.EVENT` -- a short prompt and 2-3 options (`run/events.py`), each a fixed,
   honestly-described delta (shop currency, lives, a relic grant, a tower unlock, or -- since the
   gaps-and-synergies batch -- giving up a relic already held, `EventOption.relic_cost`) rather than
@@ -85,7 +91,8 @@ The seven node types:
   existed. That same drain also runs every child/summon through `WaveManager.apply_spawn_multipliers()`
   (the post-construction difficulty/escalation/relic scaling `_spawn_enemy` applies to every wave
   spawn) before Fracture Rounds/Containment Charges touch it -- these enemies are constructed by their
-  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see below), there is no "you defeated
+  parent, never by `_spawn_enemy`, and used to enter play at baseline stats on every floor. Since the boss node is always loaded `endless=True` (see [run-loop.md](run-loop.md) "A run ends only by
+  permadeath"), there is no "you defeated
   the boss, run over" screen -- `WaveManager.authored_waves_cleared` (a new flag, distinct from
   `all_waves_complete`, which never fires under `endless=True`) is what `Game.update()`'s own
   before/after check reads to detect the boss node's authored waves running out for the first time,
@@ -97,6 +104,20 @@ The seven node types:
   `RunState.boss_defeated` (guarded the same one-shot way `used_guardians_reprieve` is) is what stops
   a mid-boss-fight Restart -- which rebuilds a fresh `WaveManager` whose own `authored_waves_cleared`
   starts `False` again -- from double-counting `bosses_defeated` a second time.
+- **Armory**: `GameState.ARMORY` -- pick one tower module; see "Armory nodes".
+- **Proving Grounds** (`"challenge"`): a fight under one constraint for a better reward; see
+  "Proving Grounds".
+
+`run_map.FIGHT_NODE_TYPES` (`combat`/`elite`/`challenge`/`boss`) is the one tuple every "is this a
+fight?" check reads -- map generation's level draw, `Game._enter_node`'s dispatch, the threat
+readout, `RunState.floors_cleared`, `save_state`'s fight-node validation. A new fight type joins it
+there rather than being added to scattered literal tuples.
+
+Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
+while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
+`relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).
+
+## Map screen and node dispatch
 
 `Game._enter_map()` (re-)shows the map screen, rebuilding `self.map_node_rects` fresh every time
 (`ui.build_map_node_rects`) -- the same "computed fresh, not a persistent cache" spirit
@@ -111,6 +132,8 @@ chosen option, Rest/Treasure's auto-resolve) routes through -- mark the node vis
 map. A Combat/Elite node's own clear already appends its own id in `_advance_run_floor`, so it never
 goes through `_finish_node` -- there's no separate "leave the results screen" step distinct from
 pressing any key on `FLOOR_CLEARED`, which goes straight to `_enter_map()`.
+
+## Run screens are full-screen states
 
 `GameState.MAP`/`DRAFT`/`EVENT`/`REST`/`TREASURE` are all full-screen states (like `LEVEL_SELECT`/
 `EDITOR` -- see `render()`'s early-return block), not overlays drawn atop a frozen board the way
@@ -134,6 +157,12 @@ reward screen (`Continue`/`Skip`, or Enter) calls `_enter_map()` directly, never
 boss node never reaches this screen (it's endless, so it never fires FLOOR_CLEARED). Quitting on this
 screen forfeits the reward, same as quitting mid-Shop forfeits the shop.
 
+Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower card rolls
+`min(FORGED_CARD_MAX_CHANCE, FORGED_CARD_CHANCE_PER_DEPTH * run.depth)` to come pre-forged) and
+`forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
+pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
+unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).
+
 ## Potions
 
 `run/potions.py` -- `POTIONS` registry of single-use consumables, each entry carrying its own `use(game)`
@@ -147,6 +176,13 @@ during `PLAYING`. Overclock Elixir is the one timed effect: `Game.overclock_time
 `_load_level_object`) is re-applied to every tower's `potion_fire_rate_multiplier` each frame in
 `update()`'s first tower pass, so towers placed mid-effect are overclocked too.
 
+Potions can also be drunk with the fixed (non-remappable) `Q`/`W`/`E` hotkeys
+(`input_handler.POTION_HOTKEYS`, checked after every remappable PLAYING action so a rebinding onto
+those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion`, rolled in
+`_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
+unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
+(`_can_buy_shop_potion` is shared by the click and the renderer).
+
 ## Map threat readout
 
 `Game._node_escalation(run, node)` is the one place a fight node's FloorEscalation is composed (depth,
@@ -154,7 +190,7 @@ Elite/Boss bump, Ascension, affix); `_floor_load_context` uses it for the real l
 (times the run's difficulty mode) for `Game.map_node_threats`, shown in the map tooltip -- so the
 readout is exactly what the fight applies on top of per-wave scaling.
 
-## Elite affixes
+## Elite affixes and named bosses
 
 `run/elite_affixes.py` -- `AFFIXES` registry of plain multipliers (hp/speed/gold, plus
 `count_multiplier`, plus enemy-side traits `regen_fraction_per_second`/`damage_taken_multiplier`,
@@ -169,20 +205,11 @@ without re-deriving). Shown in the sidebar above the potion belt (`Renderer._run
 together with the run's Ascension) rather than on the HUD's Wave line, which has no width left with a
 12-tower build menu (`test_hud_gold_lives_wave_text_fits_before_the_play_area_edge`).
 
-Potions can also be drunk with the fixed (non-remappable) `Q`/`W`/`E` hotkeys
-(`input_handler.POTION_HOTKEYS`, checked after every remappable PLAYING action so a rebinding onto
-those keys still wins), and bought at the Shop's potion stand: `Game.shop_potion`, rolled in
-`_enter_shop_node` from the same rng *after* `shop.build_offer` (existing seeds' card offers
-unchanged), one per visit at `shop.POTION_PRICE` times the run's shop price multiplier
-(`_can_buy_shop_potion` is shared by the click and the renderer).
-
-
-**Named bosses**: `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
+**Named bosses.** `elite_affixes.BOSS_AFFIXES` reuses the `EliteAffix` shape, and `Game._elite_affix`
 returns one for a Boss node (`roll_boss_affix` on the same `"affix"` rng stream, keyed by the node id),
 so every affix consumer -- escalation, regen/damage-taken traits, Swarming-style count scaling (boss
 species excluded), the map tooltip and `map_node_affixes`, the sidebar text -- handles
 bosses with no extra branches. The map title names the act's boss (`Boss: The Warlord`).
-
 
 `EliteAffix.burrows`/`breach_multiplier` (Tunneling, Siegebreakers) reach enemies through
 `WaveManager.enemy_burrows`/`enemy_breach_multiplier` (set by `_apply_affix_traits`) in
@@ -199,16 +226,6 @@ through `Game._leave_event`, which returns to the map for the blessing (no node 
 calls `_finish_node` otherwise. `EventOption.extra_relic` gives the dark bargain its second relic.
 `ui.build_event_option_rects` compresses its column for 4+ options.
 
-Reward tower rows also carry `CombatReward.forged_tower_choices` (each new tower card rolls
-`min(FORGED_CARD_MAX_CHANCE, FORGED_CARD_CHANCE_PER_DEPTH * run.depth)` to come pre-forged) and
-`forge_choices` (forge cards for held, unforged towers, filling the row's empty slots once the tower
-pool can't). Both are rolled after every older draw, so existing seeds' cards/relics/potions are
-unchanged. "tower" and "forge" cards share one pick-one row (`Game._reward_card_available`).
-
-Event options can also cost a potion (`EventOption.potion_cost` -- greyed out via `can_afford_option`
-while none is held; resolution gives up the oldest) or grant a boss relic (`grant_boss_relic`, via
-`relics.boss_relic_offer`, negative one-time lives clamped at 1 like `_apply_one_time_relic_bonus`).
-
 ## Armory nodes
 
 An eighth node type (`"armory"`, weight 5 in `NODE_TYPE_WEIGHTS`, never forced). `Game._enter_armory_node`
@@ -216,3 +233,74 @@ draws up to `ARMORY_OFFER_COUNT` `modules.module_offer` pairs for distinct tower
 `_run_rng(run, "armory", node.id)` into `GameState.ARMORY` (`ui.draw_armory_screen`); a click takes one
 (`_take_armory_offer`, which fits it and finishes the node), Skip/Enter finishes it empty, and no towers
 held resolves it on entry. Quitting mid-Armory forfeits it, like the Shop.
+
+## Proving Grounds
+
+A ninth node type (`"challenge"`, player-facing **Proving Grounds**, weight 6 in `NODE_TYPE_WEIGHTS`,
+never forced). `run_map.MIN_ROW_FOR_TYPE` gates it to `MIN_CHALLENGE_ROW` (2) onward -- the same table
+now holds Elite's `MIN_ELITE_ROW`, so `_assign_node_types` has no per-type branch. It's a
+`FIGHT_NODE_TYPES` member: it draws a level like Combat, loads through `Game._load_combat_node`, and
+escalates and pays floor income like Combat (no Elite bump) -- the constraint is the difficulty.
+
+`run/challenges.py` -- `CHALLENGES` registry of `Challenge` entries, plain data whose fields are each
+read generically by the one place that enforces them, so `Game` never branches on a challenge key:
+
+| Field | Enforced by |
+|---|---|
+| `max_towers` (Skeleton Crew: 4) | `Game.try_place_tower` via `challenges.placement_refusal` |
+| `allowed_tower_count` (Narrow Front: 2) | same placement gate, against `ChallengeRoll.allowed_towers` |
+| `allows_upgrades` (No Upgrades) | `Game._upgrade_refused`, called by `try_upgrade_tower`/`try_specialize_tower` |
+| `enemy_speed_multiplier`/`enemy_gold_multiplier` (Double Time: 1.35/1.5) | `challenges.apply_to_escalation`, folded in last by `Game._node_escalation` -- so the map's threat readout shows it too |
+| `leak_limit` (Glass Gate: 3) | `Game._lose_a_life`: every leak counts in `RunState.challenge_leaks`; one past the limit costs no life and sets `RunState.challenge_failed` |
+| `hides_intel` (Fog of War) | `Renderer._hides_intel`: no HUD wave preview, no range rings (placed, placement, move preview) and no coverage overlay |
+
+**Rolling.** `Game._node_challenge(run, node)` re-derives a `challenges.ChallengeRoll` from
+`_run_rng(run, "challenge", node.id)` every time, never stored (the Elite-affix rule, see "Elite
+affixes and named bosses"): the challenge is the stream's first draw, then Narrow Front-style picks
+sample the run's held damaging tower types (sorted) on the same rng. Fewer candidates than the limit
+leaves the build list open. The map tooltip (`Game.map_node_challenges`, built in `_enter_map`, via
+`ui.map_node_tooltip_lines`), the floor load and a resume all call it, so they agree. Since the pick
+reads `run.unlocked_towers`, a Narrow Front node's allowed list can change between map visits as the
+run gains towers -- what the tooltip shows on the visit you enter it from is what you get.
+
+**During the fight.** `Game.active_challenge` is cleared by every `_load_level_object` (Practice and
+classic play never have one) and armed by `_apply_node_challenge`, called next to
+`_apply_affix_traits` in both `_load_combat_node` and `resume_saved_run`. `_load_combat_node` also
+resets `challenge_leaks`/`challenge_failed`, so a Restart retries the challenge clean; a mid-floor
+resume keeps them (they ride on the RunState). A refused action queues a toast saying why
+(`_refuse_for_challenge`, de-duplicated while the same toast is still showing), and the sidebar shows
+two lines above the run-modifiers line (`ui.CHALLENGE_STATUS_Y`): "Proving Grounds" and
+`challenges.status_line` (towers used, leaks so far, or FAILED).
+
+**Reward.** `Game._challenge_won()` (the current node is a challenge and `challenge_failed` is false --
+never `active_challenge`, so a reward screen reopened from a map checkpoint still knows) gates both
+halves: `_advance_run_floor` adds `challenges.bonus_shop_currency(depth)` (20 + 2 per depth, a reward
+like Treasure's, so `blocks_shop_income` doesn't touch it), and `_enter_reward_screen` asks
+`rewards.build_combat_reward` for `challenge_relic_count=RELIC_CHOICE_COUNT` (2) relics, drawn after
+every older pick so other fights' offers are unchanged. They're a pick-one `"challenge_relic"` row on
+the ordinary reward screen, whose subtitle says won or failed. A failed challenge still clears and
+rewards like a normal Combat floor.
+
+## Levels 18-21
+
+Four ordinary levels (`world/levels.py`, `LEVELS[18]`-`LEVELS[21]`) built around a placement puzzle
+each rather than a new junction shape. `_level_pool_for_row` tiers them by spawn count, as always:
+
+| Id | Name | Spawns | Tier | Puzzle |
+|---|---|---|---|---|
+| 18 | The Coil | 1 | early (rows 0-2) | a "Greek key": the route winds clockwise into the middle and unwinds back out between its own inbound legs, one empty row/column apart; 2x2 high ground beside the exit |
+| 21 | Killing Field | 1 | early | one route passes the same open arena (cols 4-10, rows 3-5) eastbound along row 2 then westbound along row 6; the arena's middle row is two tiles from both passes |
+| 19 | Saddleback Ridge | 2 | late (rows 3-4) | two parallel lanes on rows 2 and 6 with a six-tile high-ground ridge on row 4 (broken by a saddle at col 7); only a ridge tower's +20% range reaches both lanes |
+| 20 | Tributaries | 3 | late | two west spawns merge at col 4, a north spawn joins the trunk at col 10, four tiles from the goal; gated by `unlock_tributaries` |
+
+Two authoring constraints shaped them. Both ends of The Coil stay on the map edge because the game
+draws no spawn/goal markers (an early inward-only spiral ended mid-map and read as a dead end). And
+every pair of path legs is at least one tile apart, since two legs that touch become one connected
+cell set and form a loop that `pathing.validate_topology` rejects (see [grid-paths.md](grid-paths.md)
+"Paths are a graph, not a route").
+
+Wave counts were set against their tier with `tools/tower_bench.py`, act 1 at the floor's own
+starting gold, counting how many of the 15 attacking towers survive alone: The Coil 7 (Twin Peaks 6,
+Hairpin Gauntlet 3), Killing Field 8 (Broken Switchback 7, Serpentine Pass 9), Saddleback Ridge 1 and
+Tributaries 1 (Triple Crossing 1, Twin Confluence 2, Grand Delta and Quad Muster 0). Adding levels
+changes which level an existing seed's node draws.

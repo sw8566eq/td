@@ -1,6 +1,6 @@
 """Game's own raw-input dispatch, extracted into its own module -- the
 second cut of game.py's god-object decomposition (see renderer.py's own
-module docstring for the first, and CLAUDE.md's architecture section for
+module docstring for the first, and docs/agents/core-game.md for
 both).
 
 The boundary drawn here mirrors Renderer's: InputHandler owns "translate
@@ -43,6 +43,8 @@ from support import settings
 
 # Q/W/E use potion slots 1-3 while PLAYING (see ui.draw_potion_belt).
 POTION_HOTKEYS = (pygame.K_q, pygame.K_w, pygame.K_e)
+# F fires the Commander ability while PLAYING (see Game.activate_ability).
+ABILITY_HOTKEY = pygame.K_f
 
 
 class InputHandler:
@@ -59,7 +61,10 @@ class InputHandler:
             elif event.type == pygame.KEYDOWN:
                 self._handle_keydown(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if game.state == GameState.EDITOR:
+                hint_rect = game._hint_panel_rect()
+                if hint_rect is not None and hint_rect.collidepoint(event.pos):
+                    game.hints.dismiss()  # the click is spent on the hint, never passed through
+                elif game.state == GameState.EDITOR:
                     self._handle_editor_click(event.pos)
                 elif game.state == GameState.WAVE_EDITOR:
                     self._handle_wave_editor_click(event.pos)
@@ -77,6 +82,8 @@ class InputHandler:
                     self._handle_unlocks_click(event.pos)
                 elif game.state == GameState.COMPENDIUM:
                     game._handle_compendium_click(event.pos)
+                elif game.state == GameState.SERVICE_RECORD:
+                    game._handle_service_record_click(event.pos)
                 elif game.state == GameState.HELP:
                     self._handle_help_click(event.pos)
                 elif game.state == GameState.RUN_GUIDE:
@@ -121,6 +128,8 @@ class InputHandler:
                 self._scroll_unlocks(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.COMPENDIUM:
                 self._scroll_compendium(event.y)
+            elif event.type == pygame.MOUSEWHEEL and game.state == GameState.SERVICE_RECORD:
+                self._scroll_service_record(event.y)
             elif event.type == pygame.MOUSEWHEEL and game.state == GameState.ACHIEVEMENTS:
                 self._scroll_achievements(event.y)
             elif event.type == pygame.VIDEORESIZE and not game.fullscreen:
@@ -186,6 +195,8 @@ class InputHandler:
                         game._enter_unlocks()
                     elif letter == "k":
                         game._enter_compendium()
+                    elif letter == "t":
+                        game._enter_service_record()
                 else:
                     game._enter_commander_select()
         elif game.state == GameState.COMMANDER_SELECT:
@@ -201,7 +212,8 @@ class InputHandler:
                 game.state = game.help_return_state
         elif game.state in (GameState.SETTINGS, GameState.ACHIEVEMENTS,
                              GameState.CREDITS,
-                             GameState.RUN_HISTORY, GameState.UNLOCKS, GameState.COMPENDIUM):
+                             GameState.RUN_HISTORY, GameState.UNLOCKS, GameState.COMPENDIUM,
+                             GameState.SERVICE_RECORD):
             # These five share nothing but "Esc goes back to the menu" --
             # each is otherwise driven entirely by its own click handler
             # (Settings/Achievements have real buttons; Credits is fully
@@ -249,10 +261,12 @@ class InputHandler:
             # but it still needs to keep working as a pause shortcut here
             # regardless of whatever key "pause" is currently bound to.
             mods = keybindings.normalize_mods(pygame.key.get_mods())
-            if key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
+            if key == pygame.K_ESCAPE and game.ability_targeting:
+                game.cancel_ability_targeting()  # Esc backs out of aiming before it pauses
+            elif key == pygame.K_ESCAPE or keybindings.matches(game.keybindings["pause"], key, mods):
                 game.state = GameState.PAUSED
             elif keybindings.matches(game.keybindings["skip_wave"], key, mods):
-                game.wave_manager.skip_delay()
+                game.call_next_wave()
             elif keybindings.matches(game.keybindings["time_scale_1"], key, mods):
                 game.set_time_scale(1.0)
             elif keybindings.matches(game.keybindings["time_scale_2"], key, mods):
@@ -270,6 +284,10 @@ class InputHandler:
                 # for three more rows) -- checked last, so a remapped
                 # action bound to Q/W/E still wins.
                 game.use_potion(POTION_HOTKEYS.index(key))
+            elif key == ABILITY_HOTKEY:
+                # Fixed like the potion keys, and checked after every
+                # remappable action for the same reason.
+                game.activate_ability()
         elif game.state == GameState.RELICS:
             # Nothing to confirm or lose here (unlike PAUSED's own R) --
             # any key dismisses it, Escape included. That's PAUSED's own
@@ -409,8 +427,12 @@ class InputHandler:
         game = self.game
         if game.state != GameState.PLAYING:
             return
+        if game.ability_targeting:
+            game.cancel_ability_targeting()  # right-click backs out of aiming, nothing else
+            return
         game.selected_tower_name = None
         game.selected_tower = None
+        game.moving_tower = None
 
     def _handle_editor_undo_redo_keydown(self, key):
         """Ctrl+Z/Ctrl+Y by default (rebindable -- see keybindings.
@@ -621,6 +643,14 @@ class InputHandler:
             game._enter_keybinds()
             return
 
+        hint_button = ui.get_clicked_hint_settings_button(pos, game.hint_settings_rects)
+        if hint_button == "hints":
+            game.set_hints_enabled(not game.hints.enabled)
+            return
+        if hint_button == "reset_hints":
+            game.reset_hints()
+            return
+
         option = ui.get_clicked_settings_option(pos, game.settings_rects)
         if option == "fullscreen":
             game.set_fullscreen(not game.fullscreen)
@@ -775,10 +805,11 @@ class InputHandler:
         if clicked_button is not None:
             game.selected_tower_name = None if clicked_button == game.selected_tower_name else clicked_button
             game.selected_tower = None  # switching to build mode drops any pinned placed-tower panel
+            game.moving_tower = None
             return
 
         if game.skip_button_rect.collidepoint(pos):
-            game.wave_manager.skip_delay()
+            game.call_next_wave()
             return
 
         if game.speed_button_rect.collidepoint(pos):
@@ -795,6 +826,14 @@ class InputHandler:
             if slot is not None:
                 game.use_potion(slot)
                 return
+            if game.ability_button_rect.collidepoint(pos):
+                game.activate_ability()
+                return
+
+        if game.ability_targeting and pos[0] < settings.PLAY_WIDTH \
+                and pos[1] < settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
+            game.fire_ability(pos)  # aimed at the field -- never also builds or selects
+            return
 
         if self._handle_panel_action_click(pos):
             return
@@ -804,6 +843,12 @@ class InputHandler:
 
         if pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
             return  # click landed in the HUD area but not on a button
+
+        if game.moving_tower is not None:
+            tower = game.moving_tower
+            anchor_col, anchor_row = game.placement_anchor_at(*pos, type(tower))
+            game.try_move_tower(tower, anchor_col, anchor_row)
+            return
 
         for tower in game.towers:
             if tower.contains_upgrade_badge(pos):
@@ -876,6 +921,14 @@ class InputHandler:
                 game.try_sell_tower(subject)
             return True
 
+        if game.move_button_rect.collidepoint(pos):
+            if is_tower:
+                if game.moving_tower is subject:
+                    game.moving_tower = None  # clicking Move again puts it back down where it was
+                else:
+                    game.begin_moving_tower(subject)
+            return True
+
         return False
 
     def _scroll_list(self, wheel_y, current_offset, max_scroll, step):
@@ -926,6 +979,13 @@ class InputHandler:
         max_scroll = ui.unlocks_max_scroll(len(game.compendium_rows))
         game.compendium_scroll_offset = self._scroll_list(
             wheel_y, game.compendium_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
+        )
+
+    def _scroll_service_record(self, wheel_y):
+        game = self.game
+        max_scroll = ui.unlocks_max_scroll(len(game.service_record_rows))
+        game.service_record_scroll_offset = self._scroll_list(
+            wheel_y, game.service_record_scroll_offset, max_scroll, ui.UNLOCKS_SCROLL_STEP,
         )
 
     def _scroll_achievements(self, wheel_y):

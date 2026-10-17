@@ -87,6 +87,7 @@ META_UNLOCKS: dict[str, MetaUnlock] = {
     "unlock_tar_pit": MetaUnlock("unlock_tar_pit", "tar_pit", "total_floors_cleared", 7),
     "unlock_mortar": MetaUnlock("unlock_mortar", "mortar", "total_floors_cleared", 10),
     "unlock_barricade": MetaUnlock("unlock_barricade", "barricade", "total_floors_cleared", 12),
+    "unlock_harpoon": MetaUnlock("unlock_harpoon", "harpoon", "total_floors_cleared", 6),
 }
 
 
@@ -174,9 +175,14 @@ class LevelMetaUnlock:
 # other ordinary (non-boss) multi-lane level still ungated, a genuine step
 # up from Quad Muster (4 spawns into 1 goal) via 2 independent goals
 # instead of 1. Threshold set past unlock_quad_muster's own 15.
+# Level 20 ("Tributaries", three spawns merging at two different points) is
+# the hardest of the 18-21 batch and the third gate, on total_floors_cleared
+# rather than runs_played so it unlocks on its own clock -- 30 floors is
+# roughly five or six full runs, between the tower curve and the relic gates.
 LEVEL_META_UNLOCKS: dict[str, LevelMetaUnlock] = {
     "unlock_quad_muster": LevelMetaUnlock("unlock_quad_muster", 14, "runs_played", 15),
     "unlock_double_confluence": LevelMetaUnlock("unlock_double_confluence", 15, "runs_played", 25),
+    "unlock_tributaries": LevelMetaUnlock("unlock_tributaries", 20, "total_floors_cleared", 30),
 }
 
 
@@ -225,6 +231,7 @@ COMMANDER_META_UNLOCKS: dict[str, CommanderMetaUnlock] = {
     "unlock_engineer": CommanderMetaUnlock("unlock_engineer", "engineer", "bosses_defeated", 1),
     "unlock_stormcaller": CommanderMetaUnlock("unlock_stormcaller", "stormcaller", "runs_reached_endless", 1),
     "unlock_trapmaster": CommanderMetaUnlock("unlock_trapmaster", "trapmaster", "total_floors_cleared", 15),
+    "unlock_skywatch": CommanderMetaUnlock("unlock_skywatch", "skywatch", "total_floors_cleared", 25),
 }
 
 

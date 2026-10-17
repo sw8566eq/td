@@ -282,9 +282,15 @@ class Reinforcement:
 
 # Counters to defenses that lean on one trick: Sappers break Barricades
 # (from Act 2's first row), Burrowers slip under path traps (a little later).
+# Disruptors jam towers bunched at one choke point -- from Act 1's row 4, past
+# the early-grace rows and the row-3 multi-lane step (both deliberately left
+# alone). Bulwarks shield the pack around them, from Act 2's second row (one
+# row after Sappers, so Act 2 doesn't open with two new threats at once).
 RUN_REINFORCEMENTS = (
     Reinforcement("sapper", 6, 4),
     Reinforcement("burrower", 9, 4),
+    Reinforcement("disruptor", 4, 5),
+    Reinforcement("bulwark", 7, 5),
 )
 
 

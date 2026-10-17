@@ -2,7 +2,7 @@ name: Release
 
 # Fires on any tag matching v* (e.g. v1.0.0) -- push a tag to cut a release.
 # Linux only: this game has never had a Windows/macOS build, and nothing
-# below assumes one -- see CLAUDE.md if that ever changes, since --onedir
+# below assumes one -- see docs/agents/release.md if that ever changes, since --onedir
 # packaging and DEFAULT_ASSET_ROOT below would need re-verifying per OS.
 on:
   push:
@@ -37,12 +37,12 @@ jobs:
       # whatever tests.yml happened to already run on that commit (never
       # guaranteed, since nothing stops tagging an arbitrary/local commit).
       # Keep this in sync with tests.yml's own 3 steps by hand -- same
-      # already-accepted manual-sync tradeoff CLAUDE.md documents for the
+      # already-accepted manual-sync tradeoff docs/agents/tooling.md documents for the
       # mypy module list itself (now a 4th copy of that list, not a new
       # problem).
       - run: ruff check .
 
-      - run: mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py
+      - run: mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py run/challenges.py run/endless_mutators.py run/abilities.py
 
       # Don't ship a build the test suite itself wouldn't pass -- same
       # -v/--cov/--cov-fail-under=98 tests.yml runs, not the bare `pytest -q`
@@ -55,7 +55,7 @@ jobs:
       # progression/achievements.py/persistence/player_settings.py/
       # persistence/save_state.py all resolve their JSON file's path
       # relative to the project root, computed from their own module's
-      # __file__ (see CLAUDE.md's "Small on-disk JSON state files" section)
+      # __file__ (see docs/agents/persistence.md "Small on-disk JSON state files")
       # -- under --onefile that's a different, vanishing directory every
       # run, so nothing would ever actually persist across launches.
       # --onedir keeps that directory stable (it's just the unpacked folder

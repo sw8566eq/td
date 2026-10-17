@@ -1,11 +1,11 @@
 """Game.render() and its one drawing helper, extracted into their own
 module -- the first cut of game.py's own god-object decomposition (see
-CLAUDE.md's own note on why `render()` was the slice picked to go
+docs/agents/core-game.md's note on why `render()` was the slice picked to go
 first). Both methods only ever read Game's state and delegate to ui.py's
 drawing functions; the only state either one ever *writes* is
 Game._last_panel_subject, a value Game._handle_panel_action_click (still
 on Game itself, since it also drives real gold-spending actions) reads
-back afterward -- see CLAUDE.md's "Stats panel subject resolution"
+back afterward -- see docs/agents/ui-input.md "Stats panel subject resolution"
 section for why that one field has to be set here, at render time, rather
 than recomputed at click time.
 
@@ -17,7 +17,7 @@ spelled out longhand, not less of it. Every hit-testing/query helper
 render() calls (_hovered_tower, _stats_panel_subject, ...) stays on Game
 itself rather than moving here, since Game._handle_click/
 _handle_panel_action_click read those exact same methods to resolve what
-a click should act on -- CLAUDE.md is explicit that the panel and its
+a click should act on -- docs/agents/ui-input.md is explicit that the panel and its
 action buttons must always agree on which tower they mean, which is only
 guaranteed by both sides sharing one method, not two copies kept in sync
 by hand.
@@ -36,8 +36,10 @@ import inspect
 import pygame
 
 from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
+from entities.waves import WaveState
 from presentation import ui
-from run import modules, potions, relics, shop, veterancy
+from progression import hints
+from run import challenges, endless_mutators, modules, potions, relics, shop, veterancy
 from support import settings
 
 
@@ -63,6 +65,8 @@ class Renderer:
                 game.fullscreen, game.sound_enabled, game.difficulty, game.window_size,
                 game.sound_volume, game.volume_button_rects, game.keybinds_entry_button_rect,
             )
+            ui.draw_hint_settings_buttons(game.screen, game.small_font, game.hint_settings_rects,
+                                          game.hints.enabled, len(game.hints.seen))
             pygame.display.flip()
             return
 
@@ -97,6 +101,14 @@ class Renderer:
             ui.draw_compendium_screen(
                 game.screen, game.font, game.small_font, game.compendium_rows,
                 game.compendium_scroll_offset, game.unlocks_back_rect,
+            )
+            pygame.display.flip()
+            return
+
+        if game.state == GameState.SERVICE_RECORD:
+            ui.draw_service_record_screen(
+                game.screen, game.font, game.small_font, game.service_record_rows,
+                game.service_record_scroll_offset, game.unlocks_back_rect,
             )
             pygame.display.flip()
             return
@@ -182,6 +194,7 @@ class Renderer:
                 node_affixes=game.map_node_affixes, relic_count=len(run.relics), node_threats=game.map_node_threats,
                 relics_key_label=ui.binding_display_string(game.keybindings["open_relics"]),
                 potion_names=[potions.POTIONS[key].display_name for key in run.potions],
+                node_challenges=game.map_node_challenges,
             )
             if relics_over_map:
                 ui.draw_relics_overlay(game.screen, game.font, game.small_font, run.relics,
@@ -248,6 +261,7 @@ class Renderer:
                 forged_names=game.reward.forged_tower_choices,
                 # Sealed Cask blocks new potions outright -- "FULL" would be a lie.
                 potion_unavailable_tag="SEALED" if potions.potions_blocked(game.active_run) else "FULL",
+                challenge_note=self._challenge_reward_note(node),
             )
             self._draw_toasts()
             pygame.display.flip()
@@ -289,7 +303,7 @@ class Renderer:
         game.grid.draw(game.screen, game.assets)
         for fire in game.ground_fires:
             fire.draw(game.screen)
-        if game.show_coverage:
+        if game.show_coverage and not self._hides_intel():
             ui.draw_coverage_overlay(game.screen, game.towers)
         for tower in game.towers:
             tower.draw(game.screen, game.assets, game.tiny_font)
@@ -309,7 +323,7 @@ class Renderer:
         hovered_tower = game._hovered_tower()
         panel_subject = game._stats_panel_subject(hovered_tower)
         game._last_panel_subject = panel_subject  # see _handle_panel_action_click
-        if panel_subject in game.towers:  # a placed tower (hovered, or pinned via selected_tower)
+        if panel_subject in game.towers and not self._hides_intel():  # a placed tower (hovered, or pinned)
             ui.draw_tower_range_preview(game.screen, panel_subject)
 
         # "Floor N/M" -- same 1-based node.row+1 / final_row_index+1 shape
@@ -325,7 +339,7 @@ class Renderer:
             game.economy, game.wave_manager, game.button_rects,
             game.skip_button_rect, game.selected_tower_name,
             game.time_scale, game.speed_button_rect,
-            game.wave_manager.next_wave_preview(),
+            None if self._hides_intel() else game.wave_manager.next_wave_preview(),
             shop_currency=game.active_run.shop_currency if game.active_run is not None else None,
             relics_button_rect=game.relics_button_rect,
             relic_count=len(game.active_run.relics) if game.active_run is not None else None,
@@ -336,6 +350,9 @@ class Renderer:
                              if game.active_run is not None else None),
             moduled_towers=game.active_run.tower_modules if game.active_run is not None else (),
             endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
+            early_call_bonus=(game.early_call_bonus(game.wave_manager.between_wave_timer)
+                              if game.wave_manager.state == WaveState.BETWEEN_WAVES else 0),
+            blocked_towers=game.challenge_blocked_towers(),
         )
         if game._show_first_placement_hint and not game.towers:
             ui.draw_first_placement_hint(game.screen, game.small_font)
@@ -347,11 +364,27 @@ class Renderer:
             veterancy_line=self._veterancy_line(panel_subject),
             module_line=self._module_line(panel_subject),
             resonance_line=ui.resonance_line(panel_subject),
+            move_button_rect=game.move_button_rect,
+            move_label=self._move_label(panel_subject),
+            move_enabled=self._move_enabled(panel_subject),
         )
         if game.active_run is not None:
+            # The ability button first, so a hovered potion's description
+            # (drawn by the belt, on its own backing box) lands on top of it.
+            ability = game.current_ability
+            ui.draw_ability_button(
+                game.screen, game.small_font, game.ability_button_rect, ability,
+                game.active_run.ability_cooldown, game.active_run.ability_charges, game.ability_timer,
+                game.ability_targeting, hovered=game.ability_button_rect.collidepoint(pygame.mouse.get_pos()),
+                compact=game.ability_button_compact,
+            )
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
+                challenge_text=self._challenge_status_text(),
+                mutator_names=endless_mutators.summary_names(game.active_mutators),
+                mutator_count=len(game.active_mutators),
+                mutator_min_top=game.ability_button_rect.bottom + 4,
             )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
@@ -452,11 +485,44 @@ class Renderer:
                 parts.append(f"{affix.display_name} elite" if is_elite else affix.display_name)
         return ", ".join(parts) or None
 
+    def _draw_hint(self):
+        """The current Field Notes hint, if any (see Game._hint_panel_rect)."""
+        game = self.game
+        if game._hint_panel_rect() is not None:
+            ui.draw_hint_panel(game.screen, game.small_font, hints.HINTS[game.hints.current],
+                               game._hint_placement())
+
+    def _challenge_status_text(self):
+        """The fight's Proving Grounds readout for the sidebar -- a header
+        line plus the live status line -- or None."""
+        game = self.game
+        if game.active_challenge is None:
+            return None
+        run = game.active_run
+        return ["Proving Grounds", challenges.status_line(
+            game.active_challenge, len(game.towers), run.challenge_leaks, run.challenge_failed,
+        )]
+
+    def _challenge_reward_note(self, node):
+        """The reward screen's subtitle after a Proving Grounds fight -- won
+        (its relic choice is on the screen) or failed -- else None."""
+        if node.node_type != "challenge":
+            return None
+        if self.game._challenge_won():
+            return f"Proving Grounds won: pick 1 of {challenges.RELIC_CHOICE_COUNT} bonus relics"
+        return "Proving Grounds failed: no bonus this time"
+
+    def _hides_intel(self):
+        """A Fog of War-style challenge: no wave preview, no range rings."""
+        challenge = self.game.active_challenge
+        return challenge is not None and challenge.challenge.hides_intel
+
     def _draw_toasts(self):
         """Achievement/unlock toasts -- shared by the board and by every
         full-screen run state (MAP/DRAFT/EVENT/REST/TREASURE), since relic,
         event, and floor-clear unlocks are all queued from outside combat."""
         game = self.game
+        self._draw_hint()  # every caller of this also wants the hint, under the toasts
         for toast in game.achievement_toasts:
             # A dark backing plate, so a toast stays legible over whatever
             # screen title or map node it happens to land on.
@@ -469,8 +535,52 @@ class Renderer:
                 game.screen.blit(backing, plate)
             toast.draw(game.screen, game.small_font)
 
+    def _move_label(self, subject):
+        """The panel's Move button text for a placed tower: its fee, "free"
+        before the first wave, "Cancel" while it's the one being moved."""
+        game = self.game
+        if subject not in game.towers:
+            return None
+        if game.moving_tower is subject:
+            return "Cancel"
+        fee = game.move_fee(subject)
+        return f"Move {fee}g" if fee else "Move free"
+
+    def _move_enabled(self, subject):
+        game = self.game
+        if subject not in game.towers:
+            return False
+        if game.moving_tower is subject:
+            return True
+        return game.can_move_towers() and game.economy.can_afford(game.move_fee(subject))
+
+    def _render_move_preview(self):
+        """Footprint and range ring where the tower being moved would land."""
+        game = self.game
+        tower = game.moving_tower
+        mouse_pos = pygame.mouse.get_pos()
+        if mouse_pos[1] >= settings.SCREEN_HEIGHT - settings.HUD_HEIGHT or mouse_pos[0] >= settings.PLAY_WIDTH:
+            return
+        anchor_col, anchor_row = game.placement_anchor_at(*mouse_pos, type(tower))
+        buildable = game._is_buildable_for_move(tower, anchor_col, anchor_row)
+        ui.draw_footprint_preview(game.screen, game.grid, anchor_col, anchor_row, buildable,
+                                  footprint_subtiles=tower.footprint_subtiles)
+        preview_pos = game.grid.anchor_to_pixel_center(anchor_col, anchor_row,
+                                                       footprint_subtiles=tower.footprint_subtiles)
+        if not self._hides_intel():
+            ui.draw_range_preview(game.screen, type(tower), preview_pos,
+                                  game.move_preview_range(tower, anchor_col, anchor_row), tower.MIN_RANGE)
+
     def _render_placement_preview(self):
         game = self.game
+        if game.ability_targeting:
+            mouse_pos = pygame.mouse.get_pos()
+            if mouse_pos[0] < settings.PLAY_WIDTH and mouse_pos[1] < settings.SCREEN_HEIGHT - settings.HUD_HEIGHT:
+                ui.draw_ability_target_preview(game.screen, mouse_pos, game.current_ability.radius)
+            return
+        if game.moving_tower is not None:
+            self._render_move_preview()
+            return
         if game.selected_tower_name is None:
             return
         mouse_pos = pygame.mouse.get_pos()
@@ -488,4 +598,5 @@ class Renderer:
         if buildable:
             ui.draw_resonance_links(game.screen, preview_pos,
                                     resonance_partners(game.selected_tower_name, preview_pos, game.towers))
-        ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)
+        if not self._hides_intel():
+            ui.draw_range_preview(game.screen, tower_cls, preview_pos, probe.effective_range(), probe.MIN_RANGE)

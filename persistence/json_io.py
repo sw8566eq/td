@@ -16,11 +16,11 @@ hand-copies of it.
 share: a path anchored to the project root, not the process's current
 working directory, which is only ever guaranteed to be the repo root for
 `python main.py` run from there -- a packaged --onedir build (see
-CLAUDE.md's "Release binary" section) launched from anywhere else needs
+docs/agents/release.md) launched from anywhere else needs
 this to keep finding its own bundled data/assets. Every caller lives one
 level under the project root now (persistence/progress.py,
 presentation/assets.py, ...), inside one of the repo's top-level package
-folders -- see CLAUDE.md's "Organized into folders" section -- so
+folders -- see docs/agents/core-game.md "Organized into folders" -- so
 `module_relative_path` walks up two levels from the calling module's own
 `__file__` (package dir, then project root), not one. This is safe and
 uniform *only* because every caller sits at that same, single level of

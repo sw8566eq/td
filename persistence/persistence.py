@@ -37,6 +37,8 @@ def level_to_dict(level):
         "spawn_cells": [list(cell) for cell in level.spawn_cells],
         "goal_cells": [list(cell) for cell in level.goal_cells],
         "blocked_cells": sorted(list(cell) for cell in level.blocked_cells),
+        # Optional on load (files and saves from before high ground lack it).
+        "high_ground_cells": sorted(list(cell) for cell in level.high_ground_cells),
         "branch_weights": [
             [list(from_cell), list(to_cell), weight]
             for (from_cell, to_cell), weight in level.branch_weights.items()
@@ -63,6 +65,7 @@ def level_from_dict(data):
         spawn_cells=tuple(tuple(cell) for cell in data["spawn_cells"]),
         goal_cells=tuple(tuple(cell) for cell in data["goal_cells"]),
         blocked_cells=frozenset(tuple(cell) for cell in data.get("blocked_cells", [])),
+        high_ground_cells=frozenset(tuple(cell) for cell in data.get("high_ground_cells", [])),
         branch_weights={
             (tuple(from_cell), tuple(to_cell)): weight
             for from_cell, to_cell, weight in data.get("branch_weights", [])

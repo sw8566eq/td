@@ -1,6 +1,6 @@
 """The out-of-battle Shop -- what a floor clear now opens onto, replacing
-the old take-it-or-leave-it draft of exactly one free card. See CLAUDE.md's
-"Two currencies" section for the whole redesign this belongs to, and
+the old take-it-or-leave-it draft of exactly one free card. See docs/agents/economy-shop.md
+"Two currencies: battle gold and the Shop" for the whole redesign this belongs to, and
 game.py's own note (on GameState.DRAFT) for why the *code* still says
 "draft" throughout even though the *screen* is now a shop.
 

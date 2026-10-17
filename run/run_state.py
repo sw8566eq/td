@@ -3,7 +3,7 @@ within one roguelike run -- lives, shop currency, drafted tower pool,
 relics, seed, and the run's own map/position within it. Battle gold
 (Economy.gold) is deliberately *not* one of these fields -- it resets fresh
 every floor instead of carrying forward; see game.py's _load_combat_node and
-CLAUDE.md's "Two currencies" section for the split this reflects.
+docs/agents/economy-shop.md "Two currencies" for the split this reflects.
 
 Everything else about a floor (Grid/Economy/WaveManager/towers/enemies) is
 fully rebuilt fresh by Game._load_level_object() on every combat/elite node
@@ -16,7 +16,7 @@ the starter tower pool a run begins with.
 
 from dataclasses import dataclass, field
 
-from run.run_map import ACT_COUNT, ROW_COUNT, RunMap
+from run.run_map import ACT_COUNT, FIGHT_NODE_TYPES, ROW_COUNT, RunMap
 
 
 @dataclass
@@ -50,7 +50,7 @@ class RunState:
     # for why the run's first-ever node is the one exception to "the run's
     # own lives carry into a node load." There is no equivalent `gold`
     # field: battle gold (Economy.gold) resets fresh every floor now (see
-    # game.py's _load_combat_node and CLAUDE.md's "Two currencies" section)
+    # game.py's _load_combat_node and docs/agents/economy-shop.md "Two currencies")
     # and so has nothing left to carry -- only lives still survives a node
     # transition.
     lives: int = 0
@@ -152,6 +152,22 @@ class RunState:
     # taken there), which the capture adds on top of the level's own
     # starting lives rather than overwriting.
     lives_captured: bool = False
+    # The current fight's Proving Grounds bookkeeping (run/challenges.py):
+    # leaks counted against a Glass Gate-style leak_limit, and whether the
+    # challenge has been broken (its bonus reward forfeit). Reset by every
+    # fight load (Game._load_combat_node); kept on the run so a mid-floor
+    # save and a pending reward screen both remember them.
+    challenge_leaks: int = 0
+    challenge_failed: bool = False
+    # The Commander's ability (run/abilities.py): waves still to clear
+    # before it can be used again (0 = ready). Set to the ability's
+    # cooldown_waves on use, ticked down by Game at every wave clear, and
+    # carried across floors and acts.
+    ability_cooldown: int = 0
+    # Fight-scoped charges an ability left behind (Hold the Gate's blocked
+    # leaks) -- reset by every fight load, like challenge_leaks, and kept on
+    # the run so a mid-floor save remembers them.
+    ability_charges: int = 0
 
     @property
     def current_level_id(self) -> object:
@@ -202,5 +218,5 @@ class RunState:
         visited."""
         return self.floors_cleared_prior_acts + sum(
             1 for node_id in self.visited_node_ids
-            if self.map.node(node_id).node_type in ("combat", "elite", "boss")
+            if self.map.node(node_id).node_type in FIGHT_NODE_TYPES
         )

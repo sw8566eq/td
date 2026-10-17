@@ -1,5 +1,8 @@
 # UI and input
 
+Key remapping, the stats panel's click routing, the HUD layout, the Field Manual (code:
+`COMPENDIUM`) and the relics overlay.
+
 ## Key remapping is curated, not repo-wide
 
 `persistence/keybindings.py` lets the player rebind a small, deliberately-chosen subset of actions --
@@ -59,7 +62,7 @@ action, each a button showing its current binding; clicking one starts "listenin
 MODIFIER_KEY_CODES`) doesn't complete a capture on its own (waiting for the real key it's meant to
 combine with), and Escape cancels the capture instead of ever being captured itself. A Reset button
 restores `keybindings.DEFAULT_BINDINGS` wholesale. Persisted the same way as every other small
-on-disk JSON state file (see that section below) -- `persistence/keybindings.py`'s own `load_bindings`/
+on-disk JSON state file (see [persistence.md](persistence.md) "Small on-disk JSON state files") -- `persistence/keybindings.py`'s own `load_bindings`/
 `save_bindings`, injectable via `Game(keybindings_path=...)` exactly like `settings_path` etc., so
 tests and the `run-td` skill's driver never touch the real repo-root `keybindings.json`.
 
@@ -96,7 +99,7 @@ honest, partial fix for a symptom they didn't know was a much older, structural 
 the countdown caption and Skip/Start button into the top strip -- the countdown text now sits to the
 button's *left* (`midright` anchor), not above it, since a top-strip button has no headroom above it
 to float a caption over without spilling onto the grid -- which is what let the bottom row's
-`BUTTON_SIZE`/`BUTTON_MARGIN` (44/8, sized against the 12-tower roster's own worst-case Gold/Lives/
+`BUTTON_SIZE`/`BUTTON_MARGIN` (44/8 at the time, sized against the 12-tower roster's own worst-case Gold/Lives/
 Wave text width, e.g. `"Gold: unlimited   Shop: 999"`, with real headroom to spare) become the *only*
 constraint on fitting the button row, rather than also needing to dodge a fixed-position control in
 the same row. `test_ui.py`'s `test_hud_gold_lives_wave_text_fits_before_the_play_area_edge` is the
@@ -105,7 +108,25 @@ distinct from the older, narrower `test_skip_button_does_not_overlap_the_tower_b
 only ever checked the skip button's own `Rect` against the button row's `Rect`s and would never have
 caught text silently overflowing past both of them.
 
-## Compendium
+## Commander ability button
+
+The Commander ability (see [run-loop.md](run-loop.md) "Commander abilities") sits in the sidebar at
+`ui.ABILITY_BUTTON_TOP`, just under the Sell/Move row and above the Proving Grounds status lines and
+the potion belt -- a strip nothing else claims, so it never moves with the panel's subject. The HUD
+top strip was too tight (wave preview, countdown, Skip/Relics/Speed). `ui.draw_ability_button` draws
+"F: <name>" over a status line from `ui.ability_status_text` (aiming > active timer > charges left >
+recharging > Ready); hovering shows `ui.ability_detail` in a filled box above it, covering the panel
+buttons only while hovered. The hotkey is a fixed `F` (`input_handler.ABILITY_HOTKEY`), not
+remappable, checked after every remappable action like the Q/W/E potion keys. Esc while aiming
+cancels the aim instead of pausing.
+
+The endless final boss's mutator list (see [waves-difficulty.md](waves-difficulty.md) "Endless mutators") grows upward
+into the same strip. While any mutator is active, `Game.ability_button_compact` shrinks the button to
+one line (`ABILITY_BUTTON_COMPACT_HEIGHT`: bare name plus a short tag), and `draw_potion_belt`'s
+`mutator_min_top` cuts the list short with "..." (`ui.mutator_lines_fitting_below`) rather than draw
+over the button. `Game.ability_button_rect` is a property, so clicks always hit the drawn size.
+
+## Field Manual (`COMPENDIUM`)
 
 `GameState.COMPENDIUM` (`K` from MENU) lists every relic/boss relic/curse/potion/commander/elite affix.
 `ui.compendium_rows(small_font)` builds `(kind, name, detail)` rows straight from the registries
@@ -113,9 +134,20 @@ caught text silently overflowing past both of them.
 Unlocks screen's layout constants, back button and `unlocks_max_scroll`, since it's the same shape
 of scrolling list.
 
+## Service Record screen
+
+`GameState.SERVICE_RECORD` (`T` from MENU) shows `progression/service_record.py`'s lifetime stats
+(see [persistence.md](persistence.md) "`progression/service_record.py`"). `Game._enter_service_record`
+re-reads the file and builds `ui.service_record_rows(record)`: `(kind, cells, bar)` rows in four
+sections (Overall, Towers sorted by damage, Enemies by kills, Commanders by runs), with display
+names read off the registries. It borrows the Field Manual's scrolling layout: the `UNLOCKS_*`
+constants, `unlocks_back_rect` and `unlocks_max_scroll`. Columns sit at fixed
+`SERVICE_RECORD_COLUMN_XS`; `test_service_record_columns_fit_on_screen` checks the longest display
+name and a nine-digit number still fit, so a much longer new tower/enemy name fails there first.
+
 ## Relics overlay from the map
 
 `GameState.RELICS` can be opened from PLAYING (R / HUD button) or MAP (R); `Game.relics_return_state`
 records which, and any key returns there. Over the map, `Renderer` draws the map screen and then the
 overlay at full `SCREEN_WIDTH`. Past `ui.RELICS_OVERLAY_FULL_TEXT_LIMIT` relics the overlay lists
-names only, several per line, pointing at the Compendium for full text.
+names only, several per line, pointing at the Field Manual for full text.

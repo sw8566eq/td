@@ -1,6 +1,6 @@
 """A roguelike run's branching map: a row-based DAG of nodes (Combat/Elite/
 Shop/Event/Rest/Treasure), generated once per run and shown to the player in
-full from the start -- see CLAUDE.md's run-loop section. Replaces the old
+full from the start -- see docs/agents/run-map.md. Replaces the old
 run_floors.py's flat, ascending floor_sequence: instead of one fixed path
 through LEVELS, a run now picks its own route through a graph of choices,
 converging on a single boss node at the top.
@@ -58,14 +58,19 @@ MIN_ROW_WIDTH, MAX_ROW_WIDTH = 2, 4
 MAX_COL_JUMP = 1
 EXTRA_EDGE_CHANCE = 0.3
 
-NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure", "armory", "boss")
+NODE_TYPES = ("combat", "elite", "shop", "event", "rest", "treasure", "armory", "challenge", "boss")
+# Every node type that loads a level and is fought (Game._load_combat_node)
+# -- the one tuple every "is this a fight?" check reads. "challenge" is the
+# Proving Grounds (run/challenges.py): a fight under one constraint.
+FIGHT_NODE_TYPES = ("combat", "elite", "challenge", "boss")
 # Placeholder weights, tunable once there's real playtesting to tune
 # against (same "loose draft" spirit shop.py's own TOWER_PRICE/RELIC_PRICE
 # comment already documents) -- combat stays the most common node by a wide
 # margin, treasure the rarest. "boss" has no entry here at all -- it's never
 # drawn by the weighted mix, only forced onto the final row exactly like
 # "combat" is forced onto row 0 (see _assign_node_types).
-NODE_TYPE_WEIGHTS = {"combat": 45, "elite": 15, "shop": 12, "event": 16, "rest": 8, "treasure": 4, "armory": 5}
+NODE_TYPE_WEIGHTS = {"combat": 45, "elite": 15, "shop": 12, "event": 16, "rest": 8, "treasure": 4, "armory": 5,
+                     "challenge": 6}
 # The final row's own dedicated level pool -- two boss-tier levels, distinct
 # from the ordinary "complex" tier every other late-row combat/elite node
 # draws from (see _level_pool_for_row), so the run's climactic fight is
@@ -92,9 +97,15 @@ MAX_SAME_TYPE_PER_ROW_FRACTION = 0.5
 # escalated fight and their first multi-lane fight land on the same row
 # either way, never a row apart.
 MIN_ELITE_ROW = 3
+# No Proving Grounds before this row -- from Act 1's middle rows onward,
+# once a deck has a couple of floors behind it. Never on row 0 or the boss
+# row either way (both are forced, never drawn from the weighted mix).
+MIN_CHALLENGE_ROW = 2
+# The earliest row each gated node type may be drawn on.
+MIN_ROW_FOR_TYPE = {"elite": MIN_ELITE_ROW, "challenge": MIN_CHALLENGE_ROW}
 # This row always has at least one Rest node, forced onto it after the
 # weighted draw if it didn't produce one on its own -- unlike Shop (left
-# purely to chance, a deliberate design choice, see CLAUDE.md), a run should
+# purely to chance, a deliberate design choice, see docs/agents/run-map.md), a run should
 # never be able to go the *entire* back half with zero chances to recover
 # lost lives.
 GUARANTEED_REST_ROW = ROW_COUNT - 2
@@ -206,7 +217,7 @@ def _assign_node_types(rng: random.Random, row_index: int, width: int) -> list[s
     the final row is always all-boss (see generate_run_map); every row
     between them is a weighted random draw from NODE_TYPES, capped at
     MAX_SAME_TYPE_PER_ROW_FRACTION of the row so one row can't degenerate
-    into a single repeated type, with Elite excluded below MIN_ELITE_ROW,
+    into a single repeated type, with Elite/Proving Grounds excluded below MIN_ROW_FOR_TYPE,
     a Rest node forced in on GUARANTEED_REST_ROW, and a Treasure node
     forced in on GUARANTEED_TREASURE_ROW, in each case only if the draw
     didn't already produce one on its own."""
@@ -217,7 +228,7 @@ def _assign_node_types(rng: random.Random, row_index: int, width: int) -> list[s
 
     allowed = {
         node_type: weight for node_type, weight in NODE_TYPE_WEIGHTS.items()
-        if not (node_type == "elite" and row_index < MIN_ELITE_ROW)
+        if row_index >= MIN_ROW_FOR_TYPE.get(node_type, 0)
     }
     # width <= MAX_ROW_WIDTH and len(allowed) * max_per_type is always >=
     # MAX_ROW_WIDTH for every NODE_TYPE_WEIGHTS/MAX_SAME_TYPE_PER_ROW_
@@ -294,14 +305,14 @@ def generate_run_map(rng: random.Random, level_pool: dict[int, Level] = LEVELS) 
         cols = [COLS // 2] if width == 1 else sorted(rng.sample(range(COLS), width))
         types = _assign_node_types(rng, row_index, width)
 
-        level_ids_needed = sum(1 for node_type in types if node_type in ("combat", "elite", "boss"))
+        level_ids_needed = sum(1 for node_type in types if node_type in FIGHT_NODE_TYPES)
         level_pool_for_row = _level_pool_for_row(row_index, level_pool)
         picked_level_ids = iter(sample_up_to(rng, level_pool_for_row, level_ids_needed))
 
         rows.append(tuple(
             MapNode(
                 id=f"{row_index}-{col}", row=row_index, col=col, node_type=node_type,
-                level_id=next(picked_level_ids) if node_type in ("combat", "elite", "boss") else None,
+                level_id=next(picked_level_ids) if node_type in FIGHT_NODE_TYPES else None,
             )
             for col, node_type in zip(cols, types)
         ))

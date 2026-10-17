@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from entities.enemy import is_airborne
 from entities.projectile import Projectile
 from run import veterancy
 
@@ -19,6 +20,8 @@ from run import veterancy
 VARIETY_RADIUS = 110
 VARIETY_BONUS_CAP = 0.25
 ISOLATION_RADIUS = 100
+# The sparks drawn across a jammed tower (Tower._draw_jam_static).
+JAM_SPARK_COLOR = (120, 220, 255)
 from support import settings
 
 
@@ -100,6 +103,9 @@ class Tower:
     # A path structure that holds ground enemies until broken (Barricade --
     # see Game._hold_enemies_at_barricades).
     BLOCKS_PATH = False
+    # Whether a Disruptor (Enemy.jam_towers) can jam it. False for towers
+    # that never fire (Support's aura is passive; a Barricade just stands).
+    JAMMABLE = True
     # What a veterancy rank improves, for the stats panel ("+12% dmg").
     VETERANCY_BONUS_LABEL = "dmg"
     VETERANCY_BONUS_PER_RANK = veterancy.DAMAGE_BONUS_PER_RANK
@@ -190,6 +196,11 @@ class Tower:
         self.anchor_row = anchor_row
         self.pos = pygame.Vector2(pixel_pos)
         self.cooldown = 0.0
+        # Seconds this tower still can't fire because a Disruptor jammed it
+        # (jam()/_tick_jam); jam_duration_multiplier is a Faraday Mesh-style
+        # relic's cut, set by Game._apply_construction_relics.
+        self.jammed_timer = 0.0
+        self.jam_duration_multiplier = 1.0
         self.level = 1
         # Snapshot each scaled stat's level-1 value once, up front, so
         # every upgrade recomputes from the true base rather than
@@ -222,7 +233,7 @@ class Tower:
 
         # A same-frame flag in the spirit of Enemy.damage_events/
         # Projectile.impact_events's own drain-a-per-frame-event-list idiom
-        # (see CLAUDE.md's "Visual effects" section) -- set once per
+        # (see docs/agents/presentation.md "Visual effects") -- set once per
         # successful fire in update() below, read (and reset) into an
         # audio.SoundManager.play(FIRE_SOUND) call by Game.update()'s
         # existing two-pass tower loop. A plain bool, not a list, since one
@@ -293,6 +304,9 @@ class Tower:
         self.relic_tar_pit_marks = False
         # An Incendiary Shells-style relic -- read only by MortarTower.
         self.relic_ground_fire = None
+        # A Barbed Tethers-style relic -- read only by HarpoonTower, scaling
+        # how long its hits keep a flyer Grounded.
+        self.relic_harpoon_ground_bonus_multiplier = 1.0
         # Aerial Targeting Array-style relic -- Cannon's first fully
         # exclusive relic (heavy_ordnance immediately above is shared
         # 50/50 with Knockback), boolean OR-composed the same shape as
@@ -433,12 +447,23 @@ class Tower:
         # An Overclock Elixir potion's live fire-rate bonus -- set every
         # frame by Game.update() (1.0 whenever no Overclock is running).
         self.potion_fire_rate_multiplier = 1.0
+        # A Commander ability's live buffs (run/abilities.py tower_buff) --
+        # reset to 1.0 and re-applied every frame by Game.update().
+        self.ability_fire_rate_multiplier = 1.0
+        self.ability_damage_multiplier = 1.0
         # This tower type's run veterancy (run/veterancy.py) -- set once at
         # construction by Game._construct_tower via apply_veterancy().
         self.veterancy_rank = 0
         self.veterancy_damage_bonus = 0.0
         # A fitted module's damage bonus (run/modules.py) -- set at construction.
         self.module_damage_bonus = 0.0
+        # High ground (Level.high_ground_cells) -- set once at construction
+        # by Game._construct_tower from where the tower stands: an additive
+        # effective_range() term, plus a Watchtowers-style relic's additive
+        # effective_damage() term (Game._apply_construction_relics).
+        self.on_high_ground = False
+        self.high_ground_range_bonus = 0.0
+        self.high_ground_damage_bonus = 0.0
         # Placement relics (Relic.variety_damage_bonus_per_type/isolation_
         # damage_bonus): the per-type/flat amounts set at construction, and
         # the live bonus set_nearby_tower_bonus() resolves from them.
@@ -547,7 +572,7 @@ class Tower:
         # direct_damage() and drained into real Economy.gold whole-gold-at-
         # a-time by Game.update() (the same drain-a-per-frame-accumulated-
         # value idiom fired_this_frame/impact_events/damage_events already
-        # establish -- see CLAUDE.md's "Visual effects" section). Harmless
+        # establish -- see docs/agents/presentation.md "Visual effects"). Harmless
         # on every non-Siphon tower, which never accumulates anything here
         # since siphon_gold_fraction is 0.0 for them. Deliberately never
         # reset to 0 by the drain -- only the whole-gold portion is removed
@@ -698,9 +723,29 @@ class Tower:
         self.aura_damage_multiplier = max(self.aura_damage_multiplier, damage_multiplier)
         self.aura_range_multiplier = max(self.aura_range_multiplier, range_multiplier)
 
+    def jam(self, duration):
+        """A Disruptor's pulse: can't fire for `duration` seconds (scaled by
+        jam_duration_multiplier). Overlapping jams keep the longer one rather
+        than stacking."""
+        if not self.JAMMABLE:
+            return
+        self.jammed_timer = max(self.jammed_timer, duration * self.jam_duration_multiplier)
+
+    @property
+    def is_jammed(self):
+        return self.jammed_timer > 0
+
+    def _tick_jam(self, dt):
+        """Count the jam down; True while it still blocks firing this frame."""
+        if self.jammed_timer > 0:
+            self.jammed_timer = max(0.0, self.jammed_timer - dt)
+        return self.jammed_timer > 0
+
     def update(self, dt, enemies, projectiles, towers=None, enemy_index=None):
         self.cooldown -= dt
-        if self.cooldown > 0:
+        # A jammed tower's cooldown still runs down, so it fires the moment
+        # the jam lifts if it was ready.
+        if self._tick_jam(dt) or self.cooldown > 0:
             return
 
         target = self.acquire_target(enemies, enemy_index)
@@ -771,10 +816,9 @@ class Tower:
         shot at an enemy that's already effectively gone -- and since
         "furthest along the path" is the whole ranking for the default
         mode, a just-arrived enemy would usually *win* that ranking over
-        every real threat still on the path. Also excludes a flying enemy
-        (see enemy.py) from a tower whose can_target_flying is False --
-        checked via getattr rather than a bare attribute access, since not
-        every enemy stand-in (tests, mainly) defines is_flying.
+        every real threat still on the path. Also excludes an airborne enemy
+        (enemy.is_airborne: flying and not currently Grounded by a Harpoon)
+        from a tower whose can_target_flying is False.
 
         `enemy_index` (an `EnemySpatialIndex`, see spatial_index.py) is an
         optional broad-phase narrowing of `enemies` down to whatever's near
@@ -789,7 +833,7 @@ class Tower:
         candidates = [
             e for e in pool
             if not e.is_dead and not e.reached_goal and self.in_range(e, effective_range)
-            and (self.can_target_flying or not getattr(e, "is_flying", False))
+            and (self.can_target_flying or not is_airborne(e))
             and (not self.MIN_RANGE or self.pos.distance_to(e.pos) >= self.MIN_RANGE)
             and (self.HITS_BURROWED or not getattr(e, "is_burrowed", False))
         ]
@@ -812,6 +856,13 @@ class Tower:
     def _target_closest(self, candidates):
         return min(candidates, key=lambda e: self.pos.distance_to(e.pos))
 
+    def _target_flying(self, candidates):
+        """Airborne flyers first (furthest along), else "first" -- a
+        Harpoon's default, so it spends its shots grounding flyers that
+        aren't grounded yet."""
+        airborne = [e for e in candidates if is_airborne(e)]
+        return self._target_first(airborne or candidates)
+
     def cycle_targeting_mode(self):
         """Advance to the next TARGETING_MODES entry, wrapping around --
         the stats panel's "Targeting: ..." row calls this on click."""
@@ -827,6 +878,7 @@ class Tower:
         "strongest": _target_strongest,
         "closest": _target_closest,
         "weakest": _target_weakest,
+        "flying": _target_flying,
     }
 
     def in_range(self, enemy, effective_range=None):
@@ -860,6 +912,7 @@ class Tower:
             + (self.relic_range_bonus_multiplier - 1.0)
             + (self.relic_last_stand_range_multiplier - 1.0)
             + self.resonance_range_bonus
+            + self.high_ground_range_bonus
         )
 
     def relic_adjusted_range(self):
@@ -873,8 +926,9 @@ class Tower:
         tower's own update() in list order, all sharing one frame), an
         order-dependent chain reaction with no equivalent before relics
         existed -- a Support tower's own reach was always immune to
-        aura buffs, only ever widened by a relic held all run."""
-        return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0))
+        aura buffs, only ever widened by a relic held all run (or by
+        standing on high ground, which is just as persistent)."""
+        return self.range * (1.0 + (self.relic_range_bonus_multiplier - 1.0) + self.high_ground_range_bonus)
 
     def effective_damage(self):
         """self.damage scaled by five independent bonus sources, stacked
@@ -910,7 +964,8 @@ class Tower:
             + self.module_damage_bonus
             + self.placement_damage_bonus
             + self.resonance_damage_bonus
-        )
+            + self.high_ground_damage_bonus
+        ) * self.ability_damage_multiplier
 
     def _relic_family_damage_bonus(self):
         """Hook for a relic that only bonuses a specific tower family's
@@ -1052,6 +1107,7 @@ class Tower:
             * self.relic_last_stand_fire_rate_multiplier
             * self.relic_tower_density_fire_rate_bonus_multiplier
             * self.potion_fire_rate_multiplier
+            * self.ability_fire_rate_multiplier
             * (1.0 + self.resonance_fire_rate_bonus)
         )
 
@@ -1109,8 +1165,24 @@ class Tower:
         rect = sprite.get_rect(center=(int(self.pos.x), int(self.pos.y)))
         surface.blit(sprite, rect)
         self._draw_level_pips(surface, rect)
+        if self.jammed_timer > 0:
+            self._draw_jam_static(surface, rect)
         if font is not None:
             self._draw_upgrade_badge(surface, font)
+
+    def _draw_jam_static(self, surface, sprite_rect):
+        """A jammed tower: a grey wash plus a few zig-zag sparks across it,
+        jittering with the remaining time so it reads as live static."""
+        wash = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
+        wash.fill((40, 40, 60, 110))
+        surface.blit(wash, sprite_rect)
+        phase = int(self.jammed_timer * 20)
+        step = max(4, sprite_rect.width // 6)
+        for i in range(3):
+            y = sprite_rect.top + (i + 1) * sprite_rect.height // 4
+            points = [(x, y + (3 if (n + phase + i) % 2 else -3))
+                      for n, x in enumerate(range(sprite_rect.left + 2, sprite_rect.right - 1, step))]
+            pygame.draw.lines(surface, JAM_SPARK_COLOR, False, points, 1)
 
     def _draw_upgrade_badge(self, surface, font):
         cost = self.upgrade_cost()
@@ -1519,8 +1591,7 @@ class SiphonTower(Tower):
     Tower nor Projectile has ever held a live Economy/Game reference, and
     this tower doesn't start now. Instead it reuses the exact drain-a-per-
     frame-accumulated-value idiom fired_this_frame/impact_events/
-    damage_events already establish (see CLAUDE.md's "Visual effects"
-    section) -- see pending_siphon_gold's own comment in __init__ above,
+    damage_events already establish (see docs/agents/presentation.md "Visual effects") -- see pending_siphon_gold's own comment in __init__ above,
     Projectile._apply_direct_damage() for where it's credited, and
     Game.update() for where it's actually drained into real gold.
     create_projectile() below needs zero siphon-specific kwargs at all --
@@ -1762,6 +1833,59 @@ class MortarTower(Tower):
         )
 
 
+class HarpoonTower(Tower):
+    """Fires a tethered harpoon that drags a flyer down: every hit Grounds
+    it for ground_duration seconds (Enemy.apply_ground), and while grounded
+    it counts as not flying (enemy.is_airborne), so Cannons, Mortars,
+    Knockback, traps, burning ground and Barricades can all reach it.
+    Middling damage on a slow reload -- its value is the opening it makes
+    for the rest of the defense. Starts on the "flying" targeting mode
+    (airborne flyers first), which only it offers."""
+    description = "Harpoons flyers and drags them down, so ground-only towers can hit them."
+    cost = 85
+    range = 130
+    damage = 12
+    fire_rate = 0.7
+    projectile_speed = 420.0
+    ground_duration = 3.0
+    # How hard a Reel In harpoon slows what it hits (1.0 = no slow until
+    # specialized), for REEL_SLOW_DURATION seconds.
+    reel_slow_factor = 1.0
+    REEL_SLOW_DURATION = 1.5
+    sprite_name = "tower_harpoon"
+    display_name = "Harpoon"
+    FIRE_SOUND = "tower_fire_harpoon"
+    TARGETING_MODES = ("flying",) + Tower.TARGETING_MODES
+    DEFAULT_TARGETING_MODE = "flying"
+    EXTRA_STATS = (
+        ("Grounds for", "ground_duration", _format_seconds),
+        ("Reel slow", "reel_slow_factor", _format_slow_percent),
+    )
+    SPECIALIZATIONS = {
+        "deep_anchor": {
+            "display_name": "Deep Anchor",
+            "description": "Grounds flyers far longer.",
+            "stat_multipliers": {"ground_duration": 1.7},
+        },
+        "reel_in": {
+            "display_name": "Reel In",
+            "description": "Hits slow, and hit harder.",
+            "stat_multipliers": {"reel_slow_factor": 0.6, "damage": 1.15},
+        },
+    }
+
+    def create_projectile(self, target):
+        slow = None
+        if self.reel_slow_factor < 1.0:
+            slow = (self.reel_slow_factor, self.REEL_SLOW_DURATION)
+        return Projectile(
+            pos=self.pos, target=target, speed=self.projectile_speed,
+            damage=self.effective_damage(), slow_effect=slow,
+            ground_duration=self.ground_duration * self.relic_harpoon_ground_bonus_multiplier,
+            sprite_name="projectile_harpoon", source=self,
+        )
+
+
 class SpikeTrapTower(Tower):
     """A trap built right on the path: short reach, a damaging splash on
     whatever walks over it. Ground enemies only -- flyers sail past."""
@@ -1863,6 +1987,7 @@ class BarricadeTower(Tower):
     PLACEMENT = "path"
     ATTACKS = False
     BLOCKS_PATH = True
+    JAMMABLE = False  # nothing to jam -- it never fires
     can_target_flying = False  # flyers pass over it
     LEVEL_SCALED_STATS = ("max_hp",)
     LEVEL_STAT_MULTIPLIERS = {1: 1.0, 2: 1.6, 3: 2.4}
@@ -1958,6 +2083,7 @@ class SupportTower(Tower):
     sprite_name = "tower_support"
     display_name = "Support"
     IS_SUPPORT = True
+    JAMMABLE = False  # its aura is passive -- a Disruptor has nothing to jam
     VETERANCY_ASSIST_FRACTION = 0.25
     VETERANCY_BONUS_LABEL = "aura"
     VETERANCY_BONUS_PER_RANK = veterancy.AURA_BONUS_PER_RANK
@@ -2141,7 +2267,13 @@ class OverloadCannonTower(Tower):
         timer, fire once ready, tag the resulting projectile with every
         relic_* field) but replaces "cooldown counts down to a shot" with
         "charge counts up to a burst," and adds the interrupted-charge
-        check the base template has no equivalent of at all."""
+        check the base template has no equivalent of at all.
+
+        A jam (Tower.jam) pauses the charge where it stands rather than
+        losing it -- the charge resumes once the jam lifts, provided the
+        target is still alive and in range."""
+        if self._tick_jam(dt):
+            return
         if self._charge_target is None:
             # Idle: try to acquire a fresh target and begin a new charge.
             # acquire_target() is called here EXACTLY ONCE per charge --
@@ -2237,6 +2369,7 @@ TOWER_TYPES = {
     "barricade": BarricadeTower,
     "spike_trap": SpikeTrapTower,
     "tar_pit": TarPitTower,
+    "harpoon": HarpoonTower,
 }
 # The reverse lookup -- a tower class's registry key.
 TOWER_TYPE_NAMES = {cls: name for name, cls in TOWER_TYPES.items()}
@@ -2312,5 +2445,11 @@ RESONANCES = {
     ),
     "thermal_shock": Resonance(
         "Thermal Shock", "mortar", "frost", "Mortar near a Frost tower: +15% damage.", damage_bonus=0.15,
+    ),
+    "grounded_barrage": Resonance(
+        "Grounded Barrage", "mortar", "harpoon", "Mortar near a Harpoon: +15% fire rate.", fire_rate_bonus=0.15,
+    ),
+    "anchor_line": Resonance(
+        "Anchor Line", "harpoon", "cannon", "Harpoon near a Cannon: +20% range.", range_bonus=0.20,
     ),
 }

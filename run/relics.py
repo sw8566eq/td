@@ -20,7 +20,7 @@ _enter_draft). Every relic's numeric effect is one of three shapes:
   starting_gold_multiplier *used* to need this same one-time treatment,
   back when battle gold carried forward across floors and "starting gold"
   only existed once, at floor 0 -- now that battle gold resets fresh every
-  floor instead (see CLAUDE.md's "Two currencies" section), it's just
+  floor instead (see docs/agents/economy-shop.md "Two currencies"), it's just
   another per-floor RelicModifiers field like gold_per_floor_bonus, applied
   by Game._load_level_object's own Economy construction on every floor,
   not a special case anymore.
@@ -562,9 +562,16 @@ class Relic:
     structure_hp_multiplier: float = 1.0
     dead_zone_multiplier: float = 1.0
     module_fire_rate_bonus: float = 0.0
+    # Extra damage (an additive effective_damage() term) for a tower built
+    # on high ground (Level.high_ground_cells) -- Game._apply_construction_
+    # relics, Relic-only like the three fields above.
+    high_ground_damage_bonus: float = 0.0
     # Mortar only: each shell leaves burning ground -- (fraction of the
     # shell's damage dealt per second, seconds). See Game._update_ground_fires.
     mortar_ground_fire: tuple[float, float] | None = None
+    # Harpoon only: how much longer its hits keep a flyer Grounded
+    # (Game._apply_construction_relics -> HarpoonTower.create_projectile).
+    harpoon_ground_duration_multiplier: float = 1.0
     # Extra damage an enemy takes while a Barricade holds it (Enemy.held_
     # damage_multiplier, set by Game._hold_enemies_at_barricades).
     held_damage_multiplier: float = 1.0
@@ -580,6 +587,16 @@ class Relic:
     # A Barricade that breaks explodes for this fraction of its max hp, hitting
     # ground enemies within BARRICADE_BURST_RADIUS (Game._hold_enemies_at_barricades).
     barricade_burst_fraction: float = 0.0
+    # Tempo relics -- Relic-only, read straight off RELICS by Game:
+    # call_next_wave's early-call bonus, and move_fee (relocating towers).
+    early_call_bonus_multiplier: float = 1.0
+    free_tower_moves: bool = False
+    # Scales how long a Disruptor's jam lasts on each tower (Tower.jam_
+    # duration_multiplier, set by Game._apply_construction_relics).
+    jam_duration_multiplier: float = 1.0
+    # Scales every enemy damage-reduction aura (a Bulwark's) -- read by
+    # Game._apply_enemy_auras, multiplied across held relics.
+    enemy_aura_multiplier: float = 1.0
     is_boss_relic: bool = False
     blocks_rest_heal: bool = False
     blocks_shop_income: bool = False
@@ -1124,6 +1141,10 @@ RELICS = {
         "quick_release_mounts", "Quick-Release Mounts", "Towers whose type has a module fitted fire 10% faster.",
         module_fire_rate_bonus=0.10,
     ),
+    "watchtowers": Relic(
+        "watchtowers", "Watchtowers", "Towers built on high ground deal 15% more damage.",
+        high_ground_damage_bonus=0.15,
+    ),
     "incendiary_shells": Relic(
         "incendiary_shells", "Incendiary Shells",
         "Mortar only: each shell leaves burning ground for 3s, hurting ground enemies that cross it.",
@@ -1149,6 +1170,14 @@ RELICS = {
         "booby_trapped_walls", "Booby-Trapped Walls",
         "A Barricade that breaks explodes, dealing its max hit points as damage to nearby ground enemies.",
         barricade_burst_fraction=1.0,
+    ),
+    "faraday_mesh": Relic(
+        "faraday_mesh", "Faraday Mesh", "Disruptors jam your towers for 60% less time.",
+        jam_duration_multiplier=0.4,
+    ),
+    "linebreaker": Relic(
+        "linebreaker", "Linebreaker", "Bulwark auras are 75% weaker (30% damage reduction becomes 7.5%).",
+        enemy_aura_multiplier=0.25,
     ),
     "ambush": Relic(
         "ambush", "Ambush", "Enemies held at a Barricade take 25% more damage from everything.",
@@ -1217,6 +1246,15 @@ RELICS = {
         tower_damage_multiplier=1.2, tower_fire_rate_multiplier=1.1, starting_lives_bonus=-5,
         is_boss_relic=True,
     ),
+    # --- Tempo relics -- see Relic.early_call_bonus_multiplier. ---
+    "signal_horn": Relic(
+        "signal_horn", "Signal Horn", "Calling the next wave early pays double gold.",
+        early_call_bonus_multiplier=2.0,
+    ),
+    "field_rails": Relic(
+        "field_rails", "Field Rails", "Moving a tower between waves is always free.",
+        free_tower_moves=True,
+    ),
     # --- Curses (is_curse=True) -- see Relic.is_curse. ---
     "rusted_gears": Relic(
         "rusted_gears", "Rusted Gears", "Curse: tower upgrades and specializations cost 25% more gold.",
@@ -1241,6 +1279,12 @@ RELICS = {
     "bad_reputation": Relic(
         "bad_reputation", "Bad Reputation", "Curse: Shop prices are 20% higher.",
         shop_price_multiplier=1.2, is_curse=True,
+    ),
+    # Appended last, so the relic pool's existing order (and so every
+    # existing seed's earlier picks) moves as little as possible.
+    "barbed_tethers": Relic(
+        "barbed_tethers", "Barbed Tethers", "Harpoon only: flyers it hits stay grounded 60% longer.",
+        harpoon_ground_duration_multiplier=1.6,
     ),
 }
 
@@ -1318,7 +1362,7 @@ class RelicModifiers:
     - starting_gold_multiplier: folded into Game._load_level_object's own
       Economy construction (the same _scaled_starting_gold() call every
       floor already uses), since battle gold is freshly constructed from
-      scratch every floor now -- see CLAUDE.md's "Two currencies" section.
+      scratch every floor now -- see docs/agents/economy-shop.md "Two currencies".
     - gold_per_floor_bonus: Game._load_floor adds it to self.economy.gold
       on every floor load, explicitly, on top of whatever starting_gold_
       multiplier above already produced -- a flat bonus and a multiplier

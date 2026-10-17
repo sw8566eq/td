@@ -58,16 +58,21 @@ class CombatReward:
     forge_choices: tuple[str, ...] = ()
     # An Elite's module offer (run/modules.py): (module key, tower type), or None.
     module: tuple[str, str] | None = None
+    # A won Proving Grounds' pick-one relic choice (run/challenges.py) --
+    # empty for every other fight, and for a challenge that was broken.
+    challenge_relic_choices: tuple[str, ...] = ()
 
     @property
     def is_empty(self) -> bool:
         return (not self.tower_choices and self.relic is None and self.potion is None
-                and not self.boss_relic_choices and not self.forge_choices and self.module is None)
+                and not self.boss_relic_choices and not self.forge_choices and self.module is None
+                and not self.challenge_relic_choices)
 
 
 def build_combat_reward(
     rng: random.Random, run: RunState, is_elite: bool, meta_progression_path: str | None = None,
     tower_count: int = TOWER_REWARD_COUNT, is_boss: bool = False, damaging_types: frozenset[str] = frozenset(),
+    challenge_relic_count: int = 0,
 ) -> CombatReward:
     """This floor clear's reward -- tower choices first, then the Elite
     relic, both drawn from the same `rng` in that fixed order so a given
@@ -104,7 +109,14 @@ def build_combat_reward(
         # screen to five cards (only a Brewmaster's Kit-style guarantee
         # makes it six -- ui.build_draft_choice_rects' narrow layout).
         potion = None
+    # A won Proving Grounds' relic choice -- drawn after everything above,
+    # so no other fight's offer ever changes.
+    challenge_relics = (
+        relics.relic_offer(rng, run, count=challenge_relic_count, meta_progression_path=meta_progression_path)
+        if challenge_relic_count > 0 else []
+    )
     return CombatReward(
         tuple(tower_choices), relic, potion,
         forged_tower_choices=forged_tower_choices, forge_choices=tuple(forge_choices), module=module,
+        challenge_relic_choices=tuple(challenge_relics),
     )

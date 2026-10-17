@@ -109,6 +109,8 @@ import random
 
 import pygame
 
+from entities.enemy import is_airborne
+
 # Choke Point's own cutoff: an enemy with less than this much path
 # distance behind it counts as "early in its route." Giant Slayer's own
 # cutoff matches its relic text ("more than 100 max HP") exactly, so
@@ -151,7 +153,7 @@ class Projectile:
                  relic_damage_vs_boss_multiplier=1.0,
                  crit_chance=0.0, crit_damage_multiplier=1.0,
                  execute_hp_threshold=0.0, execute_damage_multiplier=1.0,
-                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None):
+                 can_hit_flying=True, can_hit_burrowed=True, ground_fire=None, ground_duration=0.0):
         self.pos = pygame.Vector2(pos)
         self.target = target
         self.speed = speed
@@ -274,6 +276,9 @@ class Projectile:
         # (fraction of damage per second, seconds) -- a burning patch where
         # this shell lands (Game drains impact_events into GroundFire).
         self.ground_fire = ground_fire
+        # Seconds every flyer this shot hits stays Grounded (a Harpoon --
+        # see Enemy.apply_ground); 0 grounds nothing.
+        self.ground_duration = ground_duration
         self.sprite_name = sprite_name
         # The Tower that fired this shot, or None -- purely inert data (never
         # read by movement/collision math above), used only to attribute
@@ -293,7 +298,7 @@ class Projectile:
         # damage_events already established for floating damage numbers.
         self.impact_events = []
 
-    def update(self, dt, enemies):
+    def update(self, dt, enemies, enemy_index=None):
         if self.dead:
             return
 
@@ -315,12 +320,12 @@ class Projectile:
         step = self.speed * dt
 
         if distance <= step or distance == 0:
-            self._resolve_hit(self.target.pos, enemies)
+            self._resolve_hit(self.target.pos, enemies, enemy_index)
             self.dead = True
         else:
             self.pos += to_target.normalize() * step
 
-    def _resolve_hit(self, impact_pos, enemies):
+    def _resolve_hit(self, impact_pos, enemies, enemy_index=None):
         # Recorded once per projectile resolving, before hit_anything is
         # even known -- an impact flash reads as "this is where/how big the
         # blast was," not "this actually connected," so it fires the same
@@ -329,17 +334,23 @@ class Projectile:
 
         hit_anything = False
         if self.splash_radius > 0:
-            for enemy in enemies:
+            # `enemy_index` (Game.update()'s per-frame EnemySpatialIndex)
+            # only narrows the scan. near_in_order() keeps the raw list's
+            # order, which matters here: each hit rolls crits/relic procs
+            # off the shared `random` stream, so the visiting order decides
+            # which enemy gets which roll.
+            pool = enemies if enemy_index is None else enemy_index.near_in_order(impact_pos, self.splash_radius)
+            for enemy in pool:
                 if enemy.is_dead or enemy.reached_goal or not self._can_hit(enemy):
                     continue
                 if impact_pos.distance_to(enemy.pos) <= self.splash_radius:
-                    self._apply_hit_effects(enemy, enemies)
+                    self._apply_hit_effects(enemy, enemies, enemy_index)
                     hit_anything = True
         else:
-            self._apply_hit_effects(self.target, enemies)
+            self._apply_hit_effects(self.target, enemies, enemy_index)
             hit_anything = True
             if self.chain_range > 0:
-                self._resolve_chain(enemies)
+                self._resolve_chain(enemies, enemy_index)
         # Counted once per projectile, not per enemy actually touched --
         # see _apply_hit_effects for the cumulative per-enemy totals -- so
         # shots_hit / shots_fired never exceeds 1.0 even for a splash/chain
@@ -347,7 +358,7 @@ class Projectile:
         if self.source is not None and hit_anything:
             self.source.shots_hit += 1
 
-    def _resolve_chain(self, enemies):
+    def _resolve_chain(self, enemies, enemy_index=None):
         """From the just-hit enemy, hop to the nearest enemy this shot
         hasn't already hit that's within chain_range, apply the same hit
         effects, and repeat from there -- up to max_chain_targets enemies
@@ -358,29 +369,31 @@ class Projectile:
         hit = {self.target}
         current = self.target
         while len(hit) < self.max_chain_targets:
-            next_target = self._find_chain_target(current, hit, self.chain_range, enemies)
+            next_target = self._find_chain_target(current, hit, self.chain_range, enemies, enemy_index)
             if next_target is None:
                 break
-            self._apply_hit_effects(next_target, enemies)
+            self._apply_hit_effects(next_target, enemies, enemy_index)
             hit.add(next_target)
             current = next_target
 
     def _can_hit(self, enemy):
         """Whether this shot may touch `enemy` at all -- see can_hit_flying.
-        getattr with a False default, same as Tower.acquire_target(), since
-        not every enemy stand-in (tests, mainly) defines is_flying."""
-        return ((self.can_hit_flying or not getattr(enemy, "is_flying", False))
+        A Grounded flyer counts as on the ground (enemy.is_airborne, the
+        same rule Tower.acquire_target() uses)."""
+        return ((self.can_hit_flying or not is_airborne(enemy))
                 and (self.can_hit_burrowed or not getattr(enemy, "is_burrowed", False)))
 
-    def _find_chain_target(self, current, excluded, chain_range, enemies):
+    def _find_chain_target(self, current, excluded, chain_range, enemies, enemy_index=None):
         """Nearest live, not-yet-`excluded` enemy within `chain_range` of
         `current`, or None -- the nearest-unvisited-hop lookup shared by
         _resolve_chain()'s own multi-link chain above and an Arcing
         Rounds-style relic's single bonus hit (_apply_hit_effects
-        below)."""
+        below). A distance tie goes to the enemy earlier in `enemies`, so
+        `enemy_index` is read through near_in_order() to keep that."""
         next_target = None
         next_distance = None
-        for enemy in enemies:
+        pool = enemies if enemy_index is None else enemy_index.near_in_order(current.pos, chain_range)
+        for enemy in pool:
             if enemy.is_dead or enemy.reached_goal or enemy in excluded or not self._can_hit(enemy):
                 continue
             distance = current.pos.distance_to(enemy.pos)
@@ -449,7 +462,7 @@ class Projectile:
                 self.source.pending_siphon_gold += siphoned * siphon_fraction
         return applied
 
-    def _apply_hit_effects(self, enemy, enemies):
+    def _apply_hit_effects(self, enemy, enemies, enemy_index=None):
         # Chilling Precision/Choke Point/Giant Slayer -- ungated, per-enemy
         # damage multipliers, each read straight off the enemy being hit
         # (getattr with a neutral default, so a lightweight test double
@@ -581,6 +594,10 @@ class Projectile:
             and random.random() < self.relic_slow_chance
         ):
             enemy.apply_slow(*self.relic_slow_effect)
+        # A Harpoon's grounding -- see Enemy.apply_ground() (a no-op on a
+        # non-flyer, and absent on some test doubles).
+        if self.ground_duration and hasattr(enemy, "apply_ground"):
+            enemy.apply_ground(self.ground_duration)
         # A Beacon-style tower's own mark -- see enemy.apply_mark().
         if self.mark_effect is not None:
             enemy.apply_mark(*self.mark_effect)
@@ -647,7 +664,7 @@ class Projectile:
             and random.random() < self.relic_chain_chance
         ):
             damage_fraction, chain_range = self.relic_chain_effect
-            bounce_target = self._find_chain_target(enemy, {enemy}, chain_range, enemies)
+            bounce_target = self._find_chain_target(enemy, {enemy}, chain_range, enemies, enemy_index)
             if bounce_target is not None:
                 self._apply_direct_damage(bounce_target, damage * damage_fraction)
         # An Overkill-style relic's carry-over -- any damage beyond what
@@ -657,7 +674,7 @@ class Projectile:
         # bounce immediately above, deliberately not a full
         # _apply_hit_effects() call for the same reasons that one isn't.
         if self.relic_overkill_carry_fraction and applied > hp_before:
-            overkill_target = self._find_chain_target(enemy, {enemy}, OVERKILL_CARRY_RANGE, enemies)
+            overkill_target = self._find_chain_target(enemy, {enemy}, OVERKILL_CARRY_RANGE, enemies, enemy_index)
             if overkill_target is not None:
                 self._apply_direct_damage(
                     overkill_target, (applied - hp_before) * self.relic_overkill_carry_fraction

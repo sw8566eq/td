@@ -8,6 +8,67 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Four new levels**, each built around one placement puzzle. **The Coil** and **Killing Field**
+  join the early single-lane rows: The Coil winds into the middle of the map and back out between
+  its own legs, with a small high-ground plateau beside the exit, and Killing Field passes the same
+  open arena twice, so a tower in its middle fires on every enemy on the way in and on the way back.
+  **Saddleback Ridge** and **Tributaries** join the later multi-lane rows: Saddleback Ridge runs two
+  parallel lanes with a high-ground ridge between them, the only place one tower reaches both, and
+  Tributaries merges three spawns at two different points. Tributaries unlocks after 30 floors
+  cleared.
+- **Commander abilities**: every Commander has one signature ability, fired mid-fight from the
+  sidebar button or **F**, that recharges after 2-3 cleared waves -- Warden *Hold the Gate* (the next
+  3 leaks this floor cost no lives), Alchemist *Toxic Downpour* (aimed poison cloud), Marksman
+  *Called Shot* (Basic and Sniper deal double damage for 6s), Engineer *Rapid Repairs* (+40% fire
+  rate for 8s, Barricades repaired), Stormcaller *Thunderhead* (lightning hits the 8 toughest
+  enemies), Trapmaster *Caltrops* (slow every ground enemy) and Skywatch *Downdraft* (ground and slow
+  every flyer). Bosses take reduced damage. Listed on Commander cards and in the Field Manual.
+- Endless mutators are listed in the Field Manual, with a first-time Field Notes hint.
+- **Endless mutators**: on the final boss's endless floor, every 5 endless waves cleared adds one more
+  stacking mutator for the rest of the fight -- Swarm, Ironclad, Gale, Skyborne, Tunnelers, Siege,
+  Regrowth, Shielded Ranks or Escort, each seen once before any repeat. Each is announced with a toast,
+  listed in the sidebar, and pays +1 life and +60 battle gold; the Run Over recap and Run History show
+  how many you faced. Drawn from the run seed, so a Daily Run's mutators are the same for everyone.
+- In a Proving Grounds fight, build buttons its rule forbids right now are greyed out and struck through.
+- **Proven** achievement: win 5 Proving Grounds.
+- **Proving Grounds**: a new map node (from each act's third row on) -- a fight under one constraint
+  (Skeleton Crew, No Upgrades, Narrow Front, Double Time, Glass Gate or Fog of War), named in its map
+  tooltip and shown in the sidebar during the fight. Keep the constraint to win a pick of 1 of 2 bonus
+  relics plus 20 + 2 per depth extra shop currency; a blocked action says why in a toast.
+- **Field Notes**: short one-time hints the first time you meet a system -- each map node type, the
+  reward screen, potions and modules, resonances, veterancy, Barricades and Harpoons, flyers/shields/
+  burrowers/sappers, calling waves early, moving towers, low lives, curses, trophy relics, the Gauntlet.
+  One at a time in a corner panel; click to dismiss, or it fades after 10 seconds. Settings has
+  **Hints: On/Off** and **Reset Hints**. Seen hints are kept in a new local `hints.json`.
+- A seventh Commander, **The Skywatch** (Basic, Harpoon, Cannon; Harpoon starts forged; Barbed
+  Tethers), unlocked after 25 floors cleared. Commander cards fit seven to a row.
+- **High ground**: raised tiles on eleven of the built-in maps (and paintable in the map editor with
+  the new **High** brush) give a tower standing mostly on them +20% range. Path traps never get it.
+  The **Watchtowers** relic adds +15% damage for high-ground towers.
+- Achievements **Eager Commander** (call 50 waves early) and **Redeployment** (move 20 towers).
+- **Service Record** (`T` from the menu): lifetime statistics -- runs, floors and acts cleared, deepest
+  floor, best endless score, kills, battle gold, lives lost, relics and potions -- plus damage, kills,
+  towers built and best veterancy rank per tower, kills per enemy, and runs/best floor per Commander.
+  Saved to `service_record.json`; Practice never counts.
+- Three potions: **Tether Flare** (ground every flyer for 8s), **Field Promotion** (free level for your
+  top-damage tower) and **Mortar Mix** (repair every Barricade). A potion that can't do anything yet is kept, with a toast.
+- Tempo relics: **Signal Horn** (calling a wave early pays double) and **Field Rails** (moving towers is free).
+- **Move towers**: a Move button next to Sell relocates a placed tower, keeping its level and
+  experience -- free before a floor's first wave, 15% of its cost between waves, never mid-wave.
+- **Early-call bonus**: skipping a between-wave countdown pays 3 battle gold per second skipped (the
+  HUD shows the amount next to the Skip button).
+- **Harpoon** tower (unlocks after 6 floors cleared): its hits **Ground** a flyer for a few seconds, and a
+  grounded flyer can be hit by ground-only towers -- Cannon, Mortar, Knockback, traps, burning ground --
+  and is stopped by Barricades. It starts on a new **Flying** targeting mode (airborne flyers first).
+  Specializations Deep Anchor (grounds far longer) and Reel In (hits also slow). New resonances
+  **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line** (Harpoon near Cannon:
+  +20% range), and a Harpoon relic, **Barbed Tethers** (grounding lasts 60% longer). The enemy tooltip
+  lists Grounded.
+- **Disruptors and Bulwarks**: two new enemies that punish lazy defenses. A Disruptor jams every tower within
+  80px for 1.5s (once every 5s), so it punishes a single crowded choke point. A Bulwark is slow and tanky, and gives
+  enemies around it 30% damage reduction (the strongest aura applies, auras never stack). Disruptors join run waves
+  from Act 1's fifth row, Bulwarks from Act 2's second. Each has a counter relic: **Faraday Mesh** (jams 60% shorter)
+  and **Linebreaker** (Bulwark auras 75% weaker). Each also has an achievement.
 - Hovering an enemy shows a tooltip: its name, HP, what it does, and whether it's Burrowed, Held, Marked, Slowed or Poisoned.
 - Every tower has a one-line description, listed (with every enemy) in new Towers and Enemies sections of the Field Manual.
 - A toast announces each resonance the first time it switches on during a floor.
@@ -54,9 +115,6 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   kept locking onto the enemy about to leave its range and fizzling; the bench measured ~3x the damage.
 - **Counter relics**: Seismic Sensors (Spike Traps and Tar Pits can hit Burrowers) and Booby-Trapped
   Walls (a Barricade that breaks explodes for its max hit points against nearby ground enemies).
-- **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
-  20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
-  stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).
 - **Balance -- knockback stagger resistance**: each shove makes an enemy steadier (the next shove lands
   20% weaker, up to 80%), wearing off at 30% per second. A single Knockback tower is barely affected; a
   stack of them can no longer pin a wave in place indefinitely (found by a tower-vs-tower bench).
@@ -184,6 +242,14 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   Shielded/Knockback) for players who want more than the Help screen's own controls-only reference.
 - A real MIT license (see `LICENSE`) and a real Credits screen, replacing a long-standing
   "License: TBD." placeholder -- Credits now also properly attributes the bundled Kenney CC0 art.
+
+### Changed
+
+- Performance -- late endless boards run faster with identical results: Healer heals, splash hits,
+  chain hops and burning ground now look up nearby enemies through the spatial index instead of
+  scanning every enemy, and damage numbers, impact rings and the V coverage overlay reuse cached
+  surfaces instead of redrawing them every frame. On a 300-enemy, 80-tower bench, update is ~21%
+  faster and render ~16% faster (~43% with the coverage overlay on). New `tools/perf_bench.py`.
 
 ### Fixed
 

@@ -1,7 +1,7 @@
 """Game's Settings/Display/Audio/Keybindings-persistence methods, extracted
 into their own module -- the fourth slice of game.py's own god-object
 decomposition (see renderer.py/input_handler.py/progress_tracker.py for the
-first three, and CLAUDE.md's own note on the shape this pattern follows).
+first three, and docs/agents/core-game.md's note on the shape this pattern follows).
 
 Same "only a real external caller or a direct test reference gets a
 Game-level delegator" rule progress_tracker.py's own docstring already
@@ -39,6 +39,7 @@ self.game, not a bare self.*, the one genuinely new wrinkle relative to the
 import pygame
 
 from persistence import keybindings, player_settings
+from progression import hints
 from run import difficulty
 
 
@@ -70,6 +71,9 @@ class SettingsManager:
         game.difficulty = saved_settings["difficulty"]
         if game.difficulty not in difficulty.DIFFICULTY_MODES:
             game.difficulty = difficulty.DEFAULT_DIFFICULTY
+        # Field Notes -- the seen-set lives in its own hints.json (see
+        # progression/hints.py); only the on/off preference is a setting.
+        game.hints = hints.HintTracker.load(game.hints_path, enabled=saved_settings["hints_enabled"])
 
         # Same injectable-path convention as settings_path, kept as a
         # genuinely separate file/module from player_settings.py rather
@@ -167,6 +171,15 @@ class SettingsManager:
         self.apply_display_mode(game.window_size)
         self._save_player_settings()
 
+    def set_hints_enabled(self, value):
+        game = self.game
+        game.hints.set_enabled(bool(value))
+        self._save_player_settings()
+
+    def reset_hints(self):
+        """Settings' "Reset hints": every Field Note shows again, once."""
+        self.game.hints.reset()
+
     def _save_player_settings(self):
         game = self.game
         player_settings.save_settings(
@@ -176,6 +189,7 @@ class SettingsManager:
                 "sound_volume": game.sound_volume,
                 "difficulty": game.difficulty,
                 "window_size": list(game.window_size),
+                "hints_enabled": game.hints.enabled,
             },
             game.settings_path,
         )

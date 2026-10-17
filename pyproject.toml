@@ -7,7 +7,7 @@ target-version = "py313"
 [tool.ruff.lint.per-file-ignores]
 # Every Tower subclass carries class-level dict registries (EXTRA_STATS,
 # SPECIALIZATIONS, LEVEL_STAT_MULTIPLIER_OVERRIDES, ...) as read-only content
-# tables -- see CLAUDE.md's "Content is registries, not conditionals" -- never
+# tables -- see docs/agents/enemies.md "Content is registries, not conditionals" -- never
 # mutated at runtime, so the generic mutable-class-default warning doesn't
 # apply to this file's own deliberate pattern.
 "entities/tower.py" = ["RUF012"]
@@ -20,8 +20,8 @@ python_version = "3.13"
 ignore_missing_imports = true
 # Deliberately permissive project-wide -- most of this codebase (pygame-
 # facing code especially) has no type hints yet, and this isn't a
-# repo-wide requirement from day one (see CLAUDE.md's "Ongoing:
-# incremental mypy adoption"). Individual modules opt into strict
+# repo-wide requirement from day one (see docs/agents/tooling.md
+# "Type checking is incremental, not repo-wide"). Individual modules opt into strict
 # checking below as they're annotated, one at a time, rather than
 # annotating the whole codebase in one pass.
 check_untyped_defs = false
@@ -93,7 +93,7 @@ module = [
     "run.relics", "run.run_map", "run.events", "run.shop", "support.rng_sampling", "run.difficulty",
     "world.economy", "progression.run_history", "persistence.json_io", "progression.threshold_unlocks",
     "progression.meta_progression", "run.run_state", "run.card_pool", "run.run_escalation",
-    "progression.progress", "progression.achievements", "run.rewards", "run.potions", "run.ascension", "run.commanders", "run.elite_affixes", "run.veterancy", "run.modules",
+    "progression.progress", "progression.achievements", "run.rewards", "run.potions", "run.ascension", "run.commanders", "run.elite_affixes", "run.veterancy", "run.modules", "progression.hints", "progression.service_record", "run.challenges", "run.endless_mutators", "run.abilities",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

@@ -16,6 +16,7 @@ from entities.enemy import ENEMY_TYPES
 from entities.tower import RESONANCE_RADIUS, RESONANCES, TOWER_TYPE_NAMES, TOWER_TYPES
 from entities.waves import WaveState
 from persistence.keybindings import ACTION_LABELS, ACTION_ORDER
+from progression import service_record
 from progression.achievements import ACHIEVEMENT_ORDER, ACHIEVEMENTS
 from progression.meta_progression import (
     COMMANDER_META_UNLOCKS,
@@ -24,6 +25,8 @@ from progression.meta_progression import (
     RELIC_META_UNLOCKS,
     SHOP_META_UNLOCKS,
 )
+from run import endless_mutators
+from run.abilities import ABILITIES
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
@@ -36,6 +39,7 @@ from run.veterancy import RANKS as VETERANCY_RANKS
 from run.veterancy import rank_for as veterancy_rank_for
 from run.veterancy import rank_name as veterancy_rank_name
 from support import settings
+from world.grid import draw_high_ground_tile
 from world.levels import LEVELS
 
 ENEMY_ORDER = list(ENEMY_TYPES.keys())  # stable UI order = registry insertion order
@@ -246,13 +250,23 @@ def build_specialize_button_rects():
     return _action_button_rect(top_a), _action_button_rect(top_b)
 
 
+def build_move_button_rect():
+    """Rect for the stats panel's Move button -- the right half of the Sell
+    row (see build_sell_button_rect, the left half)."""
+    sell = build_sell_button_rect()
+    return pygame.Rect(sell.right + ACTION_BUTTON_GAP, sell.top,
+                       ACTION_BUTTON_WIDTH - sell.width - ACTION_BUTTON_GAP, ACTION_BUTTON_HEIGHT)
+
+
 def build_sell_button_rect():
     """Rect for the stats panel's 'Sell' button -- fixed position within
     the panel (see SELL_BUTTON_TOP), horizontally centered, so it stays
     put regardless of which tower's stats are currently shown above it.
     Only meaningful (and only drawn/clickable) while the panel's subject
     is a placed tower -- see draw_tower_stats_panel and Game._handle_click."""
-    return _action_button_rect(SELL_BUTTON_TOP)
+    full = _action_button_rect(SELL_BUTTON_TOP)
+    full.width = (ACTION_BUTTON_WIDTH - ACTION_BUTTON_GAP) // 2  # Move takes the right half
+    return full
 
 
 def _format_currency(value, unlimited):
@@ -272,7 +286,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
              skip_button_rect, selected_tower_name, time_scale, speed_button_rect,
              wave_preview=None, shop_currency=None, relics_button_rect=None, relic_count=None,
              floor_label=None, boss_defeated=False, forged_towers=(), endless_waves=0, veterancy_ranks=None,
-             moduled_towers=()):
+             moduled_towers=(), early_call_bonus=0, blocked_towers=frozenset()):
     # Only as wide as the grid above it (PLAY_WIDTH), not the full window --
     # the stats panel to its right draws itself separately.
     hud_rect = pygame.Rect(0, settings.SCREEN_HEIGHT - settings.HUD_HEIGHT,
@@ -290,7 +304,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
 
     for name, rect in button_rects.items():
         tower_cls = TOWER_TYPES[name]
-        affordable = economy.can_afford(tower_cls.cost)
+        affordable = economy.can_afford(tower_cls.cost) and name not in blocked_towers
         if name == selected_tower_name:
             color = settings.COLOR_BUTTON_SELECTED
         elif affordable:
@@ -316,6 +330,8 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
             pygame.draw.circle(surface, settings.COLOR_GOLD, (rect.x + 6 + pip * 7, rect.y + 6), 2)
         if name in moduled_towers:  # a module is fitted to this type
             pygame.draw.circle(surface, MODULE_COLOR, (rect.right - 6, rect.bottom - 22), 3)
+        if name in blocked_towers:  # a Proving Grounds rule forbids building it right now
+            pygame.draw.line(surface, settings.COLOR_LIVES, rect.topleft, rect.bottomright, 2)
 
     # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
     # menu shows only its own drafted subset (see build_button_rects), and
@@ -369,7 +385,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
     surface.blit(lives_text, (info_x, hud_rect.y + 64))
     surface.blit(wave_text, (info_x, hud_rect.y + 92))
 
-    _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect)
+    _draw_wave_countdown_and_skip(surface, small_font, wave_manager, skip_button_rect, early_call_bonus)
 
 
 FIRST_PLACEMENT_HINT_TEXT = "Click a tower below, then click the grid to place it."
@@ -481,7 +497,7 @@ def draw_relics_overlay(surface, font, small_font, relic_keys, width=settings.PL
                             settings.COLOR_TEXT, width=width)
 
 
-def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect):
+def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect, early_call_bonus=0):
     if wave_manager.all_waves_complete:
         return  # nothing left to skip to/start
 
@@ -493,7 +509,10 @@ def _draw_wave_countdown_and_skip(surface, font, wave_manager, skip_button_rect)
         button_label, clickable = "Start", True
     elif wave_manager.state == WaveState.BETWEEN_WAVES:
         seconds_left = max(0, math.ceil(wave_manager.between_wave_timer))
-        countdown_text = font.render(f"Next wave in {seconds_left}s", True, settings.COLOR_TEXT)
+        # early_call_bonus is Game.early_call_bonus(timer) -- what Skip would
+        # pay right now -- so the reward is visible before the player commits.
+        caption = f"Next wave in {seconds_left}s" + (f" (skip: +{early_call_bonus}g)" if early_call_bonus > 0 else "")
+        countdown_text = font.render(caption, True, settings.COLOR_TEXT)
         button_label, clickable = "Skip", True
     else:
         countdown_text = font.render("Wave in progress", True, settings.COLOR_TEXT_DIM)
@@ -557,7 +576,7 @@ def draw_tower_range_preview(surface, tower):
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
                             upgrade_button_rect, specialize_button_rects, sell_button_rect,
                             hovered_specialize_key=None, veterancy_line=None, module_line=None,
-                            resonance_line=None):
+                            resonance_line=None, move_button_rect=None, move_label=None, move_enabled=False):
     """The sidebar to the right of the play area. `subject` is either:
       - a Tower *class* (the build menu's currently selected type -- shows
         its base, level-1 stats), or
@@ -602,7 +621,8 @@ def draw_tower_stats_panel(surface, font, small_font, subject, economy, targetin
         if tower_cls.ATTACKS and not tower_cls.IS_SUPPORT:
             _draw_targeting_row(surface, small_font, subject, targeting_button_rect)
         _draw_panel_action_buttons(surface, small_font, subject, economy,
-                                    upgrade_button_rect, specialize_button_rects, sell_button_rect)
+                                    upgrade_button_rect, specialize_button_rects, sell_button_rect,
+                                    move_button_rect, move_label, move_enabled)
 
 
 def _draw_targeting_row(surface, small_font, subject, targeting_button_rect):
@@ -719,6 +739,12 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
+    if is_placed and subject.jammed_timer > 0:
+        # A Disruptor jammed it (Tower.jam) -- it can't fire until this runs out.
+        row = small_font.render(f"Jammed: {subject.jammed_timer:.1f}s", True, settings.COLOR_LIVES)
+        surface.blit(row, (x, y))
+        y += PANEL_ROW_HEIGHT
+
 
 # --- Run map screen (see run_map.py/Game._enter_map) ---
 #
@@ -740,13 +766,14 @@ MAP_COLS = 4
 
 MAP_NODE_TYPE_LABELS = {
     "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
-    "armory": "A", "boss": "B",
+    "armory": "A", "challenge": "!", "boss": "B",
 }
 MAP_NODE_TYPE_COLORS = {
     "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
     "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
     "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
-    "armory": settings.COLOR_NODE_ARMORY, "boss": settings.COLOR_NODE_BOSS,
+    "armory": settings.COLOR_NODE_ARMORY, "challenge": settings.COLOR_NODE_CHALLENGE,
+    "boss": settings.COLOR_NODE_BOSS,
 }
 # Full names (unlike MAP_NODE_TYPE_LABELS' single in-circle glyph above) --
 # the map legend and a hovered node's own tooltip both use these instead of
@@ -756,7 +783,8 @@ MAP_NODE_TYPE_COLORS = {
 # what the player reads without a matching, deliberate edit here too.
 MAP_NODE_TYPE_NAMES = {
     "combat": "Combat", "elite": "Elite", "shop": "Shop", "event": "Event",
-    "rest": "Outpost", "treasure": "Treasure", "armory": "Armory", "boss": "Boss",
+    "rest": "Outpost", "treasure": "Treasure", "armory": "Armory",
+    "challenge": "Proving Grounds", "boss": "Boss",
 }
 # One honest, local sentence per node type -- what a hovered node's own
 # tooltip shows below its name (see _draw_map_node_tooltip). Describes only
@@ -772,6 +800,7 @@ MAP_NODE_TYPE_DESCRIPTIONS = {
     "rest": "Rest to heal, Forge a tower (placed at level 2), or Drill a crew.",
     "treasure": "A guaranteed relic, plus some Shop currency.",
     "armory": "Choose one of three tower modules, free.",
+    "challenge": "A fight under one constraint -- keep it to win a relic choice and bonus Shop currency.",
     "boss": "The act's boss -- win a trophy relic and move on. Act 3's never ends.",
 }
 
@@ -843,7 +872,30 @@ MAP_TOOLTIP_MAX_WIDTH = 220
 MAP_TOOLTIP_GAP = 6  # clearance between the node's own circle and the box
 
 
-def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, threat=None):
+def map_node_tooltip_lines(small_font, node, affix=None, threat=None, challenge_text=None):
+    """(title, body lines) for a hovered map node -- split out of
+    _draw_map_node_tooltip so the text itself is testable."""
+    body_lines = []
+    if node.level_id is not None:
+        body_lines.append(LEVELS[node.level_id].name)
+    body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if threat is not None:
+        # Game._node_threat: how much tougher this fight's enemies are than
+        # the level's own baseline -- the same numbers the floor load uses.
+        body_lines.append(f"Enemy HP x{threat[0]:.2f}, speed x{threat[1]:.2f}")
+    if affix is not None:
+        # An Elite's own affix (elite_affixes.py) -- shown up front, same
+        # "nothing hidden" reasoning as the level name above.
+        body_lines.extend(_wrap_text(f"{affix.display_name}: {affix.description}", small_font, MAP_TOOLTIP_MAX_WIDTH))
+    if challenge_text is not None:
+        # A Proving Grounds node's constraint (Game._challenge_summary),
+        # known before committing, like an Elite's affix.
+        body_lines.extend(_wrap_text(challenge_text, small_font, MAP_TOOLTIP_MAX_WIDTH))
+    title_text = MAP_NODE_TYPE_NAMES[node.node_type] + (f" ({affix.display_name})" if affix is not None else "")
+    return title_text, body_lines
+
+
+def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, threat=None, challenge_text=None):
     """The hovered node's own type name, the specific level name for a
     Combat/Elite/Boss node (LEVELS[node.level_id] -- naming it ahead of
     time reveals nothing a player couldn't already infer from the node's
@@ -859,20 +911,7 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
     would run off the top of the screen (true for most of the boss row,
     which sits right at MAP_TOP) -- and clamped horizontally so an edge
     column's own tooltip never draws off the left/right of the screen."""
-    body_lines = []
-    if node.level_id is not None:
-        body_lines.append(LEVELS[node.level_id].name)
-    body_lines.extend(_wrap_text(MAP_NODE_TYPE_DESCRIPTIONS[node.node_type], small_font, MAP_TOOLTIP_MAX_WIDTH))
-    if threat is not None:
-        # Game._node_threat: how much tougher this fight's enemies are than
-        # the level's own baseline -- the same numbers the floor load uses.
-        body_lines.append(f"Enemy HP x{threat[0]:.2f}, speed x{threat[1]:.2f}")
-    if affix is not None:
-        # An Elite's own affix (elite_affixes.py) -- shown up front, same
-        # "nothing hidden" reasoning as the level name above.
-        body_lines.extend(_wrap_text(f"{affix.display_name}: {affix.description}", small_font, MAP_TOOLTIP_MAX_WIDTH))
-
-    title_text = MAP_NODE_TYPE_NAMES[node.node_type] + (f" ({affix.display_name})" if affix is not None else "")
+    title_text, body_lines = map_node_tooltip_lines(small_font, node, affix, threat, challenge_text)
     title_surface = small_font.render(title_text, True, settings.COLOR_TEXT)
     body_surfaces = [small_font.render(line, True, settings.COLOR_TEXT_DIM) for line in body_lines]
     all_surfaces = [title_surface] + body_surfaces
@@ -898,7 +937,8 @@ def _draw_map_node_tooltip(surface, small_font, node, node_rect, affix=None, thr
 def draw_map_screen(surface, font, small_font, game_map, node_rects, current_node_id,
                      visited_node_ids, available_node_ids, hovered_node_id, lives=None, shop_currency=None,
                      first_run=False, ascension_level=0, act_number=1, node_affixes=None,
-                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R"):
+                     relic_count=0, potion_names=(), node_threats=None, relics_key_label="R",
+                     node_challenges=None):
     """The run's whole branching map, shown in full from the very first
     visit (see Game._enter_map) -- edges drawn first as plain lines, then
     every node as a filled, color-by-type circle, modulated by state:
@@ -985,7 +1025,8 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
     # near.
     if hovered_node_id is not None:
         _draw_map_node_tooltip(surface, small_font, game_map.node(hovered_node_id), node_rects[hovered_node_id],
-                               (node_affixes or {}).get(hovered_node_id), (node_threats or {}).get(hovered_node_id))
+                               (node_affixes or {}).get(hovered_node_id), (node_threats or {}).get(hovered_node_id),
+                               (node_challenges or {}).get(hovered_node_id))
 
 
 # --- Random Event / Rest / Treasure screens (the run map's other three
@@ -1563,12 +1604,21 @@ def draw_armory_screen(surface, font, small_font, offers, card_rects, hovered_in
 
 COMMANDER_CARD_HEIGHT = 320  # taller than a Shop card: kit lines plus two lock lines
 COMMANDER_CARD_HEIGHT_NARROW = 400
+COMMANDER_CARD_HEIGHT_SEVEN = 440
 
 
 def build_commander_card_rects(count):
     """Same centered row as build_draft_choice_rects, just taller cards."""
     # Six or more to a row are narrow, so their text wraps longer -- give
     # them the extra height the screen has room for.
+    if count >= 7:
+        # Seven or more: shrink each card to fit the row (the Shop's own
+        # widths stop at six), and give the extra-narrow text more height.
+        gap = 10
+        width = (settings.SCREEN_WIDTH - 24 - (count - 1) * gap) // count
+        start_x = (settings.SCREEN_WIDTH - (count * width + (count - 1) * gap)) // 2
+        return [pygame.Rect(start_x + i * (width + gap), DRAFT_CARDS_TOP, width, COMMANDER_CARD_HEIGHT_SEVEN)
+                for i in range(count)]
     height = COMMANDER_CARD_HEIGHT_NARROW if count >= 6 else COMMANDER_CARD_HEIGHT
     return [pygame.Rect(rect.x, rect.y, rect.width, height) for rect in build_draft_choice_rects(count)]
 
@@ -1577,7 +1627,7 @@ COMMANDER_LOCK_TEXT = {
     "runs_played": "Finish {goal} run",
     "total_floors_cleared": "Clear {goal} floors",
     "bosses_defeated": "Defeat {goal} boss",
-    "runs_reached_endless": "Reach the last boss",
+    "runs_reached_endless": "Reach final boss",
 }
 
 
@@ -1618,6 +1668,7 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
             lines.append("Potions: " + ", ".join(POTIONS[p].display_name for p in commander.starting_potions))
         if commander.forged_towers:
             lines.append("Forged: " + ", ".join(TOWER_TYPES[t].display_name for t in commander.forged_towers))
+        lines.append(f"Ability: {ABILITIES[commander.ability].display_name}")
         for line in lines:
             for wrapped in (_wrap_text(line, small_font, max_width) if line else [""]):
                 surface.blit(small_font.render(wrapped, True, settings.COLOR_TEXT_DIM), (x, y))
@@ -1641,7 +1692,7 @@ def draw_commander_select_screen(surface, font, small_font, card_rects, hovered_
 
 def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_index, claimed_indices,
                        available, continue_button_rect, is_elite=False, is_boss=False, forged_names=(),
-                       potion_unavailable_tag="FULL"):
+                       potion_unavailable_tag="FULL", challenge_note=None):
     """The free post-combat reward (see rewards.py/Game._enter_reward_
     screen). `cards` is Game._reward_cards()'s (kind, key) list, same order
     as `card_rects`; `available[i]` is Game._reward_card_available(i).
@@ -1657,6 +1708,8 @@ def draw_reward_screen(surface, font, small_font, cards, card_rects, hovered_ind
     else:
         title_text = "Spoils of battle: choose one tower to add to your run"
         subtitle_text = "Elite bonus: a free relic and a tower module" if is_elite else None
+    if challenge_note is not None:  # a Proving Grounds fight: won (relic choice) or failed
+        subtitle_text = challenge_note
     title = font.render(title_text, True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(center=(settings.SCREEN_WIDTH // 2, DRAFT_CARDS_TOP - 60)))
     if subtitle_text is not None:
@@ -1722,6 +1775,10 @@ def enemy_tooltip_lines(enemy):
         states.append("Burrowed")
     if getattr(enemy, "held", False):
         states.append("Held")
+    if getattr(enemy, "is_grounded", False):
+        states.append("Grounded")
+    if getattr(enemy, "aura_damage_reduction", 0) > 0:
+        states.append(f"Fortified (-{round(enemy.aura_damage_reduction * 100)}% dmg)")
     if enemy.mark_timer > 0:
         states.append("Marked")
     if enemy.slow_timer > 0:
@@ -1751,18 +1808,39 @@ def draw_enemy_tooltip(surface, small_font, enemy):
         y += PANEL_ROW_HEIGHT
 
 
+# The coverage overlay's ring layer and the key it was drawn for -- see
+# draw_coverage_overlay.
+_coverage_overlay_cache = {}
+
+
 def draw_coverage_overlay(surface, towers):
     """Every placed tower's real reach (and a Mortar's dead zone) as faint
-    rings, plus a link for each active resonance -- toggled with V."""
-    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    for tower in towers:
-        center = (int(tower.pos.x), int(tower.pos.y))
-        if tower.ATTACKS:
-            pygame.draw.circle(overlay, (255, 255, 255, 28), center, int(tower.effective_range()))
-            pygame.draw.circle(overlay, (255, 255, 255, 110), center, int(tower.effective_range()), width=1)
-        if tower.MIN_RANGE:
-            pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, int(tower.MIN_RANGE), width=1)
-    surface.blit(overlay, (0, 0))
+    rings, plus a link for each active resonance -- toggled with V.
+
+    The ring layer is a full-screen SRCALPHA surface, rebuilt only when
+    what it draws changes: _coverage_overlay_cache keeps the last one with
+    its key, every tower's (center, ring radius, dead-zone radius) in
+    order plus the target size. An aura, relic or placement that changes
+    any ring's integer radius changes the key, so a stale layer can't be
+    shown."""
+    rings = tuple(
+        ((int(tower.pos.x), int(tower.pos.y)),
+         int(tower.effective_range()) if tower.ATTACKS else None,
+         int(tower.MIN_RANGE) if tower.MIN_RANGE else None)
+        for tower in towers
+    )
+    key = (surface.get_size(), rings)
+    if _coverage_overlay_cache.get("key") != key:
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        for center, reach, dead_zone in rings:
+            if reach is not None:
+                pygame.draw.circle(overlay, (255, 255, 255, 28), center, reach)
+                pygame.draw.circle(overlay, (255, 255, 255, 110), center, reach, width=1)
+            if dead_zone is not None:
+                pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, dead_zone, width=1)
+        _coverage_overlay_cache["key"] = key
+        _coverage_overlay_cache["surface"] = overlay
+    surface.blit(_coverage_overlay_cache["surface"], (0, 0))
     owners = {key: tower for tower in towers for key in tower.resonance_keys}
     for key, tower in owners.items():
         partner_name = RESONANCES[key].partner
@@ -1793,9 +1871,13 @@ def resonance_line(subject):
             return f"Pairs with: {', '.join(partners)}"
         helped = [TOWER_TYPES[r.tower].display_name for r in RESONANCES.values() if r.partner == name]
         return f"Boosts: {', '.join(helped)}" if helped else None
+    # A placed tower on high ground says so here too -- the Range row's
+    # bonus tag shows the +20%, this line says where it comes from.
+    high_ground = "High ground" if subject.on_high_ground else None
     if not subject.resonance_keys:
-        return None
-    return "Resonance: " + ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)
+        return f"{high_ground} (+{round(settings.HIGH_GROUND_RANGE_BONUS * 100)}% range)" if high_ground else None
+    names = ", ".join(RESONANCES[key].display_name for key in subject.resonance_keys)
+    return f"{high_ground}; {names}" if high_ground else "Resonance: " + names
 
 
 def _draw_module_card(surface, font, small_font, rect, key, hovered, purchased, affordable, price, tag=None):
@@ -1826,6 +1908,7 @@ _REWARD_CARD_DRAWERS = {
     "relic": _draw_relic_card,
     "potion": _draw_potion_card,
     "boss_relic": _draw_relic_card,
+    "challenge_relic": _draw_relic_card,
 }
 
 
@@ -1841,6 +1924,9 @@ POTION_COLORS = {
     "overclock_elixir": (250, 250, 140),
     "smoke_bomb": (170, 170, 185),
     "venom_vial": (150, 210, 60),
+    "tether_flare": (90, 220, 210),
+    "field_promotion": (240, 170, 90),
+    "mortar_mix": (190, 150, 110),
 }
 POTION_SLOT_SIZE = 56
 POTION_SLOT_GAP = 12
@@ -1849,7 +1935,37 @@ POTION_BELT_LABEL_GAP = 24
 # The floor's run modifiers (ascension, elite affix), one line above the
 # belt's own label; the hovered-potion description box sits above that.
 RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
-POTION_DESCRIPTION_BOTTOM = RUN_MODIFIERS_Y - 8
+# A Proving Grounds fight's own two status lines, just above that.
+CHALLENGE_STATUS_Y = RUN_MODIFIERS_Y - 2 * PANEL_ROW_HEIGHT
+POTION_DESCRIPTION_BOTTOM = CHALLENGE_STATUS_Y - 8
+CHALLENGE_STATUS_COLOR = settings.COLOR_NODE_CHALLENGE
+MUTATOR_HEADER_COLOR = settings.COLOR_GOLD
+
+
+def mutator_list_lines(mutator_names, small_font, total=None, max_lines=None):
+    """The sidebar's endless-mutator block: an "Endless mutators (N)"
+    header plus the names (endless_mutators.summary_names), comma-joined
+    and wrapped to the panel width. [] for none. Past `max_lines` the list
+    is cut short with a trailing "..." (the header's count stays whole)."""
+    if not mutator_names:
+        return []
+    max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+    header = f"Endless mutators ({total if total is not None else len(mutator_names)})"
+    lines = [header] + _wrap_text(", ".join(mutator_names), small_font, max_width)
+    if max_lines is not None and len(lines) > max_lines:
+        lines = lines[:max(1, max_lines)]
+        if len(lines) > 1:
+            last = lines[-1].rstrip(", ")
+            while last and small_font.size(last + " ...")[0] > max_width:
+                last = last[:-1]
+            lines[-1] = last.rstrip(", ") + " ..."
+    return lines
+
+
+def mutator_lines_fitting_below(min_top):
+    """How many mutator-list rows fit between `min_top` and the list's
+    bottom row (the Proving Grounds status rows' lower one)."""
+    return 1 + max(0, (CHALLENGE_STATUS_Y + PANEL_ROW_HEIGHT - min_top) // PANEL_ROW_HEIGHT)
 
 
 def build_potion_slot_rects(count):
@@ -1866,11 +1982,18 @@ def build_potion_slot_rects(count):
 
 
 def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
-                     run_modifiers_text=None):
+                     run_modifiers_text=None, challenge_text=None, mutator_names=(), mutator_count=None,
+                     mutator_min_top=None):
     """The run's potion slots -- a filled slot shows its potion's initials
     on its own color, an empty one just an outline. Hovering a filled slot
     shows that potion's name and description above the belt; a running
-    Overclock Elixir shows its countdown in the belt's own label."""
+    Overclock Elixir shows its countdown in the belt's own label.
+
+    `mutator_names` (the endless final boss's active mutators) is listed
+    in the rows a Proving Grounds status would use -- the final boss is
+    never one -- growing upward, wrapped to the panel width, and cut short
+    rather than drawn above `mutator_min_top` (the Commander ability
+    button's bottom)."""
     x = settings.PLAY_WIDTH + PANEL_PADDING
     label_text = "Potions -- click or Q/W/E"
     if overclock_timer > 0:
@@ -1879,6 +2002,19 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
     surface.blit(label, (x, POTION_BELT_TOP - POTION_BELT_LABEL_GAP))
     if run_modifiers_text is not None:
         surface.blit(small_font.render(run_modifiers_text, True, settings.COLOR_LIVES), (x, RUN_MODIFIERS_Y))
+    if challenge_text is not None:  # a Proving Grounds fight: [header, live status]
+        for index, line in enumerate(challenge_text):
+            surface.blit(small_font.render(line, True, CHALLENGE_STATUS_COLOR),
+                         (x, CHALLENGE_STATUS_Y + index * PANEL_ROW_HEIGHT))
+    description_bottom = POTION_DESCRIPTION_BOTTOM
+    max_lines = mutator_lines_fitting_below(mutator_min_top) if mutator_min_top is not None else None
+    mutator_lines = mutator_list_lines(mutator_names, small_font, mutator_count, max_lines)
+    if mutator_lines:
+        top = CHALLENGE_STATUS_Y + PANEL_ROW_HEIGHT - (len(mutator_lines) - 1) * PANEL_ROW_HEIGHT
+        for index, line in enumerate(mutator_lines):
+            color = MUTATOR_HEADER_COLOR if index == 0 else settings.COLOR_TEXT
+            surface.blit(small_font.render(line, True, color), (x, top + index * PANEL_ROW_HEIGHT))
+        description_bottom = min(description_bottom, top - 8)
 
     for index, rect in enumerate(slot_rects):
         if index < len(potion_keys):
@@ -1899,10 +2035,97 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         lines = [(potion.display_name, settings.COLOR_TEXT)] + [
             (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(potion.description, small_font, max_width)
         ]
-        y = POTION_DESCRIPTION_BOTTOM - len(lines) * PANEL_ROW_HEIGHT
+        y = description_bottom - len(lines) * PANEL_ROW_HEIGHT
+        backing = pygame.Rect(x - 6, y - 4, max_width + 12, len(lines) * PANEL_ROW_HEIGHT + 8)
+        pygame.draw.rect(surface, settings.COLOR_HUD_BG, backing, border_radius=6)
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, backing, width=1, border_radius=6)
         for text_line, color in lines:
             surface.blit(small_font.render(text_line, True, color), (x, y))
             y += PANEL_ROW_HEIGHT
+
+
+# --- Commander ability button (the sidebar, below the Sell/Move row) ---
+
+ABILITY_BUTTON_HEIGHT = 40
+# One line instead of two -- while the endless final boss's mutator list
+# needs the rows below it (see draw_potion_belt's mutator_min_top).
+ABILITY_BUTTON_COMPACT_HEIGHT = 24
+# Below the stats panel's lowest button (Sell/Move), above the Proving
+# Grounds status lines and the potion belt -- a strip no other sidebar
+# element claims, so the button stays put whatever the panel shows.
+ABILITY_BUTTON_TOP = SELL_BUTTON_TOP + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP
+ABILITY_HOTKEY_LABEL = "F"
+ABILITY_COLOR = (150, 200, 255)
+
+
+def build_ability_button_rect(compact=False):
+    height = ABILITY_BUTTON_COMPACT_HEIGHT if compact else ABILITY_BUTTON_HEIGHT
+    return pygame.Rect(_action_button_rect(ABILITY_BUTTON_TOP).x, ABILITY_BUTTON_TOP, ACTION_BUTTON_WIDTH, height)
+
+
+def ability_detail(ability):
+    """An ability's description plus its recharge -- the hover box and the
+    Field Manual both show this."""
+    return f"{ability.description} Recharges after {ability.cooldown_waves} waves."
+
+
+def ability_status_text(ability, cooldown, charges, timer, targeting, compact=False):
+    """The ability button's second line (or, `compact`, its short right-hand
+    tag) -- pulled out as a pure function so each state is unit-testable
+    without a display. Most-urgent first: aiming, a running effect, leftover
+    charges, then ready/recharging."""
+    if targeting:
+        return "Aim" if compact else "Aim -- right-click cancels"
+    if timer > 0:
+        return f"{timer:.1f}s" if compact else f"Active: {timer:.1f}s"
+    if charges > 0 and ability.charge_label:
+        return f"{charges} left" if compact else f"{charges} {ability.charge_label} left"
+    if cooldown > 0:
+        waves = f"{cooldown} wave{'s' if cooldown != 1 else ''}"
+        return waves if compact else f"Recharging: {waves}"
+    return "Ready"
+
+
+def draw_ability_button(surface, small_font, rect, ability, cooldown, charges=0, timer=0.0, targeting=False,
+                        hovered=False, compact=False):
+    """The Commander ability: name and hotkey on top, its state below --
+    or, `compact`, the bare name with a short state tag on one line.
+    Hovering shows the description in a filled box just above the button."""
+    ready = cooldown == 0
+    pygame.draw.rect(surface, settings.COLOR_BUTTON if ready else settings.COLOR_BUTTON_DISABLED, rect,
+                     border_radius=6)
+    if ready:  # aiming is outlined in gold, so the mode reads at a glance
+        pygame.draw.rect(surface, settings.COLOR_GOLD if targeting else ABILITY_COLOR, rect, width=2, border_radius=6)
+    title_color = ABILITY_COLOR if ready else settings.COLOR_TEXT_DIM
+    status = ability_status_text(ability, cooldown, charges, timer, targeting, compact)
+    status_surface = small_font.render(status, True, settings.COLOR_GOLD if status == "Ready" else settings.COLOR_TEXT_DIM)
+    if compact:
+        title = small_font.render(ability.display_name, True, title_color)
+        surface.blit(title, title.get_rect(midleft=(rect.x + 8, rect.centery)))
+        surface.blit(status_surface, status_surface.get_rect(midright=(rect.right - 8, rect.centery)))
+    else:
+        title = small_font.render(f"{ABILITY_HOTKEY_LABEL}: {ability.display_name}", True, title_color)
+        surface.blit(title, title.get_rect(midtop=(rect.centerx, rect.y + 3)))
+        surface.blit(status_surface, status_surface.get_rect(midbottom=(rect.centerx, rect.bottom - 3)))
+
+    if hovered:
+        max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+        lines = _wrap_text(ability_detail(ability), small_font, max_width)
+        box = pygame.Rect(settings.PLAY_WIDTH + PANEL_PADDING // 2, 0, settings.PANEL_WIDTH - PANEL_PADDING,
+                          len(lines) * PANEL_ROW_HEIGHT + 8)
+        box.bottom = rect.top - 4
+        pygame.draw.rect(surface, settings.COLOR_HUD_BG, box)
+        pygame.draw.rect(surface, ABILITY_COLOR, box, width=1, border_radius=4)
+        y = box.y + 4
+        for line in lines:
+            surface.blit(small_font.render(line, True, settings.COLOR_TEXT), (box.x + PANEL_PADDING // 2, y))
+            y += PANEL_ROW_HEIGHT
+
+
+def draw_ability_target_preview(surface, pos, radius):
+    """Where a targeted ability will land: its radius, ringed at the cursor."""
+    pygame.draw.circle(surface, ABILITY_COLOR, pos, int(radius), width=2)
+    pygame.draw.circle(surface, ABILITY_COLOR, pos, 3)
 
 
 # --- Floor Cleared screen (a roguelike run's own per-floor results) ---
@@ -1939,7 +2162,8 @@ def draw_floor_cleared_screen(surface, font, small_font, floor_number, floor_cou
 
 
 def _draw_panel_action_buttons(surface, small_font, subject, economy,
-                                upgrade_button_rect, specialize_button_rects, sell_button_rect):
+                                upgrade_button_rect, specialize_button_rects, sell_button_rect,
+                                move_button_rect=None, move_label=None, move_enabled=False):
     """Upgrade (below MAX_LEVEL) or two Specialize choices (at MAX_LEVEL,
     unspecialized) -- never both, see ACTION_AREA_TOP -- plus Sell,
     always. `subject` is assumed to be a placed Tower instance."""
@@ -1957,7 +2181,9 @@ def _draw_panel_action_buttons(surface, small_font, subject, economy,
         for rect, (key, spec) in zip(specialize_button_rects, subject.SPECIALIZATIONS.items()):
             action_button(rect, f"{spec['display_name']} ({cost}g)", economy.can_afford(cost))
 
-    action_button(sell_button_rect, f"Sell (+{subject.sell_value()}g)", True)
+    action_button(sell_button_rect, f"Sell +{subject.sell_value()}g", True)
+    if move_button_rect is not None and move_label is not None:
+        action_button(move_button_rect, move_label, move_enabled)
 
 
 _dim_overlay_cache = {}
@@ -2017,8 +2243,8 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 
 # Single source of truth for every letter GameState.MENU routes to
 # something other than the default "start playing" catch-all -- paired
-# with its on-screen hint label, in the same order the README/CLAUDE.md
-# list them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
+# with its on-screen hint label, in the same order the README
+# lists them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
 # branch checks membership in MENU_KEY_LETTERS (derived below) before
 # dispatching a letter to its own behavior, so a key can never end up
 # routable there without also appearing in menu_options()'s hint list --
@@ -2044,6 +2270,8 @@ MENU_KEY_HINTS = [
     ("r", "Run History"),
     ("u", "Unlocks"),
     ("k", "Field Manual"),
+    # "s" (Settings) and "r" (Run History) are taken -- "t" for sTats.
+    ("t", "Service Record"),
 ]
 MENU_KEY_LETTERS = frozenset(letter for letter, _label in MENU_KEY_HINTS)
 
@@ -2281,7 +2509,7 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
 # captured as that action's new binding (see input_handler.py's own
 # _handle_keybinds_keydown for the capture/cancel/reject logic -- this
 # module only ever draws whatever Game already resolved, same "renderer
-# reads state, never decides" boundary CLAUDE.md's architecture section
+# reads state, never decides" boundary docs/agents/core-game.md
 # draws everywhere else). KEYBIND_ROW_WIDTH is wider than Settings' own
 # SETTINGS_BUTTON_WIDTH since a row's label ("Editor Undo: Ctrl+Z") runs
 # longer than any Settings option's own.
@@ -2519,6 +2747,8 @@ def run_history_lines(best_floors_cleared, records):
             parts.append("final boss slain")
         if record.get("endless_waves"):
             parts.append(f"+{record['endless_waves']} endless")
+        if record.get("endless_mutators"):
+            parts.append(f"{record['endless_mutators']} mutators")
         crew = TOWER_TYPES.get(record.get("top_crew", ""))
         if crew is not None:
             parts.append(f"top crew: {crew.display_name}")
@@ -2722,8 +2952,13 @@ def compendium_rows(small_font):
         ("Curses", [(r.display_name, r.description) for r in RELICS.values() if r.is_curse]),
         ("Potions", [(p.display_name, p.description) for p in POTIONS.values()]),
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
+        ("Commander abilities", [
+            (ABILITIES[c.ability].display_name, f"{c.display_name}: {ability_detail(ABILITIES[c.ability])}")
+            for c in COMMANDERS.values()
+        ]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
         ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
+        ("Endless mutators", [(m.display_name, m.description) for m in endless_mutators.MUTATORS.values()]),
         ("Resonances", [(r.display_name, r.description) for r in RESONANCES.values()]),
         ("Tower modules", [(m.display_name, m.description) for m in MODULES.values()]),
         ("Veterancy ranks", [(rank.name, f"{rank.xp_required} experience: one more rank of bonus for that tower type.")
@@ -2754,6 +2989,131 @@ def draw_compendium_screen(surface, font, small_font, rows, scroll_offset, back_
             else:
                 surface.blit(small_font.render(name, True, settings.COLOR_GOLD), (COMPENDIUM_NAME_X, y))
                 surface.blit(small_font.render(detail, True, settings.COLOR_TEXT_DIM), (COMPENDIUM_DETAIL_X, y))
+        y += UNLOCKS_ROW_HEIGHT
+    surface.set_clip(previous_clip)
+
+    max_scroll = unlocks_max_scroll(len(rows))
+    if scroll_offset < max_scroll:
+        more_below = small_font.render("v more below -- scroll for more", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_below, more_below.get_rect(midbottom=(settings.SCREEN_WIDTH // 2, UNLOCKS_BOTTOM - 4)))
+    if scroll_offset > 0:
+        more_above = small_font.render("^ more above", True, settings.COLOR_TEXT_DIM)
+        surface.blit(more_above, more_above.get_rect(midtop=(settings.SCREEN_WIDTH // 2, UNLOCKS_TOP + 4)))
+
+    _draw_back_to_menu_button(surface, small_font, back_rect)
+    _draw_escape_hint(surface, small_font)
+
+
+# --- Service Record screen ---
+#
+# Lifetime statistics (progression/service_record.py) -- the same scrolling
+# list shape as the Field Manual: UNLOCKS_* layout constants, its back
+# button and unlocks_max_scroll. Rows are (kind, cells, bar): a "header"
+# (one cell, the section title), "columns" (that table's column labels),
+# a data "row", or a dim "note" for an empty section. `bar` is the row's
+# share of its section's top value (0..1), drawn only on Towers/Enemies.
+
+SERVICE_RECORD_NAME_X = 120
+# Column x positions after the name -- room for the longest display name
+# (TOWER_TYPES/ENEMY_TYPES) at the small font, checked by test_ui.
+SERVICE_RECORD_COLUMN_XS = (430, 570, 680, 790)
+SERVICE_RECORD_BAR_X = 920
+SERVICE_RECORD_BAR_WIDTH = 180
+SERVICE_RECORD_BAR_HEIGHT = 10
+SERVICE_RECORD_OVERALL_VALUE_X = 520
+
+
+def _format_stat(value):
+    return f"{round(value):,}"
+
+
+def _display_name(registry, key):
+    entry = registry.get(key)
+    return entry.display_name if entry is not None else key
+
+
+def service_record_rows(record):
+    """[(kind, cells, bar), ...] for the Service Record screen -- built
+    from the record plus the registries' display names, so a new tower/
+    enemy/commander needs no change here."""
+    rows = [("header", ("Overall",), 0.0)]
+    for stat, label in service_record.OVERALL_STATS.items():
+        rows.append(("stat", (label, _format_stat(record.get(service_record.OVERALL, "", stat))), 0.0))
+
+    def table(title, columns, entries, empty_note, cells_for, bar_stat):
+        rows.append(("header", (title,), 0.0))
+        if not entries:
+            rows.append(("note", (empty_note,), 0.0))
+            return
+        rows.append(("columns", columns, 0.0))
+        top = max(stats.get(bar_stat, 0) for _key, stats in entries) if bar_stat else 0
+        for key, stats in entries:
+            bar = stats.get(bar_stat, 0) / top if top else 0.0
+            rows.append(("row", cells_for(key, stats), bar))
+
+    table(
+        "Towers", ("Tower", "Damage", "Kills", "Built", "Best rank"), service_record.tower_rows(record),
+        "No towers on record yet -- build some on a run.",
+        lambda key, stats: (
+            _display_name(TOWER_TYPES, key), _format_stat(stats.get("damage", 0)),
+            _format_stat(stats.get("kills", 0)), _format_stat(stats.get("built", 0)),
+            veterancy_rank_name(min(int(stats.get("best_rank", 0)), len(VETERANCY_RANKS))),  # clamp a hand-edited file
+        ),
+        "damage",
+    )
+    table(
+        "Enemies", ("Enemy", "Kills"), service_record.enemy_rows(record),
+        "No kills on record yet.",
+        lambda key, stats: (_display_name(ENEMY_TYPES, key), _format_stat(stats.get("kills", 0))),
+        "kills",
+    )
+    table(
+        "Commanders", ("Commander", "Runs", "Best floor"), service_record.commander_rows(record),
+        "No runs on record yet.",
+        lambda key, stats: (
+            _display_name(COMMANDERS, key), _format_stat(stats.get("runs", 0)),
+            _format_stat(stats.get("best_depth", 0)),
+        ),
+        None,
+    )
+    return rows
+
+
+def _draw_service_record_row(surface, font, small_font, kind, cells, bar, y):
+    if kind == "header":
+        surface.blit(font.render(cells[0], True, settings.COLOR_TEXT), (SERVICE_RECORD_NAME_X - 40, y))
+    elif kind == "note":
+        surface.blit(small_font.render(cells[0], True, settings.COLOR_TEXT_DIM), (SERVICE_RECORD_NAME_X, y))
+    elif kind == "stat":
+        surface.blit(small_font.render(cells[0], True, settings.COLOR_TEXT_DIM), (SERVICE_RECORD_NAME_X, y))
+        surface.blit(small_font.render(cells[1], True, settings.COLOR_GOLD), (SERVICE_RECORD_OVERALL_VALUE_X, y))
+    else:
+        color = settings.COLOR_TEXT_DIM if kind == "columns" else settings.COLOR_TEXT
+        name_color = settings.COLOR_TEXT_DIM if kind == "columns" else settings.COLOR_GOLD
+        surface.blit(small_font.render(cells[0], True, name_color), (SERVICE_RECORD_NAME_X, y))
+        for x, cell in zip(SERVICE_RECORD_COLUMN_XS, cells[1:]):
+            surface.blit(small_font.render(cell, True, color), (x, y))
+        if kind == "row" and bar > 0:
+            bar_y = y + (small_font.get_height() - SERVICE_RECORD_BAR_HEIGHT) // 2
+            pygame.draw.rect(surface, settings.COLOR_BUTTON, (
+                SERVICE_RECORD_BAR_X, bar_y, SERVICE_RECORD_BAR_WIDTH, SERVICE_RECORD_BAR_HEIGHT))
+            pygame.draw.rect(surface, settings.COLOR_GOLD, (
+                SERVICE_RECORD_BAR_X, bar_y, max(1, round(SERVICE_RECORD_BAR_WIDTH * bar)),
+                SERVICE_RECORD_BAR_HEIGHT))
+
+
+def draw_service_record_screen(surface, font, small_font, rows, scroll_offset, back_rect):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Service Record", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 30)))
+
+    viewport = pygame.Rect(0, UNLOCKS_ROWS_TOP, settings.SCREEN_WIDTH, UNLOCKS_ROWS_BOTTOM - UNLOCKS_ROWS_TOP)
+    previous_clip = surface.get_clip()
+    surface.set_clip(viewport)
+    y = UNLOCKS_ROWS_TOP - scroll_offset
+    for kind, cells, bar in rows:
+        if pygame.Rect(0, y, settings.SCREEN_WIDTH, UNLOCKS_ROW_HEIGHT).colliderect(viewport):
+            _draw_service_record_row(surface, font, small_font, kind, cells, bar, y)
         y += UNLOCKS_ROW_HEIGHT
     surface.set_clip(previous_clip)
 
@@ -2827,6 +3187,7 @@ HELP_LINES = [
     "1 / 2 / 3 change simulation speed -- the frame rate itself stays the same",
     "V shows every tower's range (and resonance links) at once during a fight",
     "Q / W / E (or click a sidebar slot) drink potion 1 / 2 / 3 during a run's fight",
+    "F (or the sidebar button) fires your Commander's ability -- it recharges over waves",
     "P or Esc pauses -- R restarts, Q quits, S (between waves) saves & exits",
     "Practice (L): pick any floor solo, always Sandbox rules -- V also arms Endless mode",
 ]
@@ -3065,6 +3426,9 @@ def run_summary_lines(run):
         progress += " -- final boss defeated!"
     if run.endless_waves_cleared:
         progress += f" +{run.endless_waves_cleared} endless wave{'' if run.endless_waves_cleared == 1 else 's'}"
+        mutators = endless_mutators.mutator_count(run.endless_waves_cleared)
+        if mutators:
+            progress += f", {mutators} mutator{'' if mutators == 1 else 's'} faced"
     identity = [COMMANDERS[run.commander].display_name]
     if run.ascension:
         identity.append(f"Gauntlet {run.ascension}")
@@ -3164,6 +3528,7 @@ EDITOR_TOOL_LABELS = {
     "line": "Line",
     "rect": "Rect",
     "select": "Select",
+    "high_ground": "High",
 }
 EDITOR_TOOL_ORDER = list(EDITOR_TOOL_LABELS.keys())
 
@@ -3246,6 +3611,8 @@ def _draw_editor_grid(surface, assets, small_font, editor, active_spawn=None, pe
             name = "tile_path" if cell in editor.path_cells else "tile_grass"
             sprite = assets.get(name, (editor.tile_size, editor.tile_size))
             surface.blit(sprite, (col * editor.tile_size, row * editor.tile_size))
+    for col, row in editor.high_ground_cells:
+        draw_high_ground_tile(surface, col, row, editor.tile_size, editor.high_ground_cells)
 
     if pending_shape_cells:
         overlay = pygame.Surface((editor.tile_size, editor.tile_size), pygame.SRCALPHA)
@@ -3671,6 +4038,10 @@ def build_level_thumbnail(level, width=LEVEL_THUMBNAIL_WIDTH, height=LEVEL_THUMB
     cell_w = width / settings.GRID_COLS
     cell_h = height / settings.GRID_ROWS
 
+    for col, row in level.high_ground_cells:
+        cell_rect = pygame.Rect(round(col * cell_w), round(row * cell_h), math.ceil(cell_w), math.ceil(cell_h))
+        surface.fill(settings.COLOR_THUMBNAIL_HIGH_GROUND, cell_rect)
+
     for col, row in level.path_cells:
         cell_rect = pygame.Rect(round(col * cell_w), round(row * cell_h), math.ceil(cell_w), math.ceil(cell_h))
         surface.fill(settings.COLOR_THUMBNAIL_PATH, cell_rect)
@@ -3795,3 +4166,109 @@ def _wrap_text(text, font, max_width):
     if current:
         lines.append(current)
     return lines
+
+
+# --- Field Notes (first-time hints, progression/hints.py) ---
+#
+# One small panel at a time, somewhere nothing clickable lives, chosen by
+# Game._hint_placement():
+# - "board": the play area's bottom-right, just above the HUD (the
+#   first-placement hint owns the bottom-left, toasts the top centre);
+# - "screen": a full-screen run screen's bottom-right, below every
+#   Shop/Event/Outpost/Reward/Armory/Treasure layout's last button;
+# - "map": the run map's right margin, a narrow column past MAP_COLS' last
+#   node column (a wide panel anywhere there would cover a node, and a
+#   click on the panel is spent on dismissing it).
+# A click on it dismisses it (InputHandler.handle_events); otherwise it
+# times out (HintTracker.update).
+HINT_PANEL_PADDING = 10
+HINT_PANEL_LINE_GAP = 2
+HINT_PANEL_MARGIN = 8
+HINT_DISMISS_TEXT = "click to dismiss"
+HINT_MAP_TOP = 80  # below the map's own title/info lines
+HINT_PANEL_WIDTHS = {
+    "board": 420,
+    "screen": 330,
+    # Everything right of the last node column's circles.
+    "map": settings.SCREEN_WIDTH - round(settings.SCREEN_WIDTH / (MAP_COLS + 1) * MAP_COLS)
+    - MAP_NODE_RADIUS - 2 * HINT_PANEL_MARGIN,
+}
+
+
+def _hint_panel_layout(small_font, hint, width):
+    """(body lines, whether "click to dismiss" fits beside the title)."""
+    lines = _wrap_text(hint.text, small_font, width - 2 * HINT_PANEL_PADDING)
+    title_width = small_font.size(f"Field Notes: {hint.title}")[0] + small_font.size(HINT_DISMISS_TEXT)[0]
+    return lines, title_width + 16 <= width - 2 * HINT_PANEL_PADDING
+
+
+def _hint_title_lines(hint, dismiss_inline):
+    return [f"Field Notes: {hint.title}"] if dismiss_inline else ["Field Notes:", hint.title]
+
+
+def hint_panel_rect(small_font, hint, placement):
+    """Where draw_hint_panel puts `hint` -- shared with the click handler,
+    so a dismiss click always hits exactly what was drawn."""
+    width = HINT_PANEL_WIDTHS[placement]
+    lines, dismiss_inline = _hint_panel_layout(small_font, hint, width)
+    line_count = len(_hint_title_lines(hint, dismiss_inline)) + len(lines) + (0 if dismiss_inline else 1)
+    line_height = small_font.get_linesize() + HINT_PANEL_LINE_GAP
+    rect = pygame.Rect(0, 0, width, 2 * HINT_PANEL_PADDING + line_height * line_count)
+    if placement == "board":
+        rect.bottomright = (settings.PLAY_WIDTH - HINT_PANEL_MARGIN,
+                            settings.SCREEN_HEIGHT - settings.HUD_HEIGHT - HINT_PANEL_MARGIN)
+    elif placement == "map":
+        rect.topright = (settings.SCREEN_WIDTH - HINT_PANEL_MARGIN, HINT_MAP_TOP)
+    else:
+        rect.bottomright = (settings.SCREEN_WIDTH - HINT_PANEL_MARGIN, settings.SCREEN_HEIGHT - HINT_PANEL_MARGIN)
+    return rect
+
+
+def draw_hint_panel(surface, small_font, hint, placement):
+    rect = hint_panel_rect(small_font, hint, placement)
+    lines, dismiss_inline = _hint_panel_layout(small_font, hint, rect.width)
+    backing = pygame.Surface(rect.size, pygame.SRCALPHA)
+    backing.fill((*settings.COLOR_HUD_BG, 235))
+    surface.blit(backing, rect)
+    pygame.draw.rect(surface, settings.COLOR_GOLD, rect, width=2, border_radius=6)
+    line_height = small_font.get_linesize() + HINT_PANEL_LINE_GAP
+    x, y = rect.left + HINT_PANEL_PADDING, rect.top + HINT_PANEL_PADDING
+    dismiss = small_font.render(HINT_DISMISS_TEXT, True, settings.COLOR_TEXT_DIM)
+    if dismiss_inline:
+        surface.blit(dismiss, dismiss.get_rect(topright=(rect.right - HINT_PANEL_PADDING, y)))
+    for title in _hint_title_lines(hint, dismiss_inline):
+        surface.blit(small_font.render(title, True, settings.COLOR_GOLD), (x, y))
+        y += line_height
+    for line in lines:
+        surface.blit(small_font.render(line, True, settings.COLOR_TEXT), (x, y))
+        y += line_height
+    if not dismiss_inline:
+        surface.blit(dismiss, (x, y))
+
+
+# Settings' two Field Notes buttons sit left of the stacked column, on the
+# Fullscreen and Sound rows -- the same "inline extra, not a row of its own"
+# shape as the Volume -/+ and Keybinds... buttons, since the column already
+# reaches the bottom of the canvas.
+HINT_SETTINGS_BUTTON_WIDTH = 200
+
+
+def build_hint_settings_rects():
+    """{"hints": Rect, "reset_hints": Rect}."""
+    rects = {}
+    for key, row_key in (("hints", "fullscreen"), ("reset_hints", "sound")):
+        row = _settings_button_rect(SETTINGS_OPTION_ORDER.index(row_key))
+        rects[key] = pygame.Rect(row.left - 24 - HINT_SETTINGS_BUTTON_WIDTH, row.top,
+                                 HINT_SETTINGS_BUTTON_WIDTH, SETTINGS_BUTTON_HEIGHT)
+    return rects
+
+
+def get_clicked_hint_settings_button(pos, hint_settings_rects):
+    return _key_of_rect_containing(pos, hint_settings_rects)
+
+
+def draw_hint_settings_buttons(surface, small_font, hint_settings_rects, hints_enabled, seen_count):
+    _draw_settings_button(surface, small_font, hint_settings_rects["hints"],
+                          f"Hints: {'On' if hints_enabled else 'Off'}", hints_enabled)
+    _draw_settings_button(surface, small_font, hint_settings_rects["reset_hints"],
+                          f"Reset Hints ({seen_count} seen)", False)

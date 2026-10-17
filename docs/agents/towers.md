@@ -1,5 +1,9 @@
 # Towers
 
+Tower leveling and specialization, the Support two-pass update, Overload Cannon, Siphon, the
+targeting spatial index, the results table, then the run-era additions: veterancy, path traps,
+modules, Mortar's minimum range, Barricade, resonances and the Harpoon.
+
 ## Tower progression is two separate axes
 
 1. **Leveling** (1 -> `MAX_LEVEL`, currently 3): generic on the `Tower` base class.
@@ -72,7 +76,7 @@ Needing its own `update()` override (its cadence doesn't match the base class's 
 loop) meant it also needs its own copy of the ~20-line relic-tagging block `Tower.update()` uses to
 copy every `relic_*` field onto a freshly-fired projectile -- a deliberate, accepted duplication
 rather than a shared-helper extraction, so that every other session adding a relic field to the base
-class's copy (as the nineteenth relic batch above already had to) only has to remember to mirror the
+class's copy (as the triple-status `overwhelming_affliction` relic already had to) only has to remember to mirror the
 same two lines into this tower's own copy, not refactor a shared call site every batch touches.
 Cross-referencing comments live at both sites; `test_tower.py`'s own dedicated regression test
 diffs the two blocks' actual output (via real fired projectiles, not a hardcoded field list) rather
@@ -88,7 +92,7 @@ a kill-gold-only relic, not a tower mechanic). It deliberately introduces **no**
 `Economy`/`Game` coupling -- neither class has ever held a live reference to the other, and this
 tower doesn't start now. Instead it extends the exact "drain a per-frame/accumulated value in
 `Game.update()`" idiom `fired_this_frame`/`impact_events`/`damage_events` already establish (see
-"Visual effects" below) to a non-visual use for the first time: `Tower.pending_siphon_gold`
+[presentation.md](presentation.md) "Visual effects: the drain-a-per-frame-event-list idiom") to a non-visual use for the first time: `Tower.pending_siphon_gold`
 accumulates in `Projectile._apply_direct_damage()` -- the one true per-hit damage-attribution choke
 point, right next to the existing `damage_dealt`/`kills` bookkeeping, so an Arcing Rounds-style chain
 bounce or an Overkill-style carry-over hit generates Siphon gold too, for free -- and `Game.update()`
@@ -127,6 +131,31 @@ falling back to scanning the raw `enemies` list exactly as before -- every exist
 chiefly the whole test suite, needed no changes; `SupportTower.update()` accepts the same parameter
 for call-signature parity with `Game.update()`'s uniform per-tower call but never reads it, since it
 never attacks and so never calls `acquire_target()` at all.
+
+### The other enemy-vs-enemies scans use it too
+
+The same index narrows every other "which enemies are near this point" scan, each with an
+index-free fallback (`None`, used by most tests) that scans the raw list, and each still applying its
+own exact distance check. `tests/test_frame_index_paths.py` asserts the two paths agree:
+
+- **Splash, chain hops, Arcing Rounds bounces, Overkill carry-over** (`Projectile._resolve_hit`/
+  `_find_chain_target`) get the tower loop's index through `Projectile.update(..., enemy_index)`. It is
+  still exact there because nothing moves an enemy between the tower loop and the projectile loop (a
+  knockback only queues a slide for the next `Enemy.update()`). If you add something that moves an
+  enemy *during* the tower or projectile loop, these callers need a fresh index.
+- **Visiting order matters for these callers**, so they use `near_in_order()`, which sorts candidates
+  back into the raw list's order: each splash hit rolls crits and relic procs off the shared `random`
+  stream, a chain hop's distance tie goes to the earlier enemy, and a damage credit is a float sum
+  whose rounding depends on order. Plain `near()` is fine only where order can't matter (tower
+  targeting, a Healer's heals).
+- **Burning ground and Healer heals** (`Game._update_ground_fires`, `HealerEnemy.update`) run
+  *before* the tower loop's index exists, and heals happen while enemies are still moving one by one.
+  They share a lazily-built `spatial_index.MovingEnemyIndex`: a snapshot taken on the first query.
+  After the snapshot, `Game.update()` reports each enemy's displacement (`note_moved`) and every query
+  is widened by the largest displacement so far, so an enemy that has moved since the snapshot is
+  still a candidate. Every enemy update takes an `enemy_index` parameter for this, the same
+  call-signature parity reason `SupportTower.update()` takes one. A frame with no Healer and no fire
+  never builds the snapshot.
 
 ## Post-level results
 
@@ -174,7 +203,8 @@ path rule: every footprint cell must be path). The click handler, the placement 
 `try_place_tower` and `_construct_tower` all use them, so the rest of the tower lifecycle (save/resume,
 sell, upgrade, veterancy) is unchanged. Traps fire ordinary splash projectiles from their own tile, so
 relics, kill credit and stats all work as for any tower. HUD build buttons are 40px with 6px gaps to
-fit 14 towers next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`).
+fit the build menu next to the worst-case Gold/Lives text (`test_hud_gold_lives_wave_text_fits...`;
+current sizes are `ui.BUTTON_SIZE`/`BUTTON_MARGIN`, see "Barricade and the two-row build menu").
 
 ## Modules
 
@@ -194,8 +224,7 @@ Continue via `ui.build_shop_module_rect`) is rolled last from the visit's rng, o
 ## Minimum range (Mortar)
 
 `Tower.MIN_RANGE` (0 by default) is a dead zone `acquire_target` filters out; `MortarTower` sets it to
-80. Both range previews draw it as a red ring. HUD build buttons are now 36px with 5px gaps (15 towers);
-icons are `BUTTON_SIZE - 14`.
+80. Both range previews draw it as a red ring. Build-menu icons are `BUTTON_SIZE - 14`.
 
 ## Barricade and the two-row build menu
 
@@ -206,7 +235,24 @@ statuses), drains `BARRICADE_BREACH_DPS` per enemy (x`BARRICADE_BOSS_BREACH_MULT
 deals its `thorns_dps` back. A broken barricade moves to `sold_towers` and frees its tile. `hp` is saved
 per tower (`_tower_to_dict` adds it only for towers that have one). `ATTACKS = False` also hides the
 attack stats/Targeting row and keeps it out of damage-module offers. `ui.build_button_rects` wraps into
-two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row.
+two rows past `BUTTONS_PER_ROW`; `ui.hud_info_x` puts the Gold/Lives text after the widest row. Current
+sizes: 40px buttons with 6px gaps, 9 per row (`ui.BUTTON_SIZE`/`BUTTON_MARGIN`/`BUTTONS_PER_ROW`).
+
+## Relocating a tower
+
+`Game.try_move_tower(tower, anchor_col, anchor_row)` moves a placed tower in place (same object, so
+level, specialization, targeting, veterancy and lifetime stats all survive). It is allowed only
+between waves (`Game.can_move_towers()`, the same gate as `can_save_run()`), costs `Game.move_fee()`
+(free in `AWAITING_START`, else `settings.MOVE_FEE_FRACTION` of `total_invested`, min 1, spent via
+`_spend_gold`), and re-runs `_recompute_tower_density_bonuses()` so density, placement relics and
+resonances follow the new spot. `_is_buildable_for_move` lifts the tower off the grid for the check, so
+a nudge overlapping its own old footprint is legal; a path trap still needs path tiles.
+
+The panel's Sell row is split: Sell on the left half (`ui.build_sell_button_rect`), Move on the right
+(`ui.build_move_button_rect`). Move sets `Game.moving_tower`; the next board click in
+`InputHandler._handle_click` tries the move, and right-click, Move again, picking a build button,
+selling it, or a wave starting (checked at the top of `Game.update`) clears it. `Renderer.
+_render_move_preview` replaces the placement preview while moving.
 
 ## Resonances
 
@@ -217,3 +263,24 @@ a partner-type tower within `RESONANCE_RADIUS` adds the bonus to `resonance_dama
 `effective_damage`), `resonance_range_bonus` (additive in `effective_range`) or `resonance_fire_rate_
 bonus` (a multiplier in `effective_fire_rate`), and records `resonance_keys`. `ui.resonance_line` shows a
 placed tower's active ones, or a build-menu type's partners.
+
+## Harpoon
+
+`HarpoonTower` (`"harpoon"`) is the anti-air enabler: every hit passes `ground_duration` into
+`Projectile(ground_duration=...)`, which calls `Enemy.apply_ground` on the flyer it hits, so for a few
+seconds the flyer is not `is_airborne` and every ground-only tower can reach it (see
+[enemies.md](enemies.md) "Grounded flyers (`is_airborne`)"). Its own damage is deliberately middling
+(below Basic's DPS per gold in `tools/tower_bench.py`); the value is the opening it makes for Cannons
+and Mortars.
+
+- **Targeting.** It extends its own `TARGETING_MODES` with `"flying"` (`Tower._target_flying`: airborne
+  flyers first, else `"first"`) and starts on it (`DEFAULT_TARGETING_MODE`). Only the Harpoon offers
+  that mode, so `save_state` validates a saved `targeting_mode` against the saved tower *type's* own
+  `TARGETING_MODES`, not the base tuple.
+- **Specializations.** Deep Anchor multiplies `ground_duration`. Reel In multiplies `reel_slow_factor`
+  (1.0, no slow, until specialized) and damage; below 1.0 the shot carries a `slow_effect` for
+  `REEL_SLOW_DURATION`.
+- **Hooks.** Resonances `grounded_barrage` (Mortar near Harpoon) and `anchor_line` (Harpoon near
+  Cannon); relic `barbed_tethers` (`relic_harpoon_ground_bonus_multiplier`, read only in
+  `HarpoonTower.create_projectile`). Modules need nothing special: it fires through `Tower.update()`, so
+  on-hit module effects ride the usual `relic_*` fields.

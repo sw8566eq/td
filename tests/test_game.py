@@ -481,6 +481,48 @@ def test_clicking_the_skip_button_skips_the_wave_delay(playing_game):
     assert playing_game.wave_manager.between_wave_timer <= 0
 
 
+def _mid_countdown(game, seconds_left):
+    game.wave_manager.state = WaveState.BETWEEN_WAVES
+    game.wave_manager.between_wave_timer = seconds_left
+
+
+def test_calling_wave_one_early_pays_no_bonus(playing_game):
+    gold = playing_game.economy.gold
+    assert playing_game.call_next_wave() == 0
+    assert playing_game.economy.gold == gold
+    assert playing_game.damage_numbers == []
+
+
+def test_calling_the_next_wave_early_pays_gold_per_second_skipped(playing_game):
+    _mid_countdown(playing_game, 4.5)
+    gold = playing_game.economy.gold
+
+    bonus = playing_game.call_next_wave()
+
+    assert bonus == int(4.5 * settings.EARLY_CALL_GOLD_PER_SECOND)
+    assert playing_game.economy.gold == gold + bonus
+    assert playing_game.wave_manager.between_wave_timer == 0.0
+    assert [t.text for t in playing_game.damage_numbers] == [f"+{bonus} gold"]
+
+
+def test_calling_the_next_wave_with_no_time_left_pays_nothing(playing_game):
+    _mid_countdown(playing_game, 0.1)  # rounds down to 0 gold
+    gold = playing_game.economy.gold
+    assert playing_game.call_next_wave() == 0
+    assert playing_game.economy.gold == gold
+
+
+def test_the_skip_button_and_key_pay_the_early_call_bonus(playing_game):
+    _mid_countdown(playing_game, 5.0)
+    gold = playing_game.economy.gold
+    playing_game._handle_click(playing_game.skip_button_rect.center)
+    assert playing_game.economy.gold == gold + 5 * settings.EARLY_CALL_GOLD_PER_SECOND
+
+    _mid_countdown(playing_game, 2.0)
+    playing_game._handle_keydown(pygame.K_SPACE)  # skip_wave's default binding
+    assert playing_game.economy.gold == gold + 7 * settings.EARLY_CALL_GOLD_PER_SECOND
+
+
 def test_clicking_empty_hud_area_does_nothing(playing_game):
     # Somewhere in the HUD bar but not on any button.
     pos = (settings.PLAY_WIDTH - 20, settings.SCREEN_HEIGHT - 10)
@@ -3733,7 +3775,8 @@ def test_k_opens_the_compendium_and_it_lists_every_content_kind(game):
     assert game.state == GameState.COMPENDIUM
     headers = [name for kind, name, _detail in game.compendium_rows if kind == "header"]
     assert [h.split(" (")[0] for h in headers] == [
-        "Towers", "Enemies", "Relics", "Trophy relics", "Curses", "Potions", "Commanders", "Elite affixes", "Bosses", "Resonances", "Tower modules", "Veterancy ranks",
+        "Towers", "Enemies", "Relics", "Trophy relics", "Curses", "Potions", "Commanders", "Commander abilities",
+        "Elite affixes", "Bosses", "Endless mutators", "Resonances", "Tower modules", "Veterancy ranks",
     ]
     entries = {name for kind, name, _detail in game.compendium_rows if kind == "entry"}
     assert {r.display_name for r in RELICS.values()} <= entries

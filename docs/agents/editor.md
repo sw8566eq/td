@@ -1,5 +1,8 @@
 # Map editor and custom levels
 
+The path editor, its undo/shape/copy-paste tools, the wave editor, custom level files, and the level
+browser (thumbnails, play vs edit purpose, scrolling).
+
 ## Map editor and custom levels
 
 `core/editor.py`'s `Editor` (driven by `GameState.EDITOR` in `core/game.py`, entered via `E` from the menu or
@@ -7,7 +10,7 @@
 Spawn/Goal tools mark `spawn_cells`/`goal_cells`. Junctions are **auto-detected** from painted
 geometry (`pathing.junctions_of` -- any cell with 3+ path-neighbors) rather than the player ever
 declaring "this is a branch." `Editor.validate()` reruns `pathing.validate_topology` after every
-edit, populating `path_problems` -- the only thing that gates moving on to wave editing (see below);
+edit, populating `path_problems` -- the only thing that gates moving on to wave editing (see "Wave editor");
 `wave_problems`/`validation_problems`/`can_play()` fold in wave validity too, and are what gate
 Playtest/Save. Playtesting hands `Editor.to_level()`'s `Level` straight to `Game.load_custom_level()`
 (the non-registry counterpart to `load_level(level_id)`) without saving first; `current_level_id`
@@ -17,6 +20,8 @@ when `current_level_id is None`; see `ui.draw_pause_menu`'s `is_custom_level` an
 `Game._handle_keydown`'s `GameState.PAUSED` branch) -- check to know there's no `LEVELS` entry to
 look back up. That option just switches `state` back to `GameState.EDITOR` without touching
 `self.editor` at all, so whatever was playtested is still sitting there exactly as painted.
+
+## Undo, shape tools and copy/paste
 
 Painting itself has three additional quality-of-life layers, all scoped to the path editor (the
 wave editor has no equivalent undo history of its own). **Undo/redo** (`Editor._undo_stack`/
@@ -36,6 +41,8 @@ it was copied from. A paste is clipped to the grid (an off-grid anchor is refuse
 paste armed; any pasted cell that would land off-grid is dropped) -- nothing else in the editor can
 reach an off-grid cell to erase it, since `paint_at()` ignores out-of-bounds pixels -- and pasted
 spawns/goals follow the Spawn/Goal tools' own exclusivity rule rather than leaving a cell that's both.
+
+## Wave editor
 
 Once the path is valid, `GameState.WAVE_EDITOR` (reached via the path editor's "Edit Waves" button)
 edits `Editor.wave_specs` directly -- the exact same `[{spawn_cell: {enemy_type_name: count}}, ...]`
@@ -68,6 +75,8 @@ before the next spawn's even starts. A spawn with fewer enemies queued for the w
 contributing to later rounds once its own queue empties; it doesn't hold the others back or get
 padded with empty turns to stay in sync.
 
+## Custom level files
+
 `persistence/persistence.py` is the only file I/O of game data anywhere in the codebase: `save_level`/
 `load_level_file`/`list_custom_levels` (de)serialize a `Level` to JSON under `custom_levels/`
 (gitignored -- local player data, not shipped content), slugging the level's name into a stable
@@ -82,6 +91,8 @@ handing someone the file and having them drop it into their own `custom_levels/`
 `Game.last_saved_path` (shown in the wave editor's sidebar after Save, see `presentation/ui.py`) exists purely to
 tell the player where to find that file on disk to go do that.
 
+## Level browser
+
 `ui.build_level_thumbnail(level, width, height)` renders a level's `path_cells`/`spawn_cells`/
 `goal_cells` as a small static image -- a `(width, height)` surface at exactly `GRID_COLS:GRID_ROWS`
 aspect ratio so each cell maps to a perfect square, colored ground/path fills plus spawn/goal dots,
@@ -95,8 +106,8 @@ The level browser (`GameState.LEVEL_SELECT`) serves two different purposes from 
 tracked by `Game.level_select_purpose` ("play", the default, or "edit") and threaded through to
 `ui.draw_level_select_screen` for its title/back-hint/tag text: entered via the menu's `L`, it lists
 built-ins and custom levels together and picking one starts playing it as **Practice** -- always
-`sandbox=True`, never gated by anything, earning nothing (see "Difficulty modes, Sandbox/Practice
-mode, and player settings" below); entered via the editor's "Load Map..." action (`Game._handle_editor_action`'s `"load"` branch,
+`sandbox=True`, never gated by anything, earning nothing (see [waves-difficulty.md](waves-difficulty.md) "Difficulty modes, Sandbox/Practice
+mode, and player settings"); entered via the editor's "Load Map..." action (`Game._handle_editor_action`'s `"load"` branch,
 `_enter_level_select(purpose="edit")`), it lists **only** custom levels -- a built-in one has no
 corresponding file to reopen -- and picking one calls `Editor.load_level(level)` instead, then
 returns to `GameState.EDITOR` rather than `PLAYING`. `Editor.load_level()` is a full replace of every
@@ -119,3 +130,14 @@ whose geometry can extend into the title/hint areas, so without that fence a cli
 a row that isn't actually visible. `ui.draw_level_select_screen` mirrors this on the drawing side with
 an actual `surface.set_clip()` around the row loop, plus a "more above"/"more below" hint whenever
 `level_select_max_scroll(...)` is nonzero.
+
+## High Ground brush
+
+`EditorTool.HIGH_GROUND` ("High" in the toolbar, last in `TOOL_ORDER`) paints and erases
+`Editor.high_ground_cells` (see [grid-paths.md](grid-paths.md) "High ground"). A stroke's first cell
+decides its mode: starting on plain ground raises every cell the drag crosses, starting on high ground
+lowers them (`_high_ground_stroke_raises`, reset by `end_stroke()`). Path cells are skipped. The Erase
+tool also clears high ground. `validate()` drops any high ground the path now covers, so painting,
+stamping a Line/Rect or pasting path over a raised cell flattens it, the same rule
+`Level.__post_init__` enforces. High ground is part of the undo snapshot, the copy/paste clipboard
+(`"high_ground"` offsets), `clear()`, `load_level()` and `to_level()`.

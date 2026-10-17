@@ -20,7 +20,7 @@ def test_save_then_load_round_trips(tmp_path):
     save_settings({"fullscreen": True, "difficulty": "hard", "window_size": [1440, 840]}, path)
     assert load_settings(path) == {
         "fullscreen": True, "sound_enabled": True, "sound_volume": 1.0,
-        "difficulty": "hard", "window_size": [1440, 840],
+        "difficulty": "hard", "window_size": [1440, 840], "hints_enabled": True,
     }
 
 
@@ -31,7 +31,20 @@ def test_a_file_missing_a_key_fills_it_in_from_defaults(tmp_path):
         "fullscreen": True, "sound_enabled": DEFAULTS["sound_enabled"],
         "sound_volume": DEFAULTS["sound_volume"],
         "difficulty": "normal", "window_size": DEFAULTS["window_size"],
+        "hints_enabled": DEFAULTS["hints_enabled"],
     }
+
+
+def test_hints_enabled_round_trips(tmp_path):
+    path = tmp_path / "player_settings.json"
+    save_settings({"hints_enabled": False}, path)
+    assert load_settings(path)["hints_enabled"] is False
+
+
+def test_hints_enabled_defaults_on_when_missing(tmp_path):
+    path = tmp_path / "player_settings.json"
+    path.write_text('{"schema_version": 1}')
+    assert load_settings(path)["hints_enabled"] is True
 
 
 def test_save_never_touches_a_different_path(tmp_path):

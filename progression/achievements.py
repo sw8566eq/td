@@ -162,11 +162,27 @@ ACHIEVEMENTS = {
     "harmonist": Achievement(
         "harmonist", "Harmonist", "Have 4 resonances active at once.", "resonances_active", 4,
     ),
+    "eager_commander": Achievement(
+        "eager_commander", "Eager Commander", "Call 50 waves early.", "waves_called_early", 50,
+    ),
+    "proven": Achievement(
+        "proven", "Proven", "Win 5 Proving Grounds.", "challenges_won", 5,
+    ),
+    "redeployment": Achievement(
+        "redeployment", "Redeployment", "Move 20 towers.", "towers_moved", 20,
+    ),
     "first_sip": Achievement(
         "first_sip", "First Sip", "Use a potion.", "potions_used", 1,
     ),
     "alchemist": Achievement(
         "alchemist", "Alchemist", "Use 25 potions.", "potions_used", 25,
+    ),
+    # Keyed off Enemy.KILL_COUNTER, bumped from Game.update()'s dead-enemy drain.
+    "signal_restored": Achievement(
+        "signal_restored", "Signal Restored", "Kill 25 Disruptors.", "disruptors_killed", 25,
+    ),
+    "wall_breaker": Achievement(
+        "wall_breaker", "Wall Breaker", "Kill 10 Bulwarks.", "bulwarks_killed", 10,
     ),
 }
 ACHIEVEMENT_ORDER = list(ACHIEVEMENTS.keys())  # stable UI order = registry insertion order

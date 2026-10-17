@@ -30,6 +30,25 @@ BURROW_MOUND_COLOR = (110, 80, 50)
 KNOCKBACK_RESISTANCE_PER_SHOVE = 0.2
 KNOCKBACK_RESISTANCE_CAP = 0.8
 KNOCKBACK_RESISTANCE_DECAY = 0.3
+# The shadow and tether a grounded flyer draws under itself (Enemy.draw).
+GROUNDED_SHADOW_COLOR = (30, 30, 30)
+GROUNDED_TETHER_COLOR = (200, 200, 210)
+
+
+def is_airborne(enemy):
+    """Whether `enemy` is out of reach of ground-only attacks right now: a
+    flying species (is_flying) that isn't currently Grounded (a Harpoon hit
+    -- see Enemy.apply_ground). Every "can this touch a flyer?" check reads
+    this -- tower targeting, projectile splash, burning ground, Barricade
+    holds -- so the Grounded rule applies everywhere at once. Duck-typed
+    with getattr defaults, since not every enemy stand-in (tests, mainly)
+    defines is_flying or ground_timer."""
+    return getattr(enemy, "is_flying", False) and getattr(enemy, "ground_timer", 0.0) <= 0
+
+# A charged Disruptor's jam-radius ring, a Bulwark's aura disc, and the small
+# pip an aura-protected enemy wears (Enemy.draw).
+DISRUPTOR_RING_COLOR = (120, 220, 255)
+BULWARK_AURA_COLOR = (200, 200, 120)
 
 class Enemy:
     display_name = "Enemy"
@@ -68,6 +87,20 @@ class Enemy:
     # Tunnels under the path: path traps can't hit it and Barricades don't
     # hold it (Tower.HITS_BURROWED, Game._hold_enemies_at_barricades).
     BURROWS = False
+    # Jams every jammable tower within JAM_RADIUS px for JAM_DURATION s, at
+    # most once per JAM_COOLDOWN s (jam_towers, driven by Game._jam_towers).
+    # 0 radius = never jams (every species but the Disruptor).
+    JAM_RADIUS = 0
+    JAM_DURATION = 0.0
+    JAM_COOLDOWN = 0.0
+    # Grants every *other* enemy within AURA_RADIUS px this fraction of damage
+    # reduction (Game._apply_enemy_auras; max across auras, never stacked).
+    # 0 = no aura (every species but the Bulwark).
+    AURA_RADIUS = 0
+    AURA_DAMAGE_REDUCTION = 0.0
+    # The achievements counter (progression/achievements.py) a kill of this
+    # species bumps, from Game.update()'s dead-enemy drain -- None for most.
+    KILL_COUNTER = None
 
     def __init__(self, waypoints_px, wave_number):
         self.waypoints = waypoints_px
@@ -87,6 +120,11 @@ class Enemy:
         # fraction of max_hp per second; Armored scales every hit taken.
         self.regen_fraction_per_second = 0.0
         self.damage_taken_multiplier = 1.0
+        # A Bulwark's aura (Game._apply_enemy_auras) -- reset and re-applied
+        # every frame, the same fresh-each-frame shape as `held` below.
+        self.aura_damage_reduction = 0.0
+        # Seconds until this enemy may jam towers again (JAM_RADIUS species only).
+        self.jam_cooldown = 0.0
 
         # Mark state -- see apply_mark()/take_damage(). Mirrors slow_
         # multiplier/slow_timer's own shape exactly (a multiplier plus a
@@ -97,6 +135,10 @@ class Enemy:
         # unlike slow_factor (see FrostTower's own note on that).
         self.mark_damage_multiplier = 1.0
         self.mark_timer = 0.0
+        # Grounded (a Harpoon hit -- see apply_ground()/is_airborne()):
+        # seconds a flying enemy is still dragged down within reach of
+        # ground-only towers. Always 0 on a non-flying species.
+        self.ground_timer = 0.0
 
         # Damage-over-time state -- see apply_poison(). damage_per_tick/
         # tick_interval describe the currently-active poison (meaningless
@@ -136,7 +178,7 @@ class Enemy:
 
         # Enemies this one wants added to the live Game.enemies list --
         # same drain-a-per-frame-event-list idiom as damage_events above
-        # (see CLAUDE.md's "Visual effects" section), just applied to
+        # (see docs/agents/presentation.md "Visual effects"), just applied to
         # spawning entities instead of floating text. Empty for every
         # species except SplitterEnemy (populated once, at death) and
         # FinalBossEnemy (populated repeatedly, while still alive, by its
@@ -149,7 +191,7 @@ class Enemy:
     def _scale(base, per_wave, wave_number):
         return base + per_wave * (wave_number - 1)
 
-    def update(self, dt, enemies=None):
+    def update(self, dt, enemies=None, enemy_index=None):
         if self.is_dead or self.reached_goal:
             return
 
@@ -167,6 +209,9 @@ class Enemy:
             if self.mark_timer <= 0:
                 self.mark_timer = 0.0
                 self.mark_damage_multiplier = 1.0
+
+        if self.ground_timer > 0:
+            self.ground_timer = max(0.0, self.ground_timer - dt)
 
         if self.poison_time_remaining > 0:
             self.poison_time_remaining -= dt
@@ -186,6 +231,9 @@ class Enemy:
 
         if self.knockback_resistance > 0:
             self.knockback_resistance = max(0.0, self.knockback_resistance - KNOCKBACK_RESISTANCE_DECAY * dt)
+
+        if self.jam_cooldown > 0:
+            self.jam_cooldown = max(0.0, self.jam_cooldown - dt)
 
         if self.knockback_remaining > 0:
             # Slide backward at a fixed animation speed instead of the
@@ -236,7 +284,13 @@ class Enemy:
         # after that absorption, never before it; SplitterEnemy calls
         # super().take_damage() first, unmodified, so its split-on-death
         # logic is indifferent to the exact number Mark produces.
-        amount *= self.mark_damage_multiplier * self.damage_taken_multiplier * self.held_damage_multiplier
+        # A Bulwark's aura (aura_damage_reduction) sits in this same layer as
+        # the Armored affix's damage_taken_multiplier: it only shrinks what
+        # reaches HP, after any shield/armor has absorbed its share, and it
+        # composes multiplicatively with Mark (docs/agents/enemies.md
+        # "Disruptors and Bulwarks").
+        amount *= (self.mark_damage_multiplier * self.damage_taken_multiplier * self.held_damage_multiplier
+                   * (1.0 - self.aura_damage_reduction))
         if self.is_dead or self.reached_goal:
             return 0.0
         self.damage_events.append(amount)
@@ -307,6 +361,22 @@ class Enemy:
         self.mark_damage_multiplier = max(self.mark_damage_multiplier, multiplier)
         self.mark_timer = max(self.mark_timer, duration)
 
+    def apply_ground(self, duration):
+        """Ground a flyer for `duration` seconds (a Harpoon hit): while
+        grounded it counts as not flying (is_airborne), so ground-only
+        towers, splash, burning ground and Barricades can reach it. It keeps
+        following its own waypoints. Refreshes via max(), like apply_mark's
+        timer -- a shorter grounding never cuts a longer one short. A no-op
+        on a non-flying species, which is already on the ground."""
+        if self.is_dead or self.reached_goal or not self.is_flying:
+            return
+        self.ground_timer = max(self.ground_timer, duration)
+
+    @property
+    def is_grounded(self):
+        """A flyer currently dragged down by apply_ground()."""
+        return self.ground_timer > 0
+
     def apply_poison(self, damage_per_tick, tick_interval, duration, ignore_shield=False, source=None):
         """Start (or refresh) a damage-over-time effect: damage_per_tick
         every tick_interval seconds, for duration seconds total -- see the
@@ -349,6 +419,23 @@ class Enemy:
         Marked -- a Beacon-style mark drags it to the surface, where path
         traps, Barricades and burning ground can reach it again."""
         return self.BURROWS and self.mark_timer <= 0
+
+    def jam_towers(self, towers):
+        """Jam every jammable tower within JAM_RADIUS (Tower.jam) if this
+        species jams and its cooldown is up; returns the towers jammed. A
+        pulse that finds no tower in reach doesn't spend the cooldown, so a
+        Disruptor jams the first defense it walks past, not empty ground.
+        Called by Game._jam_towers, which owns the visual; this stays
+        simulation-only."""
+        if not self.JAM_RADIUS or self.jam_cooldown > 0 or self.is_dead or self.reached_goal:
+            return []
+        jammed = [tower for tower in towers
+                  if tower.JAMMABLE and self.pos.distance_to(tower.pos) <= self.JAM_RADIUS]
+        for tower in jammed:
+            tower.jam(self.JAM_DURATION)
+        if jammed:
+            self.jam_cooldown = self.JAM_COOLDOWN
+        return jammed
 
     def apply_knockback(self, distance):
         """Queue `distance` pixels of backward path travel, animated over
@@ -419,7 +506,18 @@ class Enemy:
             pygame.draw.ellipse(surface, BURROW_MOUND_COLOR, mound)
             sprite = sprite.copy()
             sprite.set_alpha(110)
+        if self.is_grounded:
+            # Dragged down: a shadow on the path right under it, tethered
+            # to the sprite, so it reads as in reach of ground towers.
+            center_x, center_y = int(self.pos.x), int(self.pos.y)
+            shadow = pygame.Rect(0, 0, self.radius * 2, self.radius)
+            shadow.center = (center_x, center_y + self.radius)
+            pygame.draw.ellipse(surface, GROUNDED_SHADOW_COLOR, shadow)
+            pygame.draw.line(surface, GROUNDED_TETHER_COLOR, (center_x, center_y), shadow.center, width=2)
         surface.blit(sprite, rect)
+        if self.aura_damage_reduction > 0:
+            # Fortified by a Bulwark: a small shield-coloured pip on top.
+            pygame.draw.circle(surface, BULWARK_AURA_COLOR, (int(self.pos.x), int(self.pos.y) - self.radius), 3)
         self._draw_health_bar(surface)
 
     def _draw_health_bar(self, surface):
@@ -493,6 +591,73 @@ class BurrowerEnemy(Enemy):
     reward_per_wave = 2
     sprite_name = "enemy_burrower"
     radius = 14
+
+
+class DisruptorEnemy(Enemy):
+    """Carries a jamming pack: every JAM_COOLDOWN seconds, each tower within
+    JAM_RADIUS of it is jammed (can't fire) for JAM_DURATION seconds -- see
+    Enemy.jam_towers and Game._jam_towers. Punishes stacking every tower at
+    one choke point; long-range towers (Sniper, Mortar) sit outside its
+    reach and are what kill it early. Support and Barricade aren't jammable
+    (Tower.JAMMABLE). Joins run waves from mid Act 1
+    (run_escalation.RUN_REINFORCEMENTS)."""
+    display_name = "Disruptor"
+    description = "Jams nearby towers so they can't fire for a moment."
+    base_hp = 50
+    hp_per_wave = 10
+    base_speed = 65.0
+    speed_per_wave = 2.5
+    max_speed = 125.0
+    base_reward = 14
+    reward_per_wave = 3
+    sprite_name = "enemy_disruptor"
+    radius = 14
+    JAM_RADIUS = 80
+    JAM_DURATION = 1.5
+    JAM_COOLDOWN = 5.0
+    KILL_COUNTER = "disruptors_killed"
+
+    def draw(self, surface, assets):
+        super().draw(surface, assets)
+        if self.jam_cooldown <= 0:
+            # Charged: a thin crackling ring at its jam radius, so a player
+            # can see which towers the next pulse will catch.
+            center = (int(self.pos.x), int(self.pos.y))
+            pygame.draw.circle(surface, DISRUPTOR_RING_COLOR, center, self.JAM_RADIUS, width=1)
+
+
+class BulwarkEnemy(Enemy):
+    """A slow, armored standard-bearer: every *other* enemy within
+    AURA_RADIUS takes AURA_DAMAGE_REDUCTION less damage (Enemy.
+    aura_damage_reduction, set every frame by Game._apply_enemy_auras; the
+    strongest aura wins, several never stack). Kill it first and the pack
+    around it is soft again. Joins run waves from Act 2
+    (run_escalation.RUN_REINFORCEMENTS)."""
+    display_name = "Bulwark"
+    description = "Nearby enemies take 30% less damage. Kill it first."
+    base_hp = 160
+    hp_per_wave = 32
+    base_speed = 40.0
+    speed_per_wave = 1.5
+    max_speed = 80.0
+    base_reward = 22
+    reward_per_wave = 4
+    sprite_name = "enemy_bulwark"
+    radius = 20
+    AURA_RADIUS = 90
+    AURA_DAMAGE_REDUCTION = 0.30
+    KILL_COUNTER = "bulwarks_killed"
+
+    def draw(self, surface, assets):
+        # The faint aura disc goes under the sprite.
+        if not self.is_dead and not self.reached_goal:
+            size = self.AURA_RADIUS * 2
+            aura = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.circle(aura, (*BULWARK_AURA_COLOR, 28), (self.AURA_RADIUS, self.AURA_RADIUS), self.AURA_RADIUS)
+            pygame.draw.circle(aura, (*BULWARK_AURA_COLOR, 110), (self.AURA_RADIUS, self.AURA_RADIUS),
+                               self.AURA_RADIUS, width=1)
+            surface.blit(aura, (int(self.pos.x) - self.AURA_RADIUS, int(self.pos.y) - self.AURA_RADIUS))
+        super().draw(surface, assets)
 
 
 class TankEnemy(Enemy):
@@ -589,8 +754,8 @@ class BossEnemy(Enemy):
             self.armor_timer = self.ARMOR_DURATION
         return applied
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         if self.armor_timer > 0:
@@ -640,8 +805,8 @@ class FinalBossEnemy(BossEnemy):
         super().__init__(waypoints_px, wave_number)
         self.summon_timer = self.SUMMON_INTERVAL
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         self.summon_timer -= dt
@@ -721,8 +886,8 @@ class FinalBossShieldedEnemy(BossEnemy):
         # take_poison_damage() already establishes for its own shield.
         return BossEnemy.take_damage(self, amount)
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         self.shield_pulse_timer -= dt
@@ -812,8 +977,8 @@ class ShieldedEnemy(Enemy):
             return 0.0
         return Enemy.take_damage(self, amount)
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         if self.shield < self.max_shield:
@@ -843,7 +1008,8 @@ class ShieldedEnemy(Enemy):
 class FlyingEnemy(Enemy):
     """Airborne -- only a tower with can_target_flying = True (see
     tower.py; every current tower except Cannon and Knockback) can hit it
-    at all, regardless of range/targeting mode. Fast and comparatively
+    at all, regardless of range/targeting mode -- unless a Harpoon has
+    Grounded it (apply_ground/is_airborne). Fast and comparatively
     fragile, closer to Scout than Tank."""
     display_name = "Flyer"
     description = "Flies over the path; some towers can't hit it."
@@ -937,8 +1103,8 @@ class HealerEnemy(Enemy):
     heal_range = 90
     heal_rate = 6.0  # hp/sec granted to each enemy in range
 
-    def update(self, dt, enemies=None):
-        super().update(dt, enemies)
+    def update(self, dt, enemies=None, enemy_index=None):
+        super().update(dt, enemies, enemy_index)
         if self.is_dead or self.reached_goal:
             return
         # No is_dead/reached_goal check on `other` here -- receive_heal()
@@ -946,11 +1112,18 @@ class HealerEnemy(Enemy):
         # apply_knockback are already trusted to self-guard everywhere
         # else in this file. Mirrors SupportTower.update()'s aura loop
         # (tower.py), which likewise only filters "is this me".
+        #
+        # `enemy_index` (a spatial_index.MovingEnemyIndex, from Game.update())
+        # narrows the scan to nearby enemies without changing who gets
+        # healed: the exact distance check below still decides, and each
+        # enemy's heal is independent of the others', so visiting order
+        # doesn't matter. Without one (tests), the raw list is scanned.
         heal_amount = self.heal_rate * dt
-        for other in (enemies or ()):
-            if other is self:
-                continue
-            if self.pos.distance_to(other.pos) <= self.heal_range:
+        heal_range = self.heal_range
+        pos = self.pos
+        pool = enemy_index.near(pos, heal_range) if enemy_index is not None else (enemies or ())
+        for other in pool:
+            if other is not self and pos.distance_to(other.pos) <= heal_range:
                 other.receive_heal(heal_amount)
 
 
@@ -965,6 +1138,8 @@ ENEMY_TYPES = {
     "healer": HealerEnemy,
     "sapper": SapperEnemy,
     "burrower": BurrowerEnemy,
+    "disruptor": DisruptorEnemy,
+    "bulwark": BulwarkEnemy,
     "final_boss": FinalBossEnemy,
     "final_boss_shielded": FinalBossShieldedEnemy,
 }

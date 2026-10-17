@@ -41,11 +41,15 @@ class EditorTool:
     LINE = "line"
     RECT = "rect"
     SELECT = "select"
+    # A paint/erase brush for Level.high_ground_cells: a stroke that starts
+    # on plain ground raises every cell it crosses, one that starts on high
+    # ground lowers them. Never on the path -- see validate().
+    HIGH_GROUND = "high_ground"
 
 
 TOOL_ORDER = [
     EditorTool.PAINT, EditorTool.ERASE, EditorTool.SPAWN, EditorTool.GOAL,
-    EditorTool.LINE, EditorTool.RECT, EditorTool.SELECT,
+    EditorTool.LINE, EditorTool.RECT, EditorTool.SELECT, EditorTool.HIGH_GROUND,
 ]
 SHAPE_TOOLS = (EditorTool.LINE, EditorTool.RECT, EditorTool.SELECT)
 
@@ -78,6 +82,7 @@ class Editor:
         self.path_cells = set()
         self.spawn_cells = set()
         self.goal_cells = set()
+        self.high_ground_cells = set()
         self.active_tool = EditorTool.PAINT
 
         # Undo/redo -- see _snapshot()/_push_undo()/begin_stroke()/
@@ -87,6 +92,9 @@ class Editor:
         self._undo_stack = []
         self._redo_stack = []
         self._stroke_active = False
+        # Whether the current High Ground stroke raises (True) or lowers
+        # (False) cells -- decided by its first cell, reset by end_stroke().
+        self._high_ground_stroke_raises = None
 
         # In-progress Line/Rect/Select drag -- see begin_shape()/
         # update_shape_preview()/pending_shape_cells()/commit_shape().
@@ -169,6 +177,7 @@ class Editor:
             self.path_cells.discard(cell)
             self.spawn_cells.discard(cell)
             self.goal_cells.discard(cell)
+            self.high_ground_cells.discard(cell)
             self._forget_spawn(cell)
         elif self.active_tool == EditorTool.SPAWN:
             self.path_cells.add(cell)  # a spawn must be on the path
@@ -179,6 +188,13 @@ class Editor:
             self.spawn_cells.discard(cell)
             self.goal_cells.add(cell)
             self._forget_spawn(cell)
+        elif self.active_tool == EditorTool.HIGH_GROUND and cell not in self.path_cells:
+            if self._high_ground_stroke_raises is None:
+                self._high_ground_stroke_raises = cell not in self.high_ground_cells
+            if self._high_ground_stroke_raises:
+                self.high_ground_cells.add(cell)
+            else:
+                self.high_ground_cells.discard(cell)
         self.validate()
 
     def _forget_spawn(self, cell):
@@ -204,6 +220,7 @@ class Editor:
             "path_cells": set(self.path_cells),
             "spawn_cells": set(self.spawn_cells),
             "goal_cells": set(self.goal_cells),
+            "high_ground_cells": set(self.high_ground_cells),
             "wave_specs": _deep_copy_wave_specs(self.wave_specs),
             "active_wave_index": self.active_wave_index,
             "active_spawn_cell": self.active_spawn_cell,
@@ -214,6 +231,7 @@ class Editor:
         self.path_cells = snapshot["path_cells"]
         self.spawn_cells = snapshot["spawn_cells"]
         self.goal_cells = snapshot["goal_cells"]
+        self.high_ground_cells = snapshot["high_ground_cells"]
         self.wave_specs = snapshot["wave_specs"]
         self.active_wave_index = snapshot["active_wave_index"]
         self.active_spawn_cell = snapshot["active_spawn_cell"]
@@ -241,6 +259,7 @@ class Editor:
 
     def end_stroke(self):
         self._stroke_active = False
+        self._high_ground_stroke_raises = None
 
     def undo(self):
         """Step back to the state just before the most recent pushed
@@ -373,6 +392,9 @@ class Editor:
             "path": frozenset((col - min_col, row - min_row) for col, row in self.path_cells if within((col, row))),
             "spawn": frozenset((col - min_col, row - min_row) for col, row in self.spawn_cells if within((col, row))),
             "goal": frozenset((col - min_col, row - min_row) for col, row in self.goal_cells if within((col, row))),
+            "high_ground": frozenset(
+                (col - min_col, row - min_row) for col, row in self.high_ground_cells if within((col, row))
+            ),
         }
 
     def paste_clipboard(self, anchor_cell):
@@ -410,6 +432,9 @@ class Editor:
             self.spawn_cells.discard(cell)
             self._forget_spawn(cell)
             self.goal_cells.add(cell)
+        # Path wins a clash either way: validate() drops high ground that
+        # ends up under a pasted (or already-painted) path cell.
+        self.high_ground_cells.update(placed(self.clipboard["high_ground"]))
         self.end_stroke()
         self.validate()
         return True
@@ -420,6 +445,7 @@ class Editor:
         self.path_cells.clear()
         self.spawn_cells.clear()
         self.goal_cells.clear()
+        self.high_ground_cells.clear()
         self.wave_specs = [{}]
         self.active_wave_index = 0
         self.active_spawn_cell = None
@@ -439,6 +465,7 @@ class Editor:
         self.path_cells = set(level.path_cells)
         self.spawn_cells = set(level.spawn_cells)
         self.goal_cells = set(level.goal_cells)
+        self.high_ground_cells = set(level.high_ground_cells)
         self.wave_specs = _deep_copy_wave_specs(level.wave_specs)
         self.active_wave_index = 0
         self.active_tool = EditorTool.PAINT
@@ -509,7 +536,12 @@ class Editor:
 
         Also keeps active_spawn_cell valid: painting/erasing spawns can
         invalidate whichever one was selected, same reasoning as
-        active_wave_index getting clamped in remove_wave()."""
+        active_wave_index getting clamped in remove_wave().
+
+        And drops any high ground the path now covers -- painting (or
+        pasting, or stamping a Line/Rect) path over a raised cell flattens
+        it, the same rule Level.__post_init__ enforces."""
+        self.high_ground_cells -= self.path_cells
         self.path_problems = pathing.validate_topology(
             self.path_cells, self.spawn_cells, self.goal_cells, self.cols, self.rows,
         )
@@ -554,4 +586,5 @@ class Editor:
             wave_specs=_deep_copy_wave_specs(self.wave_specs),
             starting_gold=starting_gold,
             starting_lives=starting_lives,
+            high_ground_cells=frozenset(self.high_ground_cells),
         )

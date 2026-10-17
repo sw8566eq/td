@@ -19,7 +19,9 @@ def test_reinforcements_grow_with_depth():
     assert sapper.count_for_depth(sapper.min_depth) == 1
     assert sapper.count_for_depth(sapper.min_depth + sapper.depth_step) == 2
     assert run_escalation.reinforcements_for_depth(0) == []
-    assert run_escalation.reinforcements_for_depth(9) == [("sapper", 1), ("burrower", 1)]
+    assert run_escalation.reinforcements_for_depth(9) == [
+        ("sapper", 1), ("burrower", 1), ("disruptor", 2), ("bulwark", 1),
+    ]
     for reinforcement in run_escalation.RUN_REINFORCEMENTS:
         assert reinforcement.species in ENEMY_TYPES
 
