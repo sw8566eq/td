@@ -123,4 +123,6 @@ The `GameState.SETTINGS` screen (`S` from the menu) is where `fullscreen` and `d
 get changed (`ui.draw_settings_screen`/`get_clicked_settings_option`); both persist immediately on
 change via `player_settings.save_settings()` rather than only on quit, the same "write through
 immediately" choice `progress.mark_level_cleared()` and the achievement/meta-progression/save-state
-modules all make too (see [persistence.md](persistence.md)).
+modules all make too (see [persistence.md](persistence.md)). Its "Accessibility..." button (right of the last
+Window row) opens `GameState.ACCESSIBILITY`, which holds the Colorblind palette and Reduce effects
+toggles. See [presentation.md](presentation.md) "Accessibility: palettes and reduced effects".

@@ -2797,6 +2797,9 @@ class Game:
     def _handle_keybinds_click(self, pos):
         return self.input_handler._handle_keybinds_click(pos)
 
+    def _handle_accessibility_click(self, pos):
+        return self.input_handler._handle_accessibility_click(pos)
+
     # --- Achievements ---
 
     def _enter_achievements(self):

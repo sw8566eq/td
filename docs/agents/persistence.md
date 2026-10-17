@@ -254,6 +254,13 @@ corrupt file can do is show hints again. Injectable as `Game(hints_path=...)`; `
 pins it. Whether hints show at all is `player_settings.json`'s `hints_enabled`, not this file. See
 [core-game.md](core-game.md) "Field Notes (first-time hints)".
 
+### `persistence/player_settings.py` accessibility keys
+
+`player_settings.json` gained `"palette"` (a `support/palette.py` `PALETTES` key, default
+`"default"`) and `"reduce_effects"` (bool, default false). A file saved before these existed loads with
+the defaults. An unknown palette key also falls back to `"default"`. See
+[presentation.md](presentation.md) "Accessibility: palettes and reduced effects".
+
 ## Map checkpoints (autosave)
 
 `save_state.save_map_checkpoint(run)` writes `{"kind": "map", "run": ...}` into the same single save

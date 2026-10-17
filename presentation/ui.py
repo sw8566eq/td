@@ -2577,7 +2577,7 @@ def _draw_palette_preview(surface, small_font, top):
 
     nodes_y = samples_y + 70
     node_types = list(colors.node_colors)
-    spacing = 92
+    spacing = 116  # wide enough that "Proving Grounds" clears its neighbors
     first_x = center_x - spacing * (len(node_types) - 1) // 2
     for index, node_type in enumerate(node_types):
         node_center = (first_x + index * spacing, nodes_y)

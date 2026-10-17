@@ -12,8 +12,8 @@ yellow/vermillion/reddish purple), chosen with a Machado et al. 2009
 deuteranopia/protanopia simulation rather than by eye: the default map
 nodes' closest simulated pair was Event vs Proving Grounds (27.5 apart) and
 Outpost vs Treasure (35.8); every node pair here stays over 50 apart under
-both simulations. See docs/agents/presentation.md "Accessibility:
-palettes and reduced effects".
+both simulations. See
+docs/agents/presentation.md "Accessibility: palettes and reduced effects".
 
 The active palette is module state, like `effects._text_cache`: entity
 `draw()` methods have no `Game` to read a setting from. `Game` sets it once
