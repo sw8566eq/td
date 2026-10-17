@@ -20,7 +20,7 @@ _CODE_NAMES = ("ascension", "Ascension", "Smith", "Compendium", "potion belt", "
 
 
 def test_registry_has_a_reasonable_number_of_short_hints():
-    assert 15 <= len(HINTS) <= 35
+    assert 15 <= len(HINTS) <= 50
     for key, hint in HINTS.items():
         assert hint.trigger and hint.title and hint.text, key
         assert len(hint.text) <= 160, key  # 1-2 lines on the board's panel

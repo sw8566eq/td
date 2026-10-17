@@ -129,6 +129,15 @@ HINTS: dict[str, Hint] = {
         "Sappers batter Barricades five times harder than other enemies. Kill them before "
         "they reach your wall.",
     ),
+    "enemy_disruptor": Hint(
+        "enemy_disruptor", "Disruptors",
+        "A Disruptor jams towers near its path so they can't fire for a moment. Long-range towers set back "
+        "from the path stay out of its reach.",
+    ),
+    "enemy_bulwark": Hint(
+        "enemy_bulwark", "Bulwarks",
+        "A Bulwark shields the enemies around it: they take 30% less damage. Kill it first.",
+    ),
     # --- The run's map ---
     "node_elite": Hint(
         "node_elite", "Elite fight",
