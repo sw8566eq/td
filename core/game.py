@@ -1197,6 +1197,7 @@ class Game:
             self.economy.lives += endless_mutators.BOUNTY_LIVES
             self.economy.add_gold(endless_mutators.BOUNTY_GOLD)
             self._queue_toast(f"Endless mutator: {mutator.display_name} -- {mutator.description}")
+            self.hints.notify("endless_mutator")
             self._queue_toast(
                 f"Bounty for facing it: +{endless_mutators.BOUNTY_LIVES} life, +{endless_mutators.BOUNTY_GOLD} gold"
             )

@@ -2838,6 +2838,7 @@ def compendium_rows(small_font):
         ("Commanders", [(c.display_name, c.description) for c in COMMANDERS.values()]),
         ("Elite affixes", [(a.display_name, a.description) for a in AFFIXES.values()]),
         ("Bosses", [(a.display_name, a.description) for a in BOSS_AFFIXES.values()]),
+        ("Endless mutators", [(m.display_name, m.description) for m in endless_mutators.MUTATORS.values()]),
         ("Resonances", [(r.display_name, r.description) for r in RESONANCES.values()]),
         ("Tower modules", [(m.display_name, m.description) for m in MODULES.values()]),
         ("Veterancy ranks", [(rank.name, f"{rank.xp_required} experience: one more rank of bonus for that tower type.")

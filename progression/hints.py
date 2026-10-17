@@ -130,6 +130,11 @@ HINTS: dict[str, Hint] = {
         "Elites are tougher and carry an affix (shown in the side panel), but their reward "
         "adds a relic and a module or potion.",
     ),
+    "endless_mutator": Hint(
+        "endless_mutator", "Endless mutators",
+        "Every 5 endless waves a mutator joins the fight for good -- and pays a life and some gold. "
+        "See them all in the Field Manual.",
+    ),
     "node_boss": Hint(
         "node_boss", "Boss",
         "The boss closes the act. Beat it to claim a trophy relic: strong, but each one "

@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- Endless mutators are listed in the Field Manual, with a first-time Field Notes hint.
 - **Endless mutators**: on the final boss's endless floor, every 5 endless waves cleared adds one more
   stacking mutator for the rest of the fight -- Swarm, Ironclad, Gale, Skyborne, Tunnelers, Siege,
   Regrowth, Shielded Ranks or Escort, each seen once before any repeat. Each is announced with a toast,

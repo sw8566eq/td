@@ -218,6 +218,7 @@ def test_the_final_boss_draws_a_mutator_every_cadence_waves(game):
     texts = [toast.text for toast in game.achievement_toasts[toasts:]]
     assert any(MUTATORS[expected].display_name in text and "Endless mutator" in text for text in texts)
     assert any("Bounty" in text for text in texts)
+    assert "endless_mutator" in ([game.hints.current] + list(game.hints.pending))
 
 
 def test_mutators_stack_and_keep_their_draw_order(game):
