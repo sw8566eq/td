@@ -603,6 +603,13 @@ on. They appear one at a time in a corner panel. Click one to dismiss it, or let
 seconds. **Hints: On/Off** in Settings turns them off, and **Reset Hints** shows them all again. The
 hints you've already seen are kept in `hints.json` next to the game's other local files.
 
+**Accessibility...** (a button on the Settings screen) has two more saved toggles. **Colorblind
+palette** swaps the colors that only work if you can tell red from green: the placement outline
+(blue = buildable, vermillion = blocked), enemy health bars (yellow), lives and warning text, a
+Mortar's dead-zone ring, a boss's enrage ring, and the run map's node colors. They become an Okabe-Ito
+blue/orange/yellow set that stays distinct under deuteranopia and protanopia. **Reduce effects** dims
+hit flashes, death poofs and floating damage numbers. The screen previews the active palette.
+
 ## Post-level results
 
 The Floor Cleared, Victory, and Game Over screens all show a compact table of every tower you built

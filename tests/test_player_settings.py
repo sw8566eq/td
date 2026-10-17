@@ -21,6 +21,7 @@ def test_save_then_load_round_trips(tmp_path):
     assert load_settings(path) == {
         "fullscreen": True, "sound_enabled": True, "sound_volume": 1.0,
         "difficulty": "hard", "window_size": [1440, 840], "hints_enabled": True,
+        "palette": "default", "reduce_effects": False,
     }
 
 
@@ -32,6 +33,7 @@ def test_a_file_missing_a_key_fills_it_in_from_defaults(tmp_path):
         "sound_volume": DEFAULTS["sound_volume"],
         "difficulty": "normal", "window_size": DEFAULTS["window_size"],
         "hints_enabled": DEFAULTS["hints_enabled"],
+        "palette": DEFAULTS["palette"], "reduce_effects": DEFAULTS["reduce_effects"],
     }
 
 
@@ -145,3 +147,28 @@ def test_a_negative_resize_is_clamped_not_fatal(game):
     pygame.event.post(pygame.event.Event(pygame.VIDEORESIZE, w=-5, h=10, size=(-5, 10)))
     game.handle_events()
     assert game.window_size == (1, 10)
+
+
+# --- accessibility ---
+
+
+def test_accessibility_settings_round_trip(tmp_path):
+    path = tmp_path / "player_settings.json"
+    save_settings({"palette": "colorblind", "reduce_effects": True}, path)
+    loaded = load_settings(path)
+    assert loaded["palette"] == "colorblind"
+    assert loaded["reduce_effects"] is True
+
+
+def test_an_old_file_without_accessibility_keys_gets_the_defaults(tmp_path):
+    path = tmp_path / "player_settings.json"
+    path.write_text('{"schema_version": 1, "fullscreen": true}')
+    loaded = load_settings(path)
+    assert loaded["palette"] == "default"
+    assert loaded["reduce_effects"] is False
+
+
+def test_an_unknown_palette_key_falls_back_to_default(tmp_path):
+    path = tmp_path / "player_settings.json"
+    path.write_text('{"schema_version": 1, "palette": "neon"}')
+    assert load_settings(path)["palette"] == "default"

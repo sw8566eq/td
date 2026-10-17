@@ -22,7 +22,7 @@ VARIETY_BONUS_CAP = 0.25
 ISOLATION_RADIUS = 100
 # The sparks drawn across a jammed tower (Tower._draw_jam_static).
 JAM_SPARK_COLOR = (120, 220, 255)
-from support import settings
+from support import palette, settings
 
 
 def _format_px(value):
@@ -2057,7 +2057,7 @@ class BarricadeTower(Tower):
         width = self.footprint_subtiles * settings.SUBTILE_SIZE - 12
         bar = pygame.Rect(0, 0, width, 5)
         bar.midbottom = (int(self.pos.x), int(self.pos.y) + width // 2 + 4)
-        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_BG, bar)
+        pygame.draw.rect(surface, palette.active().hp_bar_bg, bar)
         filled = bar.copy()
         filled.width = max(0, round(width * self.hp / self.max_hp))
         pygame.draw.rect(surface, settings.COLOR_GOLD, filled)

@@ -16,6 +16,12 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   parallel lanes with a high-ground ridge between them, the only place one tower reaches both, and
   Tributaries merges three spawns at two different points. Tributaries unlocks after 30 floors
   cleared.
+- **Accessibility settings** (Settings -> Accessibility...): a **Colorblind palette** that swaps the
+  red/green-dependent colors (placement footprint, enemy health bars, lives and warning text, a
+  Mortar's dead-zone ring, boss enrage ring, map nodes, Proving Grounds status) to an Okabe-Ito
+  blue/orange/yellow set checked against a deuteranopia/protanopia simulation, and **Reduce effects**,
+  which dims hit flashes, death poofs and damage numbers. The screen shows a live preview of the
+  active palette. Both settings are saved.
 - **Commander abilities**: every Commander has one signature ability, fired mid-fight from the
   sidebar button or **F**, that recharges after 2-3 cleared waves -- Warden *Hold the Gate* (the next
   3 leaks this floor cost no lives), Alchemist *Toxic Downpour* (aimed poison cloud), Marksman

@@ -45,7 +45,7 @@ from run import (
     veterancy,
 )
 from run.run_state import RunState
-from support import settings
+from support import palette, settings
 from world import spatial_index
 from world.economy import Economy
 from world.grid import Grid
@@ -163,6 +163,9 @@ class GameState(Enum):
     # rows for one row per action wouldn't fit without also shrinking
     # every existing Settings row.
     KEYBINDS = auto()
+    # Reached from SETTINGS too (its "Accessibility..." button) -- the
+    # Colorblind palette and Reduce effects toggles. Esc returns to SETTINGS.
+    ACCESSIBILITY = auto()
     # A roguelike run's own extra states -- VICTORY stays reserved for
     # classic/Practice play and editor playtests (self.active_run is None
     # there), since a run structurally never "wins": FLOOR_CLEARED shows a
@@ -541,6 +544,8 @@ class Game:
         self.volume_button_rects = ui.build_volume_button_rects()
         self.keybinds_entry_button_rect = ui.build_keybinds_entry_button_rect()
         self.hint_settings_rects = ui.build_hint_settings_rects()
+        self.accessibility_entry_button_rect = ui.build_accessibility_entry_button_rect()
+        self.accessibility_rects = ui.build_accessibility_rects()
         self.keybind_row_rects = ui.build_keybind_row_rects()
         self.keybinds_reset_rect = ui.build_keybinds_reset_rect()
         self.keybinds_back_rect = ui.build_keybinds_back_rect()
@@ -2225,6 +2230,15 @@ class Game:
     def reset_hints(self):
         return self.settings_manager.reset_hints()
 
+    def set_palette(self, key):
+        return self.settings_manager.set_palette(key)
+
+    def toggle_colorblind_palette(self):
+        return self.settings_manager.toggle_colorblind_palette()
+
+    def set_reduce_effects(self, value):
+        return self.settings_manager.set_reduce_effects(value)
+
     def _enter_keybinds(self):
         return self.settings_manager._enter_keybinds()
 
@@ -2782,6 +2796,9 @@ class Game:
 
     def _handle_keybinds_click(self, pos):
         return self.input_handler._handle_keybinds_click(pos)
+
+    def _handle_accessibility_click(self, pos):
+        return self.input_handler._handle_accessibility_click(pos)
 
     # --- Achievements ---
 
@@ -3864,7 +3881,7 @@ class Game:
                 # damage number is spawned from -- reads enemy.pos before
                 # this enemy is dropped from self.enemies just below.
                 self.impact_effects.append(effects.ExpandingRing(
-                    enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=settings.COLOR_LIVES,
+                    enemy.pos, max_radius=enemy.radius * 1.8, duration=0.3, color=palette.active().danger,
                 ))
                 self.audio.play("enemy_killed")
                 if self.relic_modifiers.poison_spread_radius and enemy.poison_time_remaining > 0:

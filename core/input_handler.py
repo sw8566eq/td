@@ -74,6 +74,8 @@ class InputHandler:
                     self._handle_settings_click(event.pos)
                 elif game.state == GameState.KEYBINDS:
                     self._handle_keybinds_click(event.pos)
+                elif game.state == GameState.ACCESSIBILITY:
+                    self._handle_accessibility_click(event.pos)
                 elif game.state == GameState.ACHIEVEMENTS:
                     self._handle_achievements_click(event.pos)
                 elif game.state == GameState.RUN_HISTORY:
@@ -229,6 +231,9 @@ class InputHandler:
                 game.state = GameState.MENU
         elif game.state == GameState.KEYBINDS:
             self._handle_keybinds_keydown(key)
+        elif game.state == GameState.ACCESSIBILITY:
+            if key == pygame.K_ESCAPE:
+                game.state = GameState.SETTINGS
         elif game.state == GameState.EDITOR:
             if key == pygame.K_ESCAPE:
                 game.state = GameState.MENU
@@ -643,6 +648,10 @@ class InputHandler:
             game._enter_keybinds()
             return
 
+        if ui.get_clicked_accessibility_entry_button(pos, game.accessibility_entry_button_rect):
+            game.state = GameState.ACCESSIBILITY
+            return
+
         hint_button = ui.get_clicked_hint_settings_button(pos, game.hint_settings_rects)
         if hint_button == "hints":
             game.set_hints_enabled(not game.hints.enabled)
@@ -662,6 +671,18 @@ class InputHandler:
             game.set_window_size(ui.WINDOW_SIZE_PRESETS[option])
         elif option == "back":
             game.state = GameState.MENU
+
+    def _handle_accessibility_click(self, pos):
+        from core.game import GameState  # see module docstring
+
+        game = self.game
+        option = ui.get_clicked_accessibility_option(pos, game.accessibility_rects)
+        if option == "colorblind":
+            game.toggle_colorblind_palette()
+        elif option == "reduce_effects":
+            game.set_reduce_effects(not game.reduce_effects)
+        elif option == "back":
+            game.state = GameState.SETTINGS
 
     def _handle_static_screen_back_click(self, pos, back_rect):
         """Shared body for every full-screen "click the Back to Menu

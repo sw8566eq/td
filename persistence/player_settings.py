@@ -1,5 +1,5 @@
-"""Persisted player preferences (fullscreen, difficulty, windowed size, hints) across
-sessions.
+"""Persisted player preferences (fullscreen, difficulty, windowed size, hints,
+accessibility) across sessions.
 
 Mirrors progress.py's own conventions closely: a single JSON file, defensive
 handling of a missing/corrupt file (falls back to the defaults rather than
@@ -12,7 +12,7 @@ constants module (imported everywhere as `import settings`).
 import json
 
 from persistence.json_io import load_json_with_fallback, module_relative_path
-from support import settings
+from support import palette, settings
 
 SCHEMA_VERSION = 1
 SETTINGS_PATH = module_relative_path(__file__, "player_settings.json")
@@ -26,6 +26,10 @@ DEFAULTS = {
     # Field Notes (progression/hints.py) -- which hints were already seen
     # lives in hints.json; this is only whether to show them at all.
     "hints_enabled": True,
+    # Accessibility screen -- a support/palette.py PALETTES key, and whether
+    # impact rings/damage numbers draw dimmed.
+    "palette": palette.DEFAULT_PALETTE,
+    "reduce_effects": False,
 }
 
 
@@ -37,6 +41,10 @@ def _merge_with_defaults(data):
     merged["difficulty"] = str(data.get("difficulty", DEFAULTS["difficulty"]))
     merged["window_size"] = _coerce_window_size(data.get("window_size"))
     merged["hints_enabled"] = bool(data.get("hints_enabled", DEFAULTS["hints_enabled"]))
+    # An unknown palette key (hand-edited, or from a newer build) falls back.
+    saved_palette = data.get("palette", DEFAULTS["palette"])
+    merged["palette"] = saved_palette if saved_palette in palette.PALETTES else DEFAULTS["palette"]
+    merged["reduce_effects"] = bool(data.get("reduce_effects", DEFAULTS["reduce_effects"]))
     return merged
 
 

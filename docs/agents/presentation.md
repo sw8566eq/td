@@ -159,10 +159,56 @@ compares the bytes, and `tools/perf_bench.py`'s `frame` hash checks a whole boar
   recur. The cache is cleared at `_RING_CACHE_LIMIT`.
 - **Coverage overlay** (`ui._coverage_overlay_cache`): the V overlay's full-screen ring layer is kept with
   its key: the target surface size plus every tower's `(center, int(effective_range()) or None,
-  int(MIN_RANGE) or None)` in list order. The layer is redrawn when that key changes, which happens when a
+  int(MIN_RANGE) or None)` in list order, plus `palette.active_key()` (the dead-zone ring uses the palette). The layer is redrawn when that key changes, which happens when a
   tower is placed, sold or moved, or an aura, relic or high-ground bonus changes a ring's integer radius.
   The resonance link lines are drawn on top every frame, uncached.
 - **Dim overlays** (`ui._dim_overlay_cache`, older): the solid backdrop behind menus, keyed by size.
 
 Colors in these keys must be hashable (tuples, as every `settings.COLOR_*` is). A `pygame.Color` would
 raise.
+
+## Accessibility: palettes and reduced effects
+
+The Settings screen's "Accessibility..." button (right of the last Window row, above "Keybinds...")
+opens `GameState.ACCESSIBILITY` (`ui.draw_accessibility_screen`; Esc or its Back button returns to
+Settings). It has two toggles and a live preview drawn in the active palette.
+
+**Colorblind palette.** `support/palette.py` holds a `PALETTES` registry of `Palette` dataclasses.
+Each one names the colors that tell the player something on their own: placement footprint valid/
+invalid, the `danger` color (lives text, a Mortar's dead-zone ring, the build menu's Proving Grounds
+strike-through, death poofs, damage numbers, editor errors, the Game Over title), enemy health bar
+fill/background, boss armor/enrage rings, the Proving Grounds status lines and every map node fill.
+Draw code reads `palette.active()` (or `palette.node_color(node_type)`) instead of a
+`settings.COLOR_*` constant. To add a palette, add one registry entry. To make another color
+switchable, add a field and read it at draw time. Never branch on the palette key.
+
+- `"default"` is built from the `settings.COLOR_*` constants, so with the toggle off every pixel is
+  unchanged.
+- `"colorblind"` uses the Okabe-Ito set: footprint sky blue (86, 180, 233) vs vermillion
+  (213, 94, 0), danger vermillion, a yellow (240, 228, 66) health fill on a neutral dark background,
+  a reddish-purple enrage ring, and one Okabe-Ito hue per map node. Proving Grounds is near-white and
+  the boss near-black. The colors were picked with a Machado et al. 2009 deuteranopia/protanopia
+  simulation. Under the default palette, Event vs Proving Grounds sat 27.5 apart and Outpost vs
+  Treasure 35.8. Under this one, every node pair stays above 50 in both simulations.
+- A label on a node fill that `palette.is_light()` reports as bright (perceived brightness above
+  `LIGHT_FILL_THRESHOLD`) is drawn dark. No default node is that bright.
+
+The active palette is module state, because entity `draw()` methods have no `Game`.
+`SettingsManager.__init__` applies the saved key on every `Game()`, so tests can't leak a palette
+into each other. The setting is `Game.palette`, persisted as the `"palette"` key in
+`player_settings.json`. An unknown key falls back to `"default"`.
+
+**Cache rule.** A render cache that holds palette-colored pixels must key on the color itself or on
+`palette.active_key()`. `effects._text_cache` and `_ring_cache` already key on color. The coverage
+overlay cache adds `palette.active_key()` to its key (see "Render caches"). A `FloatingText` resolves
+its default color when it spawns, so a label already on screen keeps its color through a switch.
+
+**Reduce effects** (`Game.reduce_effects`, persisted as `"reduce_effects"`): `Renderer` passes
+`effects.REDUCED_EFFECTS_ALPHA` as the `alpha_scale` argument to every impact ring and damage number
+`draw()`. Alpha is part of `_ring_cache`'s key, so dimmed and full rings never share a surface.
+Toasts are drawn by their own loop and stay at full strength. The game has no screen shake or
+full-screen flash, so dimming is the whole toggle.
+
+**Larger UI text was not added.** Every screen in `presentation/ui.py` lays out against fixed pixel
+constants sized for the current fonts, and many rows already fill their space at 1200x704. Bigger
+fonts would need each screen's layout reworked and checked.

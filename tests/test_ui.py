@@ -19,7 +19,6 @@ from presentation.ui import (
     LEVEL_SELECT_TOP,
     LEVEL_THUMBNAIL_HEIGHT,
     LEVEL_THUMBNAIL_WIDTH,
-    MAP_NODE_TYPE_COLORS,
     MAP_NODE_TYPE_DESCRIPTIONS,
     MAP_NODE_TYPE_LABELS,
     MAP_NODE_TYPE_NAMES,
@@ -110,6 +109,7 @@ from presentation.ui import (
 from run.run_map import NODE_TYPES
 from run.shop import ShopItem
 from support import settings
+from support.palette import PALETTES
 from world.levels import Level
 
 # --- Main menu ---
@@ -1361,7 +1361,8 @@ def test_every_node_type_has_a_color_a_label_a_name_and_a_description():
     # there and forgotten in any one of these four would otherwise only
     # surface as a KeyError deep inside a render call.
     for node_type in NODE_TYPES:
-        assert node_type in MAP_NODE_TYPE_COLORS, node_type
+        for colors in PALETTES.values():
+            assert node_type in colors.node_colors, node_type
         assert node_type in MAP_NODE_TYPE_LABELS, node_type
         assert node_type in MAP_NODE_TYPE_NAMES, node_type
         assert node_type in MAP_NODE_TYPE_DESCRIPTIONS, node_type

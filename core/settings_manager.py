@@ -41,6 +41,7 @@ import pygame
 from persistence import keybindings, player_settings
 from progression import hints
 from run import difficulty
+from support import palette
 
 
 class SettingsManager:
@@ -74,6 +75,12 @@ class SettingsManager:
         # Field Notes -- the seen-set lives in its own hints.json (see
         # progression/hints.py); only the on/off preference is a setting.
         game.hints = hints.HintTracker.load(game.hints_path, enabled=saved_settings["hints_enabled"])
+        # Accessibility (see support/palette.py). The palette is module
+        # state every draw call reads, so it's applied right here -- a fresh
+        # Game never inherits an earlier one's palette.
+        game.palette = saved_settings["palette"]
+        palette.set_active(game.palette)
+        game.reduce_effects = saved_settings["reduce_effects"]
 
         # Same injectable-path convention as settings_path, kept as a
         # genuinely separate file/module from player_settings.py rather
@@ -176,6 +183,26 @@ class SettingsManager:
         game.hints.set_enabled(bool(value))
         self._save_player_settings()
 
+    def set_palette(self, key):
+        """The Accessibility screen's Colorblind palette toggle. An unknown
+        key is ignored. Nothing cached needs clearing: every render cache
+        that holds palette-colored pixels keys on the color or on
+        palette.active_key() (see docs/agents/presentation.md "Render caches")."""
+        game = self.game
+        if palette.set_active(key):
+            game.palette = key
+            self._save_player_settings()
+
+    def toggle_colorblind_palette(self):
+        game = self.game
+        colorblind = game.palette == palette.COLORBLIND_PALETTE
+        self.set_palette(palette.DEFAULT_PALETTE if colorblind else palette.COLORBLIND_PALETTE)
+
+    def set_reduce_effects(self, value):
+        game = self.game
+        game.reduce_effects = bool(value)
+        self._save_player_settings()
+
     def reset_hints(self):
         """Settings' "Reset hints": every Field Note shows again, once."""
         self.game.hints.reset()
@@ -190,6 +217,8 @@ class SettingsManager:
                 "difficulty": game.difficulty,
                 "window_size": list(game.window_size),
                 "hints_enabled": game.hints.enabled,
+                "palette": game.palette,
+                "reduce_effects": game.reduce_effects,
             },
             game.settings_path,
         )
