@@ -352,6 +352,7 @@ class Renderer:
             endless_waves=game.active_run.endless_waves_cleared if game.active_run is not None else 0,
             early_call_bonus=(game.early_call_bonus(game.wave_manager.between_wave_timer)
                               if game.wave_manager.state == WaveState.BETWEEN_WAVES else 0),
+            blocked_towers=game.challenge_blocked_towers(),
         )
         if game._show_first_placement_hint and not game.towers:
             ui.draw_first_placement_hint(game.screen, game.small_font)

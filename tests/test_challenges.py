@@ -416,3 +416,19 @@ def test_corrupt_challenge_fields_are_not_resumable(game, field, value):
     assert save_state.load_run(game.save_path) is None
 
 
+
+
+def test_skeleton_crew_greys_out_the_build_menu_once_full(game):
+    _enter_challenge(game, "skeleton_crew")
+    game.economy.gold = 10_000
+    assert game.challenge_blocked_towers() == frozenset()
+    while len(game.towers) < CHALLENGES["skeleton_crew"].max_towers:
+        assert _place(game, "basic")
+    assert game.challenge_blocked_towers() == frozenset(game.button_rects)
+    game.render()
+
+
+def test_no_challenge_blocks_nothing(game):
+    _begin_run_with_map(game, ["combat"], seed=1, lives=20)
+    game._enter_node("0-0")
+    assert game.challenge_blocked_towers() == frozenset()

@@ -874,6 +874,16 @@ class Game:
         shared by a node load and a resume, like _apply_affix_traits."""
         self.active_challenge = self._node_challenge(run, node)
 
+    def challenge_blocked_towers(self):
+        """Build-menu tower types the active Proving Grounds rule refuses
+        right now (greyed and struck through on the HUD) -- the same
+        challenges.placement_refusal check try_place_tower makes."""
+        if self.active_challenge is None:
+            return frozenset()
+        names = self._tower_display_names()
+        return frozenset(name for name in self.button_rects
+                         if challenges.placement_refusal(self.active_challenge, name, len(self.towers), names))
+
     def _challenge_won(self):
         """Whether the run is standing on a Proving Grounds fight whose
         constraint hasn't been broken -- read at the floor clear (bonus

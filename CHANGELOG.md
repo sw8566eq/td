@@ -8,6 +8,7 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- In a Proving Grounds fight, build buttons its rule forbids right now are greyed out and struck through.
 - **Proven** achievement: win 5 Proving Grounds.
 - **Proving Grounds**: a new map node (from each act's third row on) -- a fight under one constraint
   (Skeleton Crew, No Upgrades, Narrow Front, Double Time, Glass Gate or Fog of War), named in its map
