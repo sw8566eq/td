@@ -97,6 +97,13 @@ class WaveManager:
         # so the endless generator keeps compounding off un-mutated waves)
         # and apply_spawn_multipliers (stats, traits).
         self.mutators = None
+        # An Elite affix's / named boss's spawn-queue rules (elite_affixes.
+        # spawn_rules: species swaps, per-spawn escorts -- the same
+        # MutatorEffects shape, folded under the mutators in _queue_effects)
+        # and the (class attribute, value) pairs set on every boss-tier
+        # instance. Set by Game._apply_affix_traits; defaults are no-ops.
+        self.spawn_rules = None
+        self.enemy_boss_traits = ()
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -156,14 +163,22 @@ class WaveManager:
         # matching the same sort order the editor numbers spawn markers by
         # (see ui.py's _draw_editor_grid) -- rather than depending on
         # whatever order the dict happened to be built/loaded in.
+        effects = self._queue_effects()
         queues = []
         for spawn_cell, composition in sorted(wave_spec.items()):
-            if self.mutators is None:
+            if effects is None:
                 names = [name for name, count in composition.items() for _ in range(count)]
             else:
-                names = self.mutators.transform_composition(composition, _FLYING_SPECIES, _BOSS_SPECIES)
+                names = effects.transform_composition(composition, _FLYING_SPECIES, _BOSS_SPECIES)
             queues.append((spawn_cell, names))
         return queues
+
+    def _queue_effects(self):
+        """The queue rules for this floor: the affix's spawn_rules with the
+        endless mutators on top (either may be None)."""
+        if self.spawn_rules is None:
+            return self.mutators
+        return self.spawn_rules.merged(self.mutators)
 
     def restore(self, wave_index, state, between_wave_timer):
         """Restore progress from a previously saved run (see save_state.py)
@@ -306,6 +321,9 @@ class WaveManager:
             enemy.BURROWS = True
         if self.enemy_breach_multiplier != 1.0:
             enemy.BREACH_MULTIPLIER = type(enemy).BREACH_MULTIPLIER * self.enemy_breach_multiplier
+        if self.enemy_boss_traits and getattr(enemy, "IS_BOSS", False):
+            for name, value in self.enemy_boss_traits:
+                setattr(enemy, name, value)
         hp_multiplier = self.enemy_hp_multiplier
         mutators = self.mutators
         if mutators is not None:
