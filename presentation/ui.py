@@ -742,7 +742,7 @@ def _draw_panel_stats(surface, small_font, x, y, subject, tower_cls, is_placed):
 
     if is_placed and subject.jammed_timer > 0:
         # A Disruptor jammed it (Tower.jam) -- it can't fire until this runs out.
-        row = small_font.render(f"Jammed: {subject.jammed_timer:.1f}s", True, settings.COLOR_LIVES)
+        row = small_font.render(f"Jammed: {subject.jammed_timer:.1f}s", True, palette.active().danger)
         surface.blit(row, (x, y))
         y += PANEL_ROW_HEIGHT
 
