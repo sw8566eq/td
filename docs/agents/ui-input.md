@@ -120,6 +120,12 @@ buttons only while hovered. The hotkey is a fixed `F` (`input_handler.ABILITY_HO
 remappable, checked after every remappable action like the Q/W/E potion keys. Esc while aiming
 cancels the aim instead of pausing.
 
+The endless final boss's mutator list (see [waves-difficulty.md](waves-difficulty.md) "Endless mutators") grows upward
+into the same strip. While any mutator is active, `Game.ability_button_compact` shrinks the button to
+one line (`ABILITY_BUTTON_COMPACT_HEIGHT`: bare name plus a short tag), and `draw_potion_belt`'s
+`mutator_min_top` cuts the list short with "..." (`ui.mutator_lines_fitting_below`) rather than draw
+over the button. `Game.ability_button_rect` is a property, so clicks always hit the drawn size.
+
 ## Field Manual (`COMPENDIUM`)
 
 `GameState.COMPENDIUM` (`K` from MENU) lists every relic/boss relic/curse/potion/commander/elite affix.

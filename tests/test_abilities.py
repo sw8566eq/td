@@ -431,3 +431,51 @@ def test_a_daily_run_always_gets_the_default_commanders_ability_ready(game):
     assert run.commander == DEFAULT_COMMANDER
     assert game.current_ability is ABILITIES[COMMANDERS[DEFAULT_COMMANDER].ability]
     assert run.ability_cooldown == 0 and run.ability_charges == 0
+
+
+# --- Sharing the sidebar with the endless mutator list ---
+
+
+def _endless_boss_with_mutators(game, mutators):
+    from test_endless_mutators import _final_boss
+
+    _final_boss(game)
+    game.active_mutators = list(mutators)
+
+
+def test_the_button_goes_compact_while_mutators_are_listed_and_the_list_stays_below_it(game, tmp_path):
+    from run.endless_mutators import MUTATORS
+
+    _endless_boss_with_mutators(game, list(MUTATORS) + [k for k in MUTATORS if MUTATORS[k].repeatable] * 9)
+    assert game.ability_button_compact
+    assert game.ability_button_rect.height == ui.ABILITY_BUTTON_COMPACT_HEIGHT
+    game.active_run.ability_cooldown = 2
+    try:
+        mock_mouse_pos(game.ability_button_rect.center)
+        game.render()
+    finally:
+        clear_mouse_mock()
+    pygame.image.save(game.screen, str(tmp_path / "compact.png"))
+
+    min_top = game.ability_button_rect.bottom + 4
+    lines = ui.mutator_list_lines(["Swarm x9"] * 30, game.small_font, 99, ui.mutator_lines_fitting_below(min_top))
+    top = ui.CHALLENGE_STATUS_Y + ui.PANEL_ROW_HEIGHT - (len(lines) - 1) * ui.PANEL_ROW_HEIGHT
+    assert top >= min_top
+    assert lines[0] == "Endless mutators (99)" and lines[-1].endswith(" ...")
+    assert all(game.small_font.size(line)[0] <= settings.PANEL_WIDTH - 2 * ui.PANEL_PADDING for line in lines)
+
+
+def test_every_ability_fits_the_compact_button():
+    pygame.font.init()
+    small = pygame.font.SysFont(None, 22)
+    for ability in ABILITIES.values():
+        widest_tag = max(small.size(tag)[0] for tag in ("Ready", "3 waves", "8.0s", "Aim", "3 left"))
+        assert small.size(ability.display_name)[0] + widest_tag + 24 <= ui.ACTION_BUTTON_WIDTH
+
+
+def test_compact_status_tags():
+    hold = ABILITIES["hold_the_gate"]
+    assert ui.ability_status_text(hold, 2, 0, 0.0, False, compact=True) == "2 waves"
+    assert ui.ability_status_text(hold, 0, 0, 0.0, True, compact=True) == "Aim"
+    assert ui.ability_status_text(hold, 0, 0, 3.0, False, compact=True) == "3.0s"
+    assert ui.ability_status_text(hold, 3, 2, 0.0, False, compact=True) == "2 left"

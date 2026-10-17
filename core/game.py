@@ -546,7 +546,6 @@ class Game:
         self.skip_button_rect = ui.build_skip_button_rect()
         self.speed_button_rect = ui.build_speed_button_rect()
         self.relics_button_rect = ui.build_relics_button_rect()
-        self.ability_button_rect = ui.build_ability_button_rect()
         self.targeting_button_rect = ui.build_targeting_button_rect()
         self.upgrade_button_rect = ui.build_upgrade_button_rect()
         self.specialize_button_rects = ui.build_specialize_button_rects()
@@ -1392,6 +1391,17 @@ class Game:
         if run is None:
             return None
         return abilities.ABILITIES[commanders.COMMANDERS[run.commander].ability]
+
+    @property
+    def ability_button_compact(self):
+        """One-line button while the endless boss's mutator list needs the room."""
+        return bool(self.active_mutators)
+
+    @property
+    def ability_button_rect(self):
+        """Recomputed on read (cheap), so the click target always matches
+        the drawn button, compact or not."""
+        return ui.build_ability_button_rect(self.ability_button_compact)
 
     def activate_ability(self):
         """The ability button / hotkey. Only mid-floor (PLAYING) and only
