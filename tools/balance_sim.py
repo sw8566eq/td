@@ -107,11 +107,11 @@ def _type_key(cls):
 # tower on a reference board); rerun it after changing tower stats. The bot
 # reads it as each type's damage-per-gold prior.
 CALIBRATED_POWER_PER_GOLD = {
-    "basic": (18.5, 0.73), "cannon": (19.4, 0.34), "frost": (4.3, 0.12), "knockback": (12.7, 0.44),
-    "lightning": (18.3, 0.33), "sniper": (13.5, 0.63), "poison": (19.8, 0.55), "siphon": (3.1, 1.76),
-    "support": (0.1, 0.0), "beam": (13.3, 0.57), "beacon": (3.6, 0.09), "overload_cannon": (7.2, 0.23),
-    "mortar": (13.9, 0.4), "barricade": (-1.0, 0.08), "spike_trap": (16.3, 0.18), "tar_pit": (3.9, 0.19),
-    "harpoon": (6.8, 0.22),
+    "basic": (20.6, 0.87), "cannon": (17.8, 0.35), "frost": (4.0, 0.12), "knockback": (8.4, 0.22),
+    "lightning": (17.7, 0.43), "sniper": (16.7, 0.76), "poison": (17.6, 0.57), "siphon": (3.9, 2.03),
+    "support": (-0.2, 0.01), "beam": (15.5, 0.67), "beacon": (4.0, 0.08), "overload_cannon": (10.2, 0.34),
+    "mortar": (11.5, 0.46), "barricade": (-2.5, 0.21), "spike_trap": (12.3, 0.21), "tar_pit": (5.9, 0.48),
+    "harpoon": (8.4, 0.38),
 }
 
 
@@ -346,16 +346,24 @@ class FloorBot:
 
     def spend(self, reserve=0):
         """Buy actions best-first. If the best is out of reach, buy the best
-        affordable one when it's nearly as good, else save toward the best."""
+        affordable one when it's nearly as good, else save toward the best.
+        An action the floor refuses (a Proving Grounds constraint) is skipped."""
         game = self.game
-        for _ in range(30):
-            opts = self.options()
+        refused = set()
+        for _ in range(40):
+            opts = [o for o in self.options() if self._key(o[2]) not in refused]
             if not opts:
                 return
             budget = game.economy.gold - reserve
             pick = next((o for o in opts if o[1] <= budget), None)
-            if pick is None or pick[0] < SAVE_FOR_BEST * opts[0][0] or not self._do(pick[2]):
+            if pick is None or pick[0] < SAVE_FOR_BEST * opts[0][0]:
                 return
+            if not self._do(pick[2]):
+                refused.add(self._key(pick[2]))
+
+    @staticmethod
+    def _key(action):
+        return (action[0], action[1] if action[0] == "place" else id(action[1]))
 
     def _do(self, action):
         game = self.game
@@ -479,6 +487,8 @@ def pick_node(game, rng):
             score = 4.5 if run.shop_currency >= 18 else 1.2
         elif t == "elite":
             score = 3.2 if healthy else 0.3
+        elif t == "challenge":
+            score = 2.8 if healthy else 0.5
         else:
             score = NODE_SCORES.get(t, 2)
         scored.append((score + rng.random() * 0.3, node_id))
@@ -508,6 +518,10 @@ def pick_reward(game, memory):
     for i, (kind, key) in enumerate(cards):
         if kind in ("relic", "potion", "module"):
             game._take_reward_card(i)
+    for i, (kind, _key) in enumerate(cards):
+        if kind == "challenge_relic":  # a pick-one relic row: the first is as good a guess as any
+            game._take_reward_card(i)
+            break
     boss = [(i, key) for i, (kind, key) in enumerate(cards) if kind == "boss_relic"]
     if boss:
         from run import relics
