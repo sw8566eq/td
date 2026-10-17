@@ -401,6 +401,9 @@ def test_a_wash_in_game_spawns_a_fading_flame_wedge(game):
     assert not any(projectile.cone_radius for projectile in game.projectiles)
     wedge = wedges[0]
     wedge.draw(game.screen)
+    wedge.draw(game.screen, effects.REDUCED_EFFECTS_ALPHA)
+    game.reduce_effects = True
+    game.render()
     wedge.update(wedge.duration)
     assert wedge.dead
     wedge.draw(game.screen)  # a dead wedge draws nothing
