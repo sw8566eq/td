@@ -367,3 +367,25 @@ def test_mutator_species_are_real_enemy_types():
             assert mutator.swap.to in ENEMY_TYPES
         if mutator.escort_per_spawn:
             assert mutator.escort_species in ENEMY_TYPES
+
+
+def test_a_mutated_endless_wave_really_spawns(game):
+    _final_boss(game)
+    _reach_endless(game, 2 * MUTATOR_CADENCE)
+    expected = game.wave_manager.next_wave_preview()
+    wave_index = game.wave_manager.wave_index
+    spawned = {}
+    real_spawn = game.wave_manager._spawn_enemy
+
+    def counting_spawn(spawn_cell, enemy_cls):
+        name = next(key for key, cls in ENEMY_TYPES.items() if cls is enemy_cls)
+        spawned[name] = spawned.get(name, 0) + 1
+        return real_spawn(spawn_cell, enemy_cls)
+    game.wave_manager._spawn_enemy = counting_spawn
+    game.wave_manager.skip_delay()
+    for _ in range(20000):
+        game.update(dt=0.05)
+        game.enemies = []  # keep the board clear so lives never run out
+        if game.wave_manager.wave_index > wave_index:
+            break
+    assert spawned == expected
