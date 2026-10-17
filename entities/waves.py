@@ -34,6 +34,9 @@ from entities.enemy import ENEMY_TYPES
 from support import settings
 from world import pathing
 
+_FLYING_SPECIES = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.is_flying)
+_BOSS_SPECIES = frozenset(name for name, cls in ENEMY_TYPES.items() if cls.IS_BOSS)
+
 
 class WaveState:
     AWAITING_START = "awaiting_start"
@@ -87,6 +90,13 @@ class WaveManager:
         # BURROWS) and siege strength (Enemy.BREACH_MULTIPLIER scaled).
         self.enemy_burrows = False
         self.enemy_breach_multiplier = 1.0
+        # The endless final boss floor's active mutators, folded into one
+        # endless_mutators.MutatorEffects (Game._apply_endless_mutators),
+        # or None. Duck-typed: read in _wave_queues (counts, escorts,
+        # species swaps -- applied to the queue, never to level.wave_specs,
+        # so the endless generator keeps compounding off un-mutated waves)
+        # and apply_spawn_multipliers (stats, traits).
+        self.mutators = None
 
         self.wave_index = 0  # 0-based index into level.wave_specs
         # Wave 1 doesn't auto-start on a timer like every wave after it
@@ -132,10 +142,28 @@ class WaveManager:
         if self.all_waves_complete:
             return None
         totals = {}
-        for composition in self.level.wave_specs[self.wave_index].values():
-            for enemy_name, count in composition.items():
-                totals[enemy_name] = totals.get(enemy_name, 0) + count
+        for _spawn_cell, names in self._wave_queues(self.wave_index):
+            for enemy_name in names:
+                totals[enemy_name] = totals.get(enemy_name, 0) + 1
         return totals
+
+    def _wave_queues(self, wave_index):
+        """[(spawn_cell, [enemy name, ...]), ...] for wave `wave_index`, in
+        spawn order -- the authored/generated composition, reshaped by any
+        active endless mutators."""
+        wave_spec = self.level.wave_specs[wave_index]  # {spawn_cell: {enemy_name: count}}
+        # Sorted by spawn cell for a deterministic, stable round order --
+        # matching the same sort order the editor numbers spawn markers by
+        # (see ui.py's _draw_editor_grid) -- rather than depending on
+        # whatever order the dict happened to be built/loaded in.
+        queues = []
+        for spawn_cell, composition in sorted(wave_spec.items()):
+            if self.mutators is None:
+                names = [name for name, count in composition.items() for _ in range(count)]
+            else:
+                names = self.mutators.transform_composition(composition, _FLYING_SPECIES, _BOSS_SPECIES)
+            queues.append((spawn_cell, names))
+        return queues
 
     def restore(self, wave_index, state, between_wave_timer):
         """Restore progress from a previously saved run (see save_state.py)
@@ -278,25 +306,28 @@ class WaveManager:
             enemy.BURROWS = True
         if self.enemy_breach_multiplier != 1.0:
             enemy.BREACH_MULTIPLIER = type(enemy).BREACH_MULTIPLIER * self.enemy_breach_multiplier
+        hp_multiplier = self.enemy_hp_multiplier
+        mutators = self.mutators
+        if mutators is not None:
+            hp_multiplier *= mutators.hp_multiplier
+            enemy.max_hp *= mutators.hp_multiplier
+            enemy.hp = enemy.max_hp
+            enemy.speed = min(enemy.speed * mutators.speed_multiplier, enemy.max_speed)
+            enemy.regen_fraction_per_second += mutators.regen_fraction_per_second
+            if mutators.burrows and not getattr(enemy, "is_flying", False):
+                enemy.BURROWS = True
+            if mutators.breach_multiplier != 1.0:
+                enemy.BREACH_MULTIPLIER = enemy.BREACH_MULTIPLIER * mutators.breach_multiplier
         if hasattr(enemy, "max_shield"):  # ShieldedEnemy only
-            enemy.max_shield *= self.enemy_hp_multiplier
+            enemy.max_shield *= hp_multiplier
             enemy.shield = enemy.max_shield
         if hasattr(enemy, "heal_rate"):  # HealerEnemy only
             enemy.heal_rate *= self.healer_heal_rate_multiplier
 
     def _begin_wave(self):
-        wave_spec = self.level.wave_specs[self.wave_index]  # {spawn_cell: {enemy_name: count}}
-        # Sorted by spawn cell for a deterministic, stable round order --
-        # matching the same sort order the editor numbers spawn markers by
-        # (see ui.py's _draw_editor_grid) -- rather than depending on
-        # whatever order the dict happened to be built/loaded in.
         self._spawn_queues = [
-            (spawn_cell, [
-                ENEMY_TYPES[enemy_name]
-                for enemy_name, count in composition.items()
-                for _ in range(count)
-            ])
-            for spawn_cell, composition in sorted(wave_spec.items())
+            (spawn_cell, [ENEMY_TYPES[enemy_name] for enemy_name in names])
+            for spawn_cell, names in self._wave_queues(self.wave_index)
         ]
         self.spawn_timer = 0.0
         self.state = WaveState.SPAWNING
