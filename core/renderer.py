@@ -35,12 +35,13 @@ import inspect
 
 import pygame
 
+from entities import effects
 from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
 from entities.waves import WaveState
 from presentation import ui
 from progression import hints
 from run import challenges, endless_mutators, modules, potions, relics, shop, veterancy
-from support import settings
+from support import palette, settings
 
 
 class Renderer:
@@ -67,6 +68,15 @@ class Renderer:
             )
             ui.draw_hint_settings_buttons(game.screen, game.small_font, game.hint_settings_rects,
                                           game.hints.enabled, len(game.hints.seen))
+            ui.draw_accessibility_entry_button(game.screen, game.small_font, game.accessibility_entry_button_rect)
+            pygame.display.flip()
+            return
+
+        if game.state == GameState.ACCESSIBILITY:
+            ui.draw_accessibility_screen(
+                game.screen, game.font, game.small_font, game.accessibility_rects,
+                game.palette == palette.COLORBLIND_PALETTE, game.reduce_effects,
+            )
             pygame.display.flip()
             return
 
@@ -311,10 +321,11 @@ class Renderer:
             enemy.draw(game.screen, game.assets)
         for projectile in game.projectiles:
             projectile.draw(game.screen, game.assets)
+        effects_alpha = effects.REDUCED_EFFECTS_ALPHA if game.reduce_effects else 1.0
         for ring in game.impact_effects:
-            ring.draw(game.screen)
+            ring.draw(game.screen, effects_alpha)
         for text in game.damage_numbers:
-            text.draw(game.screen, game.tiny_font)
+            text.draw(game.screen, game.tiny_font, effects_alpha)
         hovered_enemy = game._hovered_enemy() if game.state == GameState.PLAYING else None
         if hovered_enemy is not None:
             ui.draw_enemy_tooltip(game.screen, game.small_font, hovered_enemy)

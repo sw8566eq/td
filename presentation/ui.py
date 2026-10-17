@@ -38,7 +38,7 @@ from run.shop import can_afford, price_for
 from run.veterancy import RANKS as VETERANCY_RANKS
 from run.veterancy import rank_for as veterancy_rank_for
 from run.veterancy import rank_name as veterancy_rank_name
-from support import settings
+from support import palette, settings
 from world.grid import draw_high_ground_tile
 from world.levels import LEVELS
 
@@ -331,7 +331,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         if name in moduled_towers:  # a module is fitted to this type
             pygame.draw.circle(surface, MODULE_COLOR, (rect.right - 6, rect.bottom - 22), 3)
         if name in blocked_towers:  # a Proving Grounds rule forbids building it right now
-            pygame.draw.line(surface, settings.COLOR_LIVES, rect.topleft, rect.bottomright, 2)
+            pygame.draw.line(surface, palette.active().danger, rect.topleft, rect.bottomright, 2)
 
     # len(button_rects), not len(TOWER_ORDER) -- a roguelike run's build
     # menu shows only its own drafted subset (see build_button_rects), and
@@ -351,7 +351,7 @@ def draw_hud(surface, assets, font, small_font, economy, wave_manager, button_re
         gold_label += f"   Shop: {shop_display}"
     gold_text = font.render(gold_label, True, settings.COLOR_GOLD)
     lives_display = "infinite" if economy.invulnerable else str(economy.lives)
-    lives_text = font.render(f"Lives: {lives_display}", True, settings.COLOR_LIVES)
+    lives_text = font.render(f"Lives: {lives_display}", True, palette.active().danger)
     # floor_label ("Floor N/M") and boss_defeated both piggyback onto the
     # Wave line rather than getting a line of their own, same reasoning
     # shop_currency's own comment above gives -- HUD_HEIGHT has no headroom
@@ -540,7 +540,8 @@ def draw_footprint_preview(surface, grid, anchor_col, anchor_row, buildable, foo
     whether it's currently buildable."""
     size = grid.resolve_footprint_size(footprint_subtiles) * grid.subtile_size
     rect = pygame.Rect(anchor_col * grid.subtile_size, anchor_row * grid.subtile_size, size, size)
-    color = settings.COLOR_FOOTPRINT_VALID if buildable else settings.COLOR_FOOTPRINT_INVALID
+    colors = palette.active()
+    color = colors.footprint_valid if buildable else colors.footprint_invalid
     pygame.draw.rect(surface, color, rect, width=2)
 
 
@@ -552,7 +553,7 @@ def draw_range_preview(surface, tower_cls, pixel_pos, radius=None, dead_zone=Non
                        int(tower_cls.range if radius is None else radius), width=1)
     dead_zone = tower_cls.MIN_RANGE if dead_zone is None else dead_zone
     if dead_zone:  # a Mortar's dead zone
-        pygame.draw.circle(surface, settings.COLOR_LIVES, center, int(dead_zone), width=1)
+        pygame.draw.circle(surface, palette.active().danger, center, int(dead_zone), width=1)
 
 
 def draw_tower_range_preview(surface, tower):
@@ -570,7 +571,7 @@ def draw_tower_range_preview(surface, tower):
     if not tower.is_max_level:
         pygame.draw.circle(surface, settings.COLOR_GOLD, center, int(tower.range_after_next_upgrade() * bonus), width=2)
     if tower.MIN_RANGE:
-        pygame.draw.circle(surface, settings.COLOR_LIVES, center, tower.MIN_RANGE, width=1)
+        pygame.draw.circle(surface, palette.active().danger, center, tower.MIN_RANGE, width=1)
 
 
 def draw_tower_stats_panel(surface, font, small_font, subject, economy, targeting_button_rect,
@@ -768,13 +769,8 @@ MAP_NODE_TYPE_LABELS = {
     "combat": "C", "elite": "E", "shop": "$", "event": "?", "rest": "+", "treasure": "T",
     "armory": "A", "challenge": "!", "boss": "B",
 }
-MAP_NODE_TYPE_COLORS = {
-    "combat": settings.COLOR_NODE_COMBAT, "elite": settings.COLOR_NODE_ELITE,
-    "shop": settings.COLOR_NODE_SHOP, "event": settings.COLOR_NODE_EVENT,
-    "rest": settings.COLOR_NODE_REST, "treasure": settings.COLOR_NODE_TREASURE,
-    "armory": settings.COLOR_NODE_ARMORY, "challenge": settings.COLOR_NODE_CHALLENGE,
-    "boss": settings.COLOR_NODE_BOSS,
-}
+# Node fill colors live on the active palette (support/palette.py's
+# Palette.node_colors), so the Colorblind palette can swap them.
 # Full names (unlike MAP_NODE_TYPE_LABELS' single in-circle glyph above) --
 # the map legend and a hovered node's own tooltip both use these instead of
 # titlecasing the raw node_type string, so a future rename of the internal
@@ -844,8 +840,8 @@ MAP_LEGEND_SWATCH_RADIUS = 7
 
 def _draw_map_legend(surface, small_font):
     """One row per NODE_TYPE: a color swatch matching that type's node fill
-    (MAP_NODE_TYPE_COLORS) plus its name (MAP_NODE_TYPE_NAMES) -- iterates
-    MAP_NODE_TYPE_COLORS directly rather than a separately-maintained order
+    (the active palette's node_colors) plus its name (MAP_NODE_TYPE_NAMES) -- iterates
+    node_colors directly rather than a separately-maintained order
     list, so this can never drift out of sync with the node types that
     actually exist. Always drawn in each type's own full color, regardless
     of whether any node of that type happens to be visited/available/locked
@@ -853,7 +849,7 @@ def _draw_map_legend(surface, small_font):
     describing "what you're currently allowed to enter," not "what each
     color means," which is the whole point of a fixed reference key."""
     y = MAP_LEGEND_TOP
-    for node_type, color in MAP_NODE_TYPE_COLORS.items():
+    for node_type, color in palette.active().node_colors.items():
         pygame.draw.circle(surface, color, (MAP_LEGEND_X, y), MAP_LEGEND_SWATCH_RADIUS)
         pygame.draw.circle(surface, settings.COLOR_TEXT, (MAP_LEGEND_X, y), MAP_LEGEND_SWATCH_RADIUS, width=1)
         label = small_font.render(MAP_NODE_TYPE_NAMES[node_type], True, settings.COLOR_TEXT_DIM)
@@ -990,13 +986,15 @@ def draw_map_screen(surface, font, small_font, game_map, node_rects, current_nod
             visited = node.id in visited_node_ids
             current = node.id == current_node_id
             available = node.id in available_node_ids
-            base_color = MAP_NODE_TYPE_COLORS[node.node_type]
-            fill_color = base_color if (visited or current or available) else settings.COLOR_NODE_LOCKED
+            base_color = palette.node_color(node.node_type)
+            fill_color = base_color if (visited or current or available) else palette.active().node_locked
             pygame.draw.circle(surface, fill_color, rect.center, MAP_NODE_RADIUS)
             border_color = settings.COLOR_BUTTON_SELECTED if (available and node.id == hovered_node_id) else settings.COLOR_TEXT
             pygame.draw.circle(surface, border_color, rect.center, MAP_NODE_RADIUS, width=3 if current else 1)
 
             label_color = settings.COLOR_TEXT_DIM if visited and not current else settings.COLOR_TEXT
+            if palette.is_light(fill_color):  # a colorblind palette's near-white/yellow fill
+                label_color = settings.COLOR_BG
             label = small_font.render(MAP_NODE_TYPE_LABELS[node.node_type], True, label_color)
             surface.blit(label, label.get_rect(center=rect.center))
 
@@ -1222,7 +1220,7 @@ def draw_rest_screen(surface, font, small_font, phase, heal_amount, lives, optio
     center_x = settings.SCREEN_WIDTH // 2
     title = font.render("Outpost", True, settings.COLOR_GOLD)
     surface.blit(title, title.get_rect(midtop=(center_x, 70)))
-    lives_line = small_font.render(f"Lives: {lives}", True, settings.COLOR_LIVES)
+    lives_line = small_font.render(f"Lives: {lives}", True, palette.active().danger)
     surface.blit(lives_line, lives_line.get_rect(midtop=(center_x, 120)))
 
     if phase == "choose":
@@ -1410,7 +1408,7 @@ def draw_shop_remove_curse_button(surface, small_font, rect, price, has_curse, u
     pygame.draw.rect(surface, settings.COLOR_BUTTON if enabled else settings.COLOR_BUTTON_DISABLED, rect,
                      border_radius=6)
     text = "Curse lifted" if used else f"Remove a curse ({price})"
-    label = small_font.render(text, True, settings.COLOR_LIVES if enabled else settings.COLOR_TEXT_DIM)
+    label = small_font.render(text, True, palette.active().danger if enabled else settings.COLOR_TEXT_DIM)
     surface.blit(label, label.get_rect(center=rect.center))
 
 
@@ -1820,7 +1818,7 @@ def draw_coverage_overlay(surface, towers):
     The ring layer is a full-screen SRCALPHA surface, rebuilt only when
     what it draws changes: _coverage_overlay_cache keeps the last one with
     its key, every tower's (center, ring radius, dead-zone radius) in
-    order plus the target size. An aura, relic or placement that changes
+    order plus the target size and the active palette. An aura, relic or placement that changes
     any ring's integer radius changes the key, so a stale layer can't be
     shown."""
     rings = tuple(
@@ -1829,7 +1827,8 @@ def draw_coverage_overlay(surface, towers):
          int(tower.MIN_RANGE) if tower.MIN_RANGE else None)
         for tower in towers
     )
-    key = (surface.get_size(), rings)
+    # The palette key too: the dead-zone ring is drawn in its danger color.
+    key = (surface.get_size(), rings, palette.active_key())
     if _coverage_overlay_cache.get("key") != key:
         overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         for center, reach, dead_zone in rings:
@@ -1837,7 +1836,7 @@ def draw_coverage_overlay(surface, towers):
                 pygame.draw.circle(overlay, (255, 255, 255, 28), center, reach)
                 pygame.draw.circle(overlay, (255, 255, 255, 110), center, reach, width=1)
             if dead_zone is not None:
-                pygame.draw.circle(overlay, (*settings.COLOR_LIVES, 160), center, dead_zone, width=1)
+                pygame.draw.circle(overlay, (*palette.active().danger, 160), center, dead_zone, width=1)
         _coverage_overlay_cache["key"] = key
         _coverage_overlay_cache["surface"] = overlay
     surface.blit(_coverage_overlay_cache["surface"], (0, 0))
@@ -1938,7 +1937,6 @@ RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
 # A Proving Grounds fight's own two status lines, just above that.
 CHALLENGE_STATUS_Y = RUN_MODIFIERS_Y - 2 * PANEL_ROW_HEIGHT
 POTION_DESCRIPTION_BOTTOM = CHALLENGE_STATUS_Y - 8
-CHALLENGE_STATUS_COLOR = settings.COLOR_NODE_CHALLENGE
 MUTATOR_HEADER_COLOR = settings.COLOR_GOLD
 
 
@@ -2001,10 +1999,10 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
     label = small_font.render(label_text, True, settings.COLOR_GOLD if overclock_timer > 0 else settings.COLOR_TEXT_DIM)
     surface.blit(label, (x, POTION_BELT_TOP - POTION_BELT_LABEL_GAP))
     if run_modifiers_text is not None:
-        surface.blit(small_font.render(run_modifiers_text, True, settings.COLOR_LIVES), (x, RUN_MODIFIERS_Y))
+        surface.blit(small_font.render(run_modifiers_text, True, palette.active().danger), (x, RUN_MODIFIERS_Y))
     if challenge_text is not None:  # a Proving Grounds fight: [header, live status]
         for index, line in enumerate(challenge_text):
-            surface.blit(small_font.render(line, True, CHALLENGE_STATUS_COLOR),
+            surface.blit(small_font.render(line, True, palette.active().challenge_status),
                          (x, CHALLENGE_STATUS_Y + index * PANEL_ROW_HEIGHT))
     description_bottom = POTION_DESCRIPTION_BOTTOM
     max_lines = mutator_lines_fitting_below(mutator_min_top) if mutator_min_top is not None else None
@@ -2499,6 +2497,116 @@ def draw_settings_screen(surface, font, small_font, settings_rects, fullscreen, 
     _draw_settings_button(surface, small_font, keybinds_entry_button_rect, "Keybinds...", False)
 
     _draw_escape_hint(surface, small_font)
+
+
+# --- Accessibility screen (GameState.ACCESSIBILITY) ---
+#
+# Reached from Settings' "Accessibility..." button, which sits right of the
+# last Window row, stacked above "Keybinds..." -- the same "inline extra,
+# not a row of its own" shape, since Settings' column already reaches the
+# bottom of the canvas. Two toggles, each with a one-line explanation under
+# it, then a live preview drawn in the active palette so the player sees
+# what the toggle changes before going back into a fight.
+
+def build_accessibility_entry_button_rect():
+    last_window_key = list(WINDOW_SIZE_PRESETS)[-1]
+    row = _settings_button_rect(SETTINGS_OPTION_ORDER.index(last_window_key))
+    return pygame.Rect(row.right + 24, row.top, KEYBINDS_ENTRY_BUTTON_WIDTH, SETTINGS_BUTTON_HEIGHT)
+
+
+def get_clicked_accessibility_entry_button(pos, accessibility_entry_button_rect):
+    return accessibility_entry_button_rect.collidepoint(pos)
+
+
+def draw_accessibility_entry_button(surface, small_font, rect):
+    _draw_settings_button(surface, small_font, rect, "Accessibility...", False)
+
+
+ACCESSIBILITY_ROW_WIDTH = 360
+ACCESSIBILITY_TOP = 120
+ACCESSIBILITY_ROW_PITCH = 84  # a 44px button plus its explanation line
+ACCESSIBILITY_OPTION_ORDER = ["colorblind", "reduce_effects"]
+ACCESSIBILITY_LABELS = {"colorblind": "Colorblind palette", "reduce_effects": "Reduce effects"}
+ACCESSIBILITY_DESCRIPTIONS = {
+    "colorblind": "Blue/orange/yellow colors for placement, health bars, the map and warnings.",
+    "reduce_effects": "Dims hit flashes, death poofs and damage numbers.",
+}
+ACCESSIBILITY_PREVIEW_TOP = 330
+
+
+def build_accessibility_rects():
+    """{"colorblind": Rect, "reduce_effects": Rect, "back": Rect}."""
+    x = (settings.SCREEN_WIDTH - ACCESSIBILITY_ROW_WIDTH) // 2
+    rects = {
+        key: pygame.Rect(x, ACCESSIBILITY_TOP + index * ACCESSIBILITY_ROW_PITCH,
+                         ACCESSIBILITY_ROW_WIDTH, SETTINGS_BUTTON_HEIGHT)
+        for index, key in enumerate(ACCESSIBILITY_OPTION_ORDER)
+    }
+    rects["back"] = pygame.Rect(x, settings.SCREEN_HEIGHT - 90, ACCESSIBILITY_ROW_WIDTH, SETTINGS_BUTTON_HEIGHT)
+    return rects
+
+
+def get_clicked_accessibility_option(pos, accessibility_rects):
+    return _key_of_rect_containing(pos, accessibility_rects)
+
+
+def _draw_palette_preview(surface, small_font, top):
+    """A strip of what the active palette changes: the placement footprint
+    (buildable/blocked), an enemy health bar, the danger color, and every
+    map node type."""
+    colors = palette.active()
+    center_x = settings.SCREEN_WIDTH // 2
+    heading = small_font.render(f"Preview -- {colors.display_name} palette", True, settings.COLOR_TEXT_DIM)
+    surface.blit(heading, heading.get_rect(midtop=(center_x, top)))
+
+    samples_y = top + 40
+    x = center_x - 420
+    for color, label in ((colors.footprint_valid, "Buildable"), (colors.footprint_invalid, "Blocked")):
+        pygame.draw.rect(surface, color, (x, samples_y - 14, 28, 28), width=2)
+        text = small_font.render(label, True, settings.COLOR_TEXT)
+        surface.blit(text, text.get_rect(midleft=(x + 38, samples_y)))
+        x += 170
+    bar = pygame.Rect(x, samples_y - 3, 60, 6)
+    pygame.draw.rect(surface, colors.hp_bar_bg, bar)
+    pygame.draw.rect(surface, colors.hp_bar_fill, (bar.x, bar.y, bar.width * 2 // 3, bar.height))
+    text = small_font.render("Enemy health", True, settings.COLOR_TEXT)
+    surface.blit(text, text.get_rect(midleft=(bar.right + 10, samples_y)))
+    x += 230
+    text = small_font.render("Lives / warnings", True, colors.danger)
+    surface.blit(text, text.get_rect(midleft=(x, samples_y)))
+
+    nodes_y = samples_y + 70
+    node_types = list(colors.node_colors)
+    spacing = 92
+    first_x = center_x - spacing * (len(node_types) - 1) // 2
+    for index, node_type in enumerate(node_types):
+        node_center = (first_x + index * spacing, nodes_y)
+        fill = colors.node_colors[node_type]
+        pygame.draw.circle(surface, fill, node_center, MAP_NODE_RADIUS - 4)
+        pygame.draw.circle(surface, settings.COLOR_TEXT, node_center, MAP_NODE_RADIUS - 4, width=1)
+        glyph_color = settings.COLOR_BG if palette.is_light(fill) else settings.COLOR_TEXT
+        glyph = small_font.render(MAP_NODE_TYPE_LABELS[node_type], True, glyph_color)
+        surface.blit(glyph, glyph.get_rect(center=node_center))
+        name = small_font.render(MAP_NODE_TYPE_NAMES[node_type], True, settings.COLOR_TEXT_DIM)
+        surface.blit(name, name.get_rect(midtop=(node_center[0], nodes_y + MAP_NODE_RADIUS + 4)))
+
+
+def draw_accessibility_screen(surface, font, small_font, accessibility_rects, colorblind, reduce_effects):
+    surface.fill(settings.COLOR_BG)
+    title = font.render("Accessibility", True, settings.COLOR_TEXT)
+    surface.blit(title, title.get_rect(midtop=(settings.SCREEN_WIDTH // 2, 40)))
+
+    states = {"colorblind": colorblind, "reduce_effects": reduce_effects}
+    for key in ACCESSIBILITY_OPTION_ORDER:
+        rect = accessibility_rects[key]
+        label = f"{ACCESSIBILITY_LABELS[key]}: {'On' if states[key] else 'Off'}"
+        _draw_settings_button(surface, small_font, rect, label, states[key])
+        note = small_font.render(ACCESSIBILITY_DESCRIPTIONS[key], True, settings.COLOR_TEXT_DIM)
+        surface.blit(note, note.get_rect(midtop=(rect.centerx, rect.bottom + 6)))
+
+    _draw_palette_preview(surface, small_font, ACCESSIBILITY_PREVIEW_TOP)
+    _draw_back_to_menu_button(surface, small_font, accessibility_rects["back"], "Back to Settings")
+    _draw_escape_hint(surface, small_font, "Esc -- Back to Settings")
 
 
 # --- Keybinds screen (GameState.KEYBINDS) ---
@@ -3413,7 +3521,7 @@ def draw_game_over_screen(surface, font, small_font, results=None, run_summary=N
             else "Press R to restart, M for main menu")
     subtitle = [*(run_summary or []), hint]
     title = "Run Over" if run_summary else "Game Over"
-    _draw_overlay_with_results(surface, font, small_font, title, subtitle, settings.COLOR_LIVES, results)
+    _draw_overlay_with_results(surface, font, small_font, title, subtitle, palette.active().danger, results)
 
 
 def run_summary_lines(run):
@@ -3670,7 +3778,7 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects,
     # (a fresh editor's one empty wave would otherwise show as an error
     # here before the player has had any chance to touch it).
     path_ok = editor.path_is_valid()
-    status_color = settings.COLOR_GOLD if path_ok else settings.COLOR_LIVES
+    status_color = settings.COLOR_GOLD if path_ok else palette.active().danger
     status_lines = ["Path ready -- edit waves next!"] if path_ok else editor.path_problems
     if editor.active_tool == "rect":
         # A freshly-stamped rectangle is always a closed loop (exactly the
@@ -3698,7 +3806,7 @@ def _draw_editor_path_sidebar(surface, font, small_font, editor, action_rects,
         # spirit as the wave editor sidebar's "Saved to:" status (see
         # _draw_wave_editor_sidebar) -- success in gold, failure in the
         # same red the HUD's lives counter uses for "something's wrong."
-        status_color = settings.COLOR_LIVES if import_status_is_error else settings.COLOR_GOLD
+        status_color = palette.active().danger if import_status_is_error else settings.COLOR_GOLD
         status_y = max(rect.bottom for rect in action_rects.values()) + 16
         for line_index, line in enumerate(
             _wrap_text(import_status_message, small_font, settings.PANEL_WIDTH - 2 * PANEL_PADDING)

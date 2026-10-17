@@ -6,7 +6,7 @@ else that lives for a few frames and then goes away.
 
 import pygame
 
-from support import settings
+from support import palette
 
 # Rendered label surfaces, keyed by (font, text, color). A damage number's
 # text never changes after construction, and late endless waves keep
@@ -18,6 +18,11 @@ from support import settings
 # never alias a new one; cleared wholesale once it reaches the limit, which
 # a real session only does if it sees that many distinct strings.
 _TEXT_CACHE_LIMIT = 1024
+
+# The Reduce effects setting (Game.reduce_effects): impact rings and damage
+# numbers draw at this fraction of their usual opacity. Toasts are
+# FloatingTexts too but are drawn at full strength -- they carry information.
+REDUCED_EFFECTS_ALPHA = 0.35
 _text_cache = {}
 
 
@@ -43,12 +48,14 @@ class FloatingText:
     existence, so even a burst of several (a splash hit, or a chain) reads
     as distinct events rather than a single blink."""
 
-    def __init__(self, pos, text, lifetime=0.8, rise_speed=40.0, color=settings.COLOR_LIVES):
+    def __init__(self, pos, text, lifetime=0.8, rise_speed=40.0, color=None):
         self.pos = pygame.Vector2(pos)
         self.text = text
         self.lifetime = lifetime
         self.rise_speed = rise_speed
-        self.color = color
+        # None: the active palette's danger color (a damage number), read
+        # at spawn -- a label already on screen keeps the color it spawned with.
+        self.color = palette.active().danger if color is None else color
         self.age = 0.0
 
     @property
@@ -59,15 +66,16 @@ class FloatingText:
         self.age += dt
         self.pos.y -= self.rise_speed * dt
 
-    def draw(self, surface, font):
+    def draw(self, surface, font, alpha_scale=1.0):
         # Written flat (no `dead` property, no Rect) -- a late endless wave
         # draws thousands of these a frame. Same pixels as the
-        # get_rect(center=...) placement it replaced.
+        # get_rect(center=...) placement it replaced. alpha_scale < 1 is
+        # the Reduce effects setting (see REDUCED_EFFECTS_ALPHA).
         age, lifetime = self.age, self.lifetime
         if age >= lifetime:
             return
         rendered, half_width, half_height = _text_entry(font, self.text, self.color)
-        rendered.set_alpha(max(0, min(255, int(255 * (1 - age / lifetime)))))
+        rendered.set_alpha(max(0, min(255, int(255 * alpha_scale * (1 - age / lifetime)))))
         pos = self.pos
         surface.blit(rendered, (int(pos.x) - half_width, int(pos.y) - half_height))
 
@@ -130,13 +138,15 @@ class ExpandingRing:
     def update(self, dt):
         self.age += dt
 
-    def draw(self, surface):
+    def draw(self, surface, alpha_scale=1.0):
         if self.dead:
             return
         radius = int(self.start_radius + (self.max_radius - self.start_radius) * self._progress)
         if radius <= 0:
             return
-        alpha = max(0, min(255, int(255 * (1 - self._progress))))
+        # alpha is part of _ring_cache's key, so a dimmed ring (the Reduce
+        # effects setting) never reuses an undimmed surface.
+        alpha = max(0, min(255, int(255 * alpha_scale * (1 - self._progress))))
         # pygame.draw.circle has no alpha of its own -- draw onto a small
         # SRCALPHA surface sized just for this ring and blit that, same
         # workaround FloatingText avoids needing only because font.render()

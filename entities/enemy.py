@@ -21,7 +21,7 @@ never needs to know about concrete Enemy subclasses directly.
 
 import pygame
 
-from support import settings
+from support import palette, settings
 
 # Knockback stagger resistance (Enemy.apply_knockback): every shove makes
 # the next one PER_SHOVE weaker, up to CAP, wearing off at DECAY per second.
@@ -526,9 +526,10 @@ class Enemy:
         bar_width, bar_height = self.radius * 2, 4
         x = int(self.pos.x - self.radius)
         y = int(self.pos.y - self.radius - bar_height - 2)
-        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_BG, (x, y, bar_width, bar_height))
+        colors = palette.active()
+        pygame.draw.rect(surface, colors.hp_bar_bg, (x, y, bar_width, bar_height))
         fill_width = int(bar_width * (self.hp / self.max_hp))
-        pygame.draw.rect(surface, settings.COLOR_ENEMY_HP_BAR_FILL, (x, y, fill_width, bar_height))
+        pygame.draw.rect(surface, colors.hp_bar_fill, (x, y, fill_width, bar_height))
 
 
 class GruntEnemy(Enemy):
@@ -768,7 +769,8 @@ class BossEnemy(Enemy):
         # once enraged so either state reads at a glance without needing
         # to watch the health bar's exact fraction.
         if self.armor_timer > 0 or self.enraged:
-            color = settings.COLOR_GOLD if self.armor_timer > 0 else settings.COLOR_ENEMY_ENRAGE_RING
+            colors = palette.active()
+            color = colors.armor_ring if self.armor_timer > 0 else colors.enrage_ring
             center = (int(self.pos.x), int(self.pos.y))
             pygame.draw.circle(surface, color, center, self.radius + 4, width=2)
 
