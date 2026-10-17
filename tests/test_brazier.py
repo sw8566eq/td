@@ -9,7 +9,13 @@ from conftest import find_buildable_anchor, start_first_floor
 
 from entities import effects
 from entities.effects import FlameWedge
-from entities.enemy import BURN_TICK_INTERVAL, BurrowerEnemy, FlyingEnemy, GruntEnemy, ShieldedEnemy
+from entities.enemy import (
+    BURN_TICK_INTERVAL,
+    BurrowerEnemy,
+    FlyingEnemy,
+    GruntEnemy,
+    ShieldedEnemy,
+)
 from entities.projectile import Projectile
 from entities.tower import RESONANCES, TOWER_TYPES, BrazierTower, OverloadCannonTower
 from persistence import save_state
