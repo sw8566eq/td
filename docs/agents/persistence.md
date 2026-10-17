@@ -144,7 +144,8 @@ registries a newly-unlocked key belongs to (`"New tower/relic/level unlocked: ..
 seed (a Daily Run's date-derived one) keep its best result -- and why a Daily Run needs no special
 handling here at all, it's just another seed. The same file also keeps a `"runs"` list (additive,
 same schema version): one record per run (`details` = commander/ascension/act/daily/
-final_boss_defeated), newest first, capped at `MAX_RUN_RECORDS`; `save_run_history(best)` without
+final_boss_defeated/endless_waves/top_crew, plus the optional `endless_mutators` count -- a non-int
+drops the record like any other malformed one), newest first, capped at `MAX_RUN_RECORDS`; `save_run_history(best)` without
 `records` preserves the existing list. The Run History screen renders `ui.run_history_lines`, which
 falls back to the per-seed bests for a file written before records existed.
 

@@ -8,6 +8,11 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
 
 ### Added
 
+- **Endless mutators**: on the final boss's endless floor, every 5 endless waves cleared adds one more
+  stacking mutator for the rest of the fight -- Swarm, Ironclad, Gale, Skyborne, Tunnelers, Siege,
+  Regrowth, Shielded Ranks or Escort, each seen once before any repeat. Each is announced with a toast,
+  listed in the sidebar, and pays +1 life and +60 battle gold; the Run Over recap and Run History show
+  how many you faced. Drawn from the run seed, so a Daily Run's mutators are the same for everyone.
 - In a Proving Grounds fight, build buttons its rule forbids right now are greyed out and struck through.
 - **Proven** achievement: win 5 Proving Grounds.
 - **Proving Grounds**: a new map node (from each act's third row on) -- a fight under one constraint

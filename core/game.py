@@ -32,6 +32,7 @@ from run import (
     daily_challenge,
     difficulty,
     elite_affixes,
+    endless_mutators,
     events,
     modules,
     potions,
@@ -83,6 +84,7 @@ BARRICADE_BURST_RADIUS = 80
 _ARMORY_RNG_STREAM = "armory"  # an Armory node's module offers -- keyed on the node's own id
 ARMORY_OFFER_COUNT = 3
 _REWARD_RNG_STREAM = "reward"  # a cleared Combat/Elite floor's own post-combat reward -- keyed on the node's own id
+_MUTATOR_RNG_STREAM = "mutator"  # the endless final boss's mutator draws -- keyed "<node id>:<draw index>"
 
 # Shared no-op defaults for _load_level_object's escalation/relic_modifiers
 # params -- both dataclasses are frozen, so one shared instance is safe to
@@ -389,6 +391,11 @@ class Game:
         # _apply_node_challenge on every run fight load/resume, cleared by
         # every _load_level_object. What every enforcement site reads.
         self.active_challenge = None
+        # The endless final boss fight's active mutator keys, in draw order
+        # (endless_mutators.py) -- re-derived by _apply_endless_mutators on
+        # every load, resume and wave clear, cleared by every
+        # _load_level_object. What the sidebar list reads.
+        self.active_mutators = []
         # A Random Event node's own two-phase state (see _enter_event_node/
         # _handle_event_click): "choose" while the options are still on
         # offer, "resolved" once one's been picked -- current_event/
@@ -1017,6 +1024,7 @@ class Game:
         )
         self.current_level_id = node.level_id
         self._apply_affix_traits(run, node)
+        self._apply_endless_mutators(run, node)
         # Every fight load (a restart included) starts its challenge clean.
         run.challenge_leaks = 0
         run.challenge_failed = False
@@ -1124,6 +1132,8 @@ class Game:
             "commander": run.commander, "ascension": run.ascension, "act": run.act + 1,
             "daily": run.is_daily, "final_boss_defeated": run.boss_defeated,
             "endless_waves": run.endless_waves_cleared,
+            # The deepest endless mutator count any fight of this run reached.
+            "endless_mutators": endless_mutators.mutator_count(run.endless_waves_cleared),
             # The run's most experienced tower type (veterancy), if any.
             "top_crew": max(run.tower_xp, key=run.tower_xp.get) if run.tower_xp else "",
         })
@@ -1150,9 +1160,46 @@ class Game:
         run = self.active_run
         if run is None or not run.is_final_floor:
             return
-        authored = len(LEVELS[run.current_level_id].wave_specs)
-        run.endless_waves_cleared = max(run.endless_waves_cleared, self.wave_manager.wave_index - authored)
+        run.endless_waves_cleared = max(run.endless_waves_cleared, self._fight_endless_waves_cleared(run))
         self._record_service(raises=[service_record.overall("best_endless_score", run.endless_waves_cleared)])
+        self._apply_endless_mutators(run, run.map.node(run.current_node_id), announce=True)
+
+    def _fight_endless_waves_cleared(self, run):
+        """Endless waves cleared in *this* fight (a restart starts over at 0,
+        unlike RunState.endless_waves_cleared, the run's best) -- what the
+        active mutator count follows. LEVELS' entry is the authored count;
+        game.level has endless waves appended."""
+        authored = len(LEVELS[run.current_level_id].wave_specs)
+        return max(0, self.wave_manager.wave_index - authored)
+
+    def _apply_endless_mutators(self, run, node, announce=False):
+        """Arm the endless final boss fight's mutators (endless_mutators.py)
+        for its current wave index -- every MUTATOR_CADENCE endless waves
+        cleared adds one more, drawn from _run_rng(run, "mutator",
+        "<node id>:<index>"), so the list is re-derived identically on a
+        load, a resume or a wave clear and never stored. `announce` (a wave
+        clear) toasts each newly drawn mutator and pays its bounty (lives +
+        battle gold) -- never on a load/resume, so resuming can't re-pay it.
+        Not the final floor: no mutators."""
+        if not run.is_final_floor:
+            self.active_mutators = []
+            self.wave_manager.mutators = None
+            return
+        count = endless_mutators.mutator_count(self._fight_endless_waves_cleared(run))
+        keys = endless_mutators.draw_mutators(
+            lambda index: self._run_rng(run, _MUTATOR_RNG_STREAM, f"{node.id}:{index}"), count,
+        )
+        new_keys = keys[len(self.active_mutators):] if announce else []
+        self.active_mutators = keys
+        self.wave_manager.mutators = endless_mutators.compose(keys) if keys else None
+        for key in new_keys:
+            mutator = endless_mutators.MUTATORS[key]
+            self.economy.lives += endless_mutators.BOUNTY_LIVES
+            self.economy.add_gold(endless_mutators.BOUNTY_GOLD)
+            self._queue_toast(f"Endless mutator: {mutator.display_name} -- {mutator.description}")
+            self._queue_toast(
+                f"Bounty for facing it: +{endless_mutators.BOUNTY_LIVES} life, +{endless_mutators.BOUNTY_GOLD} gold"
+            )
 
     def _handle_boss_defeated(self):
         """The map's boss node just ran out of authored waves for the
@@ -1919,6 +1966,7 @@ class Game:
         # No challenge unless the run fight loader arms one afterward
         # (_apply_node_challenge) -- Practice and classic play never have one.
         self.active_challenge = None
+        self.active_mutators = []
         # Resets the build menu to active_run's own drafted pool, or every
         # registered tower when there's no run (classic/Practice play, a
         # map-editor playtest) -- see _active_tower_names(). Centralizing
@@ -2297,6 +2345,9 @@ class Game:
             # mid-floor resume keeps them; only the roll is re-derived.
             self._apply_node_challenge(run, run.map.node(run.current_node_id))
         self.wave_manager.restore(save_data["wave_index"], save_data["wave_state"], save_data["between_wave_timer"])
+        if run is not None:
+            # Re-derived from the restored wave index, never stored.
+            self._apply_endless_mutators(run, run.map.node(run.current_node_id))
         self.economy.gold = save_data["gold"]
         self.economy.lives = save_data["lives"]
 

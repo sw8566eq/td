@@ -32,7 +32,7 @@ pytest -v --cov=. --cov-report=term-missing --cov-fail-under=98   # what CI runs
 
 ruff check .                       # lint -- CI gate
 
-mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py run/challenges.py   # strict type check -- only the annotated modules; CI gate
+mypy run/relics.py run/run_map.py run/events.py run/shop.py support/rng_sampling.py run/difficulty.py world/economy.py progression/run_history.py persistence/json_io.py progression/threshold_unlocks.py progression/meta_progression.py run/run_state.py run/card_pool.py run/run_escalation.py progression/progress.py progression/achievements.py run/rewards.py run/potions.py run/ascension.py run/commanders.py run/elite_affixes.py run/veterancy.py run/modules.py progression/hints.py progression/service_record.py run/challenges.py run/endless_mutators.py   # strict type check -- only the annotated modules; CI gate
 
 python tools/flow_check.py         # end-to-end bot run per Commander; run after changing node types, reward/act flow or save state
 python tools/tower_bench.py        # dev-only tower balance bench

@@ -39,7 +39,7 @@ from entities.tower import TOWER_TYPE_NAMES, TOWER_TYPES, resonance_partners
 from entities.waves import WaveState
 from presentation import ui
 from progression import hints
-from run import challenges, modules, potions, relics, shop, veterancy
+from run import challenges, endless_mutators, modules, potions, relics, shop, veterancy
 from support import settings
 
 
@@ -373,6 +373,8 @@ class Renderer:
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
                 challenge_text=self._challenge_status_text(),
+                mutator_names=endless_mutators.summary_names(game.active_mutators),
+                mutator_count=len(game.active_mutators),
             )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,

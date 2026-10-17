@@ -25,6 +25,7 @@ from progression.meta_progression import (
     RELIC_META_UNLOCKS,
     SHOP_META_UNLOCKS,
 )
+from run import endless_mutators
 from run.ascension import ASCENSION_LEVELS
 from run.commanders import COMMANDER_ORDER, COMMANDERS
 from run.difficulty import DIFFICULTY_MODES, DIFFICULTY_ORDER
@@ -1928,6 +1929,18 @@ RUN_MODIFIERS_Y = POTION_BELT_TOP - POTION_BELT_LABEL_GAP - PANEL_ROW_HEIGHT
 CHALLENGE_STATUS_Y = RUN_MODIFIERS_Y - 2 * PANEL_ROW_HEIGHT
 POTION_DESCRIPTION_BOTTOM = CHALLENGE_STATUS_Y - 8
 CHALLENGE_STATUS_COLOR = settings.COLOR_NODE_CHALLENGE
+MUTATOR_HEADER_COLOR = settings.COLOR_GOLD
+
+
+def mutator_list_lines(mutator_names, small_font, total=None):
+    """The sidebar's endless-mutator block: an "Endless mutators (N)"
+    header plus the names (endless_mutators.summary_names), comma-joined
+    and wrapped to the panel width. [] for none."""
+    if not mutator_names:
+        return []
+    max_width = settings.PANEL_WIDTH - 2 * PANEL_PADDING
+    header = f"Endless mutators ({total if total is not None else len(mutator_names)})"
+    return [header] + _wrap_text(", ".join(mutator_names), small_font, max_width)
 
 
 def build_potion_slot_rects(count):
@@ -1944,11 +1957,15 @@ def build_potion_slot_rects(count):
 
 
 def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered_slot, overclock_timer=0.0,
-                     run_modifiers_text=None, challenge_text=None):
+                     run_modifiers_text=None, challenge_text=None, mutator_names=(), mutator_count=None):
     """The run's potion slots -- a filled slot shows its potion's initials
     on its own color, an empty one just an outline. Hovering a filled slot
     shows that potion's name and description above the belt; a running
-    Overclock Elixir shows its countdown in the belt's own label."""
+    Overclock Elixir shows its countdown in the belt's own label.
+
+    `mutator_names` (the endless final boss's active mutators) is listed
+    in the rows a Proving Grounds status would use -- the final boss is
+    never one -- growing upward, wrapped to the panel width."""
     x = settings.PLAY_WIDTH + PANEL_PADDING
     label_text = "Potions -- click or Q/W/E"
     if overclock_timer > 0:
@@ -1961,6 +1978,14 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         for index, line in enumerate(challenge_text):
             surface.blit(small_font.render(line, True, CHALLENGE_STATUS_COLOR),
                          (x, CHALLENGE_STATUS_Y + index * PANEL_ROW_HEIGHT))
+    description_bottom = POTION_DESCRIPTION_BOTTOM
+    mutator_lines = mutator_list_lines(mutator_names, small_font, mutator_count)
+    if mutator_lines:
+        top = CHALLENGE_STATUS_Y + PANEL_ROW_HEIGHT - (len(mutator_lines) - 1) * PANEL_ROW_HEIGHT
+        for index, line in enumerate(mutator_lines):
+            color = MUTATOR_HEADER_COLOR if index == 0 else settings.COLOR_TEXT
+            surface.blit(small_font.render(line, True, color), (x, top + index * PANEL_ROW_HEIGHT))
+        description_bottom = min(description_bottom, top - 8)
 
     for index, rect in enumerate(slot_rects):
         if index < len(potion_keys):
@@ -1981,7 +2006,7 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
         lines = [(potion.display_name, settings.COLOR_TEXT)] + [
             (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(potion.description, small_font, max_width)
         ]
-        y = POTION_DESCRIPTION_BOTTOM - len(lines) * PANEL_ROW_HEIGHT
+        y = description_bottom - len(lines) * PANEL_ROW_HEIGHT
         for text_line, color in lines:
             surface.blit(small_font.render(text_line, True, color), (x, y))
             y += PANEL_ROW_HEIGHT
@@ -2606,6 +2631,8 @@ def run_history_lines(best_floors_cleared, records):
             parts.append("final boss slain")
         if record.get("endless_waves"):
             parts.append(f"+{record['endless_waves']} endless")
+        if record.get("endless_mutators"):
+            parts.append(f"{record['endless_mutators']} mutators")
         crew = TOWER_TYPES.get(record.get("top_crew", ""))
         if crew is not None:
             parts.append(f"top crew: {crew.display_name}")
@@ -3277,6 +3304,9 @@ def run_summary_lines(run):
         progress += " -- final boss defeated!"
     if run.endless_waves_cleared:
         progress += f" +{run.endless_waves_cleared} endless wave{'' if run.endless_waves_cleared == 1 else 's'}"
+        mutators = endless_mutators.mutator_count(run.endless_waves_cleared)
+        if mutators:
+            progress += f", {mutators} mutator{'' if mutators == 1 else 's'} faced"
     identity = [COMMANDERS[run.commander].display_name]
     if run.ascension:
         identity.append(f"Gauntlet {run.ascension}")

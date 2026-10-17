@@ -154,7 +154,9 @@ floor -- restores the carried value.
 `RunState.endless_waves_cleared` is the final boss's score chase: `Game._update_endless_score` (on
 every wave clear) sets it to the max of itself and `wave_manager.wave_index - len(LEVELS[...].
 wave_specs)` -- the registry entry, since `game.level` has endless waves appended -- so restarting
-the fight can't farm it. Saved, shown by `ui.run_summary_lines`, recorded as `endless_waves`.
+the fight can't farm it. Saved, shown by `ui.run_summary_lines`, recorded as `endless_waves`. Every
+`MUTATOR_CADENCE` endless waves the fight also draws a stacking mutator; see
+[waves-difficulty.md](waves-difficulty.md) "Endless mutators".
 
 ## Commanders
 

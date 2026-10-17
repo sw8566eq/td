@@ -87,7 +87,13 @@ pick one of three trophy relics (plus a potion) and moves you on to the next act
 so Act 2's first fight is tougher than Act 1's boss. **Act 3's boss** loads in Endless mode from the
 very start, so its waves never run out and there's no "you won the run" screen -- while the boss
 itself is still alive it periodically reinforces (or, on the other boss level, shields itself), and
-defeating it just means the fight keeps going, now boss-free, for score. A run ends only by
+defeating it just means the fight keeps going, now boss-free, for score. Every 5 endless waves you
+clear, an **endless mutator** joins the fight and stays for the rest of it, stacking with the ones
+before: Swarm (+30% enemies), Ironclad (+25% HP), Gale (+15% speed), Skyborne (every 4th ground enemy
+flies), Tunnelers (ground enemies burrow), Siege (Barricades battered twice as hard), Regrowth (1% HP
+regen per second), Shielded Ranks (every 4th ground enemy shielded) or Escort (a Tank per spawn each
+wave). Each one is announced with a toast, listed in the sidebar, and pays a bounty of +1 life and +60
+battle gold; the Run Over recap and Run History count how many you faced. A run ends only by
 **permadeath** -- losing your last life -- which records the run (`progression/run_history.py`,
 keyed by seed, keeping your best result) and banks its progress toward the next one.
 

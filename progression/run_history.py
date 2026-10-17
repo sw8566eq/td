@@ -55,7 +55,7 @@ def _parse_run_records(data: Any) -> list[RunRecord]:
                     for key in ("seed", "floors_cleared"))
             and isinstance(record.get("commander", ""), str)
             and isinstance(record.get("top_crew", ""), str)
-            and all(isinstance(record.get(key, 0), int) for key in ("ascension", "act", "endless_waves"))
+            and all(isinstance(record.get(key, 0), int) for key in ("ascension", "act", "endless_waves", "endless_mutators"))
         )
     return [record for record in data.get("runs", []) if well_formed(record)]
 
