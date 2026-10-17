@@ -2028,6 +2028,9 @@ def draw_potion_belt(surface, font, small_font, potion_keys, slot_rects, hovered
             (line, settings.COLOR_TEXT_DIM) for line in _wrap_text(potion.description, small_font, max_width)
         ]
         y = description_bottom - len(lines) * PANEL_ROW_HEIGHT
+        backing = pygame.Rect(x - 6, y - 4, max_width + 12, len(lines) * PANEL_ROW_HEIGHT + 8)
+        pygame.draw.rect(surface, settings.COLOR_HUD_BG, backing, border_radius=6)
+        pygame.draw.rect(surface, settings.COLOR_BUTTON, backing, width=1, border_radius=6)
         for text_line, color in lines:
             surface.blit(small_font.render(text_line, True, color), (x, y))
             y += PANEL_ROW_HEIGHT

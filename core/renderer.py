@@ -369,6 +369,15 @@ class Renderer:
             move_enabled=self._move_enabled(panel_subject),
         )
         if game.active_run is not None:
+            # The ability button first, so a hovered potion's description
+            # (drawn by the belt, on its own backing box) lands on top of it.
+            ability = game.current_ability
+            ui.draw_ability_button(
+                game.screen, game.small_font, game.ability_button_rect, ability,
+                game.active_run.ability_cooldown, game.active_run.ability_charges, game.ability_timer,
+                game.ability_targeting, hovered=game.ability_button_rect.collidepoint(pygame.mouse.get_pos()),
+                compact=game.ability_button_compact,
+            )
             ui.draw_potion_belt(
                 game.screen, game.font, game.small_font, game.active_run.potions, game.potion_slot_rects,
                 game._hovered_potion_slot(), game.overclock_timer, self._run_modifiers_text(),
@@ -376,13 +385,6 @@ class Renderer:
                 mutator_names=endless_mutators.summary_names(game.active_mutators),
                 mutator_count=len(game.active_mutators),
                 mutator_min_top=game.ability_button_rect.bottom + 4,
-            )
-            ability = game.current_ability
-            ui.draw_ability_button(
-                game.screen, game.small_font, game.ability_button_rect, ability,
-                game.active_run.ability_cooldown, game.active_run.ability_charges, game.ability_timer,
-                game.ability_targeting, hovered=game.ability_button_rect.collidepoint(pygame.mouse.get_pos()),
-                compact=game.ability_button_compact,
             )
         if game.state == GameState.PAUSED:
             ui.draw_pause_menu(game.screen, game.font, game.small_font,
