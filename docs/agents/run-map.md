@@ -216,6 +216,25 @@ bosses with no extra branches. The map title names the act's boss (`Boss: The Wa
 `apply_spawn_multipliers`, which sets the *instance's* `BURROWS` (ground enemies only) and
 `BREACH_MULTIPLIER` -- the classes are never touched.
 
+**Spawn-queue rules and boss traits.** `EliteAffix.swap`/`escort_species`/`escort_per_spawn` reuse
+the endless mutators' own queue rules (`endless_mutators.SpeciesSwap`, per-spawn escorts -- see
+[waves-difficulty.md](waves-difficulty.md) "Endless mutators"): Jammers and Phalanx add a Disruptor or
+Bulwark to every spawn of every wave, Windborne swaps every 3rd ground enemy to a Flyer.
+`elite_affixes.spawn_rules(affix)` turns them into a queue-only `MutatorEffects` (its stats stay at 1.0;
+the affix's own multipliers already went through the escalation), which `_apply_affix_traits` puts on
+`WaveManager.spawn_rules`. `WaveManager._queue_effects` folds the endless mutators on top
+(`MutatorEffects.merged`, affix swaps first), so the final boss floor's named boss and its mutators share
+one queue. Like the mutators, this reshapes the queue (and the "Next:" preview), never
+`level.wave_specs`, so nothing new is saved: a resume re-derives it.
+
+`EliteAffix.boss_traits` is a tuple of (class attribute, value) pairs that
+`WaveManager.apply_spawn_multipliers` sets on every `IS_BOSS` *instance* (`enemy_boss_traits`): The
+Static Throne's boss gets its own `JAM_RADIUS`/`JAM_DURATION`/`JAM_COOLDOWN`, The Iron Phalanx's an
+`AURA_RADIUS`/`AURA_DAMAGE_REDUCTION`. `Game._jam_towers` and `Game._apply_enemy_auras` already read
+those attributes off any enemy, so the boss jams and shields with no new species and no branch (see
+[enemies.md](enemies.md) "Disruptors and Bulwarks"). Only class attributes those consumers read
+belong here; `tests/test_threat_affixes.py` checks each name exists on `BossEnemy`.
+
 ## Starting blessing
 
 `events.BLESSING` -- an `Event` kept out of `EVENTS`/`_EVENT_ORDER` so `pick_event` never draws it.
