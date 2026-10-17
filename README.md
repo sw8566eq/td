@@ -533,9 +533,14 @@ and an achievement mark the moment it happens).
 
 ## Levels
 
-Seventeen built in -- fifteen ordinary ones the run map's own nodes draw from (single-lane corridors
+Twenty-one built in -- nineteen ordinary ones the run map's own nodes draw from (single-lane corridors
 for early rows, branching/merging multi-lane maps for later ones), plus two dedicated boss levels
-reserved for the map's final row. `L` from the main menu opens a level browser listing every
+reserved for the map's final row. The newest four are each built around one placement puzzle:
+**The Coil** (a route that winds into the middle of the map and back out between its own legs),
+**Killing Field** (one route passing the same open arena twice, eastbound then westbound),
+**Saddleback Ridge** (two parallel lanes with a high-ground ridge between them, the only spot that
+reaches both) and **Tributaries** (three spawns merging at two different points, the last one only
+four tiles from the goal). `L` from the main menu opens a level browser listing every
 built-in level plus any custom ones you've saved from the map editor -- each one shown with a small
 thumbnail of its actual path (ground/path fill plus spawn/goal dots), not just its name. Nothing here
 is locked: picking one is **Practice** (see below), which is deliberately decoupled from real
@@ -550,7 +555,7 @@ Eight of the twelve towers start locked account-wide behind lifetime counters
 (`progression/meta_progression.py`): clearing floors unlocks Knockback, Poison, Lightning, and Overload Cannon;
 playing more runs unlocks Sniper, Support, Beacon, and Siphon; reaching the endless final floor once
 unlocks Beam. An unlocked tower joins the pool the Shop can offer from -- it doesn't start in your
-hand, it just becomes a card you might see. A handful of the game's newest relics and two of its
+hand, it just becomes a card you might see. A handful of the game's newest relics and three of its
 levels are gated the same way, behind steeper thresholds, so there's still something to chase long
 after every tower is unlocked. A toast pops up in-game the moment you unlock anything.
 

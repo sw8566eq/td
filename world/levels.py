@@ -254,7 +254,7 @@ LEVEL_5_WAVE_SPECS = [
 # High ground (Level.high_ground_cells) -- a few raised tiles per level, each
 # tucked inside a bend or beside a merge/branch so a tower there covers two
 # legs of the path at once, with the +20% range making the overlap real.
-# Levels 1, 4, 7, 12, 13 and 15 deliberately have none: the opening level
+# Levels 1, 4, 7, 12, 13, 15, 20 and 21 deliberately have none: the opening level
 # stays a plain introduction, and the rest keep some maps where placement is
 # judged on path geometry alone.
 LEVEL_2_HIGH_GROUND = frozenset({(5, 2), (8, 4), (8, 5)})  # first bend; inside the U

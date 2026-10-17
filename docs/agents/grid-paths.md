@@ -74,7 +74,10 @@ parallel formats.
 tiles. `Level.__post_init__` rejects a cell that is off the grid, not a 2-int pair, or on the path.
 Several built-in levels in `world/levels.py` carry 3-4 tiles each (the `LEVEL_<n>_HIGH_GROUND`
 constants), tucked inside bends and beside merges/branches so a tower there covers two legs at once.
-Levels 1, 4, 7, 12, 13 and 15 have none on purpose.
+Levels 1, 4, 7, 12, 13, 15, 20 and 21 have none on purpose. Two levels make high ground the
+centrepiece rather than a garnish: Saddleback Ridge (19) puts a six-tile ridge on the row between two
+parallel lanes four rows apart, so only a tower on the ridge reaches both, and The Coil (18) has a 2x2
+plateau beside its exit (see [run-map.md](run-map.md) "Levels 18-21").
 
 **The bonus.** `Grid` takes `high_ground_cells` and answers `high_ground_fraction(anchor, footprint)`
 (the share of the footprint's *subtiles* whose coarse tile is raised -- a footprint can straddle four

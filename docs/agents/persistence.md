@@ -106,7 +106,9 @@ relic from that batch still ungated after the second wave) at `total_floors_clea
 even `frostbitten_mark`'s 50 -- and added a second `LEVEL_META_UNLOCKS` gate, `Double Confluence`
 (id `15`, the only other ordinary multi-lane level still ungated, a genuine step up from `Quad
 Muster`'s 4-spawns-into-1-goal via 2 independent goals instead) at `runs_played=25`, past
-`unlock_quad_muster`'s 15.
+`unlock_quad_muster`'s 15. The 18-21 level batch added a third gate, `unlock_tributaries` (id `20`,
+the batch's only three-spawn level), on `total_floors_cleared=30` rather than `runs_played`, so it
+unlocks on its own clock (see [run-map.md](run-map.md) "Levels 18-21").
 `ALL_UNLOCKS` (`{**META_UNLOCKS, **RELIC_META_UNLOCKS, **LEVEL_META_UNLOCKS, **SHOP_META_UNLOCKS,
 **COMMANDER_META_UNLOCKS}`)
 is what `bump()` actually passes to `threshold_unlocks.bump_counter()` -- a single shared JSON
@@ -123,7 +125,7 @@ trailing `else` (no display name to look up, so it queues a fixed toast string i
 difference: `unlocked_level_pool()` returns the whole ready-to-use `LEVELS`-minus-locked-ids pool
 directly (passed straight into `run_map.generate_run_map`'s own `level_pool` param from
 `Game.start_new_run`) rather than just the small "what's been added" set the other two return,
-since only 2 of 15 levels are ever gated -- making every caller re-derive "everything else" would be
+since only a few levels are ever gated -- making every caller re-derive "everything else" would be
 the more awkward shape for the common case. `relics._default_relic_pool()` mirrors
 `card_pool._default_unlocked_pool()` exactly (every `RELICS` key not gated, plus whatever
 `unlocked_relic_pool()` says is unlocked, in `RELICS`' own stable registry order) and is threaded
