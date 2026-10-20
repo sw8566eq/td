@@ -128,6 +128,8 @@ four (see [tooling.md](docs/agents/tooling.md) "Extending the strict list").
 ## Keeping these docs healthy
 
 - Put new architecture notes in the matching doc under a `##` heading, not in this file.
+- Player-facing docs live in [`docs/guide/`](docs/guide/README.md), not the README, which stays a short
+  pitch plus install steps. When a gameplay change makes a guide page wrong, update that page.
 - Cross-reference a section as ``[<file>.md](<file>.md) "Heading"`` inside `docs/agents/`, or as
   `docs/agents/<file>.md "Heading"` from code comments. Never write "see X above/below": sections move.
 - Name things (`Game._construct_tower`) rather than citing line numbers, which go stale.

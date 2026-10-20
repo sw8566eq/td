@@ -2243,7 +2243,7 @@ def _draw_centered_overlay(surface, font, small_font, title, subtitle, title_col
 
 # Single source of truth for every letter GameState.MENU routes to
 # something other than the default "start playing" catch-all -- paired
-# with its on-screen hint label, in the same order the README
+# with its on-screen hint label, in the same order docs/guide/controls.md
 # lists them ("start / E / L / S / A / C"). Game._handle_keydown's MENU
 # branch checks membership in MENU_KEY_LETTERS (derived below) before
 # dispatching a letter to its own behavior, so a key can never end up
@@ -3282,9 +3282,9 @@ HELP_BACK_BUTTON_WIDTH = 240
 HELP_BACK_BUTTON_HEIGHT = 40
 HELP_BACK_BUTTON_GAP = 24
 
-# A hand-written condensation of README.md's own "Controls" section -- kept
+# A hand-written condensation of docs/guide/controls.md -- kept
 # in sync with it by hand (there's no test enforcing that, same as nothing
-# enforces menu_options()/README.md staying in sync either) so a player
+# enforces menu_options()/docs/guide/controls.md staying in sync either) so a player
 # never has to leave the game to learn what that section documents in full.
 HELP_LINES = [
     "Menu: press any key to play -- E Editor, L Levels, S Settings, A Achievements",
