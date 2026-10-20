@@ -54,8 +54,8 @@ four (see [tooling.md](docs/agents/tooling.md) "Extending the strict list").
 
 ## Git workflow
 
-- The working branch is `overhaul/roguelike-deckbuilder`. Feature branches and PRs target it, not
-  `main`, which is stale. Release tags are cut from `overhaul/roguelike-deckbuilder`.
+- `main` is the only long-lived branch. Feature branches and PRs target it, and release tags are cut
+  from it. (The old `overhaul/roguelike-deckbuilder` working branch was folded into `main`.)
 - `.claude/` (local skills and settings) is gitignored on purpose. Never commit it.
 
 ## Must-know rules
