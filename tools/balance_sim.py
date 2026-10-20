@@ -6,7 +6,7 @@ and reports where runs die. It is a dev-only measuring stick for difficulty
 tuning, excluded from coverage like the rest of tools/, and writes nothing
 outside a temp directory (each Game is built by tests/conftest.make_game).
 
-The policy, in brief (see docs/agents/tooling.md "Balance simulator"):
+The policy, in brief (see docs/agents/tooling.md "Balance simulator (`tools/balance_sim.py`)"):
 
 * Placement: every path cell gets a traffic weight from sampled enemy
   routes (merge points carry more routes), tilted toward the late part of
