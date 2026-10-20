@@ -4,6 +4,8 @@ rather than one type per caller, updated/drawn by Game alongside everything
 else that lives for a few frames and then goes away.
 """
 
+import math
+
 import pygame
 
 from support import palette
@@ -176,3 +178,78 @@ def _ring_surface(radius, width, color, alpha):
         pygame.draw.circle(ring_surface, (*color, alpha), center, radius, width=width)
         _ring_cache[key] = ring_surface
     return ring_surface
+
+
+class FlameWedge:
+    """A Brazier's flame wash: a translucent wedge (the cone it just hit)
+    that fades out over `duration` -- spawned by Game.update() from a cone
+    shot's Projectile.cone_events, the same drain idiom as ExpandingRing.
+    The wedge's direction is snapped to FLAME_DIRECTION_STEP degrees so its
+    cached surface (_wedge_surface) is shared between washes."""
+
+    def __init__(self, origin, direction, half_angle, radius, duration=0.3, color=(255, 130, 40)):
+        self.pos = pygame.Vector2(origin)
+        self.direction = direction
+        self.half_angle = half_angle
+        self.radius = radius
+        self.duration = duration
+        self.color = color
+        self.age = 0.0
+
+    @property
+    def dead(self):
+        return self.age >= self.duration
+
+    def update(self, dt):
+        self.age += dt
+
+    def draw(self, surface, alpha_scale=1.0):
+        """`alpha_scale` dims it under the Reduce effects setting, the same
+        way ExpandingRing.draw does."""
+        if self.dead or self.radius < 1:
+            return
+        radius = int(self.radius)
+        direction = round(self.direction / FLAME_DIRECTION_STEP) * FLAME_DIRECTION_STEP % 360
+        wedge = _wedge_surface(radius, direction, round(self.half_angle), self.color)
+        progress = 0.0 if self.duration <= 0 else min(1.0, self.age / self.duration)
+        wedge.set_alpha(max(0, min(255, int(255 * alpha_scale * (1 - progress)))))
+        surface.blit(wedge, (int(self.pos.x) - radius - 1, int(self.pos.y) - radius - 1))
+
+
+FLAME_DIRECTION_STEP = 5
+FLAME_FILL_ALPHA = 110
+FLAME_EDGE_ALPHA = 200
+# Drawn wedge surfaces, keyed by (radius, snapped direction, half angle,
+# color) -- everything _wedge_surface draws from. Shared between washes, so
+# FlameWedge.draw() sets the alpha right before each blit (like
+# _text_cache) and nothing draws onto a cached surface. Cleared wholesale
+# at the limit.
+_WEDGE_CACHE_LIMIT = 512
+_wedge_cache = {}
+
+
+def _wedge_points(center, radius, direction, half_angle):
+    """The wedge outline: its tip, then its arc in at most 6-degree steps."""
+    steps = max(2, int(2 * half_angle // 6) + 1)
+    start = math.radians(direction - half_angle)
+    span = math.radians(2 * half_angle)
+    points = [center]
+    for index in range(steps + 1):
+        angle = start + span * index / steps
+        points.append((center[0] + radius * math.cos(angle), center[1] + radius * math.sin(angle)))
+    return points
+
+
+def _wedge_surface(radius, direction, half_angle, color):
+    key = (radius, direction, half_angle, color)
+    wedge = _wedge_cache.get(key)
+    if wedge is None:
+        if len(_wedge_cache) >= _WEDGE_CACHE_LIMIT:
+            _wedge_cache.clear()
+        size = radius * 2 + 2
+        wedge = pygame.Surface((size, size), pygame.SRCALPHA)
+        points = _wedge_points((radius + 1, radius + 1), radius, direction, half_angle)
+        pygame.draw.polygon(wedge, (*color, FLAME_FILL_ALPHA), points)
+        pygame.draw.polygon(wedge, (*color, FLAME_EDGE_ALPHA), points, width=1)
+        _wedge_cache[key] = wedge
+    return wedge

@@ -157,6 +157,10 @@ compares the bytes, and `tools/perf_bench.py`'s `frame` hash checks a whole boar
 - **Impact rings** (`effects._ring_cache`): `ExpandingRing`'s per-frame ring surface is keyed by
   `(radius, width, color, alpha)`. Rings of one kind share a duration and frames share a dt, so keys
   recur. The cache is cleared at `_RING_CACHE_LIMIT`.
+- **Flame wedges** (`effects._wedge_cache`): a Brazier wash's `FlameWedge` surface is keyed by
+  `(radius, direction, half_angle, color)`, with the direction snapped to `FLAME_DIRECTION_STEP` degrees
+  before both the key and the draw, so keys recur. The surface is shared, so `draw()` sets its alpha
+  right before each blit, like the text cache. Cleared at `_WEDGE_CACHE_LIMIT`.
 - **Coverage overlay** (`ui._coverage_overlay_cache`): the V overlay's full-screen ring layer is kept with
   its key: the target surface size plus every tower's `(center, int(effective_range()) or None,
   int(MIN_RANGE) or None)` in list order, plus `palette.active_key()` (the dead-zone ring uses the palette). The layer is redrawn when that key changes, which happens when a

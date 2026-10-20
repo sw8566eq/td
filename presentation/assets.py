@@ -59,6 +59,7 @@ SPRITE_MANIFEST = {
     "tower_spike_trap": ("towers/spike_trap.png", (150, 150, 160), "rect"),
     "tower_tar_pit": ("towers/tar_pit.png", (40, 30, 30), "circle"),
     "tower_harpoon": ("towers/harpoon.png", (70, 110, 130), "rect"),
+    "tower_brazier": ("towers/brazier.png", (200, 90, 30), "circle"),
     "enemy_grunt": ("enemies/grunt.png", (200, 30, 30), "circle"),
     "enemy_scout": ("enemies/scout.png", (255, 205, 60), "circle"),
     "enemy_tank": ("enemies/tank.png", (90, 45, 45), "circle"),

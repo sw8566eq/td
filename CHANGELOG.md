@@ -14,6 +14,13 @@ semver meaning, just ascending `vX.Y.Z` tags via `.github/workflows/release.yml`
   every tower it walks past, escorted by Disruptors; *The Iron Phalanx* is escorted by Bulwarks,
   shields the enemies around it itself, and its enemies take 10% less damage. All show on the map
   tooltip, the sidebar and in the Field Manual. Existing seeds may roll different affixes and bosses.
+- **Brazier** tower (unlocks after 8 floors cleared), the first tower that attacks a **cone**: every
+  shot washes flame over a 70-degree wedge toward its target, hitting every ground enemy inside and
+  setting it **Burning**, a new damage-over-time status that stacks with Poison. Airborne flyers and
+  Burrowers are out of reach. Specializations Wide Arc (110-degree cone, harder hits) and Blue Flame
+  (hotter, longer burns). New resonances **Firebreak** (Brazier near Barricade: +25% fire rate) and
+  **Kindling** (Brazier near Tar Pit: +20% damage), and a Brazier relic, **Pitch Oil** (burns deal 50%
+  more damage). The enemy tooltip lists Burning, and a Field Notes hint explains the Brazier.
 - **Four new levels**, each built around one placement puzzle. **The Coil** and **Killing Field**
   join the early single-lane rows: The Coil winds into the middle of the map and back out between
   its own legs, with a small high-ground plateau beside the exit, and Killing Field passes the same

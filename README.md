@@ -203,8 +203,9 @@ Pit: +25% fire rate), **Shock and Awe** (Cannon near Knockback: +15% fire rate),
 near Cannon: +20% range), **Power Relay** (Beam near Siphon: +15% damage), **Overwatch** (Basic near
 Sniper: +10% damage), **Static Charge** (Overload Cannon near Lightning: +20% damage), **Deep Freeze** (Frost
 near Tar Pit: +20% range), **Bounty Link** (Siphon near Sniper: +20% fire rate), **Thermal Shock** (Mortar
-near Frost: +15% damage), **Grounded Barrage** (Mortar near Harpoon: +15% fire rate) and **Anchor Line**
-(Harpoon near Cannon: +20% range). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
+near Frost: +15% damage), **Grounded Barrage** (Mortar near Harpoon: +15% fire rate), **Anchor Line**
+(Harpoon near Cannon: +20% range), **Firebreak** (Brazier near Barricade: +25% fire rate) and **Kindling**
+(Brazier near Tar Pit: +20% damage). Hovering a build button shows what that tower pairs with (or boosts); while placing, purple lines
 show which towers it would resonate with; a placed tower lists its active resonances. The **Harmonic
 Tuning** relic doubles every resonance. The Field Manual has them all.
 
@@ -475,6 +476,12 @@ menu holds more than nine, it wraps into two rows.
   and stopped by a Barricade. It starts on the **Flying** targeting mode, aiming at flyers that are
   still airborne first. Specializes into Deep Anchor (grounds far longer) or Reel In (hits also slow).
   The **Barbed Tethers** relic makes grounding last 60% longer. Unlocks after 6 floors cleared.
+- **Brazier** -- a short-range flamethrower, and the only tower that attacks a **cone**: every shot
+  washes flame over a 70-degree wedge pointed at its target, hitting every ground enemy inside for
+  modest damage and setting it **Burning** (damage over time that stacks with Poison). Strong against
+  dense ground swarms, weak against a lone tank, and it can't reach airborne flyers or Burrowers.
+  Specializes into Wide Arc (a 110-degree cone, harder hits) or Blue Flame (hotter, longer burns). The
+  **Pitch Oil** relic makes its burns 50% stronger. Unlocks after 8 floors cleared.
 - **Siphon** -- a light direct hit, but converts a fraction of the damage it deals into battle gold --
   the only tower that generates economy from damage dealt rather than from kills.
 

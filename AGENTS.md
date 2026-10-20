@@ -113,8 +113,8 @@ four (see [tooling.md](docs/agents/tooling.md) "Extending the strict list").
 | [run-map.md](docs/agents/run-map.md) | `run/run_map.py`, node types (Combat/Elite/Shop/Event/Rest/Treasure/Boss/Armory/Proving Grounds), map screen, rewards, potions, elite affixes, the opening blessing |
 | [relics.md](docs/agents/relics.md) | `run/relics.py`: effect shapes, `compose_relic_modifiers` stacking rules, tower-exclusive relics, curses, boss relics |
 | [economy-shop.md](docs/agents/economy-shop.md) | battle gold vs shop currency, `run/shop.py`, `--unlimited-gold` |
-| [towers.md](docs/agents/towers.md) | leveling/specialization, Support two-pass update, Overload Cannon, Siphon, targeting index, results table, veterancy, traps, modules, Barricade, resonances |
-| [enemies.md](docs/agents/enemies.md) | registries, boss mechanics, `IS_BOSS`, Mark, Corrosive Poison, Sappers/Burrowers, knockback resistance, poison credit |
+| [towers.md](docs/agents/towers.md) | leveling/specialization, Support two-pass update, Overload Cannon, Siphon, targeting index, results table, veterancy, traps, modules, Barricade, resonances, Harpoon, Brazier cone attacks |
+| [enemies.md](docs/agents/enemies.md) | registries, boss mechanics, `IS_BOSS`, Mark, Corrosive Poison, Sappers/Burrowers, knockback resistance, poison credit, Burning |
 | [waves-difficulty.md](docs/agents/waves-difficulty.md) | `WaveManager` states, endless mode, difficulty, Sandbox/Practice, settings screen |
 | [grid-paths.md](docs/agents/grid-paths.md) | tile vs subtile coords, footprints, path topology (forest rule), `sample_route` |
 | [ui-input.md](docs/agents/ui-input.md) | keybindings, stats panel click-routing, HUD layout, Field Manual, Service Record, relics overlay |

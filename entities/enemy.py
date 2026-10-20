@@ -33,6 +33,10 @@ KNOCKBACK_RESISTANCE_DECAY = 0.3
 # The shadow and tether a grounded flyer draws under itself (Enemy.draw).
 GROUNDED_SHADOW_COLOR = (30, 30, 30)
 GROUNDED_TETHER_COLOR = (200, 200, 210)
+# Burning (a Brazier's flame -- Enemy.apply_burn): seconds between ticks, and
+# the small ember a burning enemy wears (Enemy.draw).
+BURN_TICK_INTERVAL = 0.5
+BURN_EMBER_COLOR = (255, 140, 40)
 
 
 def is_airborne(enemy):
@@ -153,6 +157,14 @@ class Enemy:
         self.poison_time_remaining = 0.0
         self.poison_ignores_shield = False
 
+        # Burning (a Brazier's flame -- see apply_burn()): a second, separate
+        # damage-over-time channel, so it stacks with Poison rather than
+        # competing for one slot, and no poison relic or combo reads it.
+        self.burn_damage_per_tick = 0.0
+        self.burn_tick_timer = 0.0
+        self.burn_time_remaining = 0.0
+        self.burn_source = None
+
         self.knockback_remaining = 0.0  # px of backward slide still owed
 
         # The tower credited with active poison ticks (see apply_poison).
@@ -228,6 +240,22 @@ class Enemy:
             if self.poison_time_remaining <= 0:
                 self.poison_time_remaining = 0.0
                 self.poison_damage_per_tick = 0.0
+
+        if self.burn_time_remaining > 0:
+            self.burn_time_remaining -= dt
+            self.burn_tick_timer -= dt
+            if self.burn_tick_timer <= 0:
+                self.burn_tick_timer += BURN_TICK_INTERVAL
+                dealt = self.take_damage(self.burn_damage_per_tick)
+                if self.burn_source is not None:
+                    self.burn_source.damage_dealt += dealt or 0.0
+                    if self.is_dead:
+                        self.burn_source.kills += 1
+                if self.is_dead:
+                    return  # a killing tick -- don't also move the corpse this frame
+            if self.burn_time_remaining <= 0:
+                self.burn_time_remaining = 0.0
+                self.burn_damage_per_tick = 0.0
 
         if self.knockback_resistance > 0:
             self.knockback_resistance = max(0.0, self.knockback_resistance - KNOCKBACK_RESISTANCE_DECAY * dt)
@@ -413,6 +441,28 @@ class Enemy:
         self.poison_tick_interval = tick_interval
         self.poison_time_remaining = max(self.poison_time_remaining, duration)
 
+    def apply_burn(self, damage_per_tick, duration, source=None):
+        """Set (or refresh) this enemy alight: damage_per_tick every
+        BURN_TICK_INTERVAL seconds for `duration` seconds (a Brazier's
+        flame). Its own channel, separate from poison, so the two stack.
+        Refreshes like apply_poison -- the stronger tick and the longer
+        duration win, a re-hit never delays a tick already due -- and the
+        tower that applied the strongest tick is credited (burn_source).
+        Burn is plain damage through take_damage(): unlike a Corrosive
+        poison it never slips past a shield."""
+        if self.is_dead or self.reached_goal:
+            return
+        if source is not None and (self.burn_time_remaining <= 0 or damage_per_tick >= self.burn_damage_per_tick):
+            self.burn_source = source
+        if self.burn_time_remaining <= 0:
+            self.burn_tick_timer = 0.0  # first tick on the very next update()
+        self.burn_damage_per_tick = max(self.burn_damage_per_tick, damage_per_tick)
+        self.burn_time_remaining = max(self.burn_time_remaining, duration)
+
+    @property
+    def is_burning(self):
+        return self.burn_time_remaining > 0
+
     @property
     def is_burrowed(self):
         """Under the path right now: a burrowing species (BURROWS) that isn't
@@ -518,6 +568,10 @@ class Enemy:
         if self.aura_damage_reduction > 0:
             # Fortified by a Bulwark: a small shield-coloured pip on top.
             pygame.draw.circle(surface, BULWARK_AURA_COLOR, (int(self.pos.x), int(self.pos.y) - self.radius), 3)
+        if self.burn_time_remaining > 0:
+            # Burning: a small ember at its shoulder.
+            ember = (int(self.pos.x) + self.radius - 2, int(self.pos.y) - self.radius + 2)
+            pygame.draw.circle(surface, BURN_EMBER_COLOR, ember, 3)
         self._draw_health_bar(surface)
 
     def _draw_health_bar(self, surface):

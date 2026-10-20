@@ -88,6 +88,11 @@ HINTS: dict[str, Hint] = {
         "Each Harpoon hit Grounds a flyer for a few seconds. While grounded, ground-only "
         "towers and Barricades can reach it too.",
     ),
+    "brazier": Hint(
+        "built_brazier", "Brazier",
+        "A Brazier washes a cone of flame toward its target, hitting every ground enemy "
+        "inside and setting it Burning. It can't reach airborne flyers or Burrowers.",
+    ),
     "potion": Hint(
         "holding_potion", "Bandolier",
         "Your Bandolier holds potions. Click a slot under the side panel, or press Q/W/E, "

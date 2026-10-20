@@ -221,6 +221,7 @@ itself. They come in two shapes, and picking the wrong one is the classic mistak
 | path traps | `kill_corridor` | `trap_damage_vs_slowed_multiplier` | applied in `Game._apply_construction_relics` |
 | Mortar | `incendiary_shells` | `mortar_ground_fire` | see "Ground fire (Incendiary Shells)" |
 | Harpoon | `barbed_tethers` | `harpoon_ground_duration_multiplier` | Relic-only, multiplied in `_apply_construction_relics`; plain multiply on `ground_duration` |
+| Brazier | `pitch_oil` | `brazier_burn_multiplier` | Relic-only, multiplied in `_apply_construction_relics`; plain multiply in `BrazierTower.burn_tick()` |
 
 Notes:
 
