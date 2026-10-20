@@ -126,3 +126,21 @@ immediately" choice `progress.mark_level_cleared()` and the achievement/meta-pro
 modules all make too (see [persistence.md](persistence.md)). Its "Accessibility..." button (right of the last
 Window row) opens `GameState.ACCESSIBILITY`, which holds the Colorblind palette and Reduce effects
 toggles. See [presentation.md](presentation.md) "Accessibility: palettes and reduced effects".
+
+## Balance pass (balance simulator)
+
+`tools/balance_sim.py` (see [tooling.md](tooling.md) "Balance simulator") was the first tool to play acts 2-3
+with real battle gold and real lives, and its measurements drove one tuning pass. Each knob's comment
+records the before and after numbers:
+
+- `run_escalation._HP_GROWTH_PER_FLOOR` went from 0.12 to 0.09. Only about 9% of runs got past Act 2, and
+  the deaths were spread evenly over every Act 2 row, so the problem was the curve itself, not one floor.
+- `run_escalation.ELITE_HP_MULTIPLIER` went from 1.25 to 1.15. The bot died in about 66% of Elite fights
+  (against about 12% of Combat fights), so an Elite was a coin flip on the whole run instead of a
+  risk/reward choice. It is now about 27%.
+- Wave counts were trimmed on the four-spawn levels 14 and 15 and on boss level 16 (Last Bastion), whose
+  flanking lanes now run about half their old counts. Level 16 killed about 80% of runs against about 11% for
+  Endless Vigil (Level 17), so which boss a run drew decided the run.
+
+Re-run the simulator after changing any of these knobs or a level's waves. Use `--set module.NAME=value`
+to try a value without editing the code.

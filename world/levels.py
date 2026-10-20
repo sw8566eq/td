@@ -612,14 +612,17 @@ LEVEL_14_SPAWN_BOTTOM_B = (0, 8)
 LEVEL_14_MERGE_BOTTOM = (4, 7)
 LEVEL_14_BRANCH_JUNCTION = (4, 4)  # where the goal spur leaves the spine
 LEVEL_14_GOAL = (14, 4)
+# Wave counts trimmed ~20% by the balance-simulator pass (four spawns, so
+# four enemies per spawn round; a competent bot died in ~65% of fights here).
+# See docs/agents/waves-difficulty.md "Balance pass (balance simulator)".
 LEVEL_14_WAVE_SPECS = [
-    {LEVEL_14_SPAWN_TOP_A: {"grunt": 5}, LEVEL_14_SPAWN_TOP_B: {"scout": 5},
-     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 3}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 5}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 4},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 2}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 4}},
+    {LEVEL_14_SPAWN_TOP_A: {"grunt": 6, "splitter": 2}, LEVEL_14_SPAWN_TOP_B: {"scout": 6, "flying": 3},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 4, "healer": 2}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 6, "shielded": 2}},
     {LEVEL_14_SPAWN_TOP_A: {"grunt": 7, "splitter": 3}, LEVEL_14_SPAWN_TOP_B: {"scout": 7, "flying": 4},
-     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 5, "healer": 2}, LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 7, "shielded": 3}},
-    {LEVEL_14_SPAWN_TOP_A: {"grunt": 8, "splitter": 4}, LEVEL_14_SPAWN_TOP_B: {"scout": 8, "flying": 5},
-     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 6, "healer": 3, "boss": 1},
-     LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 8, "shielded": 4}},
+     LEVEL_14_SPAWN_BOTTOM_A: {"tank": 5, "healer": 2, "boss": 1},
+     LEVEL_14_SPAWN_BOTTOM_B: {"grunt": 7, "shielded": 3}},
 ]
 
 LEVELS[14] = _multi_lane_level(
@@ -655,15 +658,20 @@ LEVEL_15_BOTTOM_SPAWN_A = (0, 6)
 LEVEL_15_BOTTOM_SPAWN_B = (0, 8)
 LEVEL_15_BOTTOM_JUNCTION = (5, 7)
 LEVEL_15_BOTTOM_GOAL = (14, 7)
+# Wave counts trimmed ~30-40% (waves 1-2 the most) by the balance-simulator
+# pass: four spawns release four enemies every spawn round onto two
+# disjoint fronts, and with the old counts a competent bot lost ~95% of its
+# fights here -- by far the deadliest non-boss level. See
+# docs/agents/waves-difficulty.md "Balance pass (balance simulator)".
 LEVEL_15_WAVE_SPECS = [
-    {LEVEL_15_TOP_SPAWN_A: {"grunt": 6}, LEVEL_15_TOP_SPAWN_B: {"scout": 5},
-     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 6}},
-    {LEVEL_15_TOP_SPAWN_A: {"grunt": 8, "tank": 4}, LEVEL_15_TOP_SPAWN_B: {"scout": 8, "flying": 4},
-     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 5, "splitter": 3}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 8, "shielded": 3}},
-    {LEVEL_15_TOP_SPAWN_A: {"grunt": 9, "tank": 6, "boss": 1},
-     LEVEL_15_TOP_SPAWN_B: {"scout": 9, "flying": 5, "healer": 2},
-     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 6, "splitter": 4},
-     LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 9, "shielded": 4}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 3}, LEVEL_15_TOP_SPAWN_B: {"scout": 3},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 2}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 3}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 5, "tank": 2}, LEVEL_15_TOP_SPAWN_B: {"scout": 5, "flying": 2},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 3, "splitter": 2}, LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 5, "shielded": 2}},
+    {LEVEL_15_TOP_SPAWN_A: {"grunt": 7, "tank": 4, "boss": 1},
+     LEVEL_15_TOP_SPAWN_B: {"scout": 7, "flying": 4, "healer": 1},
+     LEVEL_15_BOTTOM_SPAWN_A: {"tank": 4, "splitter": 3},
+     LEVEL_15_BOTTOM_SPAWN_B: {"grunt": 7, "shielded": 3}},
 ]
 
 LEVELS[15] = _multi_lane_level(
@@ -715,23 +723,30 @@ LEVEL_16_GOAL = (14, 4)
 # six waves (boss-tier levels are exempt from the ordinary 3-wave cap, see
 # run_map.BOSS_LEVEL_IDS) and introducing splitter/healer partway through,
 # the same escalation shape Grand Delta (Level 11) uses.
+#
+# The two flanking grunt/tank lanes run about half their original counts
+# (the mid lane ~80%) since the balance-simulator pass: three lanes release
+# three enemies per spawn round into one short trunk, so as an act boss this
+# level killed ~80% of a competent bot's runs against ~11% for Endless Vigil
+# (Level 17), the other boss level -- which boss a run drew decided it. See
+# docs/agents/waves-difficulty.md "Balance pass (balance simulator)".
 LEVEL_16_WAVE_SPECS = [
-    {LEVEL_16_SPAWN_TOP: {"grunt": 7}, LEVEL_16_SPAWN_MID: {"scout": 7},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 7}},
-    {LEVEL_16_SPAWN_TOP: {"grunt": 9, "tank": 4}, LEVEL_16_SPAWN_MID: {"scout": 10, "flying": 4},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 9, "tank": 4}},
-    {LEVEL_16_SPAWN_TOP: {"grunt": 10, "tank": 6, "splitter": 3},
-     LEVEL_16_SPAWN_MID: {"scout": 11, "flying": 6, "shielded": 4},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 10, "tank": 6, "splitter": 3}},
-    {LEVEL_16_SPAWN_TOP: {"grunt": 11, "tank": 7},
-     LEVEL_16_SPAWN_MID: {"scout": 12, "flying": 7, "shielded": 5, "healer": 3},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 11, "tank": 7}},
-    {LEVEL_16_SPAWN_TOP: {"grunt": 12, "tank": 8, "splitter": 4},
-     LEVEL_16_SPAWN_MID: {"scout": 13, "flying": 8, "shielded": 6, "healer": 4},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 12, "tank": 8, "splitter": 4}},
-    {LEVEL_16_SPAWN_TOP: {"grunt": 12, "tank": 9},
-     LEVEL_16_SPAWN_MID: {"scout": 13, "flying": 8, "shielded": 6, "final_boss": 1},
-     LEVEL_16_SPAWN_BOTTOM: {"grunt": 12, "tank": 9}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 4}, LEVEL_16_SPAWN_MID: {"scout": 6},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 4}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 4, "tank": 2}, LEVEL_16_SPAWN_MID: {"scout": 8, "flying": 3},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 4, "tank": 2}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 5, "tank": 3, "splitter": 2},
+     LEVEL_16_SPAWN_MID: {"scout": 9, "flying": 5, "shielded": 3},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 5, "tank": 3, "splitter": 2}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 6, "tank": 4},
+     LEVEL_16_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 4, "healer": 2},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 6, "tank": 4}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 6, "tank": 4, "splitter": 2},
+     LEVEL_16_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5, "healer": 3},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 6, "tank": 4, "splitter": 2}},
+    {LEVEL_16_SPAWN_TOP: {"grunt": 6, "tank": 4},
+     LEVEL_16_SPAWN_MID: {"scout": 10, "flying": 6, "shielded": 5, "final_boss": 1},
+     LEVEL_16_SPAWN_BOTTOM: {"grunt": 6, "tank": 4}},
 ]
 
 LEVELS[16] = _multi_lane_level(

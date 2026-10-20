@@ -98,7 +98,15 @@ from dataclasses import dataclass
 # little too, so a longer run's economy doesn't fall behind its own
 # escalating threat, and speed grows slowest since a faster-moving enemy
 # is harder to compensate for with towers alone than a tankier one.
-_HP_GROWTH_PER_FLOOR = 0.12
+#
+# _HP_GROWTH_PER_FLOOR was 0.12 until tools/balance_sim.py (a competent
+# bot playing whole runs with real gold and lives) measured acts 2-3 for the
+# first time: only ~9% of runs got past Act 2, with deaths spread evenly
+# over every Act 2 row rather than at one spike -- the curve itself, not
+# one floor, was too steep (depth 11 = 2.32x HP before the boss bump). 0.09
+# lands Act 2's boss at 1.99x; see docs/agents/waves-difficulty.md
+# "Balance pass (balance simulator)".
+_HP_GROWTH_PER_FLOOR = 0.09
 _SPEED_GROWTH_PER_FLOOR = 0.02
 _GOLD_GROWTH_PER_FLOOR = 0.05
 
@@ -161,7 +169,14 @@ EARLY_GRACE_GOLD_BONUS = 0.5
 # in the same playtest made even a modest HP bump unsurvivable, since it's
 # what lets a mid-fight economy snowball (more kills -> more gold -> more
 # towers) keep pace with the added toughness at all.
-ELITE_HP_MULTIPLIER = 1.25
+#
+# Lowered again, 1.25 -> 1.15, by the balance simulator pass: with real gold
+# and lives a competent bot died in ~66% of Elite fights (vs ~12% of Combat
+# ones), so taking an Elite was close to a coin flip on the whole run rather
+# than a risk/reward choice. At 1.15 it's ~27%: still the riskiest ordinary
+# node, worth its relic. See docs/agents/waves-difficulty.md "Balance pass
+# (balance simulator)".
+ELITE_HP_MULTIPLIER = 1.15
 ELITE_SPEED_MULTIPLIER = 1.1
 ELITE_GOLD_MULTIPLIER = 1.5
 

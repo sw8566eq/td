@@ -204,3 +204,14 @@ What changed, with each step's measured effect on the default scenario (means, q
 Still on the table, not done: the per-kill-frame `achievements.json` write (`_record_achievement("kills")`
 does a load-mutate-save on every frame with a kill, about one frame in four on this bench) and the blits
 themselves, which now dominate render.
+
+## Balance simulator (`tools/balance_sim.py`)
+
+`tools/flow_check.py` checks that the state machine holds up: its bot is invulnerable and makes random
+choices. The balance simulator instead plays to win, with real battle gold and lives, and reports where
+runs die. Placement weights path cells by sampled enemy-route traffic. Spending compares new towers with
+upgrades by estimated power per gold. Potions and the Commander ability fire when leaks start. Map, reward
+and Outpost choices follow simple health and currency rules. The module docstring has the full policy and
+its flags (`--seeds`, `--jobs`, `--account fresh`, `--json`, `--set`, `--calibrate`). Like the rest of
+`tools/` it is dev-only, excluded from coverage, and writes only to a temp directory. The tuning it drove
+is described in [waves-difficulty.md](waves-difficulty.md) "Balance pass (balance simulator)".

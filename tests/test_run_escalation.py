@@ -36,7 +36,7 @@ def test_early_grace_fades_completely_by_early_grace_rows():
     # multiplier settle at -- the taper's own contribution is what's
     # verified as fully gone, not the field as a whole.
     escalation = escalation_for_floor(EARLY_GRACE_ROWS)
-    assert escalation.enemy_hp_multiplier == pytest.approx(1.0 + 0.12 * EARLY_GRACE_ROWS)
+    assert escalation.enemy_hp_multiplier == pytest.approx(1.0 + 0.09 * EARLY_GRACE_ROWS)
     assert escalation.enemy_speed_multiplier == pytest.approx(1.0 + 0.02 * EARLY_GRACE_ROWS)
     assert escalation.starting_gold_multiplier == pytest.approx(1.0 + 0.05 * EARLY_GRACE_ROWS)
     # And every later row keeps climbing at that same flat rate -- unlike
